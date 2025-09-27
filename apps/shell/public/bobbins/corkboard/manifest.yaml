@@ -1,0 +1,131 @@
+id: corkboard
+name: Corkboard
+version: 1.0.0
+author: Bobbinry Team
+description: Visual board interface for organizing and reordering content cards
+tags:
+  - organization
+  - visual
+  - kanban
+  - ui-only
+license: Apache-2.0
+
+capabilities:
+  publishable: false
+  external: false
+  ai: false
+  customViews: true
+
+# Corkboard is UI-only - no data collections
+# It provides views for existing collections from other bobbins
+
+ui:
+  views:
+    - id: corkboard
+      type: board
+      name: Corkboard
+      source: scenes  # References scenes from manuscript bobbin
+      layout:
+        columns:
+          - field: title
+            width: 200px
+          - field: description
+            width: 300px
+          - field: status
+            width: 100px
+          - field: word_count
+            width: 80px
+        groups:
+          - field: status
+            direction: asc
+        sort:
+          - field: order
+            direction: asc
+        pagination: false
+      filters:
+        - field: status
+          operator: ne
+          value: deleted
+      actions:
+        - drag_reorder
+        - edit_card
+        - view_details
+
+    - id: chapter_board
+      type: board
+      name: Chapter Board
+      source: chapters  # References chapters from manuscript bobbin
+      layout:
+        columns:
+          - field: title
+            width: 250px
+          - field: description
+            width: 400px
+          - field: word_count
+            width: 100px
+        sort:
+          - field: order
+            direction: asc
+      actions:
+        - drag_reorder
+        - edit_card
+
+interactions:
+  actions:
+    - id: drag_reorder
+      name: Drag to Reorder
+      type: update
+      parameters:
+        - name: item_id
+          type: text
+          required: true
+        - name: new_order
+          type: number
+          required: true
+        - name: collection
+          type: text
+          required: true
+
+    - id: edit_card
+      name: Edit Card
+      type: update
+      parameters:
+        - name: id
+          type: text
+          required: true
+        - name: title
+          type: text
+          required: false
+        - name: description
+          type: text
+          required: false
+        - name: status
+          type: text
+          required: false
+
+    - id: view_details
+      name: View Details
+      type: custom
+      parameters:
+        - name: id
+          type: text
+          required: true
+        - name: collection
+          type: text
+          required: true
+
+  triggers:
+    - id: update_order_on_drag
+      event: update
+      conditions:
+        - field: order
+          operator: ne
+          value: null
+      actions:
+        - drag_reorder
+
+# Corkboard doesn't define its own linkable entities
+# It works with entities from other bobbins
+
+compatibility:
+  minShellVersion: "0.1.0"

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    // Language and Environment
+    "target": "ES2022",
+    "lib": [
+      "ES2022"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "preserve",
+    // Module Resolution
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    // Type Checking - Phase 3 Strict Mode (maximum strictness)
+    "strict": true, // ✅ Enabled - basic strict mode
+    "noImplicitAny": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "noImplicitThis": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true, // ✅ Enabled - all code paths must return
+    "strictNullChecks": true, // ✅ Phase 2 - Enable null safety
+    "strictPropertyInitialization": true, // ✅ Phase 2 - Ensure properties are initialized
+    "noUncheckedIndexedAccess": true, // ✅ Phase 3 - Safe array/object access
+    "exactOptionalPropertyTypes": true, // ✅ Phase 3 - Exact optional property handling
+    // Additional Checks - Maximum Code Quality
+    "noUnusedLocals": true, // ✅ Phase 3 - No unused variables
+    "noUnusedParameters": true, // ✅ Phase 3 - No unused parameters
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    // Emit
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": true,
+    "removeComments": false,
+    "noEmit": true,
+    "incremental": true,
+    // Interop Constraints
+    "allowJs": false,
+    "skipLibCheck": true,
+    // Advanced
+    "types": []
+  }
+}

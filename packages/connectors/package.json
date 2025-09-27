@@ -1,0 +1,23 @@
+{
+  "name": "@bobbinry/connectors",
+  "version": "1.0.0",
+  "description": "First-party connectors for external integrations (drive, webhook, etc.)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "jest"
+  },
+  "keywords": ["bobbinry", "connectors", "integrations", "drive", "webhook"],
+  "author": "Bobbinry",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@10.17.1",
+  "dependencies": {
+    "@bobbinry/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.17",
+    "typescript": "^5.9.2"
+  }
+}

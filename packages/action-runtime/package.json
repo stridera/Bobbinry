@@ -1,0 +1,23 @@
+{
+  "name": "@bobbinry/action-runtime",
+  "version": "1.0.0",
+  "description": "Sandboxed action SDK for workflows and external integrations",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "jest"
+  },
+  "keywords": ["bobbinry", "actions", "runtime", "sandbox", "workflows"],
+  "author": "Bobbinry",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@10.17.1",
+  "dependencies": {
+    "@bobbinry/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.17",
+    "typescript": "^5.9.2"
+  }
+}

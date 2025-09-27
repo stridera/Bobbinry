@@ -1,0 +1,24 @@
+{
+  "name": "@bobbinry/view-sdk",
+  "version": "1.0.0",
+  "description": "PostMessage bridge for sandboxed views/panels",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "jest"
+  },
+  "keywords": ["bobbinry", "view", "sdk", "postmessage", "iframe"],
+  "author": "Bobbinry",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@10.17.1",
+  "dependencies": {
+    "@bobbinry/types": "workspace:*",
+    "@bobbinry/event-bus": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.17",
+    "typescript": "^5.9.2"
+  }
+}

@@ -1,0 +1,25 @@
+id: dictionary-panel
+name: Dictionary Panel
+version: 1.0.0
+author: "Bobbins Samples"
+description: "Right-side panel that listens to Manuscript selection events and shows a local dictionary entry. No external network required."
+tags: [panel, dictionary, pubsub]
+license: MIT
+capabilities: { publishable: false, external: false, ai: false, customViews: true }
+data: { collections: [] }
+extensions:
+  target: { id: manuscript, version: "^1.0.0" }
+  contributions:
+    - slot: shell.rightPanel
+      type: panel
+      id: dictionary.panel
+      title: "Dictionary"
+      entry: views/panel/index.html
+      pubsub:
+        consumes:
+          - { topic: manuscript.editor.selection.v1, intent: dictionary-lookup, sensitivityRequired: medium }
+      when: { inView: manuscript.editor }
+pubsub: { produces: [] }
+offline: { defaultCache: open_entities }
+sync: { conflictPolicy: field_merge }
+compatibility: { minShellVersion: 1.0.0, migrations: [] }

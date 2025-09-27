@@ -1,0 +1,33 @@
+{
+  "scene": [
+    "A sequence of continuous action in a play, movie, or book.",
+    "The place where an incident occurs or occurred."
+  ],
+  "chapter": [
+    "A main division of a book, typically with a number or title."
+  ],
+  "plot": [
+    "The main events of a play, novel, or movie, devised and presented by the writer."
+  ],
+  "character": [
+    "A person in a novel, play, or movie."
+  ],
+  "motif": [
+    "A distinctive feature or dominant idea in an artistic or literary composition."
+  ],
+  "protagonist": [
+    "The leading character or one of the major characters."
+  ],
+  "antagonist": [
+    "A person who actively opposes or is hostile to someone or something; an adversary."
+  ],
+  "synopsis": [
+    "A brief summary or general survey of something."
+  ],
+  "outline": [
+    "A general description or plan showing the essential features of something but not the detail."
+  ],
+  "narrator": [
+    "A person who narrates something, especially a character who recounts the events of a novel or narrative poem."
+  ]
+}

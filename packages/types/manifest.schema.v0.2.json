@@ -1,0 +1,603 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Bobbin Manifest v0.2",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "version"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$",
+      "description": "Unique identifier for the bobbin"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable name"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+",
+      "description": "Semantic version"
+    },
+    "author": {
+      "type": "string",
+      "description": "Author name or organization"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of the bobbin"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "license": {
+      "type": "string"
+    },
+    "capabilities": {
+      "type": "object",
+      "properties": {
+        "publishable": { "type": "boolean" },
+        "external": { "type": "boolean" },
+        "ai": { "type": "boolean" },
+        "customViews": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "data": {
+      "type": "object",
+      "properties": {
+        "collections": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Collection" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "ui": {
+      "type": "object",
+      "properties": {
+        "views": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/View" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "interactions": {
+      "type": "object",
+      "properties": {
+        "actions": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Action" }
+        },
+        "triggers": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Trigger" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "external": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "endpoints": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ExternalEndpoint" }
+        },
+        "auth": { "$ref": "#/definitions/AuthConfig" },
+        "permissions": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Permission" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "linking": {
+      "type": "object",
+      "properties": {
+        "entities": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/LinkableEntity" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "publish": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "entities": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "fields": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "output": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/OutputFormat" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "extensions": {
+      "type": "object",
+      "properties": {
+        "target": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "version": { "type": "string" }
+          },
+          "required": ["id", "version"]
+        },
+        "contributions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "slot": { "type": "string" },
+              "type": { "type": "string" },
+              "id": { "type": "string" },
+              "title": { "type": "string" },
+              "entry": { "type": "string" },
+              "when": { "type": "object" },
+              "pubsub": {
+                "type": "object",
+                "properties": {
+                  "consumes": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "topic": { "type": "string" },
+                        "intent": { "type": "string" },
+                        "sensitivityRequired": { "type": "string" }
+                      },
+                      "required": ["topic", "intent", "sensitivityRequired"]
+                    }
+                  }
+                }
+              }
+            },
+            "required": ["slot", "type", "id"]
+          }
+        }
+      }
+    },
+    "augmentations": {
+      "type": "object",
+      "properties": {
+        "collections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "target": { "type": "string" },
+              "fields": {
+                "type": "array",
+                "items": { "$ref": "#/definitions/Field" }
+              }
+            },
+            "required": ["target", "fields"]
+          }
+        }
+      }
+    },
+    "pubsub": {
+      "type": "object",
+      "properties": {
+        "produces": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "topic": { "type": "string" },
+              "qos": {
+                "type": "string",
+                "enum": ["realtime", "batch", "state"]
+              },
+              "sensitivity": {
+                "type": "string",
+                "enum": ["low", "medium", "high"]
+              },
+              "rate": { "type": "string" },
+              "shared": { "type": "boolean" }
+            },
+            "required": ["topic", "qos", "sensitivity"]
+          }
+        },
+        "consumes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "topic": { "type": "string" },
+              "intent": { "type": "string" },
+              "sensitivityRequired": {
+                "type": "string",
+                "enum": ["low", "medium", "high"]
+              }
+            },
+            "required": ["topic", "intent", "sensitivityRequired"]
+          }
+        }
+      }
+    },
+    "offline": {
+      "type": "object",
+      "properties": {
+        "defaultCache": {
+          "type": "string",
+          "enum": ["none", "open_entities", "all_entities", "custom"]
+        },
+        "redactFields": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "sync": {
+      "type": "object",
+      "properties": {
+        "conflictPolicy": {
+          "type": "string",
+          "enum": ["text_delta", "field_merge", "last_write_wins"]
+        },
+        "fieldPolicies": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "enum": ["text_delta", "field_merge", "last_write_wins"]
+          }
+        }
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "properties": {
+        "minShellVersion": { "type": "string" },
+        "migrations": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Migration" }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "Collection": {
+      "type": "object",
+      "required": ["name", "fields"],
+      "properties": {
+        "name": { "type": "string" },
+        "displayName": { "type": "string" },
+        "storage": {
+          "type": "string",
+          "enum": ["auto", "prefer_physical", "physical_strict"]
+        },
+        "fields": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Field" }
+        },
+        "relationships": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Relationship" }
+        },
+        "validations": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Validation" }
+        },
+        "hints": { "$ref": "#/definitions/CollectionHints" }
+      }
+    },
+    "Field": {
+      "type": "object",
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string" },
+        "type": {
+          "enum": ["text", "number", "boolean", "date", "datetime", "json", "reference", "file", "image", "markdown", "rich_text"]
+        },
+        "displayName": { "type": "string" },
+        "description": { "type": "string" },
+        "required": { "type": "boolean" },
+        "default": {},
+        "validation": { "$ref": "#/definitions/FieldValidation" },
+        "hints": { "$ref": "#/definitions/FieldHints" }
+      }
+    },
+    "Relationship": {
+      "type": "object",
+      "required": ["name", "type", "target"],
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "enum": ["one-to-one", "one-to-many", "many-to-many"] },
+        "target": { "type": "string" },
+        "foreignKey": { "type": "string" },
+        "displayName": { "type": "string" }
+      }
+    },
+    "Validation": {
+      "type": "object",
+      "required": ["field", "rules"],
+      "properties": {
+        "field": { "type": "string" },
+        "rules": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ValidationRule" }
+        }
+      }
+    },
+    "ValidationRule": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["required", "min", "max", "pattern", "custom"] },
+        "value": {},
+        "message": { "type": "string" }
+      }
+    },
+    "CollectionHints": {
+      "type": "object",
+      "properties": {
+        "searchable": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "sortKey": { "type": "string" },
+        "displayField": { "type": "string" },
+        "icon": { "type": "string" }
+      }
+    },
+    "FieldHints": {
+      "type": "object",
+      "properties": {
+        "searchable": { "type": "boolean" },
+        "sortable": { "type": "boolean" },
+        "filterable": { "type": "boolean" },
+        "displayOrder": { "type": "number" },
+        "group": { "type": "string" }
+      }
+    },
+    "FieldValidation": {
+      "type": "object",
+      "properties": {
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "pattern": { "type": "string" },
+        "required": { "type": "boolean" },
+        "custom": { "type": "string" }
+      }
+    },
+    "View": {
+      "type": "object",
+      "required": ["id", "type", "name", "source"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": {
+          "enum": ["tree", "editor", "board", "table", "calendar", "map", "chart", "form", "custom"]
+        },
+        "name": { "type": "string" },
+        "source": { "type": "string" },
+        "layout": { "$ref": "#/definitions/ViewLayout" },
+        "filters": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ViewFilter" }
+        },
+        "actions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "permissions": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ViewPermission" }
+        }
+      }
+    },
+    "ViewLayout": {
+      "type": "object",
+      "properties": {
+        "columns": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ViewColumn" }
+        },
+        "groups": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ViewGroup" }
+        },
+        "sort": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ViewSort" }
+        },
+        "pagination": { "type": "boolean" },
+        "pageSize": { "type": "number" }
+      }
+    },
+    "ViewColumn": {
+      "type": "object",
+      "required": ["field"],
+      "properties": {
+        "field": { "type": "string" },
+        "width": { "oneOf": [{ "type": "number" }, { "type": "string" }] },
+        "sortable": { "type": "boolean" },
+        "filterable": { "type": "boolean" }
+      }
+    },
+    "ViewGroup": {
+      "type": "object",
+      "required": ["field"],
+      "properties": {
+        "field": { "type": "string" },
+        "direction": { "enum": ["asc", "desc"] }
+      }
+    },
+    "ViewSort": {
+      "type": "object",
+      "required": ["field", "direction"],
+      "properties": {
+        "field": { "type": "string" },
+        "direction": { "enum": ["asc", "desc"] }
+      }
+    },
+    "ViewFilter": {
+      "type": "object",
+      "required": ["field", "operator", "value"],
+      "properties": {
+        "field": { "type": "string" },
+        "operator": { "enum": ["eq", "ne", "gt", "lt", "contains", "startsWith", "endsWith"] },
+        "value": {}
+      }
+    },
+    "ViewPermission": {
+      "type": "object",
+      "required": ["role", "actions"],
+      "properties": {
+        "role": { "type": "string" },
+        "actions": {
+          "type": "array",
+          "items": { "enum": ["read", "write", "delete"] }
+        }
+      }
+    },
+    "Action": {
+      "type": "object",
+      "required": ["id", "name", "type"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "enum": ["create", "update", "delete", "publish", "export", "import", "custom"] },
+        "target": { "type": "string" },
+        "parameters": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ActionParameter" }
+        },
+        "permissions": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ActionPermission" }
+        }
+      }
+    },
+    "ActionParameter": {
+      "type": "object",
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "required": { "type": "boolean" },
+        "default": {}
+      }
+    },
+    "ActionPermission": {
+      "type": "object",
+      "required": ["role", "allow"],
+      "properties": {
+        "role": { "type": "string" },
+        "allow": { "type": "boolean" }
+      }
+    },
+    "Trigger": {
+      "type": "object",
+      "required": ["id", "event", "actions"],
+      "properties": {
+        "id": { "type": "string" },
+        "event": { "enum": ["create", "update", "delete", "publish", "schedule"] },
+        "conditions": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/TriggerCondition" }
+        },
+        "actions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "TriggerCondition": {
+      "type": "object",
+      "required": ["field", "operator", "value"],
+      "properties": {
+        "field": { "type": "string" },
+        "operator": { "type": "string" },
+        "value": {}
+      }
+    },
+    "ExternalEndpoint": {
+      "type": "object",
+      "required": ["id", "url", "method"],
+      "properties": {
+        "id": { "type": "string" },
+        "url": { "type": "string" },
+        "method": { "enum": ["GET", "POST", "PUT", "DELETE"] },
+        "description": { "type": "string" }
+      }
+    },
+    "AuthConfig": {
+      "type": "object",
+      "required": ["type", "config"],
+      "properties": {
+        "type": { "enum": ["api-key", "oauth", "basic"] },
+        "config": { "type": "object" }
+      }
+    },
+    "Permission": {
+      "type": "object",
+      "required": ["endpoint", "reason", "required"],
+      "properties": {
+        "endpoint": { "type": "string" },
+        "reason": { "type": "string" },
+        "required": { "type": "boolean" }
+      }
+    },
+    "LinkableEntity": {
+      "type": "object",
+      "required": ["collection", "display"],
+      "properties": {
+        "collection": { "type": "string" },
+        "display": { "$ref": "#/definitions/LinkDisplayConfig" }
+      }
+    },
+    "LinkDisplayConfig": {
+      "type": "object",
+      "required": ["template"],
+      "properties": {
+        "template": { "type": "string" },
+        "preview": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "OutputFormat": {
+      "type": "object",
+      "required": ["format"],
+      "properties": {
+        "format": { "enum": ["html", "pdf", "epub", "json", "markdown"] },
+        "template": { "type": "string" },
+        "options": { "type": "object" }
+      }
+    },
+    "Migration": {
+      "type": "object",
+      "required": ["version", "description", "up", "down"],
+      "properties": {
+        "version": { "type": "string" },
+        "description": { "type": "string" },
+        "up": { "type": "string" },
+        "down": { "type": "string" }
+      }
+    }
+  }
+}

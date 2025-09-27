@@ -1,0 +1,75 @@
+id: corkboard
+name: Corkboard
+version: 1.0.0
+author: "Bobbins Core"
+description: "Visual corkboard for chapters and scenes; drag-and-drop ordering and grouping."
+tags: [writing, planning, board]
+license: MIT
+capabilities:
+  publishable: false
+  external: false
+  ai: false
+  customViews: true
+data:
+  collections: []
+ui:
+  views:
+    - id: corkboard
+      type: board
+      source:
+        collections: [manuscript.Chapter, manuscript.Scene]
+      layout:
+        modes:
+          - id: by_chapter
+            group_by: manuscript.Chapter
+            card:
+              title_field: title
+              subtitle_field: synopsis
+              badges: [pov, status, tags]
+              metrics: [word_count]
+            reorder:
+              field: order
+              behavior: within_group
+          - id: flat_scenes
+            group_by: none
+            card:
+              title_field: title
+              subtitle_field: chapter
+              badges: [pov, status, tags]
+              metrics: [word_count]
+            reorder:
+              field: order
+              behavior: global
+        density: comfortable
+        thumbnails: optional
+      filters:
+        - { field: pov, type: enum }
+        - { field: status, type: enum }
+        - { field: tags, type: tag }
+      actions:
+        - { name: create_scene, from: manuscript }
+        - { name: create_chapter, from: manuscript }
+        - { name: link_to_location, requires: locations }
+interactions:
+  actions:
+    - name: reorder_cards
+      trigger: drag_drop
+      input:
+        - { field: order, type: ordinal }
+        - { field: chapter, type: relation(manuscript.Chapter), optional: true }
+      output: persist_changes
+    - name: quick_edit_card
+      trigger: inline_edit
+      input: [title, synopsis, status, tags]
+      output: persist_changes
+external: null
+linking:
+  entities:
+    - collection: manuscript.Scene
+      display: { title: title, subtitle: chapter }
+    - collection: manuscript.Chapter
+      display: { title: title, subtitle: synopsis }
+publish: null
+compatibility:
+  minShellVersion: 1.0.0
+  migrations: []

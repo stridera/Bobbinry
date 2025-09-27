@@ -1,0 +1,32 @@
+{
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        // Test-specific overrides
+        "isolatedModules": false,
+        "noEmit": true,
+        // Jest types
+        "types": [
+            "jest",
+            "@testing-library/jest-dom",
+            "@types/jest"
+        ],
+        // Allow more flexible imports for tests
+        "allowJs": true,
+        "esModuleInterop": true,
+        "moduleResolution": "Node"
+    },
+    "include": [
+        "next-env.d.ts",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/*.spec.tsx",
+        "jest.setup.js",
+        "jest.config.js"
+    ],
+    "exclude": [
+        "node_modules",
+        ".next",
+        "out"
+    ]
+}

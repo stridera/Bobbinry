@@ -1,0 +1,38 @@
+id: simple-test
+name: Simple Test
+version: 1.0.0
+author: Test Author
+description: A simple test bobbin for validating installation
+license: MIT
+capabilities:
+  publishable: true
+  external: false
+  ai: false
+  customViews: false
+data:
+  collections:
+    - name: notes
+      displayName: Notes
+      fields:
+        - name: title
+          type: text
+          displayName: Title
+          required: true
+        - name: content
+          type: markdown
+          displayName: Content
+        - name: created_at
+          type: datetime
+          displayName: Created At
+ui:
+  views:
+    - id: list
+      type: table
+      name: Notes List
+      source: notes
+interactions:
+  actions:
+    - id: create_note
+      name: Create Note
+      type: create
+      target: notes

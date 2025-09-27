@@ -1,0 +1,126 @@
+# Manifest: Manuscript Bobbin
+# Purpose: Manage chapters and scenes with rich text editing, outline tree, and publishable fields.
+
+id: manuscript
+name: Manuscript
+version: 1.0.0
+author: "Bobbins Core"
+description: "Chapters, scenes, and narrative structure with outline and editor views."
+tags: [writing, narrative, structure]
+license: MIT
+
+capabilities:
+  publishable: true
+  external: false
+  ai: false
+  customViews: false
+
+data:
+  collections:
+    - name: Book
+      fields:
+        - { name: title,        type: short_text, required: true, searchable: true }
+        - { name: subtitle,     type: short_text }
+        - { name: slug,         type: slug, unique: true }
+        - { name: synopsis,     type: long_text }
+        - { name: status,       type: enum, options: [draft, revising, locked, published], default: draft }
+        - { name: word_count,   type: number, computed: true }
+      relationships:
+        - { name: chapters, type: relation(Chapter)[] }
+    - name: Chapter
+      fields:
+        - { name: title,      type: short_text, required: true, searchable: true }
+        - { name: synopsis,   type: long_text }
+        - { name: order,      type: ordinal }
+        - { name: status,     type: enum, options: [draft, revising, locked], default: draft }
+        - { name: pov,        type: enum, options: [Protagonist, Antagonist, Narrator], nullable: true }
+        - { name: tags,       type: tag[] }
+        - { name: word_count, type: number, computed: true }
+      relationships:
+        - { name: book,   type: relation(Book) }
+        - { name: scenes, type: relation(Scene)[] }
+    - name: Scene
+      fields:
+        - { name: title,      type: short_text, required: true, searchable: true }
+        - { name: body,       type: markdown, editor: markdown }
+        - { name: synopsis,   type: long_text }
+        - { name: order,      type: ordinal }
+        - { name: pov,        type: enum, options: [Protagonist, Antagonist, Narrator], nullable: true }
+        - { name: status,     type: enum, options: [idea, draft, revised, final], default: draft }
+        - { name: tags,       type: tag[] }
+        - { name: word_count, type: number, computed: true }
+      relationships:
+        - { name: chapter, type: relation(Chapter) }
+        - { name: links,   type: relation(Location)[], optional: true }  # from Locations bobbin if installed
+
+ui:
+  views:
+    - id: outline
+      type: tree
+      source: Chapter
+      layout:
+        root: Book
+        children: scenes
+        display:
+          title: title
+          subtitle: synopsis
+        actions:
+          - create_chapter
+          - create_scene
+          - reorder
+    - id: editor
+      type: editor
+      source: Scene
+      layout:
+        field: body
+        sidebar:
+          show: [synopsis, pov, status, tags, word_count]
+        features:
+          - link_mentions  # '@' autocomplete across linkable entities
+          - wordcount_live
+          - history
+
+interactions:
+  actions:
+    - name: create_chapter
+      trigger: user_button
+      input: [Book]
+      output: Chapter
+    - name: create_scene
+      trigger: user_button
+      input: [Chapter]
+      output: Scene
+    - name: validate_wordcount
+      trigger: on_save
+      input: Scene.body
+      output: Scene.word_count
+  triggers:
+    - event: on_save
+      action: validate_wordcount
+
+external: null
+
+linking:
+  entities:
+    - collection: Chapter
+      display: { title: title, subtitle: synopsis }
+    - collection: Scene
+      display: { title: title, subtitle: chapter }
+
+publish:
+  entities: [Book, Chapter, Scene]
+  fields:
+    Book:    [title, subtitle, synopsis, slug]
+    Chapter: [title, synopsis, order, pov, tags, word_count]
+    Scene:   [title, body, synopsis, order, pov, tags, word_count]
+  output:
+    default:
+      format: html
+      template: book
+    feeds:
+      - { type: json, path: /api/book.json }
+      - { type: sitemap, path: /sitemap.xml }
+
+compatibility:
+  minShellVersion: 1.0.0
+  migrations: []

@@ -1,0 +1,53 @@
+{
+  "name": "bobbinry",
+  "version": "0.1.0",
+  "description": "Modular, open-source tools for writers and worldbuilders",
+  "main": "index.js",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "typecheck": "turbo typecheck",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "start": "./dev-start.sh",
+    "stop": "./dev-stop.sh",
+    "stop:all": "./dev-stop.sh --containers",
+    "status": "./dev-stop.sh --status"
+  },
+  "keywords": [
+    "writing",
+    "worldbuilding",
+    "modular",
+    "bobbins"
+  ],
+  "author": "",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@10.17.1",
+  "pnpm": {
+    "overrides": {
+      "esbuild": ">=0.25.0"
+    },
+    "onlyBuiltDependencies": [
+      "@tailwindcss/oxide",
+      "esbuild",
+      "sharp",
+      "unrs-resolver"
+    ]
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.8.0",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/jest": "^30.0.0",
+    "@types/supertest": "^6.0.3",
+    "eslint": "^9.36.0",
+    "jest": "^30.1.3",
+    "prettier": "^3.6.2",
+    "supertest": "^7.1.4",
+    "ts-jest": "^29.4.4",
+    "tsx": "^4.20.5",
+    "turbo": "^2.5.6",
+    "typescript": "^5.9.2",
+    "zod": "^4.1.11"
+  }
+}

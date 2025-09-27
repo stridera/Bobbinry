@@ -1,0 +1,3 @@
+Contact: mailto:security@bobbinry.com
+Policy: https://bobbinry.com/SECURITY
+Preferred-Languages: en
