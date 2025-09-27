@@ -5,6 +5,9 @@ import Link from 'next/link'
 import { BobbinrySDK } from '@bobbinry/sdk'
 import { ShellLayout } from '@/components/ShellLayout'
 import { useManifestExtensions } from '@/components/ExtensionProvider'
+import { OfflineProvider } from '@/components/OfflineProvider'
+import { ExtensionProvider } from '@/components/ExtensionProvider'
+import { OfflineIndicator } from '@/components/OfflineIndicator'
 
 interface InstalledBobbin {
   id: string
@@ -17,15 +20,30 @@ interface InstalledBobbin {
   installedAt: string
 }
 
-export default function Home() {
+// Main content component that uses extension hooks
+function HomeContent() {
   const [sdk] = useState(() => new BobbinrySDK('shell'))
   const [currentProject, setCurrentProject] = useState<string>('550e8400-e29b-41d4-a716-446655440001')
   const [installedBobbins, setInstalledBobbins] = useState<InstalledBobbin[]>([])
   const [manifestContent, setManifestContent] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
+  const [extensionHandlers, setExtensionHandlers] = useState({
+    registerManifestExtensions: () => {},
+    unregisterManifestExtensions: () => {}
+  })
 
-  const { registerManifestExtensions, unregisterManifestExtensions } = useManifestExtensions()
+  // Get extension hooks safely
+  const manifestHooks = useManifestExtensions()
+  
+  // Update handlers when hooks become available
+  useEffect(() => {
+    if (manifestHooks) {
+      setExtensionHandlers(manifestHooks)
+    }
+  }, [manifestHooks])
+
+  const { registerManifestExtensions, unregisterManifestExtensions } = extensionHandlers
 
   // Load installed bobbins
   const loadBobbins = async () => {
@@ -232,5 +250,17 @@ export default function Home() {
         </div>
       </div>
     </ShellLayout>
+  )
+}
+
+// Wrapper component that provides the necessary context
+export default function Home() {
+  return (
+    <OfflineProvider>
+      <ExtensionProvider>
+        <HomeContent />
+        <OfflineIndicator />
+      </ExtensionProvider>
+    </OfflineProvider>
   )
 }
