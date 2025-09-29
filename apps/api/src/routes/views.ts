@@ -28,7 +28,7 @@ const viewsPlugin: FastifyPluginAsync = async (fastify) => {
                 return reply.status(404).send({ error: 'Bobbin not found or not installed' })
             }
 
-            const manifest = installation[0].manifestJson as any
+            const manifest = installation[0]!.manifestJson as any
             const view = manifest.ui?.views?.find((v: any) => v.id === viewId)
 
             if (!view) {
@@ -48,7 +48,7 @@ const viewsPlugin: FastifyPluginAsync = async (fastify) => {
     // Serve view assets (CSS, JS) - placeholder for now
     fastify.get<{
         Params: { bobbinId: string; asset: string }
-    }>('/views/:bobbinId/assets/:asset', async (request, reply) => {
+    }>('/views/:bobbinId/assets/:asset', async (_request, reply) => {
         // In a full implementation, this would serve static assets
         // For now, return a 404
         return reply.status(404).send({ error: 'Asset not found' })
@@ -195,12 +195,19 @@ function generateViewHtml(view: any, manifest: any, projectId: string, bobbinId:
     return baseHtml
 }
 
-function getViewScript(view: any, manifest: any, projectId: string, bobbinId: string): string {
+function getViewScript(view: any, _manifest: any, _projectId: string, bobbinId: string): string {
     const baseScript = `
     // Global state
     let viewContext = null;
     let apiRequestId = 0;
     let pendingRequests = new Map();
+
+    // Signal that iframe script is loaded and ready to receive messages
+    postToParent({
+        type: 'VIEW_SCRIPT_LOADED',
+        timestamp: Date.now(),
+        payload: {}
+    });
 
     // Message handling with parent
     window.addEventListener('message', (event) => {

@@ -15,10 +15,10 @@
     "@bobbinry/sdk": "workspace:*",
     "@bobbinry/types": "workspace:*",
     "autoprefixer": "^10.4.21",
-    "next": "15.5.3",
+    "next": "15.5.4",
     "postcss": "^8.5.6",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
     "tailwindcss": "^4.1.13",
     "yaml": "^2.8.1"
   },

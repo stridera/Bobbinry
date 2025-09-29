@@ -1,7 +1,11 @@
 // Bobbinry Shell Service Worker - Offline-first infrastructure
 // Handles caching, offline storage, and background sync
 
-const CACHE_NAME = 'bobbinry-shell-v1'
+// Detect development mode (localhost)
+const IS_DEVELOPMENT = self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1'
+
+// Increment version to bust old caches
+const CACHE_NAME = 'bobbinry-shell-v2'
 const API_CACHE_NAME = 'bobbinry-api-v1'
 const ASSETS_CACHE_NAME = 'bobbinry-assets-v1'
 
@@ -57,6 +61,11 @@ self.addEventListener('activate', (event) => {
 })
 
 self.addEventListener('fetch', (event) => {
+  // Skip caching entirely in development mode
+  if (IS_DEVELOPMENT) {
+    return
+  }
+
   const { request } = event
   const url = new URL(request.url)
 

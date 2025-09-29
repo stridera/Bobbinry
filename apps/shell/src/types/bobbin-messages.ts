@@ -24,6 +24,11 @@ export interface ViewErrorMessage extends BaseBobbinMessage {
   }
 }
 
+export interface ViewScriptLoadedMessage extends BaseBobbinMessage {
+  type: 'VIEW_SCRIPT_LOADED'
+  payload: Record<string, never>
+}
+
 export interface InitContextMessage extends BaseBobbinMessage {
   type: 'INIT_CONTEXT'
   payload: {
@@ -123,6 +128,7 @@ export interface PermissionUpdateMessage extends BaseBobbinMessage {
 
 // Union type for all possible messages
 export type BobbinMessage =
+  | ViewScriptLoadedMessage
   | ViewReadyMessage
   | ViewErrorMessage
   | InitContextMessage

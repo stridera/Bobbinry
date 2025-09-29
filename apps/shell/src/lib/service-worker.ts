@@ -5,6 +5,8 @@ export class ServiceWorkerManager {
   private registration: ServiceWorkerRegistration | null = null
   private isOnline = navigator.onLine
   private listeners = new Map<string, Set<(data: any) => void>>()
+  private isRegistering = false
+  private hasRegistered = false
 
   static getInstance(): ServiceWorkerManager {
     if (!ServiceWorkerManager.instance) {
@@ -19,11 +21,20 @@ export class ServiceWorkerManager {
       return
     }
 
+    // Prevent duplicate registrations
+    if (this.isRegistering || this.hasRegistered) {
+      console.log('Service Worker registration already in progress or completed')
+      return
+    }
+
+    this.isRegistering = true
+
     try {
       this.registration = await navigator.serviceWorker.register('/sw.js', {
         scope: '/'
       })
 
+      this.hasRegistered = true
       console.log('Service Worker registered:', this.registration.scope)
 
       // Listen for updates
@@ -59,6 +70,8 @@ export class ServiceWorkerManager {
 
     } catch (error) {
       console.error('Service Worker registration failed:', error)
+    } finally {
+      this.isRegistering = false
     }
   }
 

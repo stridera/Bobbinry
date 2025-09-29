@@ -183,7 +183,7 @@ export class LocalEventBus {
     return this.topics.get(topic) || null
   }
 
-  getActiveSubscriptions(): Array<{topic: string, count: number}> {
+  getActiveSubscriptions(): Array<{ topic: string, count: number }> {
     return Array.from(this.subscriptions.entries()).map(([topic, subs]) => ({
       topic,
       count: subs.filter(sub => sub.active).length

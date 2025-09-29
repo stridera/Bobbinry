@@ -2,10 +2,34 @@ import { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/connection'
 import { bobbinsInstalled, entities } from '../db/schema'
-import { eq, and, sql, like, or, desc, asc } from 'drizzle-orm'
+import { eq, and, sql, or, desc } from 'drizzle-orm'
+
+// Input validation schemas
+const EntityQuerySchema = z.object({
+  projectId: z.string().uuid('Invalid project ID format'),
+  limit: z.coerce.number().min(1).max(100).default(50),
+  offset: z.coerce.number().min(0).default(0),
+  search: z.string().max(200).optional()
+})
+
+const EntityParamsSchema = z.object({
+  collection: z.string()
+    .min(1, 'Collection name required')
+    .max(100, 'Collection name too long')
+    .regex(/^[a-zA-Z0-9_-]+$/, 'Collection name contains invalid characters')
+})
+
+const EntityCreateSchema = z.object({
+  collection: z.string()
+    .min(1, 'Collection name required')
+    .max(100, 'Collection name too long')
+    .regex(/^[a-zA-Z0-9_-]+$/, 'Collection name contains invalid characters'),
+  projectId: z.string().uuid('Invalid project ID format'),
+  data: z.record(z.string(), z.any())
+})
 
 const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
-  
+
   // Query entities from a collection
   fastify.get<{
     Params: { collection: string }
@@ -17,14 +41,15 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
     }
   }>('/collections/:collection/entities', async (request, reply) => {
     try {
-      const { collection } = request.params
-      const { projectId, limit = '50', offset = '0', search } = request.query
-      
+      // Validate input
+      const params = EntityParamsSchema.parse(request.params)
+      const query = EntityQuerySchema.parse(request.query)
+
+      const { collection } = params
+      const { projectId, limit, offset, search } = query
+
       // For now, use JSONB storage (Tier 1)
       // In production, this would check if collection has been promoted to physical tables
-      
-      const limitNum = parseInt(limit, 10)
-      const offsetNum = parseInt(offset, 10)
 
       // Build query conditions
       let whereCondition = and(
@@ -53,9 +78,9 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
           sql`COALESCE((${entities.entityData}->>'order')::int, 999999)`,
           desc(entities.createdAt)
         )
-        .limit(limitNum)
-        .offset(offsetNum)
-      
+        .limit(limit)
+        .offset(offset)
+
       // Transform results to match expected format
       const entityList = result.map((row) => ({
         id: row.id,
@@ -67,18 +92,30 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
           updatedAt: row.updatedAt
         }
       }))
-      
+
       return { entities: entityList, total: entityList.length }
-      
+
     } catch (error) {
       fastify.log.error(error)
-      return reply.status(500).send({ 
+
+      // Handle validation errors
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          issues: error.issues.map(issue => ({
+            field: issue.path.join('.'),
+            message: issue.message
+          }))
+        })
+      }
+
+      return reply.status(500).send({
         error: 'Failed to query entities',
         details: error instanceof Error ? error.message : 'Unknown error'
       })
     }
   })
-  
+
   // Create new entity
   fastify.post<{
     Body: {
@@ -88,8 +125,10 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
     }
   }>('/entities', async (request, reply) => {
     try {
-      const { collection, projectId, data } = request.body
-      
+      // Validate input
+      const body = EntityCreateSchema.parse(request.body)
+      const { collection, projectId, data } = body
+
       // Validate that the collection exists in an installed bobbin
       const installation = await db
         .select()
@@ -98,11 +137,11 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
           eq(bobbinsInstalled.projectId, projectId),
           eq(bobbinsInstalled.enabled, true)
         ))
-      
+
       if (installation.length === 0) {
         return reply.status(400).send({ error: 'No bobbins installed in project' })
       }
-      
+
       // Find which bobbin contains this collection
       let targetBobbin = null
       for (const install of installation) {
@@ -113,13 +152,13 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
           break
         }
       }
-      
+
       if (!targetBobbin) {
-        return reply.status(400).send({ 
-          error: `Collection '${collection}' not found in any installed bobbin` 
+        return reply.status(400).send({
+          error: `Collection '${collection}' not found in any installed bobbin`
         })
       }
-      
+
       // Create entity in JSONB storage (Tier 1)
       const entityId = crypto.randomUUID()
 
@@ -135,6 +174,9 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
         .returning()
 
       const created = result[0]
+      if (!created) {
+        return reply.status(500).send({ error: 'Failed to create entity - no result returned' })
+      }
 
       return {
         id: created.id,
@@ -146,16 +188,28 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
           updatedAt: created.updatedAt
         }
       }
-      
+
     } catch (error) {
       fastify.log.error(error)
+
+      // Handle validation errors
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          issues: error.issues.map(issue => ({
+            field: issue.path.join('.'),
+            message: issue.message
+          }))
+        })
+      }
+
       return reply.status(500).send({
         error: 'Failed to create entity',
         details: error instanceof Error ? error.message : 'Unknown error'
       })
     }
   })
-  
+
   // Update entity
   fastify.put<{
     Params: { entityId: string }
@@ -186,7 +240,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(404).send({ error: 'Entity not found' })
       }
 
-      const updated = result[0]
+      const updated = result[0]!  // Safe because we check result.length above
 
       return {
         id: updated.id,
@@ -198,7 +252,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
           updatedAt: updated.updatedAt
         }
       }
-      
+
     } catch (error) {
       fastify.log.error(error)
       return reply.status(500).send({
@@ -207,7 +261,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       })
     }
   })
-  
+
   // Delete entity
   fastify.delete<{
     Params: { entityId: string }
@@ -234,7 +288,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       }
 
       return { success: true, id: entityId }
-      
+
     } catch (error) {
       fastify.log.error(error)
       return reply.status(500).send({
@@ -243,7 +297,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       })
     }
   })
-  
+
   // Get single entity
   fastify.get<{
     Params: { entityId: string }
@@ -269,7 +323,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(404).send({ error: 'Entity not found' })
       }
 
-      const entity = result[0]
+      const entity = result[0]!  // Safe because we check result.length above
 
       return {
         id: entity.id,
@@ -281,7 +335,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
           updatedAt: entity.updatedAt
         }
       }
-      
+
     } catch (error) {
       fastify.log.error(error)
       return reply.status(500).send({

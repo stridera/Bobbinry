@@ -23,10 +23,6 @@ const ExtensionContext = createContext<ExtensionContextType | null>(null)
 
 export function useExtensions() {
   const context = useContext(ExtensionContext)
-  if (!context) {
-    console.warn('[HYDRATION FIX] useExtensions called without context, returning null')
-    return null
-  }
   return context
 }
 
@@ -42,77 +38,57 @@ export function ExtensionProvider({ children }: ExtensionProviderProps) {
     extensionsBySlot: {},
     extensionsByBobbin: {}
   })
-  const [isClient, setIsClient] = useState(false)
+  const [isHydrated, setIsHydrated] = useState(false)
 
-  // Ensure we're on the client side to prevent hydration mismatches
+  // Hydration-safe initialization
   useEffect(() => {
-    setIsClient(true)
+    // Mark as hydrated first
+    setIsHydrated(true)
+
+    // Reset listeners only, preserve extensions
+    console.log('[EXTENSIONS] Client hydrated, resetting listeners only')
+    extensionRegistry.reset()
+
+    // Initialize state from registry
+    setExtensions(extensionRegistry.getAllExtensions())
+    setStats(extensionRegistry.getStats())
+
+    // Cleanup on unmount
+    return () => {
+      extensionRegistry.clearAllListeners()
+    }
   }, [])
 
-  // Update state when extensions change
-  const updateState = useCallback(() => {
-    if (isClient) {
-      setExtensions(extensionRegistry.getAllExtensions())
-      setStats(extensionRegistry.getStats())
-    }
-  }, [isClient])
-
-  useEffect(() => {
-    if (!isClient) return
-
-    updateState()
-
-    // Listen for changes to any slot
-    const unsubscribers: (() => void)[] = []
-
-    // Listen to all built-in slots for changes
-    const slotIds = [
-      'shell.leftPanel',
-      'shell.rightPanel',
-      'shell.topBar',
-      'shell.statusBar',
-      'shell.contextMenu',
-      'manuscript.editor.toolbar'
-    ]
-
-    slotIds.forEach(slotId => {
-      const unsubscribe = extensionRegistry.onSlotChange(slotId, updateState)
-      unsubscribers.push(unsubscribe)
-    })
-
-    return () => {
-      unsubscribers.forEach(unsub => unsub())
-    }
-  }, [isClient, updateState])
-
+  // Stable callback functions
   const registerExtension = useCallback((bobbinId: string, contribution: any) => {
-    if (!isClient) {
-      console.warn('[EXTENSIONS] Skipping registration on server side')
-      return
-    }
+    if (!isHydrated) return
     try {
       extensionRegistry.registerExtension(bobbinId, contribution)
-      updateState()
+      setExtensions(extensionRegistry.getAllExtensions())
+      setStats(extensionRegistry.getStats())
     } catch (error) {
       console.error('Failed to register extension:', error)
       throw error
     }
-  }, [updateState, isClient])
+  }, [isHydrated])
 
   const unregisterExtension = useCallback((extensionId: string) => {
     extensionRegistry.unregisterExtension(extensionId)
-    updateState()
-  }, [updateState])
+    setExtensions(extensionRegistry.getAllExtensions())
+    setStats(extensionRegistry.getStats())
+  }, [])
 
   const unregisterBobbin = useCallback((bobbinId: string) => {
     extensionRegistry.unregisterBobbin(bobbinId)
-    updateState()
-  }, [updateState])
+    setExtensions(extensionRegistry.getAllExtensions())
+    setStats(extensionRegistry.getStats())
+  }, [])
 
   const setExtensionActive = useCallback((extensionId: string, active: boolean) => {
     extensionRegistry.setExtensionActive(extensionId, active)
-    updateState()
-  }, [updateState])
+    setExtensions(extensionRegistry.getAllExtensions())
+    setStats(extensionRegistry.getStats())
+  }, [])
 
   const getExtensionsForSlot = useCallback((slotId: string, context?: any) => {
     return extensionRegistry.getExtensionsForSlot(slotId, context)
@@ -122,44 +98,26 @@ export function ExtensionProvider({ children }: ExtensionProviderProps) {
     return extensionRegistry.getSlot(slotId)
   }, [])
 
+  // Memoize context value to prevent unnecessary re-renders
   const contextValue: ExtensionContextType = useMemo(() => ({
-    extensions: isClient ? extensions : [],
+    extensions,
+    stats,
     registerExtension,
     unregisterExtension,
     unregisterBobbin,
     setExtensionActive,
     getExtensionsForSlot,
-    getSlot,
-    stats: isClient ? stats : {
-      totalExtensions: 0,
-      totalSlots: 0,
-      extensionsBySlot: {},
-      extensionsByBobbin: {}
-    }
-  }), [extensions, registerExtension, unregisterExtension, unregisterBobbin, setExtensionActive, getExtensionsForSlot, getSlot, stats, isClient])
-
-  if (!isClient) {
-    // Return minimal context during SSR to prevent hydration mismatches
-    return (
-      <ExtensionContext.Provider value={{
-        extensions: [],
-        registerExtension: () => { },
-        unregisterExtension: () => { },
-        unregisterBobbin: () => { },
-        setExtensionActive: () => { },
-        getExtensionsForSlot: () => [],
-        getSlot: () => undefined,
-        stats: {
-          totalExtensions: 0,
-          totalSlots: 0,
-          extensionsBySlot: {},
-          extensionsByBobbin: {}
-        }
-      }}>
-        {children}
-      </ExtensionContext.Provider>
-    )
-  }
+    getSlot
+  }), [
+    extensions,
+    stats,
+    registerExtension,
+    unregisterExtension,
+    unregisterBobbin,
+    setExtensionActive,
+    getExtensionsForSlot,
+    getSlot
+  ])
 
   return (
     <ExtensionContext.Provider value={contextValue}>
@@ -168,43 +126,29 @@ export function ExtensionProvider({ children }: ExtensionProviderProps) {
   )
 }
 
-// Hook for managing extension registration from manifests
+// Manifest extensions hook
 export function useManifestExtensions() {
   const extensions = useExtensions()
-  
-  // Handle SSR or when providers aren't ready
-  if (!extensions) {
-    return {
-      registerManifestExtensions: () => {},
-      unregisterManifestExtensions: () => {}
-    }
-  }
-  
-  const { registerExtension, unregisterBobbin } = extensions
+  const { registerExtension, unregisterBobbin } = extensions || {}
 
   const registerManifestExtensions = useCallback((bobbinId: string, manifest: any) => {
+    if (!registerExtension) return
+    
     try {
-      console.log(`[MANIFEST] Attempting to register extensions for bobbin: ${bobbinId}`)
-      console.log(`[MANIFEST] Manifest contributions:`, manifest.extensions?.contributions)
-
-      // Register extensions from manifest
       if (manifest.extensions?.contributions) {
         for (const contribution of manifest.extensions.contributions) {
-          console.log(`[MANIFEST] Registering contribution: ${contribution.id} for bobbin: ${bobbinId}`)
           registerExtension(bobbinId, contribution)
         }
       }
-
-      console.log(`[MANIFEST] Registered extensions for bobbin: ${bobbinId}`)
     } catch (error) {
-      console.error(`[MANIFEST] Failed to register extensions for bobbin ${bobbinId}:`, error)
+      console.error(`Failed to register extensions for bobbin ${bobbinId}:`, error)
       throw error
     }
   }, [registerExtension])
 
   const unregisterManifestExtensions = useCallback((bobbinId: string) => {
+    if (!unregisterBobbin) return
     unregisterBobbin(bobbinId)
-    console.log(`Unregistered extensions for bobbin: ${bobbinId}`)
   }, [unregisterBobbin])
 
   return {

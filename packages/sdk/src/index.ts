@@ -79,9 +79,9 @@ export class MessageBus {
 
   private isValidMessage(data: any): data is Message {
     return data &&
-           typeof data.type === 'string' &&
-           typeof data.source === 'string' &&
-           typeof data.target === 'string'
+      typeof data.type === 'string' &&
+      typeof data.source === 'string' &&
+      typeof data.target === 'string'
   }
 
   private handleMessage(message: Message) {

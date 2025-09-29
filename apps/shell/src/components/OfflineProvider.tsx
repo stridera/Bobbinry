@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useEffect, ReactNode, useState, useMemo } from 'react'
 import { ServiceWorkerManager } from '@/lib/service-worker'
 import { offlineStorage } from '@/lib/offline-storage'
 
@@ -24,9 +24,18 @@ interface OfflineProviderProps {
 }
 
 export function OfflineProvider({ children }: OfflineProviderProps) {
-  const serviceWorkerManager = ServiceWorkerManager.getInstance()
+  const [isClient, setIsClient] = useState(false)
+  const [isInitialized, setIsInitialized] = useState(false)
+  const serviceWorkerManager = useMemo(() => ServiceWorkerManager.getInstance(), [])
+
+  // Ensure we're on the client side to prevent hydration mismatches
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
 
   useEffect(() => {
+    if (!isClient) return
+
     let mounted = true
 
     async function initializeOffline() {
@@ -38,6 +47,10 @@ export function OfflineProvider({ children }: OfflineProviderProps) {
         // Register Service Worker
         await serviceWorkerManager.register()
         console.log('Service Worker registered')
+
+        if (mounted) {
+          setIsInitialized(true)
+        }
 
         // Set up periodic cleanup
         const cleanupInterval = setInterval(async () => {
@@ -66,16 +79,26 @@ export function OfflineProvider({ children }: OfflineProviderProps) {
     return () => {
       mounted = false
     }
-  }, [serviceWorkerManager])
+  }, [serviceWorkerManager, isClient])
 
   // Listen for Service Worker events
   useEffect(() => {
-    const handleDataUpdated = (data: any) => {
-      // Notify components that cached data has been updated
-      console.log('Data updated:', data)
+    if (!isClient || !isInitialized) return
 
-      // Could dispatch custom events here for components to listen to
-      window.dispatchEvent(new CustomEvent('offline-data-updated', { detail: data }))
+    let dataUpdateThrottle: NodeJS.Timeout | null = null
+
+    const handleDataUpdated = (data: any) => {
+      // Throttle data-updated events to prevent excessive triggers
+      if (dataUpdateThrottle) {
+        clearTimeout(dataUpdateThrottle)
+      }
+
+      dataUpdateThrottle = setTimeout(() => {
+        // Notify components that cached data has been updated
+        console.log('Data updated:', data)
+        // Could dispatch custom events here for components to listen to
+        window.dispatchEvent(new CustomEvent('offline-data-updated', { detail: data }))
+      }, 100) // 100ms throttle
     }
 
     const handleMessageDelivery = (data: any) => {
@@ -89,15 +112,18 @@ export function OfflineProvider({ children }: OfflineProviderProps) {
     serviceWorkerManager.on('message-delivery', handleMessageDelivery)
 
     return () => {
+      if (dataUpdateThrottle) {
+        clearTimeout(dataUpdateThrottle)
+      }
       serviceWorkerManager.off('data-updated', handleDataUpdated)
       serviceWorkerManager.off('message-delivery', handleMessageDelivery)
     }
-  }, [serviceWorkerManager])
+  }, [serviceWorkerManager, isClient, isInitialized])
 
   return (
     <OfflineContext.Provider
       value={{
-        isInitialized: true,
+        isInitialized: isClient && isInitialized,
         serviceWorkerManager
       }}
     >

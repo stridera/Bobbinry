@@ -1,27 +1,153 @@
 import Fastify, { FastifyInstance } from 'fastify'
 import cors from '@fastify/cors'
+import helmet from '@fastify/helmet'
+import rateLimit from '@fastify/rate-limit'
+import { randomUUID } from 'crypto'
 import projectsPlugin from './routes/projects'
 import viewsPlugin from './routes/views'
 import entitiesPlugin from './routes/entities'
+import { checkDatabaseHealth } from './db/connection'
 
 export function build(opts = {}): FastifyInstance {
   const server = Fastify({
-    logger: false,
+    logger: process.env.NODE_ENV === 'test' ? false : {
+      level: process.env.LOG_LEVEL || 'info',
+      serializers: {
+        req: (req) => ({
+          method: req.method,
+          url: req.url,
+          hostname: req.hostname,
+          remoteAddress: req.ip,
+          headers: {
+            'user-agent': req.headers['user-agent'],
+            'x-correlation-id': req.headers['x-correlation-id'],
+            'content-type': req.headers['content-type']
+          }
+        }),
+        res: (res) => ({
+          statusCode: res.statusCode
+        }),
+        err: (err) => ({
+          type: err.constructor.name,
+          message: err.message,
+          stack: process.env.NODE_ENV === 'development' ? (err.stack || '') : '',
+          code: err.code,
+          statusCode: err.statusCode
+        })
+      }
+    },
+    genReqId: () => randomUUID(),
     ...opts
   })
 
-  // CORS configuration - allow both port 3000 and 3001 for shell development
-  server.register(cors, {
-    origin: [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      ...(process.env.WEB_ORIGIN ? [process.env.WEB_ORIGIN] : [])
-    ]
+  // Add correlation ID to all requests
+  server.addHook('onRequest', async (request) => {
+    request.headers['x-correlation-id'] = request.headers['x-correlation-id'] || request.id
   })
 
-  // Health check endpoint
+  // Global error handler
+  server.setErrorHandler((error, request, reply) => {
+    const correlationId = (request.headers['x-correlation-id'] as string) || request.id
+
+    server.log.error({
+      error: {
+        message: error.message,
+        stack: error.stack,
+        code: error.code,
+        statusCode: error.statusCode
+      },
+      correlationId,
+      url: request.url,
+      method: request.method
+    }, 'Unhandled error')
+
+    // Don't expose internal errors in production
+    const isDevelopment = process.env.NODE_ENV === 'development'
+    const statusCode = error.statusCode || 500
+
+    reply.status(statusCode).send({
+      error: statusCode < 500 ? error.message : 'Internal Server Error',
+      correlationId,
+      ...(isDevelopment && {
+        details: error.message,
+        stack: error.stack,
+        code: error.code
+      })
+    })
+  })
+
+  // Security headers with helmet
+  server.register(helmet, {
+    ...(process.env.NODE_ENV !== 'production' && { contentSecurityPolicy: false }),
+    crossOriginEmbedderPolicy: false, // Allow iframe embedding for views
+    frameguard: false // Disable X-Frame-Options to allow iframe embedding
+  })
+
+  // Rate limiting
+  server.register(rateLimit, {
+    max: 100,
+    timeWindow: '1 minute',
+    errorResponseBuilder: (request, context) => ({
+      code: 429,
+      error: 'Rate limit exceeded',
+      message: `Rate limit exceeded, retry in ${Math.round(context.ttl / 1000)}s`,
+      correlationId: request.id
+    })
+  })
+
+  // Request size limits
+  server.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+    try {
+      if (typeof body === 'string' && body.length > 1024 * 1024) { // 1MB limit
+        done(new Error('Request body too large'), undefined)
+        return
+      }
+      done(null, JSON.parse(body as string))
+    } catch (error) {
+      done(error instanceof Error ? error : new Error('Invalid JSON'), undefined)
+    }
+  })
+
+  // CORS configuration - environment-aware origins
+  server.register(cors, {
+    origin: process.env.NODE_ENV === 'production'
+      ? (process.env.WEB_ORIGIN ? [process.env.WEB_ORIGIN] : false)
+      : ['http://localhost:3000'],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Correlation-ID']
+  })
+
+  // Health check endpoint with database connectivity
   server.get('/health', async (request, reply) => {
-    return { status: 'ok', timestamp: new Date().toISOString() }
+    const correlationId = (request.headers['x-correlation-id'] as string) || request.id
+    const startTime = Date.now()
+
+    try {
+      const dbHealthy = await checkDatabaseHealth()
+      const responseTime = Date.now() - startTime
+
+      const status = dbHealthy ? 'ok' : 'degraded'
+      const statusCode = dbHealthy ? 200 : 503
+
+      return reply.status(statusCode).send({
+        status,
+        timestamp: new Date().toISOString(),
+        correlationId,
+        services: {
+          database: dbHealthy ? 'healthy' : 'unhealthy'
+        },
+        responseTime: `${responseTime}ms`
+      })
+    } catch (error) {
+      server.log.error({ error, correlationId }, 'Health check failed')
+      return reply.status(503).send({
+        status: 'error',
+        timestamp: new Date().toISOString(),
+        correlationId,
+        error: 'Health check failed'
+      })
+    }
   })
 
   // Register route plugins

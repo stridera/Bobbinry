@@ -71,22 +71,22 @@ export const BUILTIN_SLOTS: Record<string, SlotDefinition> = {
 }
 
 class ExtensionRegistry {
-  private static instance: ExtensionRegistry
   private extensions = new Map<string, RegisteredExtension>()
   private slots = new Map<string, SlotDefinition>()
-  private conditionEvaluators = new Map<string, (condition: any, context: any) => boolean>()
   private listeners = new Map<string, Set<(extensions: RegisteredExtension[]) => void>>()
-
-  static getInstance(): ExtensionRegistry {
-    if (!ExtensionRegistry.instance) {
-      ExtensionRegistry.instance = new ExtensionRegistry()
-    }
-    return ExtensionRegistry.instance
-  }
+  private conditionEvaluators = new Map<string, (condition: any, context: any) => boolean>()
+  private registrationAttempts = new Map<string, number>()
+  private isInitialized = false
 
   constructor() {
-    // Clear any existing extensions on construction for fresh start
-    this.extensions.clear()
+    // Only initialize once, persist across hot reloads
+    if (this.isInitialized) {
+      console.log('[EXTENSIONS] Registry already initialized, skipping setup')
+      return
+    }
+    
+    console.log('[EXTENSIONS] Initializing ExtensionRegistry for first time')
+    this.isInitialized = true
 
     // Register built-in slots
     Object.values(BUILTIN_SLOTS).forEach(slot => {
@@ -107,10 +107,18 @@ class ExtensionRegistry {
     })
   }
 
+
+
+  // Reset method - now only clears listeners, preserves extensions
+  reset(): void {
+    console.log('[EXTENSIONS] Reset called - preserving extensions, clearing listeners only')
+    this.listeners.clear()
+    // Keep extensions and registration attempts to persist across hot reloads
+  }
+
   // Slot management
   registerSlot(slot: SlotDefinition): void {
     this.slots.set(slot.id, slot)
-    console.log(`Registered slot: ${slot.id}`)
   }
 
   getSlot(slotId: string): SlotDefinition | undefined {
@@ -127,11 +135,18 @@ class ExtensionRegistry {
 
     // Check if extension is already registered
     if (this.extensions.has(extensionId)) {
-      console.warn(`Extension ${extensionId} is already registered, skipping duplicate registration`)
+      console.log(`[EXTENSIONS] Extension ${extensionId} already registered, skipping`)
       return
     }
 
-    console.log(`Registering new extension: ${extensionId} (total extensions: ${this.extensions.size})`)
+    // Track registration attempts
+    const attempts = this.registrationAttempts.get(extensionId) || 0
+    this.registrationAttempts.set(extensionId, attempts + 1)
+
+    if (attempts > 3) {
+      console.error(`[EXTENSIONS] Too many registration attempts for ${extensionId}! Aborting.`)
+      return
+    }
 
     // Validate slot exists
     const slot = this.getSlot(contribution.slot)
@@ -164,9 +179,8 @@ class ExtensionRegistry {
     }
 
     this.extensions.set(extensionId, extension)
-    console.log(`Registered extension: ${extensionId} in slot ${contribution.slot}`)
 
-    // Notify slot listeners
+    // Notify slot listeners (throttled to prevent infinite loops)
     this.notifySlotListeners(contribution.slot)
   }
 
@@ -174,7 +188,6 @@ class ExtensionRegistry {
     const extension = this.extensions.get(extensionId)
     if (extension) {
       this.extensions.delete(extensionId)
-      console.log(`Unregistered extension: ${extensionId}`)
       this.notifySlotListeners(extension.contribution.slot)
     }
   }
@@ -187,7 +200,7 @@ class ExtensionRegistry {
       this.unregisterExtension(ext.id)
     })
 
-    console.log(`Unregistered ${toRemove.length} extensions for bobbin: ${bobbinId}`)
+
   }
 
   // Extension queries
@@ -274,15 +287,42 @@ class ExtensionRegistry {
     // Return unsubscribe function
     return () => {
       this.listeners.get(slotId)?.delete(callback)
+      // Clean up empty listener sets
+      if (this.listeners.get(slotId)?.size === 0) {
+        this.listeners.delete(slotId)
+      }
     }
   }
 
+  // Throttle notifications to prevent infinite loops
+  private notificationTimeouts = new Map<string, NodeJS.Timeout>()
+
   private notifySlotListeners(slotId: string): void {
-    const listeners = this.listeners.get(slotId)
-    if (listeners) {
-      const extensions = this.getExtensionsForSlot(slotId)
-      listeners.forEach(callback => callback(extensions))
+    // Cancel any pending notification for this slot
+    const existingTimeout = this.notificationTimeouts.get(slotId)
+    if (existingTimeout) {
+      clearTimeout(existingTimeout)
     }
+
+    // Schedule new notification after a small delay to batch updates
+    const timeout = setTimeout(() => {
+      const listeners = this.listeners.get(slotId)
+      if (listeners && listeners.size > 0) {
+        const extensions = this.getExtensionsForSlot(slotId)
+        listeners.forEach(callback => {
+          try {
+            callback(extensions)
+          } catch (error) {
+            console.error(`Error in slot listener for ${slotId}:`, error)
+            // Remove problematic listeners to prevent infinite loops
+            listeners.delete(callback)
+          }
+        })
+      }
+      this.notificationTimeouts.delete(slotId)
+    }, 0)
+
+    this.notificationTimeouts.set(slotId, timeout)
   }
 
   // Component registration for extensions
@@ -306,6 +346,14 @@ class ExtensionRegistry {
     this.slots.forEach((_, slotId) => {
       this.notifySlotListeners(slotId)
     })
+  }
+
+  // Clear all listeners (for hot reloads)
+  clearAllListeners(): void {
+    this.listeners.clear()
+    // Clear any pending notification timeouts
+    this.notificationTimeouts.forEach(timeout => clearTimeout(timeout))
+    this.notificationTimeouts.clear()
   }
 
   // Statistics and debugging
@@ -335,7 +383,12 @@ class ExtensionRegistry {
   }
 }
 
-// Singleton instance
-export const extensionRegistry = ExtensionRegistry.getInstance()
+// Export singleton instance with HMR persistence
+// Store on globalThis to survive hot module reloads
+declare global {
+  var __extensionRegistry: ExtensionRegistry | undefined
+}
+
+export const extensionRegistry = globalThis.__extensionRegistry ?? (globalThis.__extensionRegistry = new ExtensionRegistry())
 
 export default ExtensionRegistry

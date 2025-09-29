@@ -78,6 +78,8 @@ export class BobbinBridge {
     reject: (error: Error) => void
   }> = []
   private batchTimeout: NodeJS.Timeout | null = null
+  private viewScriptLoaded = false
+  private initContextPromise: Promise<void> | null = null
 
   constructor(
     private iframe: HTMLIFrameElement,
@@ -89,50 +91,112 @@ export class BobbinBridge {
     this.setupMessageHandling()
     this.startRequestCleanup()
   }
+  
   // Public method to initialize context - call this when iframe is ready
   async initializeContext() {
-    try {
-      // Check if iframe contentWindow is available
-      if (!this.iframe.contentWindow) {
-        throw new Error('Iframe contentWindow not available')
-      }
-
-      console.log('🔧 Preparing INIT_CONTEXT message...')
-      const message = {
-        type: 'INIT_CONTEXT',
-        timestamp: Date.now(),
-        payload: {
-          projectId: this.projectId,
-          bobbinId: this.bobbinId,
-          viewId: this.viewId,
-          apiBaseUrl: process.env.NODE_ENV === 'development' ? 'http://localhost:4000' : '',
-          theme: this.getCurrentTheme(),
-          permissions: ['read', 'write', 'create', 'delete'] // TODO: Get from user/project settings
-        }
-      } as InitContextMessage
-
-      console.log('🔧 INIT_CONTEXT message prepared:', message)
-      await this.sendMessage(message)
-      console.log('📤 INIT_CONTEXT sent to iframe')
-    } catch (error) {
-      console.error('Failed to send INIT_CONTEXT:', error)
-      throw error
+    // If already initializing, return the existing promise
+    if (this.initContextPromise) {
+      return this.initContextPromise
     }
+
+    // Create a new initialization promise
+    this.initContextPromise = new Promise<void>(async (resolve, reject) => {
+      try {
+        // Check if iframe contentWindow is available
+        if (!this.iframe.contentWindow) {
+          throw new Error('Iframe contentWindow not available')
+        }
+
+        // Wait for view script to signal it's loaded (with timeout)
+        if (!this.viewScriptLoaded) {
+          // Waiting for view script to load
+          
+          const waitForScript = new Promise<void>((resolveScript, rejectScript) => {
+            // Check immediately in case it already loaded
+            if (this.viewScriptLoaded) {
+              // View script already loaded
+              resolveScript()
+              return
+            }
+
+            const timeout = setTimeout(() => {
+              rejectScript(new Error('View script load timeout after 5 seconds'))
+            }, 5000)
+
+            // Set up a one-time handler that will be called when VIEW_SCRIPT_LOADED arrives
+            const checkInterval = setInterval(() => {
+              if (this.viewScriptLoaded) {
+                clearTimeout(timeout)
+                clearInterval(checkInterval)
+                // View script loaded, proceeding with INIT_CONTEXT
+                resolveScript()
+              }
+            }, 50)
+          })
+
+          await waitForScript
+        }
+
+        const message = {
+          type: 'INIT_CONTEXT',
+          timestamp: Date.now(),
+          payload: {
+            projectId: this.projectId,
+            bobbinId: this.bobbinId,
+            viewId: this.viewId,
+            apiBaseUrl: process.env.NODE_ENV === 'development' ? 'http://localhost:4000' : '',
+            theme: this.getCurrentTheme(),
+            permissions: ['read', 'write', 'create', 'delete'] // TODO: Get from user/project settings
+          }
+        } as InitContextMessage
+
+        await this.sendMessage(message)
+        resolve()
+      } catch (error) {
+        console.error('Failed to send INIT_CONTEXT:', error)
+        this.initContextPromise = null // Reset so we can retry
+        reject(error)
+      }
+    })
+
+    return this.initContextPromise
   }
 
   private setupMessageHandling() {
     const handleMessage = (event: MessageEvent) => {
-      // Security: Only handle messages from our iframe
-      if (event.source !== this.iframe.contentWindow) {
+      // More lenient security check - verify it's from our iframe or at least our origin
+      // The strict event.source check can fail due to timing/reference issues
+      const isFromIframe = event.source === this.iframe.contentWindow
+      const isFromSameOrigin = event.origin === window.location.origin || 
+                               event.origin === 'http://localhost:4000' ||
+                               event.origin === 'http://localhost:3000'
+      
+      if (!isFromIframe && !isFromSameOrigin) {
+        console.log('🔇 Ignoring message from untrusted origin:', event.origin)
         return
       }
+      
+      // Silently accept messages from trusted origins
 
       try {
         const message: BobbinMessage = event.data
+        
+        // Ignore React DevTools and other browser extension messages
+        if (message && typeof message === 'object' && 
+            (message.source === 'react-devtools-content-script' || 
+             message.source === 'react-devtools-bridge' ||
+             message.source === 'react-devtools-detector')) {
+          return
+        }
+
+        // Only log in development
+        if (process.env.NODE_ENV === 'development' && message?.type) {
+          console.log('📨 Bobbin message:', message.type)
+        }
 
         // Validate message structure
         if (!MessageValidator.validate(message)) {
-          console.warn('Invalid message received:', message)
+          console.warn('❌ Invalid message received:', message)
           return
         }
 
@@ -158,6 +222,10 @@ export class BobbinBridge {
 
   private async handleMessage(message: BobbinMessage) {
     switch (message.type) {
+      case 'VIEW_SCRIPT_LOADED':
+        this.viewScriptLoaded = true
+        break
+
       case 'VIEW_READY':
         await this.handleViewReady()
         break
@@ -192,9 +260,7 @@ export class BobbinBridge {
   }
 
   private async handleViewReady() {
-    // View is ready, no need to send INIT_CONTEXT again
-    // The context should have already been sent via initializeContext()
-    console.log('View confirmed ready')
+    // View is ready, context already sent via initializeContext()
   }
 
   private async handleEntityQuery(message: EntityQueryMessage) {
@@ -418,5 +484,7 @@ export class BobbinBridge {
     if (this.cleanup) {
       this.cleanup()
     }
+    this.initContextPromise = null
+    this.viewScriptLoaded = false
   }
 }

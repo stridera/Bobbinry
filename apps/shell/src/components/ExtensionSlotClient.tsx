@@ -3,26 +3,23 @@
 import { useEffect, useState, ReactNode } from 'react'
 import { extensionRegistry, RegisteredExtension } from '@/lib/extensions'
 
-interface ExtensionSlotProps {
+interface ExtensionSlotClientProps {
   slotId: string
   context?: any
   className?: string
   fallback?: ReactNode
 }
 
-export function ExtensionSlot({
+export function ExtensionSlotClient({
   slotId,
   context,
   className,
   fallback
-}: ExtensionSlotProps) {
+}: ExtensionSlotClientProps) {
   const [extensions, setExtensions] = useState<RegisteredExtension[]>([])
-  const [isHydrated, setIsHydrated] = useState(false)
 
-  // Hydration-safe initialization
+  // Get extensions for this slot
   useEffect(() => {
-    setIsHydrated(true)
-
     // Get initial extensions
     const currentExtensions = extensionRegistry.getExtensionsForSlot(slotId, context)
     setExtensions(currentExtensions)
@@ -35,20 +32,6 @@ export function ExtensionSlot({
     return unsubscribe
   }, [slotId, context])
 
-  // Show skeleton while hydrating
-  if (!isHydrated) {
-    return (
-      <div className={className}>
-        {fallback || (
-          <div className="text-xs text-gray-400 animate-pulse">
-            Loading {slotId}...
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  // Show fallback if no extensions
   if (extensions.length === 0) {
     return <>{fallback || <div className="text-xs text-gray-400">No extensions for {slotId}</div>}</>
   }
@@ -70,4 +53,4 @@ export function ExtensionSlot({
   )
 }
 
-export default ExtensionSlot
+export default ExtensionSlotClient

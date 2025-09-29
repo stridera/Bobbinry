@@ -286,7 +286,7 @@ export class ViewSDKBridge {
     // Check if the view's bobbin has permission to publish to this topic
     // This would typically check against the manifest's pubsub.produces section
     return context.permissions.includes('publish') ||
-           context.permissions.includes(`publish:${topic}`)
+      context.permissions.includes(`publish:${topic}`)
   }
 }
 

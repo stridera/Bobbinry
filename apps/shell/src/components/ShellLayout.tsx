@@ -1,6 +1,6 @@
 'use client'
 
-import { ReactNode, useState } from 'react'
+import { ReactNode, useState, useMemo, useEffect } from 'react'
 import { ExtensionSlot } from './ExtensionSlot'
 
 interface ShellLayoutProps {
@@ -12,11 +12,17 @@ interface ShellLayoutProps {
 export function ShellLayout({ children, currentView = 'default', context = {} }: ShellLayoutProps) {
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false)
+  const [isHydrated, setIsHydrated] = useState(false)
 
-  const shellContext = {
+  // Hydration safety
+  useEffect(() => {
+    setIsHydrated(true)
+  }, [])
+
+  const shellContext = useMemo(() => ({
     currentView,
     ...context
-  }
+  }), [currentView, context])
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
@@ -62,7 +68,7 @@ export function ShellLayout({ children, currentView = 'default', context = {} }:
         {/* Left Panel */}
         <aside
           className={`bg-white border-r border-gray-200 transition-all duration-300 ${
-            leftPanelCollapsed ? 'w-0' : 'w-64'
+            isHydrated && leftPanelCollapsed ? 'w-0' : 'w-64'
           } overflow-hidden`}
         >
           <div className="h-full">
@@ -87,7 +93,7 @@ export function ShellLayout({ children, currentView = 'default', context = {} }:
         {/* Right Panel */}
         <aside
           className={`bg-white border-l border-gray-200 transition-all duration-300 ${
-            rightPanelCollapsed ? 'w-0' : 'w-80'
+            isHydrated && rightPanelCollapsed ? 'w-0' : 'w-80'
           } overflow-hidden`}
         >
           <div className="h-full">

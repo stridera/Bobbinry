@@ -1,5 +1,4 @@
 import { FastifyPluginAsync } from 'fastify'
-import { z } from 'zod'
 import { parse as parseYAML } from 'yaml'
 import { db } from '../db/connection'
 import { projects, bobbinsInstalled } from '../db/schema'
@@ -101,7 +100,7 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
             enabled: true,
             installedAt: new Date()
           })
-          .where(eq(bobbinsInstalled.id, existingInstall[0].id))
+          .where(eq(bobbinsInstalled.id, existingInstall[0]!.id))
 
         return {
           success: true,
@@ -128,6 +127,10 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
             enabled: true
           })
           .returning()
+
+        if (!installation) {
+          return reply.status(500).send({ error: 'Failed to create installation' })
+        }
 
         return {
           success: true,

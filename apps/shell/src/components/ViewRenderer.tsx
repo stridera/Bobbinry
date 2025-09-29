@@ -14,11 +14,7 @@ interface ViewRendererProps {
 
 export function ViewRenderer({ projectId, bobbinId, viewId, sdk }: ViewRendererProps) {
   const mountId = useRef(Math.random().toString(36).substr(2, 9))
-  console.log('🚀 VIEWRENDERER MOUNTING!', { projectId, bobbinId, viewId, mountId: mountId.current })
-  console.log('🚀 VIEWRENDERER: Component started mounting')
-
-  // Add immediate state logging
-  console.log('🔍 VIEWRENDERER: Initial render')
+  // ViewRenderer mounting
 
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const bridgeRef = useRef<BobbinBridge | null>(null)
@@ -36,115 +32,69 @@ export function ViewRenderer({ projectId, bobbinId, viewId, sdk }: ViewRendererP
     const url = bobbinId && viewId && projectId
       ? `${baseUrl}/api/views/${bobbinId}/${viewId}?projectId=${projectId}`
       : ''
-    console.log('🔧 viewSrc calculated (FIXED):', url, { bobbinId, viewId, projectId, baseUrl })
+
     return url
   }, [bobbinId, viewId, projectId])
 
-  console.log('🚀 VIEWRENDERER viewSrc calculated:', viewSrc, 'mountId:', mountId.current)
 
-  // Create bridge setup function with retry logic - useCallback to allow reuse
-  const setupBridge = useCallback(async (attempt = 1, maxAttempts = 3) => {
-    if (!iframeRef.current) {
-      console.warn('⚠️ Iframe not ready for bridge setup')
-      if (attempt < maxAttempts) {
-        console.log(`🔄 Retrying bridge setup (attempt ${attempt + 1}/${maxAttempts})...`)
-        setTimeout(() => setupBridge(attempt + 1, maxAttempts), 200 * attempt)
-      }
-      return
-    }
 
-    try {
-      console.log(`🔧 Setting up bridge (attempt ${attempt}/${maxAttempts})`, mountId.current)
-
-      // Create new bridge
-      bridgeRef.current = new BobbinBridge(
-        iframeRef.current,
-        sdk,
-        projectId,
-        bobbinId,
-        viewId
-      )
-
-      console.log('✅ BobbinBridge created successfully', mountId.current)
-
-      // Set up view lifecycle handlers
-      const originalHandleMessage = bridgeRef.current['handleMessage'].bind(bridgeRef.current)
-      bridgeRef.current['handleMessage'] = async (message: any) => {
-        if (message.type === 'VIEW_READY') {
-          console.log('🎉 View ready! Setting loading=false, viewReady=true', mountId.current)
-          setLoading(false)
-          setViewReady(true)
-          console.log('🎉 View ready - state updated!', mountId.current)
-        } else if (message.type === 'VIEW_ERROR') {
-          console.log('❌ View error! Setting loading=false', mountId.current)
-          setLoading(false)
-          setError(message.payload?.error || 'View failed to load')
-          console.error('❌ View error:', message.payload)
-        }
-
-        return originalHandleMessage(message)
-      }
-
-      // Test the bridge immediately by trying to initialize context
-      try {
-        console.log('🔄 Testing bridge connection...', mountId.current)
-        await bridgeRef.current.initializeContext()
-        console.log('✅ Bridge connection test successful', mountId.current)
-      } catch (contextError) {
-        console.warn('⚠️ Bridge connection test failed:', contextError)
-        throw contextError
-      }
-
-    } catch (err) {
-      console.error(`❌ Failed to create BobbinBridge (attempt ${attempt}):`, err)
-
-      if (attempt < maxAttempts) {
-        console.log(`🔄 Retrying bridge setup (attempt ${attempt + 1}/${maxAttempts})...`)
-        // Exponential backoff: 400ms, 800ms, 1200ms
-        setTimeout(() => setupBridge(attempt + 1, maxAttempts), 400 * attempt)
-      } else {
-        setError(err instanceof Error ? err.message : 'Failed to initialize view communication after multiple attempts')
-        setLoading(false)
-      }
-    }
-  }, [sdk, projectId, bobbinId, viewId])
+  
 
   useEffect(() => {
-    console.log('🔄 Effect running for:', { projectId, bobbinId, viewId, mountId: mountId.current, loading, viewReady })
-
     // Don't proceed if no valid viewSrc
     if (!viewSrc) {
-      console.log('❌ No valid viewSrc, setting loading=false, error=Missing required parameters')
       setLoading(false)
       setError('Missing required parameters')
       return
     }
 
-    console.log('🔄 Setting loading=true, error=null, viewReady=false')
+
     setLoading(true)
     setError(null)
     setViewReady(false)
 
     // Cleanup any existing bridge first
     if (bridgeRef.current) {
-      console.log('🧹 Cleaning up existing bridge')
       bridgeRef.current.destroy()
       bridgeRef.current = null
     }
 
-    // Force iframe to reload with new URL
+    // Create bridge immediately to set up message handler BEFORE iframe loads
+    // This ensures we don't miss the VIEW_SCRIPT_LOADED message
     if (iframeRef.current) {
-      console.log('🔄 Forcing iframe reload for new view:', viewSrc)
+      try {
+        bridgeRef.current = new BobbinBridge(
+          iframeRef.current,
+          sdk,
+          projectId,
+          bobbinId,
+          viewId
+        )
+        
+        // Set up view lifecycle handlers
+        const originalHandleMessage = bridgeRef.current['handleMessage'].bind(bridgeRef.current)
+        bridgeRef.current['handleMessage'] = async (message: any) => {
+          if (message.type === 'VIEW_READY') {
+            setLoading(false)
+            setViewReady(true)
+          } else if (message.type === 'VIEW_ERROR') {
+            setLoading(false)
+            setError(message.payload?.error || 'View failed to load')
+            console.error('View error:', message.payload)
+          }
+
+          return originalHandleMessage(message)
+        }
+      } catch (err) {
+        console.error('Failed to create bridge:', err)
+      }
+      
+      // Now set iframe src to trigger load
       iframeRef.current.src = viewSrc
     }
 
-    // Setup bridge with initial delay, then retry logic will handle failures
-    const timer = setTimeout(() => setupBridge(), 300)
-
     // Cleanup function
     return () => {
-      console.log('🧹 Cleaning up ViewRenderer effect', mountId.current)
-      clearTimeout(timer)
       if (bridgeRef.current) {
         bridgeRef.current.destroy()
         bridgeRef.current = null
@@ -164,27 +114,48 @@ export function ViewRenderer({ projectId, bobbinId, viewId, sdk }: ViewRendererP
   }
 
   const retryConnection = () => {
-    console.log('🔄 Manual retry triggered', mountId.current)
     setError(null)
     setLoading(true)
     setViewReady(false)
 
     // Clean up existing bridge first
     if (bridgeRef.current) {
-      console.log('🧹 Cleaning up existing bridge for retry')
       bridgeRef.current.destroy()
       bridgeRef.current = null
     }
 
     if (iframeRef.current && viewSrc) {
-      // Force iframe reload with proper URL
+      // Create new bridge immediately
+      try {
+        bridgeRef.current = new BobbinBridge(
+          iframeRef.current,
+          sdk,
+          projectId,
+          bobbinId,
+          viewId
+        )
+        
+        // Set up view lifecycle handlers
+        const originalHandleMessage = bridgeRef.current['handleMessage'].bind(bridgeRef.current)
+        bridgeRef.current['handleMessage'] = async (message: any) => {
+          if (message.type === 'VIEW_READY') {
+            setLoading(false)
+            setViewReady(true)
+          } else if (message.type === 'VIEW_ERROR') {
+            setLoading(false)
+            setError(message.payload?.error || 'View failed to load')
+          }
+          return originalHandleMessage(message)
+        }
+      } catch (err) {
+        console.error('Failed to create bridge:', err)
+      }
+
+      // Force iframe reload
       iframeRef.current.src = ''
       setTimeout(() => {
         if (iframeRef.current) {
-          console.log('🔄 Reloading iframe with URL:', viewSrc)
           iframeRef.current.src = viewSrc
-          // Give iframe time to load, then setup bridge with retry logic
-          setTimeout(() => setupBridge(), 500)
         }
       }, 100)
     }
@@ -200,13 +171,7 @@ export function ViewRenderer({ projectId, bobbinId, viewId, sdk }: ViewRendererP
     }
   }, [])
 
-  console.log('ViewRenderer debug:', {
-    projectId,
-    bobbinId,
-    viewId,
-    apiBaseUrl,
-    viewSrc
-  })
+
 
   // If we don't have required props, show error
   if (!viewSrc) {
@@ -285,9 +250,15 @@ export function ViewRenderer({ projectId, bobbinId, viewId, sdk }: ViewRendererP
         sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
         allow="clipboard-read; clipboard-write"
         onLoad={() => {
-          console.log('📄 Iframe loaded, bridge will handle initialization', mountId.current)
-          // Bridge setup and context initialization now handled in setupBridge function
-          // This prevents race conditions and duplicate initialization attempts
+          console.log('📄 Iframe loaded, initializing context', mountId.current)
+          // Iframe loaded, now initialize the context
+          if (bridgeRef.current) {
+            bridgeRef.current.initializeContext().catch(err => {
+              console.error('Failed to initialize context:', err)
+              setLoading(false)
+              setError(err instanceof Error ? err.message : 'Failed to initialize view')
+            })
+          }
         }}
         onError={(e) => {
           console.error('📄 Iframe error:', e)

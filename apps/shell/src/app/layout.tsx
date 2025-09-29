@@ -1,9 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { OfflineProvider } from "@/components/OfflineProvider";
-import { OfflineIndicator } from "@/components/OfflineIndicator";
-import { ExtensionProvider } from "@/components/ExtensionProvider";
+import { Providers } from "@/components/Providers";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -38,13 +36,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable}`}>
-        <OfflineProvider>
-          <ExtensionProvider>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        <Providers>
+          <div id="app-root">
             {children}
-            <OfflineIndicator />
-          </ExtensionProvider>
-        </OfflineProvider>
+          </div>
+        </Providers>
       </body>
     </html>
   );
