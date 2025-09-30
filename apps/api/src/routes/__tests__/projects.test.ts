@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll } from '@jest/globals'
+import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/globals'
 import { build } from '../../server'
 import { db } from '../../db/connection'
-import { users, projects } from '../../db/schema'
+import { users, projects, bobbinsInstalled, entities } from '../../db/schema'
+import { sql } from 'drizzle-orm'
 
 describe('Projects API', () => {
   let app: any
@@ -15,11 +16,18 @@ describe('Projects API', () => {
     await app.close()
   })
 
+  afterEach(async () => {
+    // Clean up test data after each test
+    await db.delete(entities).where(sql`true`)
+    await db.delete(bobbinsInstalled).where(sql`true`)
+    await db.delete(projects).where(sql`true`)
+    await db.delete(users).where(sql`true`)
+  })
+
   describe('POST /api/projects', () => {
     it('should create a new project', async () => {
       // First create a user
       const [user] = await db.insert(users).values({
-        id: 'test-user',
         email: 'test@example.com',
         name: 'Test User'
       }).returning()
@@ -59,13 +67,11 @@ describe('Projects API', () => {
     it('should return projects for a user', async () => {
       // Create user and project
       const [user] = await db.insert(users).values({
-        id: 'test-user-2',
         email: 'test2@example.com',
         name: 'Test User 2'
       }).returning()
 
       await db.insert(projects).values({
-        id: 'test-project',
         name: 'Test Project',
         description: 'Test Description',
         ownerId: user.id
@@ -88,13 +94,11 @@ describe('Projects API', () => {
     it('should install a bobbin from manifest file', async () => {
       // Create user and project
       const [user] = await db.insert(users).values({
-        id: 'test-user-3',
         email: 'test3@example.com',
         name: 'Test User 3'
       }).returning()
 
       const [project] = await db.insert(projects).values({
-        id: 'test-project-3',
         name: 'Test Project 3',
         description: 'Test Description',
         ownerId: user.id
@@ -112,7 +116,7 @@ describe('Projects API', () => {
       const result = JSON.parse(response.payload)
       expect(result.success).toBe(true)
       expect(result.bobbin).toBeDefined()
-      expect(result.bobbin.name).toBe('manuscript')
+      expect(result.bobbin.name).toBe('Manuscript')
     })
 
     it('should return 404 for nonexistent project', async () => {
@@ -130,13 +134,11 @@ describe('Projects API', () => {
     it('should return 400 for invalid manifest path', async () => {
       // Create user and project
       const [user] = await db.insert(users).values({
-        id: 'test-user-4',
         email: 'test4@example.com',
         name: 'Test User 4'
       }).returning()
 
       const [project] = await db.insert(projects).values({
-        id: 'test-project-4',
         name: 'Test Project 4',
         description: 'Test Description',
         ownerId: user.id

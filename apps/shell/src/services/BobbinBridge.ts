@@ -183,9 +183,9 @@ export class BobbinBridge {
         
         // Ignore React DevTools and other browser extension messages
         if (message && typeof message === 'object' && 
-            (message.source === 'react-devtools-content-script' || 
-             message.source === 'react-devtools-bridge' ||
-             message.source === 'react-devtools-detector')) {
+            ((message as any).source === 'react-devtools-content-script' || 
+             (message as any).source === 'react-devtools-bridge' ||
+             (message as any).source === 'react-devtools-detector')) {
           return
         }
 
@@ -270,10 +270,10 @@ export class BobbinBridge {
       // Use SDK for entity queries
       const result = await this.sdk.entities.query({
         collection,
-        filters,
-        sort,
-        limit,
-        offset
+        ...(filters && { filters }),
+        ...(sort && { sort }),
+        ...(limit && { limit }),
+        ...(offset && { offset })
       })
 
       this.sendResponse(message.requestId, { success: true, data: result })
@@ -360,8 +360,8 @@ export class BobbinBridge {
               throw new Error(`Unknown operation type: ${operation.type}`)
           }
           results.push({ success: true, data: result })
-        } catch (error) {
-          results.push({ success: false, error: (error as Error).message })
+        } catch (err) {
+          results.push({ success: false, error: (err as Error).message })
         }
       }
 

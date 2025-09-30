@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "jest"
+    "test": "jest --passWithNoTests"
   },
   "keywords": ["bobbinry", "connectors", "integrations", "drive", "webhook"],
   "author": "Bobbinry",

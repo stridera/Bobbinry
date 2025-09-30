@@ -6,12 +6,87 @@ import { eq, and } from 'drizzle-orm'
 import { ManifestCompiler } from '@bobbinry/compiler'
 
 const projectsPlugin: FastifyPluginAsync = async (fastify) => {
+  // Create a new project
+  fastify.post<{
+    Body: {
+      name: string
+      description?: string
+      ownerId: string
+    }
+  }>('/projects', async (request, reply) => {
+    try {
+      const { name, description, ownerId } = request.body
+
+      // Validate input
+      if (!name || name.trim().length === 0) {
+        return reply.status(400).send({ error: 'Project name is required' })
+      }
+
+      if (!ownerId) {
+        return reply.status(400).send({ error: 'Owner ID is required' })
+      }
+
+      // Create project
+      const [project] = await db
+        .insert(projects)
+        .values({
+          name: name.trim(),
+          description: description?.trim(),
+          ownerId
+        })
+        .returning()
+
+      if (!project) {
+        return reply.status(500).send({ error: 'Failed to create project' })
+      }
+
+      return reply.status(201).send(project)
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.status(500).send({ error: 'Failed to create project' })
+    }
+  })
+
+  // List projects for a user
+  fastify.get<{
+    Querystring: {
+      ownerId?: string
+    }
+  }>('/projects', async (request, reply) => {
+    try {
+      const { ownerId } = request.query
+
+      let query = db.select().from(projects)
+
+      if (ownerId) {
+        query = query.where(eq(projects.ownerId, ownerId)) as any
+      }
+
+      const projectList = await query
+
+      return reply.status(200).send(projectList)
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.status(500).send({ error: 'Failed to fetch projects' })
+    }
+  })
+
+  // Helper to validate UUID
+  function isValidUUID(uuid: string): boolean {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    return uuidRegex.test(uuid)
+  }
+
   // Get project by ID
   fastify.get<{
     Params: { projectId: string }
   }>('/projects/:projectId', async (request, reply) => {
     try {
       const { projectId } = request.params
+
+      if (!isValidUUID(projectId)) {
+        return reply.status(400).send({ error: 'Invalid project ID format' })
+      }
 
       const project = await db
         .select()
@@ -34,13 +109,18 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.post<{
     Params: { projectId: string }
     Body: {
-      manifestContent: string
-      manifestType: 'yaml' | 'json'
+      manifestPath?: string
+      manifestContent?: string
+      manifestType?: 'yaml' | 'json'
     }
   }>('/projects/:projectId/bobbins/install', async (request, reply) => {
     try {
       const { projectId } = request.params
-      const { manifestContent, manifestType } = request.body
+      const { manifestPath, manifestContent, manifestType } = request.body
+
+      if (!isValidUUID(projectId)) {
+        return reply.status(404).send({ error: 'Project not found' })
+      }
 
       // Verify project exists
       const project = await db
@@ -53,13 +133,43 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(404).send({ error: 'Project not found' })
       }
 
+      // Get manifest content
+      let content: string
+      let type: 'yaml' | 'json'
+
+      if (manifestPath) {
+        // Read from file
+        const fs = await import('fs/promises')
+        const path = await import('path')
+        
+        try {
+          // Resolve path relative to project root (two levels up from api/src)
+          const projectRoot = path.resolve(__dirname, '../../../..')
+          const fullPath = path.resolve(projectRoot, manifestPath)
+          content = await fs.readFile(fullPath, 'utf-8')
+          type = manifestPath.endsWith('.yaml') || manifestPath.endsWith('.yml') ? 'yaml' : 'json'
+        } catch (error) {
+          return reply.status(400).send({
+            error: 'Failed to read manifest file',
+            details: error instanceof Error ? error.message : 'Unknown error'
+          })
+        }
+      } else if (manifestContent) {
+        content = manifestContent
+        type = manifestType || 'json'
+      } else {
+        return reply.status(400).send({
+          error: 'Either manifestPath or manifestContent is required'
+        })
+      }
+
       // Parse manifest
       let manifest
       try {
-        if (manifestType === 'yaml') {
-          manifest = parseYAML(manifestContent)
+        if (type === 'yaml') {
+          manifest = parseYAML(content)
         } else {
-          manifest = JSON.parse(manifestContent)
+          manifest = JSON.parse(content)
         }
       } catch (parseError) {
         return reply.status(400).send({

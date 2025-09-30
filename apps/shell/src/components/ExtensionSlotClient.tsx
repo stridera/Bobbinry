@@ -38,17 +38,20 @@ export function ExtensionSlotClient({
 
   return (
     <div className={className}>
-      {extensions.map((extension) => (
-        <div key={extension.id}>
-          {extension.component ? (
-            <extension.component {...(extension.contribution.props || {})} context={context} />
-          ) : (
-            <div className="text-xs text-red-400">
-              Extension {extension.contribution.title || extension.id} has no component
-            </div>
-          )}
-        </div>
-      ))}
+      {extensions.map((extension) => {
+        const Component = extension.component
+        return (
+          <div key={extension.id}>
+            {Component ? (
+              <Component context={context} />
+            ) : (
+              <div className="text-xs text-red-400">
+                Extension {extension.contribution.title || extension.id} has no component
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }

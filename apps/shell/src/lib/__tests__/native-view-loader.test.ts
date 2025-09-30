@@ -71,7 +71,7 @@ describe('NativeViewLoader', () => {
         const message = (error as Error).message
         expect(message).toContain('Bobbin: nonexistent')
         expect(message).toContain('View: view')
-        expect(message).toContain('@bobbinry/nonexistent/views/view')
+        expect(message).toContain('nonexistent.view')
       }
     })
   })

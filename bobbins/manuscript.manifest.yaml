@@ -14,42 +14,43 @@ data:
   collections:
     - name: Book
       fields:
-        - { name: title, type: short_text, required: true, searchable: true }
-        - { name: subtitle, type: short_text }
-        - { name: slug, type: slug, unique: true }
-        - { name: synopsis, type: long_text }
-        - { name: status, type: enum, options: [draft, revising, locked, published], default: draft }
-        - { name: word_count, type: number, computed: true }
+        - { name: title, type: text, required: true }
+        - { name: subtitle, type: text }
+        - { name: slug, type: text }
+        - { name: synopsis, type: text }
+        - { name: status, type: text }
+        - { name: word_count, type: number }
       relationships:
-        - { name: chapters, type: "relation(Chapter)[]" }
+        - { name: chapters, type: one-to-many, target: Chapter }
     - name: Chapter
       fields:
-        - { name: title, type: short_text, required: true, searchable: true }
-        - { name: synopsis, type: long_text }
-        - { name: order, type: ordinal }
-        - { name: status, type: enum, options: [draft, revising, locked], default: draft }
-        - { name: pov, type: enum, options: [Protagonist, Antagonist, Narrator], nullable: true }
-        - { name: tags, type: "tag[]" }
-        - { name: word_count, type: number, computed: true }
+        - { name: title, type: text, required: true }
+        - { name: synopsis, type: text }
+        - { name: order, type: number }
+        - { name: status, type: text }
+        - { name: pov, type: text }
+        - { name: tags, type: json }
+        - { name: word_count, type: number }
       relationships:
-        - { name: book, type: relation(Book) }
-        - { name: scenes, type: "relation(Scene)[]" }
+        - { name: book, type: one-to-one, target: Book }
+        - { name: scenes, type: one-to-many, target: Scene }
     - name: Scene
       fields:
-        - { name: title, type: short_text, required: true, searchable: true }
-        - { name: body, type: markdown, editor: markdown }
-        - { name: synopsis, type: long_text }
-        - { name: order, type: ordinal }
-        - { name: pov, type: enum, options: [Protagonist, Antagonist, Narrator], nullable: true }
-        - { name: status, type: enum, options: [idea, draft, revised, final], default: draft }
-        - { name: tags, type: "tag[]" }
-        - { name: word_count, type: number, computed: true }
+        - { name: title, type: text, required: true }
+        - { name: body, type: markdown }
+        - { name: synopsis, type: text }
+        - { name: order, type: number }
+        - { name: pov, type: text }
+        - { name: status, type: text }
+        - { name: tags, type: json }
+        - { name: word_count, type: number }
       relationships:
-        - { name: chapter, type: relation(Chapter) }
-        - { name: links, type: "relation(Location)[]", optional: true }
+        - { name: chapter, type: one-to-one, target: Chapter }
+        - { name: links, type: many-to-many, target: Location }
 ui:
   views:
     - id: outline
+      name: Outline
       type: tree
       source: Chapter
       layout:
@@ -63,6 +64,7 @@ ui:
           - create_scene
           - reorder
     - id: editor
+      name: Editor
       type: editor
       source: Scene
       layout:
@@ -75,41 +77,40 @@ ui:
           - history
 interactions:
   actions:
-    - name: create_chapter
-      trigger: user_button
-      input: [Book]
-      output: Chapter
-    - name: create_scene
-      trigger: user_button
-      input: [Chapter]
-      output: Scene
-    - name: validate_wordcount
-      trigger: on_save
-      input: Scene.body
-      output: Scene.word_count
+    - id: create_chapter
+      name: Create Chapter
+      type: create
+      target: Chapter
+    - id: create_scene
+      name: Create Scene
+      type: create
+      target: Scene
+    - id: validate_wordcount
+      name: Validate Word Count
+      type: custom
+      target: Scene
   triggers:
-    - event: on_save
-      action: validate_wordcount
+    - id: on_scene_save
+      event: update
+      actions:
+        - validate_wordcount
 external: null
 linking:
   entities:
     - collection: Chapter
-      display: { title: title, subtitle: synopsis }
+      display:
+        template: "{{title}}"
     - collection: Scene
-      display: { title: title, subtitle: chapter }
+      display:
+        template: "{{title}}"
 publish:
   entities: [Book, Chapter, Scene]
-  fields:
-    Book:    [title, subtitle, synopsis, slug]
-    Chapter: [title, synopsis, order, pov, tags, word_count]
-    Scene:   [title, body, synopsis, order, pov, tags, word_count]
+  fields: [title, body, synopsis, order, status, word_count]
   output:
-    default:
-      format: html
+    - format: html
       template: book
-    feeds:
-      - { type: json, path: /api/book.json }
-      - { type: sitemap, path: /sitemap.xml }
+    - format: json
+    - format: markdown
 compatibility:
   minShellVersion: 1.0.0
   migrations: []
