@@ -86,6 +86,12 @@ export interface Manifest {
     fieldPolicies?: Record<string, 'text_delta' | 'field_merge' | 'last_write_wins'>
   }
 
+  // v0.2: Execution mode - native vs sandboxed
+  execution?: {
+    mode: 'native' | 'sandboxed'
+    signature?: string  // Ed25519 signature for native bobbins (required in production)
+  }
+
   // Compatibility requirements
   compatibility?: {
     minShellVersion: string

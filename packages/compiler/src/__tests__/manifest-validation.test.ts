@@ -167,6 +167,95 @@ describe('Manifest Validation', () => {
     })
   })
 
+  describe('Execution Mode Validation', () => {
+    it('should accept manifest with sandboxed execution mode', () => {
+      const manifest = {
+        id: 'test-bobbin',
+        name: 'Test Bobbin',
+        version: '1.0.0',
+        capabilities: {},
+        execution: {
+          mode: 'sandboxed'
+        }
+      }
+
+      const result = compiler.validateManifestWithDetails(manifest as any)
+      expect(result.valid).toBe(true)
+      expect(result.errors).toHaveLength(0)
+    })
+
+    it('should accept manifest with native execution mode and signature', () => {
+      const manifest = {
+        id: 'test-bobbin',
+        name: 'Test Bobbin',
+        version: '1.0.0',
+        capabilities: {},
+        execution: {
+          mode: 'native',
+          signature: 'dev_mode_skip'
+        }
+      }
+
+      const result = compiler.validateManifestWithDetails(manifest as any)
+      expect(result.valid).toBe(true)
+      expect(result.errors).toHaveLength(0)
+    })
+
+    it('should reject native execution mode without signature', () => {
+      const manifest = {
+        id: 'test-bobbin',
+        name: 'Test Bobbin',
+        version: '1.0.0',
+        capabilities: {},
+        execution: {
+          mode: 'native'
+        }
+      }
+
+      const result = compiler.validateManifestWithDetails(manifest as any)
+      if (result.valid) {
+        console.log('Expected validation to fail but it passed')
+      } else {
+        console.log('Validation errors:', result.errors)
+      }
+      expect(result.valid).toBe(false)
+      expect(result.errors.length).toBeGreaterThan(0)
+    })
+
+    it('should reject invalid execution mode', () => {
+      const manifest = {
+        id: 'test-bobbin',
+        name: 'Test Bobbin',
+        version: '1.0.0',
+        capabilities: {},
+        execution: {
+          mode: 'invalid-mode'
+        }
+      }
+
+      const result = compiler.validateManifestWithDetails(manifest as any)
+      if (result.valid) {
+        console.log('Expected validation to fail for invalid mode but it passed')
+      } else {
+        console.log('Validation errors for invalid mode:', result.errors)
+      }
+      expect(result.valid).toBe(false)
+      expect(result.errors.length).toBeGreaterThan(0)
+    })
+
+    it('should default to sandboxed when execution field is omitted', () => {
+      const manifest = {
+        id: 'test-bobbin',
+        name: 'Test Bobbin',
+        version: '1.0.0',
+        capabilities: {}
+      }
+
+      const result = compiler.validateManifestWithDetails(manifest as any)
+      expect(result.valid).toBe(true)
+    })
+  })
+
   describe('Compilation Process', () => {
     it('should successfully compile a valid manifest', async () => {
       const validManifest = {

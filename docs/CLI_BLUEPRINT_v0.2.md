@@ -16,14 +16,15 @@
   - ✅ **Extensions**: slot‑based contributions (toolbar, right panel, badges, etc.).
   - ✅ **Manifest v0.2** (offline/pubsub/extensions/augmentations).
   - ✅ **Tiered storage**: JSONB by default; promotion to physical tables when hot.
+  - ✅ **Native vs Sandboxed execution**: First-party bobbins load natively; third-party bobbins run sandboxed.
   - 🟨 **PEH (Project Event Hub)** server fan‑out is P1 (scaffold optional).
   - 🟨 **Action Runner + Connectors** scaffold present; workflows first, code later.
 
 **Walking skeleton (v1):**
-1) Create a project; install **Manuscript** bobbin.
+1) Create a project; install **Manuscript** bobbin (native execution).
 2) Compiler validates manifest **v0.2**, generates entity map (Tier 1 JSONB).
-3) Shell renders Outline + Editor; **offline** editing (Scene.body w/ text deltas).
-4) **LEB** publishes selection + wordcount; **Dictionary Panel** extension consumes selection in the **right panel**.
+3) Shell renders Outline + Editor natively (SSR-capable); **offline** editing (Scene.body w/ text deltas).
+4) **LEB** publishes selection + wordcount; **Dictionary Panel** extension (sandboxed) consumes selection in the **right panel**.
 5) Snapshot Publish → static bundle artifact (preview URL).
 
 ---
@@ -214,6 +215,7 @@ mkdir -p infra/db/migrations infra/db/seeds
 
 **Location:** `packages/types/manifest.schema.json` (ships with v0.2).  
 Adds:
+- **execution.mode**: `native` (first-party only, requires signature) or `sandboxed` (default)
 - **offline** hints (redact/delta/conflict policies)
 - **pubsub.produces/consumes** (topics, qos, sensitivity, rate limits, shared)
 - **extensions** (target + contributions to slots; optional panel entry)
@@ -238,10 +240,12 @@ CLI task: place schema file and set up validation in compiler.
 ## 7) Shell Responsibilities (updated for v1)
 
 - **Auth + Project picker**
+- **Bobbin loader**: Native loader for first-party bobbins (direct React imports); sandboxed iframe loader for third-party bobbins
+- **Native bobbins**: Manuscript, Corkboard render as direct React components (SSR-capable, full performance)
 - **Offline‑first**: SW + IndexedDB cache + outbox + sync engine (delta for editor fields)
 - **Editor**: TipTap; emits `selection`/`wordcount` topics to **LEB** under declared rate limits/sensitivity.
 - **Slots system**: toolbar, right panel, badges, command palette — render contributions from extensions; permissions UI.
-- **Right Panel**: support panel activation & lifecycle; wire **Dictionary Panel** sample.
+- **Right Panel**: support panel activation & lifecycle; wire **Dictionary Panel** sample (sandboxed iframe).
 - Global command palette; entity inspector; link autocomplete (e.g., `@Scene:…`).
 
 ---
@@ -259,10 +263,27 @@ CLI task: place schema file and set up validation in compiler.
 
 ## 9) Security & Sandbox
 
-- Views run in `iframe` with `sandbox` attrs; strict CSP; no network by default.
+### Execution Modes
+**Native Execution (First-Party Only):**
+- Trusted bobbins in the `bobbins/` workspace (Manuscript, Corkboard)
+- React components imported directly into shell bundle
+- Full access to shell APIs, React context, and performance optimizations
+- Can be SSR'd by Next.js for faster initial load
+- Requires cryptographic signature verification
+- Code review required; ships with core platform
+
+**Sandboxed Execution (Third-Party Default):**
+- Community/marketplace bobbins run in `iframe` with `sandbox` attrs
+- Strict CSP; no network access by default
+- Communication via postMessage (View SDK bridge)
+- Limited to declared capabilities and slots
+- Client-side only (no SSR)
+
+### Security Policies
 - External access only via **connectors/egress proxy** with allowlisted domains & scopes → user approval.
 - **Provenance** for external calls, promotions, publish, and extension actions.
 - Kill‑switch per bobbin; Safe Mode (disable third‑party extensions).
+- Native bobbins cannot be installed from external sources without platform signature.
 
 ---
 
@@ -291,7 +312,9 @@ Shell enforces producer rate limits; consumers declare required sensitivity; per
 - [ ] Install flow accepts **Manuscript**
 
 ### Milestone C — Manuscript + Corkboard (Walking Skeleton)
-- [ ] Outline view (tree) + Editor view (TipTap)
+- [ ] Native bobbin loader in shell (dynamic imports from workspace)
+- [ ] Sandboxed bobbin loader (iframe + View SDK bridge)
+- [ ] Outline view (tree) + Editor view (TipTap) render natively
 - [ ] Corkboard board view; drag‑to‑reorder persists `order`
 - [ ] Snapshot Publish → static bundle URL
 
@@ -367,3 +390,38 @@ pnpm -w dlx turbo run build
 - `text_delta` for long text (TipTap/ProseMirror)
 - `field_merge` for structured fields
 - `last_write_wins` for counters/derived
+
+### E) Execution Modes (Bobbin Loading)
+
+**Native Execution:**
+- **Who**: First-party bobbins (Manuscript, Corkboard) shipped in `bobbins/` workspace
+- **How**: React components imported directly via dynamic `import()` in shell
+- **Manifest**: `execution.mode: native` + cryptographic signature
+- **Benefits**: SSR support, full performance, direct API access, shared code splitting
+- **Example**: `const Editor = await import('@bobbins/manuscript/views/Editor')`
+
+**Sandboxed Execution:**
+- **Who**: Third-party/community bobbins from marketplace
+- **How**: Loaded in iframe with sandbox attrs, postMessage bridge via View SDK
+- **Manifest**: `execution.mode: sandboxed` (default)
+- **Benefits**: Security isolation, user data protection, revocable permissions
+- **Example**: `<iframe src="/view-sandbox/dict-panel" sandbox="allow-scripts" />`
+
+**View Registry Entry:**
+```typescript
+{
+  viewId: "manuscript.editor",
+  bobbinId: "manuscript",
+  execution: "native",
+  component: () => import('@bobbins/manuscript/views/Editor'),
+  capabilities: ["offline", "pubsub.produce"]
+}
+// vs
+{
+  viewId: "dictionary-panel.inspector",
+  bobbinId: "dictionary-panel", 
+  execution: "sandboxed",
+  iframeSrc: "/view-sandbox/dictionary-panel",
+  capabilities: ["pubsub.consume"]
+}
+```

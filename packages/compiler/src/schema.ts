@@ -268,6 +268,41 @@ export const manifestSchema = {
         }
       }
     },
+    "execution": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "sandboxed",
+              "description": "Sandboxed execution for third-party bobbins"
+            },
+            "signature": {
+              "type": "string"
+            }
+          },
+          "required": ["mode"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "native",
+              "description": "Native execution for first-party bobbins"
+            },
+            "signature": {
+              "type": "string",
+              "description": "Ed25519 signature for native bobbins (required)"
+            }
+          },
+          "required": ["mode", "signature"],
+          "additionalProperties": false
+        }
+      ]
+    },
     "compatibility": {
       "type": "object",
       "properties": {

@@ -47,6 +47,19 @@ export class BobbinryAPI {
     }
     return response.json()
   }
+
+  async uninstallBobbin(projectId: string, bobbinId: string) {
+    const response = await fetch(`${this.baseURL}/projects/${projectId}/bobbins/${bobbinId}`, {
+      method: 'DELETE'
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+      throw new Error(errorData.error || `Uninstall failed: ${response.statusText}`)
+    }
+
+    return response.json()
+  }
 }
 
 // Message bus for Shell ↔ Views communication
@@ -241,7 +254,8 @@ export class EntityAPI {
     })
 
     if (!response.ok) {
-      throw new Error(`Failed to create entity: ${response.statusText}`)
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+      throw new Error(`Failed to create entity: ${errorData.error || response.statusText}`)
     }
 
     return response.json()

@@ -36,7 +36,15 @@ export const bobbinsInstalled = pgTable('bobbins_installed', {
   version: varchar('version', { length: 50 }).notNull(),
   manifestJson: jsonb('manifest_json').notNull(),
   enabled: boolean('enabled').default(true).notNull(),
-  installedAt: timestamp('installed_at').defaultNow().notNull()
+  
+  // Admin-controlled configuration (NOT from manifest)
+  executionMode: varchar('execution_mode', { length: 50 }).default('sandboxed').notNull(), // 'sandboxed' | 'native'
+  trustLevel: varchar('trust_level', { length: 50 }).default('community').notNull(), // 'first-party' | 'verified' | 'community'
+  storageTier: varchar('storage_tier', { length: 50 }).default('tier1').notNull(), // 'tier1' | 'tier2'
+  
+  installedAt: timestamp('installed_at').defaultNow().notNull(),
+  configUpdatedBy: uuid('config_updated_by').references(() => users.id),
+  configUpdatedAt: timestamp('config_updated_at')
 })
 
 // Manifest versions registry

@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import { BobbinrySDK } from '@bobbinry/sdk'
 import { ShellLayout } from '@/components/ShellLayout'
 import { ViewRenderer } from '@/components/ViewRenderer'
+import { useManifestExtensions } from '@/components/ExtensionProvider'
 
 interface InstalledBobbin {
   id: string
@@ -12,6 +13,9 @@ interface InstalledBobbin {
   manifest: {
     name: string
     description?: string
+    execution?: {
+      mode: 'native' | 'sandboxed'
+    }
     ui?: {
       views?: Array<{
         id: string
@@ -33,6 +37,9 @@ export default function ProjectPage() {
   const [currentBobbin, setCurrentBobbin] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   
+  // Get extension registration hooks
+  const { registerManifestExtensions } = useManifestExtensions()
+  
   // Load installed bobbins and their views
   useEffect(() => {
     const loadProject = async () => {
@@ -48,6 +55,15 @@ export default function ProjectPage() {
         console.log('🚀 PROJECT PAGE: response.bobbins type:', typeof response.bobbins)
         console.log('🚀 PROJECT PAGE: response.bobbins length:', response.bobbins?.length)
         setInstalledBobbins(response.bobbins || [])
+
+        // Register extensions for all installed bobbins
+        if (response.bobbins?.length > 0) {
+          console.log('🚀 PROJECT PAGE: Registering extensions for', response.bobbins.length, 'bobbins')
+          response.bobbins.forEach((bobbin: InstalledBobbin) => {
+            console.log('🚀 PROJECT PAGE: Registering extensions for bobbin:', bobbin.id, 'mode:', bobbin.manifest.execution?.mode)
+            registerManifestExtensions(bobbin.id, bobbin.manifest)
+          })
+        }
 
         // Auto-select first view if available
         if (response.bobbins?.length > 0) {
@@ -85,7 +101,8 @@ export default function ProjectPage() {
       bobbinName: bobbin.manifest.name,
       viewId: view.id,
       viewType: view.type,
-      viewSource: view.source
+      viewSource: view.source,
+      executionMode: bobbin.manifest.execution?.mode || 'sandboxed'
     }))
   )
   
@@ -113,6 +130,7 @@ export default function ProjectPage() {
               <div>DEBUG: availableViews.length = {availableViews.length}</div>
               <div>DEBUG: currentBobbin = {currentBobbin || 'null'}</div>
               <div>DEBUG: currentView = {currentView || 'null'}</div>
+              <div>DEBUG: executionMode = {availableViews.find(v => v.bobbinId === currentBobbin && v.viewId === currentView)?.executionMode || 'unknown'}</div>
             </div>
           </div>
           
@@ -139,6 +157,9 @@ export default function ProjectPage() {
                     <div className="font-medium">{view.viewId}</div>
                     <div className="text-xs text-gray-500">
                       {view.bobbinName} • {view.viewType}
+                      <span className={view.executionMode === 'native' ? 'text-purple-600 font-semibold ml-1' : 'text-gray-500 ml-1'}>
+                        • {view.executionMode === 'native' ? '⚡' : '🔒'}
+                      </span>
                     </div>
                   </button>
                 ))}

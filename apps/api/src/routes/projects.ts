@@ -187,6 +187,62 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
       return reply.status(500).send({ error: 'Failed to fetch installed bobbins' })
     }
   })
+
+  // Uninstall bobbin from project
+  fastify.delete<{
+    Params: { projectId: string; bobbinId: string }
+  }>('/projects/:projectId/bobbins/:bobbinId', async (request, reply) => {
+    try {
+      const { projectId, bobbinId } = request.params
+
+      // Verify project exists
+      const project = await db
+        .select()
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1)
+
+      if (project.length === 0) {
+        return reply.status(404).send({ error: 'Project not found' })
+      }
+
+      // Check if bobbin is installed
+      const installation = await db
+        .select()
+        .from(bobbinsInstalled)
+        .where(and(
+          eq(bobbinsInstalled.projectId, projectId),
+          eq(bobbinsInstalled.bobbinId, bobbinId)
+        ))
+        .limit(1)
+
+      if (installation.length === 0) {
+        return reply.status(404).send({ error: 'Bobbin not installed in this project' })
+      }
+
+      const installedBobbin = installation[0]!
+
+      // Delete the installation
+      await db
+        .delete(bobbinsInstalled)
+        .where(and(
+          eq(bobbinsInstalled.projectId, projectId),
+          eq(bobbinsInstalled.bobbinId, bobbinId)
+        ))
+
+      return {
+        success: true,
+        message: `Bobbin ${bobbinId} uninstalled from project ${projectId}`,
+        bobbin: {
+          id: installedBobbin.bobbinId,
+          version: installedBobbin.version
+        }
+      }
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.status(500).send({ error: 'Failed to uninstall bobbin' })
+    }
+  })
 }
 
 export default projectsPlugin

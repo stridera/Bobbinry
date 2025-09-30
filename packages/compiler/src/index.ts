@@ -126,24 +126,52 @@ export class ManifestCompiler {
       return migrations
     }
 
+    // SECURITY: Never trust manifest for infrastructure decisions
+    // Storage tier and execution mode are determined by:
+    // 1. Bobbin provenance (first-party vs external)
+    // 2. Admin configuration in bobbins_installed table
+    // 3. Runtime performance metrics (auto-promotion)
+    
+    // All external bobbins start in Tier 1 (JSONB) regardless of manifest claims
+    // Promotion happens based on actual usage, not manifest hints
+    
     // TODO: Generate Drizzle migrations for each collection
+    // Default to Tier 1 for initial install
     for (const collection of manifest.data.collections) {
-      const migration = this.generateCollectionMigration(collection)
+      const migration = this.generateCollectionMigration(collection, false)
       migrations.push(migration)
     }
 
     return migrations
   }
 
-  private generateCollectionMigration(collection: any): string {
+  private generateCollectionMigration(collection: any, preferPhysical: boolean = false): string {
     // TODO: Transform collection definition to SQL DDL
-    return `-- Migration for ${collection.name} (TODO: implement)`
+    const tier = preferPhysical ? 'Tier 2 (physical table)' : 'Tier 1 (JSONB)'
+    return `-- Migration for ${collection.name} [${tier}] (TODO: implement)`
   }
 
   private async registerViews(manifest: Manifest): Promise<void> {
-    // TODO: Register views with Shell UI system
-    if (manifest.ui?.views) {
-      console.log(`Registering ${manifest.ui.views.length} views`)
+    if (!manifest.ui?.views) {
+      return
+    }
+
+    const executionMode = manifest.execution?.mode || 'sandboxed'
+    const bobbinId = manifest.id
+
+    console.log(`[ManifestCompiler] Registering ${manifest.ui.views.length} views for ${bobbinId} (${executionMode} mode)`)
+
+    for (const view of manifest.ui.views) {
+      const viewId = `${bobbinId}.${view.id}`
+
+      console.log(`[ManifestCompiler] Registering view: ${viewId} (${executionMode})`)
+
+      // View registration will be handled by shell at runtime
+      // The manifest data is stored and processed when bobbin is installed
+      // This method is primarily for validation and logging during compilation
+
+      // TODO: In future, could generate view registration code or config files here
+      // For now, the shell will read manifest.execution.mode at runtime
     }
   }
 

@@ -50,12 +50,13 @@ function HomeContent() {
   const [hasLoadedBobbins, setHasLoadedBobbins] = useState(globalBobbinsLoaded)
 
   // Load installed bobbins
-  const loadBobbins = async () => {
+  const loadBobbins = async (force: boolean = false) => {
     console.log('[BOBBINS] loadBobbins called', {
       hasLoadedBobbins,
       globalBobbinsLoaded,
       currentProject,
       isServer: typeof window === 'undefined',
+      force,
       timestamp: Date.now()
     })
 
@@ -66,7 +67,8 @@ function HomeContent() {
     }
 
     // Prevent duplicate loads from Service Worker cache events or multiple component instances
-    if (hasLoadedBobbins || globalBobbinsLoaded) {
+    // Unless force is true (from install/uninstall operations)
+    if (!force && (hasLoadedBobbins || globalBobbinsLoaded)) {
       console.log('[BOBBINS] Skipping duplicate loadBobbins call (already loaded)', { hasLoadedBobbins, globalBobbinsLoaded })
       return
     }
@@ -132,7 +134,11 @@ function HomeContent() {
       }
 
       setManifestContent('')
-      await loadBobbins()
+
+      // Force reload to show the newly installed bobbin
+      globalBobbinsLoaded = false
+      setHasLoadedBobbins(false)
+      await loadBobbins(true)
     } catch (error) {
       setMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
@@ -140,19 +146,56 @@ function HomeContent() {
     }
   }
 
-  // Load example manifest
-  const loadExampleManifest = (type: 'manuscript' | 'corkboard') => {
-    if (type === 'manuscript') {
-      fetch('/bobbins/manuscript/manifest.yaml')
-        .then(res => res.text())
-        .then(content => setManifestContent(content))
-        .catch(() => setMessage('Failed to load example manifest'))
-    } else {
-      fetch('/bobbins/corkboard/manifest.yaml')
-        .then(res => res.text())
-        .then(content => setManifestContent(content))
-        .catch(() => setMessage('Failed to load example manifest'))
+  // Uninstall a bobbin
+  const uninstallBobbin = async (bobbinId: string, bobbinName: string) => {
+    if (!confirm(`Are you sure you want to uninstall "${bobbinName}"?`)) {
+      return
     }
+
+    try {
+      setLoading(true)
+      setMessage(`Uninstalling ${bobbinName}...`)
+
+      console.log('[UNINSTALL] Starting uninstall for:', { bobbinId, bobbinName, currentProject })
+      const result = await sdk.api.uninstallBobbin(currentProject, bobbinId)
+      console.log('[UNINSTALL] Uninstall result:', result)
+
+      // Unregister extensions
+      unregisterManifestExtensions(bobbinId)
+      setRegisteredBobbins(prev => {
+        const updated = new Set(prev)
+        updated.delete(bobbinId)
+        return updated
+      })
+
+      setMessage(`Success: Uninstalled ${bobbinName}`)
+
+      // Force reload to show the updated bobbin list
+      globalBobbinsLoaded = false
+      setHasLoadedBobbins(false)
+      await loadBobbins(true)
+    } catch (error) {
+      console.error('[UNINSTALL] Error:', error)
+      setMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Load example manifest
+  const loadExampleManifest = (manifestPath: string) => {
+    fetch(manifestPath)
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.text()
+      })
+      .then(content => {
+        setManifestContent(content)
+        setMessage('')
+      })
+      .catch((error) => {
+        setMessage(`Failed to load manifest: ${error.message}`)
+      })
   }
 
   // Load bobbins on mount and when currentProject changes
@@ -248,17 +291,32 @@ function HomeContent() {
                 {installedBobbins.map((bobbin, index) => (
                   <div key={index} className="border border-gray-200 rounded-lg p-4">
                     <div className="flex justify-between items-start">
-                      <div>
+                      <div className="flex-1">
                         <h3 className="font-medium text-gray-900">{bobbin.manifest.name}</h3>
                         <p className="text-sm text-gray-600">{bobbin.manifest.description}</p>
                         <div className="mt-2 flex gap-2 text-xs text-gray-500">
                           <span>v{bobbin.version}</span>
                           <span>•</span>
                           <span>{bobbin.manifest.author}</span>
+                          <span>•</span>
+                          <span>ID: {bobbin.id}</span>
+                          <span>•</span>
+                          <span className={bobbin.manifest.execution?.mode === 'native' ? 'text-purple-600 font-semibold' : 'text-gray-600'}>
+                            {bobbin.manifest.execution?.mode === 'native' ? '⚡ Native' : '🔒 Sandboxed'}
+                          </span>
                         </div>
                       </div>
-                      <div className="text-xs text-gray-400">
-                        {new Date(bobbin.installedAt).toLocaleDateString()}
+                      <div className="flex flex-col items-end gap-2">
+                        <div className="text-xs text-gray-400">
+                          {new Date(bobbin.installedAt).toLocaleDateString()}
+                        </div>
+                        <button
+                          onClick={() => uninstallBobbin(bobbin.id, bobbin.manifest.name)}
+                          disabled={loading}
+                          className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200 disabled:opacity-50"
+                        >
+                          Uninstall
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -273,21 +331,30 @@ function HomeContent() {
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-semibold mb-4">Install Bobbin</h2>
 
-            {/* Example buttons */}
+            {/* Example bobbins */}
             <div className="mb-4">
-              <p className="text-sm text-gray-600 mb-2">Load example:</p>
-              <div className="flex gap-2">
+              <p className="text-sm text-gray-600 mb-2">Load example bobbin:</p>
+              <div className="grid grid-cols-2 gap-2">
                 <button
-                  onClick={() => loadExampleManifest('manuscript')}
-                  className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                  onClick={() => loadExampleManifest('/bobbins/manuscript/manifest.yaml')}
+                  className="px-3 py-2 text-sm bg-purple-100 text-purple-700 rounded hover:bg-purple-200 border border-purple-300 text-left"
                 >
-                  Manuscript
+                  <div className="font-medium">📚 Manuscript</div>
+                  <div className="text-xs opacity-75">Native ⚡ • High Performance</div>
                 </button>
                 <button
-                  onClick={() => loadExampleManifest('corkboard')}
-                  className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                  onClick={() => loadExampleManifest('/bobbins/dictionary-panel/manifest.yaml')}
+                  className="px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 border border-gray-300 text-left"
                 >
-                  Corkboard
+                  <div className="font-medium">📖 Dictionary Panel</div>
+                  <div className="text-xs opacity-75">Sandboxed 🔒 • Secure</div>
+                </button>
+                <button
+                  onClick={() => loadExampleManifest('/bobbins/corkboard/manifest.yaml')}
+                  className="px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 border border-gray-300 text-left"
+                >
+                  <div className="font-medium">📌 Corkboard</div>
+                  <div className="text-xs opacity-75">Sandboxed 🔒 • Secure</div>
                 </button>
               </div>
             </div>

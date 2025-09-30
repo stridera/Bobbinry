@@ -12,6 +12,7 @@
     "test:watch": "jest --watch"
   },
   "dependencies": {
+    "@bobbinry/manuscript": "workspace:*",
     "@bobbinry/sdk": "workspace:*",
     "@bobbinry/types": "workspace:*",
     "autoprefixer": "^10.4.21",

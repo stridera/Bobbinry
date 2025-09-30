@@ -1,0 +1,22 @@
+{
+  "bobbinId": "manuscript",
+  "trust": {
+    "level": "first-party",
+    "verified": true,
+    "maintainer": "Bobbins Core Team"
+  },
+  "execution": {
+    "mode": "native",
+    "sandboxing": "none",
+    "permissions": ["filesystem", "network", "storage"]
+  },
+  "storage": {
+    "tier": "physical",
+    "autoPromote": true,
+    "indexBudget": 50
+  },
+  "performance": {
+    "priority": "high",
+    "caching": "aggressive"
+  }
+}

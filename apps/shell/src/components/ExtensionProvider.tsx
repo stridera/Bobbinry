@@ -132,9 +132,37 @@ export function useManifestExtensions() {
   const { registerExtension, unregisterBobbin } = extensions || {}
 
   const registerManifestExtensions = useCallback((bobbinId: string, manifest: any) => {
+    console.log('[ExtensionProvider] registerManifestExtensions called for:', bobbinId, 'mode:', manifest.execution?.mode)
     if (!registerExtension) return
     
     try {
+      // Register native views in viewRegistry
+      if (manifest.execution?.mode === 'native' && manifest.ui?.views) {
+        console.log('[ExtensionProvider] Native views found, registering in viewRegistry')
+        const { viewRegistry } = require('../lib/view-registry')
+        const { createComponentLoader } = require('../lib/native-view-loader')
+        
+        for (const view of manifest.ui.views) {
+          const fullViewId = `${bobbinId}.${view.id}`
+          console.log(`[ExtensionProvider] Registering native view: ${fullViewId}`)
+          
+          viewRegistry.register({
+            viewId: fullViewId,
+            bobbinId: bobbinId,
+            execution: 'native',
+            componentLoader: createComponentLoader(bobbinId, view.id),
+            ssr: true,
+            capabilities: ['read', 'write'],
+            metadata: {
+              name: view.name || view.id,
+              type: view.type,
+              source: view.source
+            }
+          })
+        }
+      }
+      
+      // Register extension contributions
       if (manifest.extensions?.contributions) {
         for (const contribution of manifest.extensions.contributions) {
           registerExtension(bobbinId, contribution)
@@ -148,6 +176,17 @@ export function useManifestExtensions() {
 
   const unregisterManifestExtensions = useCallback((bobbinId: string) => {
     if (!unregisterBobbin) return
+    
+    // Unregister views from viewRegistry
+    try {
+      const { viewRegistry } = require('../lib/view-registry')
+      console.log(`[ExtensionProvider] Unregistering views for bobbin: ${bobbinId}`)
+      viewRegistry.unregisterBobbin(bobbinId)
+    } catch (error) {
+      console.error(`Failed to unregister views for bobbin ${bobbinId}:`, error)
+    }
+    
+    // Unregister extension contributions
     unregisterBobbin(bobbinId)
   }, [unregisterBobbin])
 

@@ -39,7 +39,9 @@ export function ShellLayout({ children, currentView = 'default', context = {} }:
             </svg>
           </button>
 
-          <h1 className="text-lg font-semibold">Bobbinry</h1>
+          <a href="/" className="text-lg font-semibold hover:text-blue-600 transition-colors cursor-pointer">
+            Bobbinry
+          </a>
         </div>
 
         <div className="flex-1 flex justify-center">

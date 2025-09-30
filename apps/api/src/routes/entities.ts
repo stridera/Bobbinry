@@ -2,7 +2,7 @@ import { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/connection'
 import { bobbinsInstalled, entities } from '../db/schema'
-import { eq, and, sql, or, desc } from 'drizzle-orm'
+import { eq, and, sql, or } from 'drizzle-orm'
 
 // Input validation schemas
 const EntityQuerySchema = z.object({
@@ -75,8 +75,8 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
         .from(entities)
         .where(whereCondition)
         .orderBy(
-          sql`COALESCE((${entities.entityData}->>'order')::int, 999999)`,
-          desc(entities.createdAt)
+          sql`COALESCE((${entities.entityData}->>'order')::bigint, 999999) ASC`,
+          sql`${entities.createdAt} DESC`
         )
         .limit(limit)
         .offset(offset)

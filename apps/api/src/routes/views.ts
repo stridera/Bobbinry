@@ -318,9 +318,11 @@ function getViewScript(view: any, _manifest: any, _projectId: string, bobbinId: 
 }
 
 function getViewTypeScript(view: any): string {
-    // Convert source to plural collection name (Chapter -> chapters, Scene -> scenes)
+    // Convert source to collection name (handles both singular and plural forms)
     const sourceName = view.source || 'items';
-    const source = sourceName.toLowerCase() + 's';
+    const source = sourceName.toLowerCase().endsWith('s') 
+        ? sourceName.toLowerCase() 
+        : sourceName.toLowerCase() + 's';
 
     switch (view.type) {
         case 'tree':
@@ -362,19 +364,19 @@ function getViewTypeScript(view: any): string {
             content.innerHTML = html;
         }
 
-        function selectItem(itemId) {
+        window.selectItem = function(itemId) {
             console.log('Selected item:', itemId);
         }
 
-        function createItem() {
-            const title = prompt('Enter title for new ${source}:');
+        window.createItem = function() {
+            const title = window.prompt('Enter title for new ${source}:');
             if (title) {
                 makeApiRequest('POST', '${source}', {
                     data: { title, order: Date.now() }
                 }).then(() => {
                     loadTreeData();
                 }).catch(error => {
-                    alert('Failed to create item: ' + error.message);
+                    setError('Failed to create item: ' + error.message);
                 });
             }
         }
@@ -425,10 +427,18 @@ function getViewTypeScript(view: any): string {
 
         function renderEmptyEditor() {
             const content = document.getElementById('view-content');
-            content.innerHTML = '<div class="placeholder-content"><p>No ${source} items found.</p><button class="create-button" onclick="createNewItem()">Create First ${source}</button></div>';
+            content.innerHTML = '<div class="placeholder-content">' +
+                '<p>No ${source} items found.</p>' +
+                '<div id="create-form" style="display: none; margin-top: 16px;">' +
+                    '<input type="text" id="new-item-title" placeholder="Enter title..." style="padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; margin-right: 8px; width: 250px;" />' +
+                    '<button class="create-button" onclick="submitNewItem()">Create</button>' +
+                    '<button class="create-button" onclick="cancelCreate()" style="background: #6b7280;">Cancel</button>' +
+                '</div>' +
+                '<button id="show-create-btn" class="create-button" onclick="showCreateForm()">Create First ${source}</button>' +
+                '</div>';
         }
 
-        function saveItem() {
+        window.saveItem = function() {
             if (!currentItem) return;
 
             const updatedData = {
@@ -442,25 +452,55 @@ function getViewTypeScript(view: any): string {
                 id: currentItem.id,
                 data: updatedData
             }).then(() => {
-                alert('Saved!');
+                // Show success feedback in UI
+                const content = document.getElementById('view-content');
+                const saveBtn = content.querySelector('button.create-button');
+                if (saveBtn) {
+                    const originalText = saveBtn.textContent;
+                    saveBtn.textContent = '✓ Saved';
+                    saveBtn.style.background = '#10b981';
+                    setTimeout(() => {
+                        saveBtn.textContent = originalText;
+                        saveBtn.style.background = '';
+                    }, 2000);
+                }
             }).catch(error => {
-                alert('Save failed: ' + error.message);
+                setError('Save failed: ' + error.message);
             });
         }
 
-        function createNewItem() {
-            const title = prompt('Enter title:');
-            if (title) {
-                makeApiRequest('POST', '${source}', {
-                    data: { title: title, '${fieldName}': '' }
-                }).then(result => {
-                    currentItem = result;
-                    renderEditor(currentItem);
-                }).catch(error => {
-                    alert('Creation failed: ' + error.message);
-                });
-            }
+        window.showCreateForm = function() {
+            document.getElementById('create-form').style.display = 'block';
+            document.getElementById('show-create-btn').style.display = 'none';
+            document.getElementById('new-item-title').focus();
         }
+
+        window.cancelCreate = function() {
+            document.getElementById('create-form').style.display = 'none';
+            document.getElementById('show-create-btn').style.display = 'inline-block';
+            document.getElementById('new-item-title').value = '';
+        }
+
+        window.submitNewItem = function() {
+            const title = document.getElementById('new-item-title').value.trim();
+            if (!title) return;
+
+            makeApiRequest('POST', '${source}', {
+                data: { title: title, '${fieldName}': '' }
+            }).then(result => {
+                currentItem = result;
+                renderEditor(currentItem);
+            }).catch(error => {
+                setError('Creation failed: ' + error.message);
+            });
+        }
+
+        // Handle Enter key in title input
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && e.target.id === 'new-item-title') {
+                submitNewItem();
+            }
+        });
 
         loadEditorData();
       `;

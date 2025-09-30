@@ -15,6 +15,10 @@ capabilities:
   ai: true
   customViews: false
 
+execution:
+  mode: native
+  signature: dev_mode_skip
+
 data:
   collections:
     - name: books
