@@ -196,10 +196,21 @@ function HomeContent() {
       <div className="p-8 overflow-auto">
         <div className="max-w-4xl mx-auto">
           <header className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">Bobbinry Shell</h1>
-            <p className="text-gray-600 mt-2">
-              Modular platform for writers and worldbuilders
-            </p>
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">Bobbinry Shell</h1>
+                <p className="text-gray-600 mt-2">
+                  Modular platform for writers and worldbuilders
+                </p>
+              </div>
+              <Link
+                href="/marketplace"
+                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 shadow-sm flex items-center gap-2 transition-all"
+              >
+                <span className="text-xl">🏪</span>
+                <span className="font-semibold">Browse Marketplace</span>
+              </Link>
+            </div>
           </header>
 
           {/* Project Selection */}
