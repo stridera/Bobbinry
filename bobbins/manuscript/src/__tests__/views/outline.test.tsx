@@ -14,7 +14,7 @@ import type { BobbinrySDK } from '@bobbinry/sdk'
 // Mock SDK
 const createMockSDK = (): BobbinrySDK => ({
   entities: {
-    query: jest.fn().mockResolvedValue({
+    query: jest.fn<any>().mockResolvedValue({
       data: [
         {
           id: 'book-1',
@@ -30,15 +30,15 @@ const createMockSDK = (): BobbinrySDK => ({
       ],
       total: 1
     }),
-    get: jest.fn(),
-    create: jest.fn(),
-    update: jest.fn(),
-    delete: jest.fn()
+    get: jest.fn<any>(),
+    create: jest.fn<any>(),
+    update: jest.fn<any>(),
+    delete: jest.fn<any>()
   },
   views: {
-    emit: jest.fn(),
-    on: jest.fn(),
-    off: jest.fn()
+    emit: jest.fn<any>(),
+    on: jest.fn<any>(),
+    off: jest.fn<any>()
   }
 } as any)
 
@@ -90,7 +90,7 @@ describe('Outline View', () => {
 
   it('should display empty state when no books', async () => {
     const emptySDK = createMockSDK()
-    ;(emptySDK.entities.query as jest.Mock).mockResolvedValue({ data: [], total: 0 })
+    ;(emptySDK.entities.query as jest.Mock<any>).mockResolvedValue({ data: [], total: 0 })
 
     render(
       <OutlineView
@@ -112,10 +112,10 @@ describe('Outline View', () => {
 
   it('should handle SDK errors gracefully', async () => {
     const errorSDK = createMockSDK()
-    ;(errorSDK.entities.query as jest.Mock).mockRejectedValue(new Error('Network error'))
+    ;(errorSDK.entities.query as jest.Mock<any>).mockRejectedValue(new Error('Network error'))
 
     // Suppress console.error for this test
-    const consoleSpy = jest.spyOn(console, 'error').mockImplementation()
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
 
     render(
       <OutlineView
