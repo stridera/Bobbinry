@@ -6,6 +6,8 @@ description: "Right-side panel that listens to Manuscript selection events and s
 tags: [panel, dictionary, pubsub]
 license: MIT
 capabilities: { publishable: false, external: false, ai: false, customViews: true }
+execution:
+  mode: sandboxed
 data: { collections: [] }
 extensions:
   target: { id: manuscript, version: "^1.0.0" }
