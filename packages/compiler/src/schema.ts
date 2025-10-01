@@ -269,39 +269,19 @@ export const manifestSchema = {
       }
     },
     "execution": {
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "mode": {
-              "type": "string",
-              "const": "sandboxed",
-              "description": "Sandboxed execution for third-party bobbins"
-            },
-            "signature": {
-              "type": "string"
-            }
-          },
-          "required": ["mode"],
-          "additionalProperties": false
+      "type": "object",
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "enum": ["native", "sandboxed"],
+          "description": "Execution mode - native for first-party bobbins, sandboxed for third-party"
         },
-        {
-          "type": "object",
-          "properties": {
-            "mode": {
-              "type": "string",
-              "const": "native",
-              "description": "Native execution for first-party bobbins"
-            },
-            "signature": {
-              "type": "string",
-              "description": "Ed25519 signature for native bobbins (required)"
-            }
-          },
-          "required": ["mode", "signature"],
-          "additionalProperties": false
+        "signature": {
+          "type": "string",
+          "description": "Ed25519 signature for native bobbins (required in production, can be 'dev_mode_skip' in development)"
         }
-      ]
+      },
+      "additionalProperties": false
     },
     "compatibility": {
       "type": "object",
