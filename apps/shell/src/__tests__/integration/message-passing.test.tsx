@@ -222,6 +222,7 @@ describe('Message Passing Integration Tests', () => {
         viewId: 'external.board',
         bobbinId: 'external',
         execution: 'sandboxed',
+        iframeSrc: '/api/views/external/board',
         componentLoader: null,
         ssr: false,
         capabilities: ['read'],
@@ -278,6 +279,7 @@ describe('Message Passing Integration Tests', () => {
         viewId: 'readonly.view',
         bobbinId: 'readonly',
         execution: 'sandboxed',
+        iframeSrc: '/api/views/readonly/view',
         componentLoader: null,
         ssr: false,
         capabilities: ['read'], // No write capability
