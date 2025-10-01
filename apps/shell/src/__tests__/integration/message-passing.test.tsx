@@ -19,7 +19,10 @@ global.fetch = jest.fn()
 describe('Message Passing Integration Tests', () => {
   beforeEach(() => {
     viewRegistry.clear()
-    jest.clearAllMocks()
+    // Clear all mocks
+    if (global.fetch && typeof global.fetch === 'function') {
+      (global.fetch as jest.Mock).mockClear()
+    }
     
     // Default successful API responses
     (global.fetch as jest.Mock).mockResolvedValue({

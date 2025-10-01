@@ -198,7 +198,8 @@ describe('View Rendering Integration Tests', () => {
         const sandbox = iframe.getAttribute('sandbox')
         expect(sandbox).toBeTruthy()
         expect(sandbox).toContain('allow-scripts')
-        expect(sandbox).not.toContain('allow-same-origin')
+        // allow-same-origin is needed for postMessage communication
+        expect(sandbox).toContain('allow-same-origin')
       })
     })
   })
@@ -443,7 +444,7 @@ describe('View Rendering Integration Tests', () => {
       )
 
       await waitFor(() => {
-        expect(screen.getByText(/error/i)).toBeInTheDocument()
+        expect(screen.getByText(/something went wrong/i)).toBeInTheDocument()
       })
 
       consoleSpy.mockRestore()

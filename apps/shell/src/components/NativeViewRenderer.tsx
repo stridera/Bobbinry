@@ -4,6 +4,7 @@ import { useEffect, useState, Suspense } from 'react'
 import type { ComponentType } from 'react'
 import { BobbinrySDK } from '@bobbinry/sdk'
 import { loadNativeView } from '../lib/native-view-loader'
+import ErrorBoundary from './ErrorBoundary'
 
 interface NativeViewRendererProps {
   projectId: string
@@ -127,20 +128,22 @@ export function NativeViewRenderer({
           Native View
         </div>
       )}
-      <Suspense
-        fallback={
-          <div className="flex-1 flex items-center justify-center">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-          </div>
-        }
-      >
-        <ViewComponent
-          projectId={projectId}
-          bobbinId={bobbinId}
-          viewId={viewId}
-          sdk={sdk}
-        />
-      </Suspense>
+      <ErrorBoundary>
+        <Suspense
+          fallback={
+            <div className="flex-1 flex items-center justify-center">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            </div>
+          }
+        >
+          <ViewComponent
+            projectId={projectId}
+            bobbinId={bobbinId}
+            viewId={viewId}
+            sdk={sdk}
+          />
+        </Suspense>
+      </ErrorBoundary>
     </div>
   )
 }
