@@ -133,7 +133,6 @@ export function useManifestExtensions() {
 
   const registerManifestExtensions = useCallback((bobbinId: string, manifest: any) => {
     console.log('[ExtensionProvider] registerManifestExtensions called for:', bobbinId, 'mode:', manifest.execution?.mode)
-    if (!registerExtension) return
     
     try {
       // Register native views in viewRegistry
@@ -163,7 +162,7 @@ export function useManifestExtensions() {
       }
       
       // Register extension contributions
-      if (manifest.extensions?.contributions) {
+      if (manifest.extensions?.contributions && registerExtension) {
         for (const contribution of manifest.extensions.contributions) {
           registerExtension(bobbinId, contribution)
         }
