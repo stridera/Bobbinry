@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
 import type { BookEntity, ChapterEntity, SceneEntity } from '@bobbinry/types'
 

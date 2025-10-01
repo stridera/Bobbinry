@@ -1,5 +1,9 @@
 import { useState, useEffect } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
+import { useEditor, EditorContent } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
+import Placeholder from '@tiptap/extension-placeholder'
+import CharacterCount from '@tiptap/extension-character-count'
 
 interface EditorViewProps {
   projectId: string
@@ -20,18 +24,52 @@ interface Scene {
  * Native Editor View for Manuscript bobbin
  * Provides rich text editing for scenes with auto-save
  */
-export default function EditorView({ sdk }: EditorViewProps) {
-  const [scene, _setScene] = useState<Scene | null>(null)
+export default function EditorView({ sdk, projectId }: EditorViewProps) {
+  const [scenes, setScenes] = useState<Scene[]>([])
+  const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null)
   const [content, setContent] = useState('')
   const [title, setTitle] = useState('')
-  const [_loading, _setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'saved' | 'unsaved' | 'saving'>('saved')
   const [wordCount, setWordCount] = useState(0)
+  const [chapters, setChapters] = useState<Array<{ id: string; title: string; bookId: string }>>([])
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({
+        heading: {
+          levels: [1, 2, 3]
+        }
+      }),
+      Placeholder.configure({
+        placeholder: 'Begin writing your scene...'
+      }),
+      CharacterCount
+    ],
+    content: '',
+    editorProps: {
+      attributes: {
+        class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl mx-auto focus:outline-none',
+        style: 'min-height: 400px; padding: 20px;'
+      }
+    },
+    onUpdate: ({ editor }) => {
+      const html = editor.getHTML()
+      setContent(html)
+      setSaveStatus('unsaved')
+      setWordCount(editor.storage.characterCount.words())
+    }
+  })
+
+  // Load all scenes and chapters on mount
+  useEffect(() => {
+    loadScenes()
+  }, [projectId])
 
   // Auto-save timer
   useEffect(() => {
-    if (saveStatus === 'unsaved' && scene) {
+    if (saveStatus === 'unsaved' && selectedSceneId) {
       const timer = setTimeout(() => {
         saveScene()
       }, 2000) // Auto-save after 2 seconds of inactivity
@@ -39,57 +77,102 @@ export default function EditorView({ sdk }: EditorViewProps) {
       return () => clearTimeout(timer)
     }
     return undefined
-  }, [content, title, saveStatus, scene])
+  }, [content, title, saveStatus, selectedSceneId])
 
-  // Calculate word count
+  // Load scene content when selection changes
   useEffect(() => {
-    const words = content
-      .trim()
-      .split(/\s+/)
-      .filter(w => w.length > 0).length
-    setWordCount(words)
-  }, [content])
+    if (selectedSceneId) {
+      loadSceneContent(selectedSceneId)
+    }
+  }, [selectedSceneId])
 
-  // TODO: Implement scene loading when scene selection is added
-  /*
-  async function loadScene(sceneId: string) {
+  async function loadScenes() {
     try {
       setLoading(true)
-      const entity = await sdk.entities.get('scenes', sceneId)
 
-      const sceneData: Scene = {
-        id: entity.id,
-        title: entity.data.title,
-        content: entity.data.content || '',
-        wordCount: entity.data.word_count || 0,
-        chapterId: entity.data.chapter_id
+      // Load chapters first
+      const chaptersResult = await sdk.entities.query({
+        collection: 'chapters',
+        sort: [{ field: 'order', direction: 'asc' }]
+      })
+
+      const chaptersList = (chaptersResult.data as any[]).map((c: any) => ({
+        id: c.id,
+        title: c.title || 'Untitled Chapter',
+        bookId: c.book_id
+      }))
+      setChapters(chaptersList)
+
+      // Load all scenes
+      const scenesResult = await sdk.entities.query({
+        collection: 'scenes',
+        sort: [{ field: 'order', direction: 'asc' }]
+      })
+
+      const scenesList = (scenesResult.data as any[]).map((s: any) => ({
+        id: s.id,
+        title: s.title || 'Untitled Scene',
+        content: s.body || '',
+        wordCount: s.word_count || 0,
+        chapterId: s.chapter_id
+      }))
+
+      setScenes(scenesList)
+
+      // Auto-select first scene if available
+      if (scenesList.length > 0 && !selectedSceneId) {
+        setSelectedSceneId(scenesList[0]!.id)
       }
-
-      setScene(sceneData)
-      setTitle(sceneData.title)
-      setContent(sceneData.content)
-      setSaveStatus('saved')
     } catch (error) {
-      console.error('[EditorView] Failed to load scene:', error)
+      console.error('[EditorView] Failed to load scenes:', error)
     } finally {
       setLoading(false)
     }
   }
-  */
+
+  async function loadSceneContent(sceneId: string) {
+    const scene = scenes.find(s => s.id === sceneId)
+    if (!scene) return
+
+    try {
+      // Fetch fresh data from API
+      const entity = await sdk.entities.get('scenes', sceneId)
+      const sceneData = entity.data as any
+
+      setTitle(sceneData.title || '')
+      const sceneContent = sceneData.body || ''
+      setContent(sceneContent)
+      
+      if (editor) {
+        editor.commands.setContent(sceneContent)
+      }
+
+      setSaveStatus('saved')
+    } catch (error) {
+      console.error('[EditorView] Failed to load scene content:', error)
+    }
+  }
 
   async function saveScene() {
-    if (!scene) return
+    if (!selectedSceneId) return
 
     try {
       setSaving(true)
       setSaveStatus('saving')
 
-      await sdk.entities.update('scenes', scene.id, {
+      await sdk.entities.update('scenes', selectedSceneId, {
         title,
-        content,
+        body: content,
         word_count: wordCount,
         updated_at: new Date().toISOString()
       })
+
+      // Update local scene list
+      setScenes(prev =>
+        prev.map(s =>
+          s.id === selectedSceneId ? { ...s, title, content, wordCount } : s
+        )
+      )
 
       setSaveStatus('saved')
     } catch (error) {
@@ -100,116 +183,298 @@ export default function EditorView({ sdk }: EditorViewProps) {
     }
   }
 
-  function handleContentChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
-    setContent(e.target.value)
-    setSaveStatus('unsaved')
-  }
-
   function handleTitleChange(e: React.ChangeEvent<HTMLInputElement>) {
     setTitle(e.target.value)
     setSaveStatus('unsaved')
   }
 
-  if (_loading) {
+  function handleSceneChange(sceneId: string) {
+    // Save current scene before switching
+    if (saveStatus === 'unsaved' && selectedSceneId) {
+      saveScene()
+    }
+    setSelectedSceneId(sceneId)
+  }
+
+  if (loading) {
     return (
       <div style={{ padding: '20px', textAlign: 'center' }}>
-        <div>Loading scene...</div>
+        <div>Loading editor...</div>
       </div>
     )
   }
 
-  if (!scene) {
+  if (scenes.length === 0) {
     return (
       <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
-        <div style={{ marginBottom: '12px' }}>No scene selected</div>
-        <div style={{ fontSize: '14px' }}>Select a scene from the outline to begin writing</div>
+        <div style={{ marginBottom: '12px' }}>No scenes available</div>
+        <div style={{ fontSize: '14px' }}>Create chapters and scenes from the outline view</div>
       </div>
     )
   }
+
+  const currentScene = scenes.find(s => s.id === selectedSceneId)
+  const currentChapter = chapters.find(c => c.id === currentScene?.chapterId)
 
   return (
     <div
       style={{
         display: 'flex',
-        flexDirection: 'column',
         height: '100%',
         fontFamily: 'system-ui, sans-serif'
       }}
     >
-      {/* Header */}
+      {/* Scene Navigation Sidebar */}
       <div
         style={{
-          borderBottom: '1px solid #e0e0e0',
-          padding: '16px 20px',
-          backgroundColor: '#fafafa',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
+          width: '250px',
+          borderRight: '1px solid #e0e0e0',
+          overflowY: 'auto',
+          backgroundColor: '#fafafa'
         }}
       >
-        <div style={{ flex: 1, marginRight: '20px' }}>
-          <input
-            type="text"
-            value={title}
-            onChange={handleTitleChange}
-            placeholder="Scene Title"
-            style={{
-              width: '100%',
-              border: 'none',
-              backgroundColor: 'transparent',
-              fontSize: '20px',
-              fontWeight: '600',
-              outline: 'none',
-              padding: '4px 0'
-            }}
-          />
+        <div style={{ padding: '16px', borderBottom: '1px solid #e0e0e0' }}>
+          <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600', color: '#666' }}>
+            SCENES
+          </h3>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '14px' }}>
-          <span style={{ color: '#666' }}>{wordCount} words</span>
-          <span
-            style={{
-              color: saveStatus === 'saved' ? '#4caf50' : saveStatus === 'saving' ? '#ff9800' : '#666'
-            }}
-          >
-            {saveStatus === 'saved' && '✓ Saved'}
-            {saveStatus === 'saving' && 'Saving...'}
-            {saveStatus === 'unsaved' && '• Unsaved'}
-          </span>
-          <button
-            onClick={saveScene}
-            disabled={saving || saveStatus === 'saved'}
-            style={{
-              padding: '6px 12px',
-              backgroundColor: saveStatus === 'saved' ? '#e0e0e0' : '#2196f3',
-              color: saveStatus === 'saved' ? '#999' : 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: saveStatus === 'saved' ? 'default' : 'pointer',
-              fontSize: '14px'
-            }}
-          >
-            Save Now
-          </button>
-        </div>
+        {chapters.map(chapter => {
+          const chapterScenes = scenes.filter(s => s.chapterId === chapter.id)
+          if (chapterScenes.length === 0) return null
+
+          return (
+            <div key={chapter.id}>
+              <div
+                style={{
+                  padding: '8px 16px',
+                  fontSize: '13px',
+                  fontWeight: '600',
+                  color: '#444',
+                  backgroundColor: '#f0f0f0',
+                  borderBottom: '1px solid #e0e0e0'
+                }}
+              >
+                {chapter.title}
+              </div>
+              {chapterScenes.map(scene => (
+                <div
+                  key={scene.id}
+                  onClick={() => handleSceneChange(scene.id)}
+                  style={{
+                    padding: '10px 16px',
+                    cursor: 'pointer',
+                    backgroundColor: selectedSceneId === scene.id ? '#e3f2fd' : 'transparent',
+                    borderLeft: selectedSceneId === scene.id ? '3px solid #2196f3' : '3px solid transparent',
+                    fontSize: '14px'
+                  }}
+                >
+                  <div style={{ fontWeight: selectedSceneId === scene.id ? '600' : '400' }}>
+                    {scene.title}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                    {scene.wordCount} words
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        })}
       </div>
 
-      {/* Editor */}
-      <div style={{ flex: 1, padding: '20px', overflow: 'auto' }}>
-        <textarea
-          value={content}
-          onChange={handleContentChange}
-          placeholder="Begin writing your scene..."
+      {/* Editor Area */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        {/* Header */}
+        <div
           style={{
-            width: '100%',
-            height: '100%',
-            border: 'none',
-            outline: 'none',
-            resize: 'none',
-            fontSize: '16px',
-            lineHeight: '1.6',
-            fontFamily: "'Georgia', serif"
+            borderBottom: '1px solid #e0e0e0',
+            padding: '16px 20px',
+            backgroundColor: '#fff',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
           }}
-        />
+        >
+          <div style={{ flex: 1, marginRight: '20px' }}>
+            <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>
+              {currentChapter?.title || 'Unknown Chapter'}
+            </div>
+            <input
+              type="text"
+              value={title}
+              onChange={handleTitleChange}
+              placeholder="Scene Title"
+              style={{
+                width: '100%',
+                border: 'none',
+                backgroundColor: 'transparent',
+                fontSize: '20px',
+                fontWeight: '600',
+                outline: 'none',
+                padding: '4px 0'
+              }}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '14px' }}>
+            <span style={{ color: '#666' }}>{wordCount} words</span>
+            <span
+              style={{
+                color: saveStatus === 'saved' ? '#4caf50' : saveStatus === 'saving' ? '#ff9800' : '#666'
+              }}
+            >
+              {saveStatus === 'saved' && '✓ Saved'}
+              {saveStatus === 'saving' && 'Saving...'}
+              {saveStatus === 'unsaved' && '• Unsaved'}
+            </span>
+            <button
+              onClick={saveScene}
+              disabled={saving || saveStatus === 'saved'}
+              style={{
+                padding: '6px 12px',
+                backgroundColor: saveStatus === 'saved' ? '#e0e0e0' : '#2196f3',
+                color: saveStatus === 'saved' ? '#999' : 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: saveStatus === 'saved' ? 'default' : 'pointer',
+                fontSize: '14px'
+              }}
+            >
+              Save Now
+            </button>
+          </div>
+        </div>
+
+        {/* Rich Text Editor */}
+        <div style={{ flex: 1, overflow: 'auto', backgroundColor: '#fff' }}>
+          {/* Toolbar */}
+          {editor && (
+            <div
+              style={{
+                padding: '8px 20px',
+                borderBottom: '1px solid #e0e0e0',
+                display: 'flex',
+                gap: '4px',
+                flexWrap: 'wrap'
+              }}
+            >
+              <button
+                onClick={() => editor.chain().focus().toggleBold().run()}
+                disabled={!editor.can().chain().focus().toggleBold().run()}
+                style={{
+                  padding: '6px 10px',
+                  border: '1px solid #ddd',
+                  backgroundColor: editor.isActive('bold') ? '#e3f2fd' : 'white',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600'
+                }}
+              >
+                B
+              </button>
+              <button
+                onClick={() => editor.chain().focus().toggleItalic().run()}
+                disabled={!editor.can().chain().focus().toggleItalic().run()}
+                style={{
+                  padding: '6px 10px',
+                  border: '1px solid #ddd',
+                  backgroundColor: editor.isActive('italic') ? '#e3f2fd' : 'white',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontStyle: 'italic'
+                }}
+              >
+                I
+              </button>
+              <button
+                onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+                style={{
+                  padding: '6px 10px',
+                  border: '1px solid #ddd',
+                  backgroundColor: editor.isActive('heading', { level: 1 }) ? '#e3f2fd' : 'white',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                H1
+              </button>
+              <button
+                onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+                style={{
+                  padding: '6px 10px',
+                  border: '1px solid #ddd',
+                  backgroundColor: editor.isActive('heading', { level: 2 }) ? '#e3f2fd' : 'white',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                H2
+              </button>
+              <button
+                onClick={() => editor.chain().focus().toggleBulletList().run()}
+                style={{
+                  padding: '6px 10px',
+                  border: '1px solid #ddd',
+                  backgroundColor: editor.isActive('bulletList') ? '#e3f2fd' : 'white',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                • List
+              </button>
+              <button
+                onClick={() => editor.chain().focus().toggleBlockquote().run()}
+                style={{
+                  padding: '6px 10px',
+                  border: '1px solid #ddd',
+                  backgroundColor: editor.isActive('blockquote') ? '#e3f2fd' : 'white',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                " Quote
+              </button>
+              <div style={{ borderLeft: '1px solid #ddd', margin: '0 4px' }} />
+              <button
+                onClick={() => editor.chain().focus().undo().run()}
+                disabled={!editor.can().chain().focus().undo().run()}
+                style={{
+                  padding: '6px 10px',
+                  border: '1px solid #ddd',
+                  backgroundColor: 'white',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                ↶ Undo
+              </button>
+              <button
+                onClick={() => editor.chain().focus().redo().run()}
+                disabled={!editor.can().chain().focus().redo().run()}
+                style={{
+                  padding: '6px 10px',
+                  border: '1px solid #ddd',
+                  backgroundColor: 'white',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                ↷ Redo
+              </button>
+            </div>
+          )}
+
+          {/* Editor Content */}
+          <div style={{ padding: '0 20px', maxWidth: '800px', margin: '0 auto' }}>
+            <EditorContent editor={editor} />
+          </div>
+        </div>
       </div>
     </div>
   )
