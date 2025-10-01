@@ -72,7 +72,7 @@ describe('View Rendering Integration Tests', () => {
       })
 
       // Should NOT be in an iframe
-      expect(screen.queryByTagName('iframe')).not.toBeInTheDocument()
+      expect(screen.queryByTitle(/view/i)).not.toBeInTheDocument()
     })
 
     it('should pass props correctly to native view', async () => {
@@ -144,7 +144,7 @@ describe('View Rendering Integration Tests', () => {
         viewId: 'external.board',
         bobbinId: 'external',
         execution: 'sandboxed',
-        componentLoader: null, // Sandboxed views don't use component loader
+        iframeSrc: '/api/views/external/board',
         ssr: false,
         capabilities: ['read'],
         metadata: {
@@ -175,7 +175,7 @@ describe('View Rendering Integration Tests', () => {
         viewId: 'untrusted.view',
         bobbinId: 'untrusted',
         execution: 'sandboxed',
-        componentLoader: null,
+        iframeSrc: '/api/views/untrusted/view',
         ssr: false,
         capabilities: [],
         metadata: { name: 'Untrusted', type: 'custom', source: 'external' }
@@ -231,7 +231,7 @@ describe('View Rendering Integration Tests', () => {
       await waitFor(() => {
         // Should render natively, not in iframe
         expect(screen.getByTestId('native-editor')).toBeInTheDocument()
-        expect(screen.queryByTagName('iframe')).not.toBeInTheDocument()
+        expect(screen.queryByTitle(/view/i)).not.toBeInTheDocument()
       })
     })
 
@@ -240,7 +240,7 @@ describe('View Rendering Integration Tests', () => {
         viewId: 'community.widget',
         bobbinId: 'community',
         execution: 'sandboxed',
-        componentLoader: null,
+        iframeSrc: '/api/views/community/widget',
         ssr: false,
         capabilities: ['read'],
         metadata: { name: 'Widget', type: 'widget', source: 'external' }
@@ -285,7 +285,7 @@ describe('View Rendering Integration Tests', () => {
 
       await waitFor(() => {
         // Should default to sandboxed (iframe)
-        const iframe = screen.queryByTagName('iframe')
+        const iframe = screen.queryByTitle(/view/i)
         expect(iframe).toBeInTheDocument()
       })
     })
@@ -324,13 +324,13 @@ describe('View Rendering Integration Tests', () => {
         viewId: 'view2',
         bobbinId: 'bobbin2',
         execution: 'sandboxed',
-        componentLoader: null,
+        iframeSrc: '/api/views/bobbin2/view2',
         ssr: false,
         capabilities: [],
         metadata: { name: 'View 2', type: 'custom', source: 'external' }
       })
 
-      const allViews = viewRegistry.list()
+      const allViews = viewRegistry.getAll()
       expect(allViews).toHaveLength(2)
       expect(allViews.map(v => v.viewId)).toContain('view1')
       expect(allViews.map(v => v.viewId)).toContain('view2')
@@ -365,11 +365,11 @@ describe('View Rendering Integration Tests', () => {
         metadata: { name: 'View 1', type: 'custom', source: 'native' }
       })
 
-      expect(viewRegistry.list()).toHaveLength(1)
+      expect(viewRegistry.getAll()).toHaveLength(1)
 
       viewRegistry.clear()
 
-      expect(viewRegistry.list()).toHaveLength(0)
+      expect(viewRegistry.getAll()).toHaveLength(0)
     })
   })
 

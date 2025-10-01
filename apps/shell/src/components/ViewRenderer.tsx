@@ -21,9 +21,9 @@ interface ViewRendererProps {
  */
 
 export function ViewRenderer({ projectId, bobbinId, viewId, sdk }: ViewRendererProps) {
-  // Construct the full view ID (bobbinId.viewId) for registry lookup
-  const fullViewId = `${bobbinId}.${viewId}`
-  
+  // If viewId already includes the bobbinId prefix, use it as-is, otherwise construct it
+  const fullViewId = viewId.includes('.') ? viewId : `${bobbinId}.${viewId}`
+
   // Look up the view in the registry to determine execution mode
   const viewEntry = viewRegistry.get(fullViewId)
   
