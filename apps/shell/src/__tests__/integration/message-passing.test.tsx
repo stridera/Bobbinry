@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom'
-import { createBobbinrySDK } from '@bobbinry/sdk'
+import { BobbinrySDK } from '@bobbinry/sdk'
 import { ViewRenderer } from '../../components/ViewRenderer'
 import { viewRegistry } from '../../lib/view-registry'
 import type { BookEntity } from '@bobbinry/types'
@@ -75,10 +75,8 @@ describe('Message Passing Integration Tests', () => {
         metadata: { name: 'Outline', type: 'tree', source: 'native' }
       })
 
-      const sdk = createBobbinrySDK({
-        projectId: 'test-project',
-        apiUrl: 'http://localhost:4000/api'
-      })
+      const sdk = new BobbinrySDK('test-component', 'http://localhost:4000/api')
+      sdk.setProject('test-project')
 
       render(
         <ViewRenderer
@@ -141,10 +139,8 @@ describe('Message Passing Integration Tests', () => {
         metadata: { name: 'Creator', type: 'custom', source: 'native' }
       })
 
-      const sdk = createBobbinrySDK({
-        projectId: 'test-project',
-        apiUrl: 'http://localhost:4000/api'
-      })
+      const sdk = new BobbinrySDK('test-component', 'http://localhost:4000/api')
+      sdk.setProject('test-project')
 
       render(
         <ViewRenderer
@@ -200,10 +196,8 @@ describe('Message Passing Integration Tests', () => {
         metadata: { name: 'Error', type: 'custom', source: 'native' }
       })
 
-      const sdk = createBobbinrySDK({
-        projectId: 'test-project',
-        apiUrl: 'http://localhost:4000/api'
-      })
+      const sdk = new BobbinrySDK('test-component', 'http://localhost:4000/api')
+      sdk.setProject('test-project')
 
       render(
         <ViewRenderer
@@ -234,10 +228,8 @@ describe('Message Passing Integration Tests', () => {
         metadata: { name: 'Board', type: 'board', source: 'external' }
       })
 
-      const sdk = createBobbinrySDK({
-        projectId: 'test-project',
-        apiUrl: 'http://localhost:4000/api'
-      })
+      const sdk = new BobbinrySDK('test-component', 'http://localhost:4000/api')
+      sdk.setProject('test-project')
 
       render(
         <ViewRenderer
@@ -292,10 +284,8 @@ describe('Message Passing Integration Tests', () => {
         metadata: { name: 'ReadOnly', type: 'custom', source: 'external' }
       })
 
-      const sdk = createBobbinrySDK({
-        projectId: 'test-project',
-        apiUrl: 'http://localhost:4000/api'
-      })
+      const sdk = new BobbinrySDK('test-component', 'http://localhost:4000/api')
+      sdk.setProject('test-project')
 
       render(
         <ViewRenderer
@@ -344,7 +334,7 @@ describe('Message Passing Integration Tests', () => {
         componentLoader: async () => {
           return function EmitterView({ sdk }: any) {
             const handleEmit = () => {
-              sdk.views.emit('custom:event', { data: 'test' })
+              sdk.messageBus.send('*', 'custom:event', { data: 'test' })
             }
 
             return (
@@ -359,13 +349,11 @@ describe('Message Passing Integration Tests', () => {
         metadata: { name: 'Emitter', type: 'custom', source: 'native' }
       })
 
-      const sdk = createBobbinrySDK({
-        projectId: 'test-project',
-        apiUrl: 'http://localhost:4000/api'
-      })
+      const sdk = new BobbinrySDK('test-component', 'http://localhost:4000/api')
+      sdk.setProject('test-project')
 
       // Subscribe to event
-      sdk.views.on('custom:event', eventHandler)
+      sdk.messageBus.on('custom:event', eventHandler)
 
       render(
         <ViewRenderer
@@ -400,8 +388,8 @@ describe('Message Passing Integration Tests', () => {
               const handler = (data: any) => {
                 receivedData = data
               }
-              sdk.views.on('test:event', handler)
-              return () => sdk.views.off('test:event', handler)
+              sdk.messageBus.on('test:event', handler)
+              return () => sdk.messageBus.off('test:event', handler)
             }, [sdk])
 
             return <div data-testid="listener">Listening...</div>
@@ -412,10 +400,8 @@ describe('Message Passing Integration Tests', () => {
         metadata: { name: 'Listener', type: 'custom', source: 'native' }
       })
 
-      const sdk = createBobbinrySDK({
-        projectId: 'test-project',
-        apiUrl: 'http://localhost:4000/api'
-      })
+      const sdk = new BobbinrySDK('test-component', 'http://localhost:4000/api')
+      sdk.setProject('test-project')
 
       render(
         <ViewRenderer
@@ -431,7 +417,7 @@ describe('Message Passing Integration Tests', () => {
       })
 
       // Emit event from outside
-      sdk.views.emit('test:event', { message: 'hello' })
+      sdk.messageBus.send('*', 'test:event', { message: 'hello' })
 
       await waitFor(() => {
         expect(receivedData).toEqual({ message: 'hello' })
@@ -448,8 +434,8 @@ describe('Message Passing Integration Tests', () => {
         componentLoader: async () => {
           return function CleanupView({ sdk }: any) {
             React.useEffect(() => {
-              sdk.views.on('cleanup:event', handler)
-              return () => sdk.views.off('cleanup:event', handler)
+              sdk.messageBus.on('cleanup:event', handler)
+              return () => sdk.messageBus.off('cleanup:event', handler)
             }, [sdk])
 
             return <div data-testid="cleanup">View</div>
@@ -460,10 +446,8 @@ describe('Message Passing Integration Tests', () => {
         metadata: { name: 'Cleanup', type: 'custom', source: 'native' }
       })
 
-      const sdk = createBobbinrySDK({
-        projectId: 'test-project',
-        apiUrl: 'http://localhost:4000/api'
-      })
+      const sdk = new BobbinrySDK('test-component', 'http://localhost:4000/api')
+      sdk.setProject('test-project')
 
       const { unmount } = render(
         <ViewRenderer
@@ -482,7 +466,7 @@ describe('Message Passing Integration Tests', () => {
       unmount()
 
       // Emit event after unmount
-      sdk.views.emit('cleanup:event', {})
+      sdk.messageBus.send('*', 'cleanup:event', {})
 
       // Handler should NOT be called after cleanup
       expect(handler).not.toHaveBeenCalled()
@@ -538,10 +522,8 @@ describe('Message Passing Integration Tests', () => {
         metadata: { name: 'Typed', type: 'custom', source: 'native' }
       })
 
-      const sdk = createBobbinrySDK({
-        projectId: 'test-project',
-        apiUrl: 'http://localhost:4000/api'
-      })
+      const sdk = new BobbinrySDK('test-component', 'http://localhost:4000/api')
+      sdk.setProject('test-project')
 
       render(
         <ViewRenderer
