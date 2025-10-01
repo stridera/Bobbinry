@@ -10,6 +10,9 @@ capabilities:
   external: false
   ai: false
   customViews: false
+execution:
+  mode: native
+  signature: dev_mode_skip
 data:
   collections:
     - name: Book

@@ -43,6 +43,16 @@ export class ManifestCompiler {
         return result
       }
 
+      // Verify signature for native bobbins
+      const signatureResult = await this.verifySignature(manifest)
+      if (!signatureResult.valid) {
+        result.errors.push(...signatureResult.errors)
+        return result
+      }
+      if (signatureResult.warnings) {
+        result.warnings.push(...signatureResult.warnings)
+      }
+
       // Generate database migrations from collections
       const migrations = await this.generateMigrations(manifest)
       result.migrations = migrations
@@ -105,6 +115,75 @@ export class ManifestCompiler {
         errors: [`Schema validation setup failed: ${error}`]
       }
     }
+  }
+
+  /**
+   * Verify signature for native bobbins
+   *
+   * Native bobbins must be cryptographically signed in production to ensure they haven't been tampered with.
+   * In development mode, we allow a special 'dev_mode_skip' signature.
+   *
+   * @param manifest - The manifest to verify
+   * @returns Validation result with errors/warnings
+   */
+  private async verifySignature(manifest: Manifest): Promise<ValidationResult & { warnings?: string[] }> {
+    // Only verify signatures for native execution mode
+    if (!manifest.execution || manifest.execution.mode !== 'native') {
+      return { valid: true, errors: [] }
+    }
+
+    const isDevelopment = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'
+    const signature = manifest.execution.signature
+
+    // Development mode: allow dev_mode_skip
+    if (isDevelopment) {
+      if (signature === 'dev_mode_skip') {
+        return {
+          valid: true,
+          errors: [],
+          warnings: [`Native bobbin '${manifest.id}' using dev_mode_skip signature - this is only allowed in development`]
+        }
+      }
+
+      // In dev, we're more lenient - missing signature gets a warning but still passes
+      if (!signature) {
+        return {
+          valid: true,
+          errors: [],
+          warnings: [`Native bobbin '${manifest.id}' has no signature - this would fail in production`]
+        }
+      }
+    }
+
+    // Production mode: require valid signature
+    if (!isDevelopment) {
+      if (!signature) {
+        return {
+          valid: false,
+          errors: [`Native bobbin '${manifest.id}' requires a valid Ed25519 signature in production`]
+        }
+      }
+
+      if (signature === 'dev_mode_skip') {
+        return {
+          valid: false,
+          errors: [`Native bobbin '${manifest.id}' cannot use dev_mode_skip signature in production`]
+        }
+      }
+
+      // TODO: Implement actual Ed25519 signature verification
+      // For now, reject all signatures in production (will be implemented in Phase 2)
+      return {
+        valid: false,
+        errors: [
+          `Native bobbin '${manifest.id}' signature verification not yet implemented`,
+          `Ed25519 signature verification will be added in Phase 2 (Marketplace)`
+        ]
+      }
+    }
+
+    // Should never reach here, but TypeScript wants exhaustive checking
+    return { valid: true, errors: [] }
   }
 
   static async parseManifestFile(filePath: string): Promise<Manifest> {
