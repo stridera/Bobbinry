@@ -24,7 +24,7 @@ interface BobbinMetadata {
     mode: 'native' | 'sandboxed'
     signature?: string
   }
-  manifestPath: string
+  manifestContent: string
   isInstalled: boolean
   installedVersion?: string
 }
@@ -108,11 +108,8 @@ function MarketplaceContent() {
     setActionMessage(null)
 
     try {
-      // Fetch manifest content
-      const manifestResponse = await fetch(bobbin.manifestPath)
-      const manifestContent = await manifestResponse.text()
-
-      await sdk.api.installBobbin(currentProject, manifestContent, 'yaml')
+      // Use the manifest content from the API response
+      await sdk.api.installBobbin(currentProject, bobbin.manifestContent, 'yaml')
 
       // Reload data
       const [available, installed] = await Promise.all([

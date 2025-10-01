@@ -12,6 +12,7 @@ export async function GET() {
     const entries = fs.readdirSync(bobbinsDir, { withFileTypes: true })
 
     const bobbins = []
+    const seenIds = new Set<string>()
 
     for (const entry of entries) {
       // Look for manifest.yaml files in subdirectories or .manifest.yaml files in root
@@ -33,7 +34,13 @@ export async function GET() {
           const content = fs.readFileSync(manifestPath, 'utf8')
           const manifest = yaml.parse(content)
 
-          // Create metadata object
+          // Skip if we've already seen this bobbin ID
+          if (seenIds.has(manifest.id)) {
+            continue
+          }
+          seenIds.add(manifest.id)
+
+          // Create metadata object with full manifest content
           const bobbinMeta = {
             id: manifest.id,
             name: manifest.name,
@@ -44,7 +51,7 @@ export async function GET() {
             license: manifest.license,
             capabilities: manifest.capabilities || {},
             execution: manifest.execution,
-            manifestPath: `/bobbins/${entry.isDirectory() ? entry.name + '/' : ''}${path.basename(manifestPath)}`
+            manifestContent: content // Include the full YAML content
           }
 
           bobbins.push(bobbinMeta)
