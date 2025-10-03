@@ -4,10 +4,10 @@ import { join } from 'path'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { bobbinId: string; path: string[] } }
+  { params }: { params: Promise<{ bobbinId: string; path: string[] }> }
 ) {
   try {
-    const { bobbinId, path } = params
+    const { bobbinId, path } = await params
     const filePath = path.join('/')
 
     // Construct the path to the bobbin file
