@@ -45,13 +45,26 @@ export function ExtensionProvider({ children }: ExtensionProviderProps) {
     // Mark as hydrated first
     setIsHydrated(true)
 
-    // Reset listeners only, preserve extensions
-    console.log('[EXTENSIONS] Client hydrated, resetting listeners only')
-    extensionRegistry.reset()
+    // Don't reset on client hydration - ExtensionSlots are already subscribed
+    console.log('[EXTENSIONS] Client hydrated, keeping existing listeners')
 
     // Initialize state from registry
     setExtensions(extensionRegistry.getAllExtensions())
     setStats(extensionRegistry.getStats())
+
+    // Notify all slots that we're hydrated (triggers re-render with current extensions)
+    setTimeout(() => {
+      console.log('[EXTENSIONS] Notifying all slots after hydration')
+      const slots = extensionRegistry.getSlots()
+      slots.forEach(slot => {
+        // Manually notify each slot
+        const listeners = (extensionRegistry as any).listeners.get(slot.id)
+        if (listeners && listeners.size > 0) {
+          const extensions = extensionRegistry.getExtensionsForSlot(slot.id)
+          listeners.forEach((callback: any) => callback(extensions))
+        }
+      })
+    }, 0)
 
     // Cleanup on unmount
     return () => {
@@ -61,7 +74,7 @@ export function ExtensionProvider({ children }: ExtensionProviderProps) {
 
   // Stable callback functions
   const registerExtension = useCallback((bobbinId: string, contribution: any) => {
-    if (!isHydrated) return
+    console.log('[ExtensionProvider] registerExtension called:', { bobbinId, contributionId: contribution.id, isHydrated })
     try {
       extensionRegistry.registerExtension(bobbinId, contribution)
       setExtensions(extensionRegistry.getAllExtensions())
@@ -156,15 +169,51 @@ export function useManifestExtensions() {
               name: view.name || view.id,
               type: view.type,
               source: view.source
-            }
+            },
+            // NEW: Pass handlers and priority from manifest
+            handlers: view.handlers,
+            priority: view.priority
           })
         }
       }
-      
+
       // Register extension contributions
+      console.log('[ExtensionProvider] Checking extensions:', {
+        hasExtensions: !!manifest.extensions,
+        hasContributions: !!manifest.extensions?.contributions,
+        contributionsLength: manifest.extensions?.contributions?.length,
+        hasRegisterExtension: !!registerExtension
+      })
+
       if (manifest.extensions?.contributions && registerExtension) {
+        console.log('[ExtensionProvider] Registering extension contributions for', bobbinId)
+        const { loadNativeView } = require('../lib/native-view-loader')
+
         for (const contribution of manifest.extensions.contributions) {
+          console.log('[ExtensionProvider] Registering extension:', contribution.id, 'slot:', contribution.slot)
           registerExtension(bobbinId, contribution)
+
+          // For native panels, load and attach the component
+          if (manifest.execution?.mode === 'native' && contribution.type === 'panel' && contribution.entry) {
+            console.log(`[ExtensionProvider] Loading native panel component: ${bobbinId}.${contribution.entry}`)
+
+            try {
+              // Load the component asynchronously
+              loadNativeView(bobbinId, contribution.entry).then((component: any) => {
+                console.log(`[ExtensionProvider] Component loaded for ${bobbinId}.${contribution.entry}:`, component)
+                console.log(`[ExtensionProvider] Component type:`, typeof component)
+                console.log(`[ExtensionProvider] Component is function:`, typeof component === 'function')
+                const { extensionRegistry } = require('../lib/extensions')
+                const extensionId = `${bobbinId}.${contribution.id}`
+                extensionRegistry.registerExtensionComponent(extensionId, component)
+                console.log(`[ExtensionProvider] Registered component for panel: ${extensionId}`)
+              }).catch((error: any) => {
+                console.error(`[ExtensionProvider] Failed to load panel component ${bobbinId}.${contribution.entry}:`, error)
+              })
+            } catch (error) {
+              console.error(`[ExtensionProvider] Error loading panel component:`, error)
+            }
+          }
         }
       }
     } catch (error) {

@@ -1,10 +1,43 @@
 :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-body { margin: 0; background: #0b0b0c; color: #e7e7ea; }
-header { display: flex; align-items: center; gap: .5rem; padding: .75rem 1rem; border-bottom: 1px solid #2a2a2e; }
+
+/* Light theme (default) */
+body.light {
+  --bg-primary: #ffffff;
+  --bg-header: #f3f4f6;
+  --border-color: #e5e7eb;
+  --text-primary: #1f2937;
+  --text-secondary: #6b7280;
+}
+
+/* Dark theme */
+body.dark {
+  --bg-primary: #0b0b0c;
+  --bg-header: #1a1a1b;
+  --border-color: #2a2a2e;
+  --text-primary: #e7e7ea;
+  --text-secondary: #9a9aa1;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.2s, color 0.2s;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .75rem 1rem;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-header);
+}
+
 header img { width: 18px; height: 18px; opacity: .85; }
-h1 { font-size: 14px; margin: 0; font-weight: 600; }
+h1 { font-size: 14px; margin: 0; font-weight: 600; color: var(--text-primary); }
 main { padding: 1rem; }
-#status { color: #9a9aa1; font-size: 12px; }
+#status { color: var(--text-secondary); font-size: 12px; }
 #entry { display: grid; gap: .5rem; }
-#word { font-size: 14px; font-weight: 700; }
-#defs { font-size: 13px; line-height: 1.4; white-space: pre-wrap; }
+#word { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+#defs { font-size: 13px; line-height: 1.4; white-space: pre-wrap; color: var(--text-primary); }

@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import { BobbinrySDK } from '@bobbinry/sdk'
 import { ShellLayout } from '@/components/ShellLayout'
-import { ViewRenderer } from '@/components/ViewRenderer'
+import { ViewRouter } from '@/components/ViewRouter'
 import { useManifestExtensions } from '@/components/ExtensionProvider'
 
 interface InstalledBobbin {
@@ -30,16 +30,18 @@ interface InstalledBobbin {
 export default function ProjectPage() {
   const params = useParams()
   const projectId = params.projectId as string
-  
+  const [hasInitialNavigation, setHasInitialNavigation] = useState(false)
+
   const [sdk] = useState(() => new BobbinrySDK('shell'))
   const [installedBobbins, setInstalledBobbins] = useState<InstalledBobbin[]>([])
-  const [currentView, setCurrentView] = useState<string | null>(null)
-  const [currentBobbin, setCurrentBobbin] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  
+
+  // Memoize context to prevent unnecessary re-renders
+  const shellContext = useMemo(() => ({ projectId }), [projectId])
+
   // Get extension registration hooks
-  const { registerManifestExtensions } = useManifestExtensions()
-  
+  const { registerManifestExtensions, unregisterManifestExtensions } = useManifestExtensions()
+
   // Load installed bobbins and their views
   useEffect(() => {
     const loadProject = async () => {
@@ -54,29 +56,30 @@ export default function ProjectPage() {
         console.log('🚀 PROJECT PAGE: response.bobbins:', response.bobbins)
         console.log('🚀 PROJECT PAGE: response.bobbins type:', typeof response.bobbins)
         console.log('🚀 PROJECT PAGE: response.bobbins length:', response.bobbins?.length)
-        setInstalledBobbins(response.bobbins || [])
+
+        const newBobbins = response.bobbins || []
+        const oldBobbinIds = installedBobbins.map(b => b.id)
+        const newBobbinIds = newBobbins.map((b: InstalledBobbin) => b.id)
+
+        // Unregister extensions for bobbins that were removed
+        const removedBobbinIds = oldBobbinIds.filter(id => !newBobbinIds.includes(id))
+        removedBobbinIds.forEach(bobbinId => {
+          console.log('🗑️ PROJECT PAGE: Unregistering extensions for removed bobbin:', bobbinId)
+          unregisterManifestExtensions(bobbinId)
+        })
+
+        setInstalledBobbins(newBobbins)
 
         // Register extensions for all installed bobbins
-        if (response.bobbins?.length > 0) {
-          console.log('🚀 PROJECT PAGE: Registering extensions for', response.bobbins.length, 'bobbins')
-          response.bobbins.forEach((bobbin: InstalledBobbin) => {
+        if (newBobbins.length > 0) {
+          console.log('🚀 PROJECT PAGE: Registering extensions for', newBobbins.length, 'bobbins')
+          newBobbins.forEach((bobbin: InstalledBobbin) => {
             console.log('🚀 PROJECT PAGE: Registering extensions for bobbin:', bobbin.id, 'mode:', bobbin.manifest.execution?.mode)
             registerManifestExtensions(bobbin.id, bobbin.manifest)
           })
         }
 
-        // Auto-select first view if available
-        if (response.bobbins?.length > 0) {
-          const firstBobbin = response.bobbins[0]
-          const firstView = firstBobbin.manifest?.ui?.views?.[0]
-          console.log('🚀 PROJECT PAGE: Auto-selecting:', { firstBobbin: firstBobbin.id, firstView: firstView?.id })
-          if (firstView) {
-            setCurrentBobbin(firstBobbin.id)
-            setCurrentView(firstView.id)
-          }
-        } else {
-          console.log('🚀 PROJECT PAGE: No bobbins found in response')
-        }
+        console.log('✅ PROJECT PAGE: Bobbins loaded and registered')
       } catch (error) {
         console.error('❌ PROJECT PAGE: Failed to load project:', error)
         console.error('❌ PROJECT PAGE: Error details:', {
@@ -95,110 +98,19 @@ export default function ProjectPage() {
     }
   }, [projectId, sdk])
   
-  const availableViews = installedBobbins.flatMap(bobbin => 
-    (bobbin.manifest?.ui?.views || []).map(view => ({
-      bobbinId: bobbin.id,
-      bobbinName: bobbin.manifest.name,
-      viewId: view.id,
-      viewType: view.type,
-      viewSource: view.source,
-      executionMode: bobbin.manifest.execution?.mode || 'sandboxed'
-    }))
-  )
-  
   if (loading) {
     return (
-      <ShellLayout currentView="project" context={{ projectId }}>
+      <ShellLayout currentView="project" context={shellContext}>
         <div className="flex-1 flex items-center justify-center">
           <div className="text-gray-500">Loading project...</div>
         </div>
       </ShellLayout>
     )
   }
-  
+
   return (
-    <ShellLayout currentView="project" context={{ projectId }}>
-      <div className="flex-1 flex overflow-hidden">
-        {/* View Navigation */}
-        <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
-          <div className="p-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">Views</h2>
-            <p className="text-sm text-gray-500">Project: {projectId.slice(0, 8)}...</p>
-            {/* DEBUG INFO */}
-            <div className="mt-2 p-2 bg-yellow-100 text-xs">
-              <div>DEBUG: installedBobbins.length = {installedBobbins.length}</div>
-              <div>DEBUG: availableViews.length = {availableViews.length}</div>
-              <div>DEBUG: currentBobbin = {currentBobbin || 'null'}</div>
-              <div>DEBUG: currentView = {currentView || 'null'}</div>
-              <div>DEBUG: executionMode = {availableViews.find(v => v.bobbinId === currentBobbin && v.viewId === currentView)?.executionMode || 'unknown'}</div>
-            </div>
-          </div>
-          
-          <div className="flex-1 overflow-auto">
-            {availableViews.length === 0 ? (
-              <div className="p-4 text-gray-500 text-sm">
-                No views available. Install a bobbin with UI views.
-              </div>
-            ) : (
-              <div className="py-2">
-                {availableViews.map(view => (
-                  <button
-                    key={`${view.bobbinId}-${view.viewId}`}
-                    onClick={() => {
-                      setCurrentBobbin(view.bobbinId)
-                      setCurrentView(view.viewId)
-                    }}
-                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${
-                      currentView === view.viewId && currentBobbin === view.bobbinId
-                        ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700'
-                        : 'text-gray-700'
-                    }`}
-                  >
-                    <div className="font-medium">{view.viewId}</div>
-                    <div className="text-xs text-gray-500">
-                      {view.bobbinName} • {view.viewType}
-                      <span className={view.executionMode === 'native' ? 'text-purple-600 font-semibold ml-1' : 'text-gray-500 ml-1'}>
-                        • {view.executionMode === 'native' ? '⚡' : '🔒'}
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-        
-        {/* View Content */}
-        <div className="flex-1 flex flex-col">
-          {currentView && currentBobbin ? (
-            <>
-              <div style={{ background: 'yellow', padding: '8px', fontSize: '12px' }}>
-                DEBUG: projectId={projectId}, bobbinId={currentBobbin}, viewId={currentView}
-              </div>
-              <ViewRenderer
-                projectId={projectId}
-                bobbinId={currentBobbin}
-                viewId={currentView}
-                sdk={sdk}
-              />
-            </>
-          ) : (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center text-gray-500">
-                <p>Select a view to get started</p>
-                {availableViews.length === 0 && (
-                  <p className="text-sm mt-2">
-                    Install bobbins with UI views from the{' '}
-                    <a href="/" className="text-blue-600 hover:underline">
-                      home page
-                    </a>
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+    <ShellLayout currentView="project" context={shellContext}>
+      <ViewRouter projectId={projectId} sdk={sdk} />
     </ShellLayout>
   )
 }

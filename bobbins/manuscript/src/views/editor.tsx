@@ -10,6 +10,10 @@ interface EditorViewProps {
   bobbinId: string
   viewId: string
   sdk: BobbinrySDK
+  // New entity context props from ViewRouter
+  entityType?: string
+  entityId?: string
+  metadata?: Record<string, any>
 }
 
 interface Scene {
@@ -24,7 +28,7 @@ interface Scene {
  * Native Editor View for Manuscript bobbin
  * Provides rich text editing for scenes with auto-save
  */
-export default function EditorView({ sdk, projectId }: EditorViewProps) {
+export default function EditorView({ sdk, projectId, entityType, entityId }: EditorViewProps) {
   const [scenes, setScenes] = useState<Scene[]>([])
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null)
   const [content, setContent] = useState('')
@@ -48,6 +52,7 @@ export default function EditorView({ sdk, projectId }: EditorViewProps) {
       CharacterCount
     ],
     content: '',
+    immediatelyRender: false,
     editorProps: {
       attributes: {
         class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl mx-auto focus:outline-none',
@@ -59,6 +64,28 @@ export default function EditorView({ sdk, projectId }: EditorViewProps) {
       setContent(html)
       setSaveStatus('unsaved')
       setWordCount(editor.storage.characterCount.words())
+    },
+    onSelectionUpdate: ({ editor }) => {
+      // Get selected text
+      const { from, to } = editor.state.selection
+      const text = editor.state.doc.textBetween(from, to, ' ')
+      
+      // Publish selection event if text is selected
+      if (text && text.trim()) {
+        // Post message directly to window for sandboxed panels
+        if (typeof window !== 'undefined') {
+          window.postMessage({
+            type: 'bus:event',
+            source: 'manuscript.editor',
+            target: '*',
+            topic: 'manuscript.editor.selection.v1',
+            payload: {
+              text: text.trim(),
+              length: text.trim().length
+            }
+          }, '*')
+        }
+      }
     }
   })
 
@@ -85,6 +112,44 @@ export default function EditorView({ sdk, projectId }: EditorViewProps) {
       loadSceneContent(selectedSceneId)
     }
   }, [selectedSceneId])
+
+  // Listen for navigation events from the navigation panel (backward compatibility)
+  useEffect(() => {
+    const handleNavigateToScene = (event: Event) => {
+      const customEvent = event as CustomEvent<{ sceneId: string }>
+      const { sceneId } = customEvent.detail
+      console.log('[EditorView] Received navigate-to-scene event:', sceneId)
+      
+      // Save current scene before switching
+      if (saveStatus === 'unsaved' && selectedSceneId) {
+        saveScene()
+      }
+      setSelectedSceneId(sceneId)
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('manuscript:navigate-to-scene', handleNavigateToScene)
+      console.log('[EditorView] Registered listener for manuscript:navigate-to-scene')
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('manuscript:navigate-to-scene', handleNavigateToScene)
+      }
+    }
+  }, [saveStatus, selectedSceneId])
+
+  // Handle entity context from ViewRouter
+  useEffect(() => {
+    if (entityType === 'scene' && entityId) {
+      console.log('[EditorView] Received entity context:', { entityType, entityId })
+      // Save current scene before switching
+      if (saveStatus === 'unsaved' && selectedSceneId && selectedSceneId !== entityId) {
+        saveScene()
+      }
+      setSelectedSceneId(entityId)
+    }
+  }, [entityType, entityId])
 
   async function loadScenes() {
     try {
@@ -131,13 +196,11 @@ export default function EditorView({ sdk, projectId }: EditorViewProps) {
   }
 
   async function loadSceneContent(sceneId: string) {
-    const scene = scenes.find(s => s.id === sceneId)
-    if (!scene) return
 
     try {
       // Fetch fresh data from API
       const entity = await sdk.entities.get('scenes', sceneId)
-      const sceneData = entity.data as any
+      const sceneData = entity as any
 
       setTitle(sceneData.title || '')
       const sceneContent = sceneData.body || ''
@@ -188,17 +251,11 @@ export default function EditorView({ sdk, projectId }: EditorViewProps) {
     setSaveStatus('unsaved')
   }
 
-  function handleSceneChange(sceneId: string) {
-    // Save current scene before switching
-    if (saveStatus === 'unsaved' && selectedSceneId) {
-      saveScene()
-    }
-    setSelectedSceneId(sceneId)
-  }
+
 
   if (loading) {
     return (
-      <div style={{ padding: '20px', textAlign: 'center' }}>
+      <div className="p-5 text-center text-gray-600 dark:text-gray-300">
         <div>Loading editor...</div>
       </div>
     )
@@ -206,9 +263,9 @@ export default function EditorView({ sdk, projectId }: EditorViewProps) {
 
   if (scenes.length === 0) {
     return (
-      <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
-        <div style={{ marginBottom: '12px' }}>No scenes available</div>
-        <div style={{ fontSize: '14px' }}>Create chapters and scenes from the outline view</div>
+      <div className="p-5 text-center text-gray-600 dark:text-gray-400">
+        <div className="mb-3">No scenes available</div>
+        <div className="text-sm">Create chapters and scenes from the outline view</div>
       </div>
     )
   }
@@ -217,85 +274,11 @@ export default function EditorView({ sdk, projectId }: EditorViewProps) {
   const currentChapter = chapters.find(c => c.id === currentScene?.chapterId)
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        height: '100%',
-        fontFamily: 'system-ui, sans-serif'
-      }}
-    >
-      {/* Scene Navigation Sidebar */}
-      <div
-        style={{
-          width: '250px',
-          borderRight: '1px solid #e0e0e0',
-          overflowY: 'auto',
-          backgroundColor: '#fafafa'
-        }}
-      >
-        <div style={{ padding: '16px', borderBottom: '1px solid #e0e0e0' }}>
-          <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600', color: '#666' }}>
-            SCENES
-          </h3>
-        </div>
-        {chapters.map(chapter => {
-          const chapterScenes = scenes.filter(s => s.chapterId === chapter.id)
-          if (chapterScenes.length === 0) return null
-
-          return (
-            <div key={chapter.id}>
-              <div
-                style={{
-                  padding: '8px 16px',
-                  fontSize: '13px',
-                  fontWeight: '600',
-                  color: '#444',
-                  backgroundColor: '#f0f0f0',
-                  borderBottom: '1px solid #e0e0e0'
-                }}
-              >
-                {chapter.title}
-              </div>
-              {chapterScenes.map(scene => (
-                <div
-                  key={scene.id}
-                  onClick={() => handleSceneChange(scene.id)}
-                  style={{
-                    padding: '10px 16px',
-                    cursor: 'pointer',
-                    backgroundColor: selectedSceneId === scene.id ? '#e3f2fd' : 'transparent',
-                    borderLeft: selectedSceneId === scene.id ? '3px solid #2196f3' : '3px solid transparent',
-                    fontSize: '14px'
-                  }}
-                >
-                  <div style={{ fontWeight: selectedSceneId === scene.id ? '600' : '400' }}>
-                    {scene.title}
-                  </div>
-                  <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
-                    {scene.wordCount} words
-                  </div>
-                </div>
-              ))}
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Editor Area */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+    <div className="flex flex-col h-full font-sans">
         {/* Header */}
-        <div
-          style={{
-            borderBottom: '1px solid #e0e0e0',
-            padding: '16px 20px',
-            backgroundColor: '#fff',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
-          }}
-        >
-          <div style={{ flex: 1, marginRight: '20px' }}>
-            <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>
+        <div className="border-b border-gray-200 dark:border-gray-700 p-4 bg-white dark:bg-gray-800 flex justify-between items-center">
+          <div className="flex-1 mr-5">
+            <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">
               {currentChapter?.title || 'Unknown Chapter'}
             </div>
             <input
@@ -303,23 +286,17 @@ export default function EditorView({ sdk, projectId }: EditorViewProps) {
               value={title}
               onChange={handleTitleChange}
               placeholder="Scene Title"
-              style={{
-                width: '100%',
-                border: 'none',
-                backgroundColor: 'transparent',
-                fontSize: '20px',
-                fontWeight: '600',
-                outline: 'none',
-                padding: '4px 0'
-              }}
+              className="w-full border-none bg-transparent text-xl font-semibold outline-none py-1 text-gray-900 dark:text-gray-100"
             />
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '14px' }}>
-            <span style={{ color: '#666' }}>{wordCount} words</span>
+          <div className="flex items-center gap-4 text-sm">
+            <span className="text-gray-600 dark:text-gray-400">{wordCount} words</span>
             <span
-              style={{
-                color: saveStatus === 'saved' ? '#4caf50' : saveStatus === 'saving' ? '#ff9800' : '#666'
-              }}
+              className={
+                saveStatus === 'saved' ? 'text-green-600 dark:text-green-400' :
+                saveStatus === 'saving' ? 'text-orange-600 dark:text-orange-400' :
+                'text-gray-600 dark:text-gray-400'
+              }
             >
               {saveStatus === 'saved' && '✓ Saved'}
               {saveStatus === 'saving' && 'Saving...'}
@@ -328,15 +305,11 @@ export default function EditorView({ sdk, projectId }: EditorViewProps) {
             <button
               onClick={saveScene}
               disabled={saving || saveStatus === 'saved'}
-              style={{
-                padding: '6px 12px',
-                backgroundColor: saveStatus === 'saved' ? '#e0e0e0' : '#2196f3',
-                color: saveStatus === 'saved' ? '#999' : 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: saveStatus === 'saved' ? 'default' : 'pointer',
-                fontSize: '14px'
-              }}
+              className={`px-3 py-1.5 rounded ${
+                saveStatus === 'saved'
+                  ? 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-default'
+                  : 'bg-blue-600 dark:bg-blue-700 text-white cursor-pointer hover:bg-blue-700 dark:hover:bg-blue-600'
+              }`}
             >
               Save Now
             </button>
@@ -344,126 +317,85 @@ export default function EditorView({ sdk, projectId }: EditorViewProps) {
         </div>
 
         {/* Rich Text Editor */}
-        <div style={{ flex: 1, overflow: 'auto', backgroundColor: '#fff' }}>
+        <div className="flex-1 overflow-auto bg-white dark:bg-gray-900">
           {/* Toolbar */}
           {editor && (
-            <div
-              style={{
-                padding: '8px 20px',
-                borderBottom: '1px solid #e0e0e0',
-                display: 'flex',
-                gap: '4px',
-                flexWrap: 'wrap'
-              }}
-            >
+            <div className="p-2 px-5 border-b border-gray-200 dark:border-gray-700 flex gap-1 flex-wrap bg-gray-50 dark:bg-gray-800">
+
               <button
                 onClick={() => editor.chain().focus().toggleBold().run()}
                 disabled={!editor.can().chain().focus().toggleBold().run()}
-                style={{
-                  padding: '6px 10px',
-                  border: '1px solid #ddd',
-                  backgroundColor: editor.isActive('bold') ? '#e3f2fd' : 'white',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '600'
-                }}
+                className={`px-2.5 py-1.5 border border-gray-300 dark:border-gray-600 rounded cursor-pointer text-sm font-semibold ${
+                  editor.isActive('bold')
+                    ? 'bg-blue-100 dark:bg-blue-900 text-blue-900 dark:text-blue-100'
+                    : 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+                }`}
               >
                 B
               </button>
               <button
                 onClick={() => editor.chain().focus().toggleItalic().run()}
                 disabled={!editor.can().chain().focus().toggleItalic().run()}
-                style={{
-                  padding: '6px 10px',
-                  border: '1px solid #ddd',
-                  backgroundColor: editor.isActive('italic') ? '#e3f2fd' : 'white',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontStyle: 'italic'
-                }}
+                className={`px-2.5 py-1.5 border border-gray-300 dark:border-gray-600 rounded cursor-pointer text-sm italic ${
+                  editor.isActive('italic')
+                    ? 'bg-blue-100 dark:bg-blue-900 text-blue-900 dark:text-blue-100'
+                    : 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+                }`}
               >
                 I
               </button>
               <button
                 onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-                style={{
-                  padding: '6px 10px',
-                  border: '1px solid #ddd',
-                  backgroundColor: editor.isActive('heading', { level: 1 }) ? '#e3f2fd' : 'white',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '14px'
-                }}
+                className={`px-2.5 py-1.5 border border-gray-300 dark:border-gray-600 rounded cursor-pointer text-sm ${
+                  editor.isActive('heading', { level: 1 })
+                    ? 'bg-blue-100 dark:bg-blue-900 text-blue-900 dark:text-blue-100'
+                    : 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+                }`}
               >
                 H1
               </button>
               <button
                 onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-                style={{
-                  padding: '6px 10px',
-                  border: '1px solid #ddd',
-                  backgroundColor: editor.isActive('heading', { level: 2 }) ? '#e3f2fd' : 'white',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '14px'
-                }}
+                className={`px-2.5 py-1.5 border border-gray-300 dark:border-gray-600 rounded cursor-pointer text-sm ${
+                  editor.isActive('heading', { level: 2 })
+                    ? 'bg-blue-100 dark:bg-blue-900 text-blue-900 dark:text-blue-100'
+                    : 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+                }`}
               >
                 H2
               </button>
               <button
                 onClick={() => editor.chain().focus().toggleBulletList().run()}
-                style={{
-                  padding: '6px 10px',
-                  border: '1px solid #ddd',
-                  backgroundColor: editor.isActive('bulletList') ? '#e3f2fd' : 'white',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '14px'
-                }}
+                className={`px-2.5 py-1.5 border border-gray-300 dark:border-gray-600 rounded cursor-pointer text-sm ${
+                  editor.isActive('bulletList')
+                    ? 'bg-blue-100 dark:bg-blue-900 text-blue-900 dark:text-blue-100'
+                    : 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+                }`}
               >
                 • List
               </button>
               <button
                 onClick={() => editor.chain().focus().toggleBlockquote().run()}
-                style={{
-                  padding: '6px 10px',
-                  border: '1px solid #ddd',
-                  backgroundColor: editor.isActive('blockquote') ? '#e3f2fd' : 'white',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '14px'
-                }}
+                className={`px-2.5 py-1.5 border border-gray-300 dark:border-gray-600 rounded cursor-pointer text-sm ${
+                  editor.isActive('blockquote')
+                    ? 'bg-blue-100 dark:bg-blue-900 text-blue-900 dark:text-blue-100'
+                    : 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+                }`}
               >
                 " Quote
               </button>
-              <div style={{ borderLeft: '1px solid #ddd', margin: '0 4px' }} />
+              <div className="border-l border-gray-300 dark:border-gray-600 mx-1" />
               <button
                 onClick={() => editor.chain().focus().undo().run()}
                 disabled={!editor.can().chain().focus().undo().run()}
-                style={{
-                  padding: '6px 10px',
-                  border: '1px solid #ddd',
-                  backgroundColor: 'white',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '14px'
-                }}
+                className="px-2.5 py-1.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded cursor-pointer text-sm text-gray-900 dark:text-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 ↶ Undo
               </button>
               <button
                 onClick={() => editor.chain().focus().redo().run()}
                 disabled={!editor.can().chain().focus().redo().run()}
-                style={{
-                  padding: '6px 10px',
-                  border: '1px solid #ddd',
-                  backgroundColor: 'white',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '14px'
-                }}
+                className="px-2.5 py-1.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded cursor-pointer text-sm text-gray-900 dark:text-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 ↷ Redo
               </button>
@@ -471,11 +403,10 @@ export default function EditorView({ sdk, projectId }: EditorViewProps) {
           )}
 
           {/* Editor Content */}
-          <div style={{ padding: '0 20px', maxWidth: '800px', margin: '0 auto' }}>
+          <div className="px-5 max-w-3xl mx-auto prose dark:prose-invert prose-gray">
             <EditorContent editor={editor} />
           </div>
         </div>
       </div>
-    </div>
-  )
-}
+    )
+  }

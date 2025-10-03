@@ -6,7 +6,8 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": "./dist/index.js",
-    "./views/*": "./dist/views/*.js"
+    "./views/*": "./dist/views/*.js",
+    "./panels/*": "./dist/panels/*.js"
   },
   "scripts": {
     "build": "tsc",

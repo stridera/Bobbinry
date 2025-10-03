@@ -6,6 +6,9 @@ const entryEl = document.getElementById('entry');
 const wordEl = document.getElementById('word');
 const defsEl = document.getElementById('defs');
 
+// Set initial theme to light
+document.body.classList.add('light');
+
 let lexicon = {};
 async function loadLexicon() {
   try {
@@ -19,10 +22,19 @@ function showEntry(word, defs){ wordEl.textContent = word; defsEl.textContent = 
 
 window.addEventListener('message', (ev) => {
   const d = ev.data || {};
+
+  // Handle theme changes from shell
+  if (d.type === 'shell:theme') {
+    document.body.classList.remove('light', 'dark');
+    document.body.classList.add(d.theme);
+    return;
+  }
+
+  // Handle selection events
   if (d.type === 'bus:event' && d.topic === 'manuscript.editor.selection.v1') {
     const w = normalize(d.payload?.text || '');
     if (!w || w.indexOf(' ') !== -1) { showStatus('Select a single word…'); return; }
-    if (lexicon[w]) showEntry(w, lexicon[w]); else showStatus(`No local entry for “${w}”.`);
+    if (lexicon[w]) showEntry(w, lexicon[w]); else showStatus(`No local entry for "${w}".`);
   }
 });
 

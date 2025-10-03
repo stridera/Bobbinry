@@ -1,0 +1,10 @@
+{
+  "name": "@bobbinry/debugger",
+  "version": "1.0.0",
+  "description": "Debug panel for viewing message bus events and system logs",
+  "private": true,
+  "scripts": {
+    "build": "mkdir -p dist/panels && cp src/panels/* dist/panels/",
+    "clean": "rm -rf dist"
+  }
+}

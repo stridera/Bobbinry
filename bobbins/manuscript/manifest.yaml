@@ -19,6 +19,17 @@ execution:
   mode: native
   signature: dev_mode_skip
 
+extensions:
+  contributions:
+    - slot: shell.leftPanel
+      type: panel
+      id: navigation
+      title: "Manuscript"
+      entry: panels/navigation
+      priority: 10
+      when:
+        inView: project
+
 data:
   collections:
     - name: books
@@ -142,7 +153,11 @@ ui:
     - id: outline
       type: tree
       name: Outline
-      source: books
+      source: views/outline
+      handlers:
+        - book
+        - chapter
+      priority: 10
       layout:
         groups:
           - field: status
@@ -159,7 +174,10 @@ ui:
     - id: editor
       type: editor
       name: Scene Editor
-      source: scenes
+      source: views/editor
+      handlers:
+        - scene
+      priority: 10
       layout:
         columns:
           - field: title

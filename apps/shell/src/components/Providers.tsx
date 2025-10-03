@@ -3,6 +3,7 @@
 import { ReactNode } from 'react'
 import { ExtensionProvider } from './ExtensionProvider'
 import { OfflineProvider } from './OfflineProvider'
+import { ThemeProvider } from '@/contexts/ThemeContext'
 
 interface ProvidersProps {
   children: ReactNode
@@ -10,10 +11,12 @@ interface ProvidersProps {
 
 export function Providers({ children }: ProvidersProps) {
   return (
-    <ExtensionProvider>
-      <OfflineProvider>
-        {children}
-      </OfflineProvider>
-    </ExtensionProvider>
+    <ThemeProvider>
+      <ExtensionProvider>
+        <OfflineProvider>
+          {children}
+        </OfflineProvider>
+      </ExtensionProvider>
+    </ThemeProvider>
   )
 }

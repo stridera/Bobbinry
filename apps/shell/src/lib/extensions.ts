@@ -94,8 +94,12 @@ class ExtensionRegistry {
     })
 
     // Register built-in condition evaluators
-    this.registerConditionEvaluator('inView', (condition: { inView: string }, context: { currentView?: string }) => {
-      return condition.inView === context.currentView
+    this.registerConditionEvaluator('inView', (condition: { inView: string }, context: { currentView?: string; inView?: string }) => {
+      // Wildcard "*" matches any view
+      if (condition.inView === '*') return true
+
+      // Check context.inView first (base view), then fall back to context.currentView
+      return condition.inView === context.inView || condition.inView === context.currentView
     })
 
     this.registerConditionEvaluator('hasPermission', (condition: { hasPermission: string }, context: { permissions?: string[] }) => {
@@ -135,7 +139,9 @@ class ExtensionRegistry {
 
     // Check if extension is already registered
     if (this.extensions.has(extensionId)) {
-      console.log(`[EXTENSIONS] Extension ${extensionId} already registered, skipping`)
+      console.log(`[EXTENSIONS] Extension ${extensionId} already registered, notifying listeners anyway`)
+      // Still notify listeners in case there are new subscribers
+      this.notifySlotListeners(contribution.slot)
       return
     }
 
@@ -329,8 +335,12 @@ class ExtensionRegistry {
   registerExtensionComponent(extensionId: string, component: React.ComponentType<any>): void {
     const extension = this.extensions.get(extensionId)
     if (extension) {
-      extension.component = component
+      // Create a new object to ensure React detects the change
+      const updatedExtension = { ...extension, component }
+      this.extensions.set(extensionId, updatedExtension)
       console.log(`Registered component for extension: ${extensionId}`)
+      // Notify slot listeners so UI can re-render with the component
+      this.notifySlotListeners(extension.contribution.slot)
     }
   }
 

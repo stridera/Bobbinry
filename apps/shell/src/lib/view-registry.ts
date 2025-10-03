@@ -29,6 +29,10 @@ export interface ViewRegistryEntry {
     type: string
     source: string
   }
+
+  // View routing - NEW
+  handlers?: string[]  // Entity types this view can handle (e.g., ['scene', 'chapter'])
+  priority?: number    // Higher = preferred default (optional)
 }
 
 export interface ViewRegistryStats {
@@ -162,6 +166,27 @@ export class ViewRegistry {
   /**
    * Get registry statistics
    */
+  /**
+   * Get all views that can handle a specific entity type
+   * Results are sorted by priority (higher first)
+   */
+  getViewsByHandler(entityType: string): ViewRegistryEntry[] {
+    const allViews = Array.from(this.views.values())
+    const matchingViews = allViews.filter(view => 
+      view.handlers?.includes(entityType)
+    )
+
+    // Sort by priority (higher first), then by viewId for stability
+    return matchingViews.sort((a, b) => {
+      const priorityA = a.priority ?? 0
+      const priorityB = b.priority ?? 0
+      if (priorityA !== priorityB) {
+        return priorityB - priorityA  // Higher priority first
+      }
+      return a.viewId.localeCompare(b.viewId)
+    })
+  }
+
   getStats(): ViewRegistryStats {
     const allViews = Array.from(this.views.values())
     const nativeViews = allViews.filter(v => v.execution === 'native')

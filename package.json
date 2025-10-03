@@ -1,6 +1,7 @@
 {
   "name": "bobbinry",
   "version": "0.1.0",
+  "type": "module",
   "description": "Modular, open-source tools for writers and worldbuilders",
   "main": "index.js",
   "scripts": {
@@ -12,7 +13,8 @@
     "start": "./dev-start.sh",
     "stop": "./dev-stop.sh",
     "stop:all": "./dev-stop.sh --containers",
-    "status": "./dev-stop.sh --status"
+    "status": "./dev-stop.sh --status",
+    "create-bobbin": "node scripts/create-bobbin.js"
   },
   "keywords": [
     "writing",

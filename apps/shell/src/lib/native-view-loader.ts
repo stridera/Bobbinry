@@ -47,6 +47,7 @@ export interface LoadedNativeView {
 const NATIVE_VIEW_MAP: Record<string, () => Promise<any>> = {
   'manuscript.outline': () => import('@bobbinry/manuscript/views/outline'),
   'manuscript.editor': () => import('@bobbinry/manuscript/views/editor'),
+  'manuscript.panels/navigation': () => import('@bobbinry/manuscript/panels/navigation'),
 }
 
 export async function loadNativeView(

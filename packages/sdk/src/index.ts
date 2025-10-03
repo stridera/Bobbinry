@@ -235,9 +235,21 @@ export class EntityAPI {
   }
 
   async get<T = any>(collection: string, id: string): Promise<T | null> {
-    // Placeholder implementation
-    console.log('EntityAPI.get:', collection, id)
-    return null
+    const params = new URLSearchParams({
+      projectId: this.projectId,
+      collection
+    })
+
+    const response = await fetch(`${this.api.apiBaseUrl}/entities/${id}?${params}`)
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        return null
+      }
+      throw new Error(`Failed to get entity: ${response.statusText}`)
+    }
+
+    return response.json()
   }
 
   async create<T = any>(collection: string, data: Partial<T>): Promise<T> {
@@ -313,6 +325,21 @@ export class BobbinrySDK {
     this.entities = new EntityAPI(this.api, projectId)
   }
 }
+
+// React Hooks for common patterns
+export {
+  useEntity,
+  useEntityList,
+  useCreateEntity,
+  useUpdateEntity,
+  useDeleteEntity,
+  useMessageBus,
+  useDebounce,
+  useLocalStorage,
+  usePrevious,
+  useClickOutside,
+  useBoolean
+} from './hooks'
 
 // Convenience exports
 export * from '@bobbinry/types'

@@ -1,0 +1,21 @@
+id: debugger
+name: Debugger
+version: 1.0.0
+description: Debug panel for viewing message bus events and system logs
+author: Bobbinry Team
+
+execution:
+  mode: sandboxed
+
+extensions:
+  target: { id: shell, version: "*" }
+  contributions:
+    - slot: shell.rightPanel
+      type: panel
+      id: debugger.panel
+      title: "🐛 Debugger"
+      entry: dist/panels/debugger.html
+      pubsub:
+        consumes:
+          - { topic: "*", intent: debugging, sensitivityRequired: low }
+      when: { inView: "*" }
