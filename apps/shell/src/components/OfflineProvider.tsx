@@ -1,12 +1,16 @@
 'use client'
 
-import { createContext, useContext, useEffect, ReactNode, useState, useMemo } from 'react'
-import { ServiceWorkerManager } from '@/lib/service-worker'
-import { offlineStorage } from '@/lib/offline-storage'
+import { createContext, useContext, useEffect, ReactNode, useState } from 'react'
+import { syncManager } from '@/lib/offline'
 
 interface OfflineContextType {
   isInitialized: boolean
-  serviceWorkerManager: ServiceWorkerManager
+  syncStatus: {
+    online: boolean
+    syncing: boolean
+    pending: number
+    failed: number
+  }
 }
 
 const OfflineContext = createContext<OfflineContextType | null>(null)
@@ -26,7 +30,12 @@ interface OfflineProviderProps {
 export function OfflineProvider({ children }: OfflineProviderProps) {
   const [isClient, setIsClient] = useState(false)
   const [isInitialized, setIsInitialized] = useState(false)
-  const serviceWorkerManager = useMemo(() => ServiceWorkerManager.getInstance(), [])
+  const [syncStatus, setSyncStatus] = useState({
+    online: true,
+    syncing: false,
+    pending: 0,
+    failed: 0
+  })
 
   // Ensure we're on the client side to prevent hydration mismatches
   useEffect(() => {
@@ -40,35 +49,35 @@ export function OfflineProvider({ children }: OfflineProviderProps) {
 
     async function initializeOffline() {
       try {
-        // Initialize IndexedDB
-        await offlineStorage.init()
-        console.log('IndexedDB initialized')
+        console.log('[Offline] Initializing offline-first system')
 
-        // Register Service Worker
-        await serviceWorkerManager.register()
-        console.log('Service Worker registered')
+        // Start sync manager
+        syncManager.start()
 
+        // Get initial status
+        const status = await syncManager.getStatus()
         if (mounted) {
+          setSyncStatus(status)
           setIsInitialized(true)
         }
 
-        // Set up periodic cleanup
-        const cleanupInterval = setInterval(async () => {
-          try {
-            await offlineStorage.cleanupOldEntities()
-          } catch (error) {
-            console.error('Cleanup failed:', error)
+        console.log('[Offline] Initialization complete')
+
+        // Update status periodically
+        const statusInterval = setInterval(async () => {
+          if (mounted) {
+            const status = await syncManager.getStatus()
+            setSyncStatus(status)
           }
-        }, 60 * 60 * 1000) // Every hour
+        }, 5000) // Every 5 seconds
 
         // Cleanup on unmount
         return () => {
-          clearInterval(cleanupInterval)
+          clearInterval(statusInterval)
         }
       } catch (error) {
-        console.error('Offline initialization failed:', error)
-        // Return empty cleanup function on error
-        return () => { }
+        console.error('[Offline] Initialization failed:', error)
+        return () => {}
       }
     }
 
@@ -79,52 +88,38 @@ export function OfflineProvider({ children }: OfflineProviderProps) {
     return () => {
       mounted = false
     }
-  }, [serviceWorkerManager, isClient])
+  }, [isClient])
 
-  // Listen for Service Worker events
+  // Listen for online/offline events
   useEffect(() => {
-    if (!isClient || !isInitialized) return
+    if (!isClient) return
 
-    let dataUpdateThrottle: NodeJS.Timeout | null = null
-
-    const handleDataUpdated = (data: any) => {
-      // Throttle data-updated events to prevent excessive triggers
-      if (dataUpdateThrottle) {
-        clearTimeout(dataUpdateThrottle)
-      }
-
-      dataUpdateThrottle = setTimeout(() => {
-        // Notify components that cached data has been updated
-        console.log('Data updated:', data)
-        // Could dispatch custom events here for components to listen to
-        window.dispatchEvent(new CustomEvent('offline-data-updated', { detail: data }))
-      }, 100) // 100ms throttle
+    const handleOnline = async () => {
+      console.log('[Offline] Back online')
+      const status = await syncManager.getStatus()
+      setSyncStatus(status)
     }
 
-    const handleMessageDelivery = (data: any) => {
-      // Handle pub/sub message delivery from Service Worker
-      console.log('Message delivery:', data)
-
-      window.dispatchEvent(new CustomEvent('offline-message-delivery', { detail: data }))
+    const handleOffline = async () => {
+      console.log('[Offline] Gone offline')
+      const status = await syncManager.getStatus()
+      setSyncStatus(status)
     }
 
-    serviceWorkerManager.on('data-updated', handleDataUpdated)
-    serviceWorkerManager.on('message-delivery', handleMessageDelivery)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
 
     return () => {
-      if (dataUpdateThrottle) {
-        clearTimeout(dataUpdateThrottle)
-      }
-      serviceWorkerManager.off('data-updated', handleDataUpdated)
-      serviceWorkerManager.off('message-delivery', handleMessageDelivery)
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
     }
-  }, [serviceWorkerManager, isClient, isInitialized])
+  }, [isClient])
 
   return (
     <OfflineContext.Provider
       value={{
         isInitialized: isClient && isInitialized,
-        serviceWorkerManager
+        syncStatus
       }}
     >
       {children}

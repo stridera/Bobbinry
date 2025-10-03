@@ -16,11 +16,14 @@
     "@bobbinry/sdk": "workspace:*",
     "@bobbinry/types": "workspace:*",
     "autoprefixer": "^10.4.21",
+    "dexie": "^4.2.0",
+    "idb-keyval": "^6.2.2",
     "next": "15.5.4",
     "postcss": "^8.5.6",
     "react": "19.1.1",
     "react-dom": "19.1.1",
     "tailwindcss": "^4.1.13",
+    "workbox-window": "^7.3.0",
     "yaml": "^2.8.1"
   },
   "devDependencies": {
