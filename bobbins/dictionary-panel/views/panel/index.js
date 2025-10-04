@@ -1,6 +1,6 @@
 
-// Minimal sample: listens for bus events forwarded by the host via postMessage.
-// Expected envelope: { type: 'bus:event', topic: 'manuscript.editor.selection.v1', payload: { text, length } }
+// Dictionary panel: listens for bus events from the editor
+// Expected envelope: { namespace: 'BUS', type: 'BUS_EVENT', payload: { topic, data, source } }
 const stateEl = document.getElementById('status');
 const entryEl = document.getElementById('entry');
 const wordEl = document.getElementById('word');
@@ -23,18 +23,29 @@ function showEntry(word, defs){ wordEl.textContent = word; defsEl.textContent = 
 window.addEventListener('message', (ev) => {
   const d = ev.data || {};
 
-  // Handle theme changes from shell
-  if (d.type === 'shell:theme') {
-    document.body.classList.remove('light', 'dark');
-    document.body.classList.add(d.theme);
-    return;
+  // Handle new message envelope format
+  if (d.namespace === 'SHELL') {
+    if (d.type === 'SHELL_INIT' || d.type === 'SHELL_CONFIG_RESPONSE') {
+      document.body.classList.remove('light', 'dark');
+      document.body.classList.add(d.payload.config.theme);
+      return;
+    }
+    if (d.type === 'SHELL_THEME_UPDATE') {
+      document.body.classList.remove('light', 'dark');
+      document.body.classList.add(d.payload.theme);
+      return;
+    }
   }
 
-  // Handle selection events
-  if (d.type === 'bus:event' && d.topic === 'manuscript.editor.selection.v1') {
-    const w = normalize(d.payload?.text || '');
-    if (!w || w.indexOf(' ') !== -1) { showStatus('Select a single word…'); return; }
-    if (lexicon[w]) showEntry(w, lexicon[w]); else showStatus(`No local entry for "${w}".`);
+  // Handle BUS message envelope format
+  if (d.namespace === 'BUS' && d.type === 'BUS_EVENT') {
+    const topic = d.payload?.topic;
+    if (topic === 'manuscript.editor.selection.v1') {
+      const w = normalize(d.payload?.data?.text || '');
+      if (!w || w.indexOf(' ') !== -1) { showStatus('Select a single word…'); return; }
+      if (lexicon[w]) showEntry(w, lexicon[w]); else showStatus(`No local entry for "${w}".`);
+    }
+    return;
   }
 });
 

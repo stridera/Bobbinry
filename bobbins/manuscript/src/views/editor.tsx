@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
@@ -39,6 +39,10 @@ export default function EditorView({ sdk, projectId, entityType, entityId }: Edi
   const [wordCount, setWordCount] = useState(0)
   const [chapters, setChapters] = useState<Array<{ id: string; title: string; bookId: string }>>([])
 
+  // Debounce timer for selection events
+  const selectionTimeoutRef = useRef<number | null>(null)
+  const lastSelectionRef = useRef<string>('')
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -56,7 +60,7 @@ export default function EditorView({ sdk, projectId, entityType, entityId }: Edi
     editorProps: {
       attributes: {
         class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl mx-auto focus:outline-none',
-        style: 'min-height: 400px; padding: 20px;'
+        style: 'min-height: 400px; padding: 20px; color: inherit;'
       }
     },
     onUpdate: ({ editor }) => {
@@ -66,26 +70,44 @@ export default function EditorView({ sdk, projectId, entityType, entityId }: Edi
       setWordCount(editor.storage.characterCount.words())
     },
     onSelectionUpdate: ({ editor }) => {
-      // Get selected text
-      const { from, to } = editor.state.selection
-      const text = editor.state.doc.textBetween(from, to, ' ')
-      
-      // Publish selection event if text is selected
-      if (text && text.trim()) {
-        // Post message directly to window for sandboxed panels
-        if (typeof window !== 'undefined') {
-          window.postMessage({
-            type: 'bus:event',
-            source: 'manuscript.editor',
-            target: '*',
-            topic: 'manuscript.editor.selection.v1',
-            payload: {
-              text: text.trim(),
-              length: text.trim().length
-            }
-          }, '*')
-        }
+      // Clear existing timeout
+      if (selectionTimeoutRef.current) {
+        clearTimeout(selectionTimeoutRef.current)
       }
+
+      // Debounce selection events
+      selectionTimeoutRef.current = setTimeout(() => {
+        // Get selected text
+        const { from, to } = editor.state.selection
+        const text = editor.state.doc.textBetween(from, to, ' ')
+        const trimmedText = text.trim()
+
+        // Only publish if text is selected and different from last selection
+        if (trimmedText && trimmedText !== lastSelectionRef.current) {
+          lastSelectionRef.current = trimmedText
+
+          // Post message using new envelope format
+          if (typeof window !== 'undefined') {
+            window.postMessage({
+              namespace: 'BUS',
+              type: 'BUS_EVENT',
+              payload: {
+                topic: 'manuscript.editor.selection.v1',
+                data: {
+                  text: trimmedText,
+                  length: trimmedText.length
+                },
+                source: 'manuscript.editor'
+              },
+              metadata: {
+                source: 'manuscript.editor',
+                target: '*',
+                timestamp: Date.now()
+              }
+            }, '*')
+          }
+        }
+      }, 300) // 300ms debounce to handle double-click selection
     }
   })
 
@@ -403,10 +425,10 @@ export default function EditorView({ sdk, projectId, entityType, entityId }: Edi
           )}
 
           {/* Editor Content */}
-          <div className="px-5 max-w-3xl mx-auto prose dark:prose-invert prose-gray">
+          <div className="px-5 max-w-3xl mx-auto text-gray-900 dark:text-gray-100">
             <EditorContent editor={editor} />
           </div>
         </div>
       </div>
     )
-  }
+}

@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { MessageBuilder, messageRouter } from '@/lib/message-router'
 
 type Theme = 'light' | 'dark'
 
@@ -38,11 +39,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('bobbinry-theme', newTheme)
     applyTheme(newTheme)
 
-    // Broadcast theme change to all iframes
-    window.postMessage({
-      type: 'shell:theme',
-      theme: newTheme
-    }, '*')
+    // Broadcast theme change using new message system
+    const themeMessage = MessageBuilder.shellThemeUpdate(newTheme)
+    window.postMessage(themeMessage, '*')
   }
 
   const toggleTheme = () => {

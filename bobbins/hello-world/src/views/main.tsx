@@ -37,6 +37,7 @@
 import { useState } from 'react'
 import { useEntityList, useCreateEntity } from '@bobbinry/sdk'
 import type { BobbinrySDK } from '@bobbinry/sdk'
+import { Card } from '@bobbinry/ui-components'
 
 /**
  * Props interface for the view component
@@ -188,29 +189,19 @@ export default function HelloWorldView({ sdk, projectId }: HelloWorldViewProps) 
           // Items grid with spacing
           <div className="space-y-2">
             {items.map((item) => (
-              <div
-                key={item.id}  // Always use stable keys in lists
-                className="p-4 border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600"
+              <Card
+                key={item.id}
+                title={item.title}
+                subtitle={item.description}
+                hover
               >
-                {/* Item title - primary content */}
-                <h3 className="font-medium text-gray-900 dark:text-gray-100">
-                  {item.title}
-                </h3>
-
-                {/* Optional description - conditional rendering */}
-                {item.description && (
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                    {item.description}
-                  </p>
-                )}
-
                 {/* Optional status badge */}
                 {item.status && (
-                  <span className="inline-block mt-2 px-2 py-1 text-xs rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                  <span className="inline-block px-2 py-1 text-xs rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
                     {item.status}
                   </span>
                 )}
-              </div>
+              </Card>
             ))}
           </div>
         )}

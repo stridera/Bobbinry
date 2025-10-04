@@ -4,6 +4,8 @@ import { useEffect, useState, useRef, ReactNode, useCallback } from 'react'
 import { extensionRegistry, RegisteredExtension } from '@/lib/extensions'
 import { ResizablePanelStack } from './ResizablePanelStack'
 import { useTheme } from '@/contexts/ThemeContext'
+import { MessageBuilder, sendToIframe, messageRouter, setupMessageListener, iframeBroadcaster } from '@/lib/message-router'
+import { SHELL_MESSAGES, ShellConfig } from '@/types/shell-messages'
 
 interface ExtensionSlotProps {
   slotId: string
@@ -29,29 +31,57 @@ export function ExtensionSlot({
     contextRef.current = context
   }, [context])
 
-  // Message bus bridge - forward messages to sandboxed iframes
+  // Message router setup - handle config requests and forward bus events
   useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      // Forward all bus messages to sandboxed iframes
-      if (event.data && event.data.type === 'bus:event') {
-        iframeRefs.current.forEach((iframe) => {
-          iframe.contentWindow?.postMessage(event.data, '*')
-        })
-      }
+    // Handle config requests from iframes
+    const unsubscribeConfigRequest = messageRouter.on(SHELL_MESSAGES.CONFIG_REQUEST, async (envelope) => {
+      // Find which iframe sent the request
+      iframeRefs.current.forEach((iframe) => {
+        const config = buildShellConfig()
+        const response = MessageBuilder.shellConfigResponse(config, envelope.metadata.requestId || '')
+        sendToIframe(iframe, response)
+      })
+    })
+
+    // Setup window message listener
+    const cleanup = setupMessageListener(messageRouter, (event) => {
+      // Only accept messages from our iframes or same origin
+      const isFromIframe = Array.from(iframeRefs.current.values()).some(
+        iframe => event.source === iframe.contentWindow
+      )
+      const isFromSameOrigin = event.origin === window.location.origin
+      return isFromIframe || isFromSameOrigin
+    })
+
+    return () => {
+      unsubscribeConfigRequest()
+      cleanup()
     }
+  }, [theme, context])
 
-    window.addEventListener('message', handleMessage)
-    return () => window.removeEventListener('message', handleMessage)
-  }, [])
+  // Helper to build shell config
+  const buildShellConfig = (): ShellConfig => {
+    return {
+      theme: theme as 'light' | 'dark',
+      projectId: context?.projectId || '',
+      user: {
+        id: 'user-1', // TODO: Get from auth context
+        name: 'User',
+      },
+      locale: 'en',
+      capabilities: ['read', 'write', 'create', 'delete'],
+      api: {
+        baseUrl: process.env.NODE_ENV === 'development' ? 'http://localhost:4000' : '',
+      },
+    }
+  }
 
-  // Send theme information to iframes when they load or theme changes
+  // Send theme updates to iframes when theme changes
   useEffect(() => {
     const sendThemeToIframes = () => {
+      const themeMessage = MessageBuilder.shellThemeUpdate(theme as 'light' | 'dark')
       iframeRefs.current.forEach((iframe) => {
-        iframe.contentWindow?.postMessage({
-          type: 'shell:theme',
-          theme
-        }, '*')
+        sendToIframe(iframe, themeMessage)
       })
     }
 
@@ -124,9 +154,24 @@ export function ExtensionSlot({
           ref={(el) => {
             if (el) {
               iframeRefs.current.set(extension.id, el)
+              // Register iframe with global broadcaster
+              iframeBroadcaster.register(extension.id, el)
             } else {
               iframeRefs.current.delete(extension.id)
+              // Unregister iframe from global broadcaster
+              iframeBroadcaster.unregister(extension.id)
             }
+          }}
+          onLoad={(e) => {
+            const iframe = e.currentTarget
+            // Small delay to ensure iframe script is ready
+            setTimeout(() => {
+              // Send full shell config on load
+              const config = buildShellConfig()
+              const initMessage = MessageBuilder.shellInit(config, extension.bobbinId, extension.id)
+              sendToIframe(iframe, initMessage)
+              console.log(`[ExtensionSlot] Sent init config to iframe ${extension.id}`)
+            }, 50)
           }}
           src={`/bobbins/${extension.bobbinId}/${extension.contribution.entry}`}
           className="w-full h-full border-0"

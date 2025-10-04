@@ -132,11 +132,12 @@ export function useMessageBus(
 
       // Validate message format
       if (!msg || typeof msg !== 'object') return
-      if (!msg.type || !msg.source || !msg.target) return
 
-      // Check if this is a bus event with matching topic
-      if (msg.type === 'bus:event' && msg.topic && topics.includes(msg.topic)) {
-        handlerRef.current(msg)
+      // Check if this is a new envelope format BUS_EVENT
+      if (msg.namespace === 'BUS' && msg.type === 'BUS_EVENT' && msg.payload?.topic) {
+        if (topics.includes(msg.payload.topic)) {
+          handlerRef.current(msg.payload)
+        }
       }
     }
 

@@ -35,7 +35,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   // Get projectId from context
   const projectId = context?.projectId || context?.currentProject
   
-  console.log('[NavigationPanel] Render - projectId:', projectId, 'loading:', loading, 'context:', context)
+  console.log('[NavigationPanel] Render - projectId:', projectId, 'loading:', loading, 'context:', context, 'theme-aware')
 
   useEffect(() => {
     console.log('[NavigationPanel] useEffect - projectId:', projectId)
@@ -177,20 +177,18 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     const hasChildren = node.children && node.children.length > 0
     const isSelected = node.type === 'scene' && selectedSceneId === node.id
 
+    const icon = node.type === 'book' ? '📚' : node.type === 'chapter' ? '📑' : '📝'
+    const expandIcon = hasChildren ? (isExpanded ? '▼' : '▶') : ''
+    const title = `${expandIcon} ${icon} ${node.title}`
+    const subtitle = node.type === 'scene' && node.wordCount !== undefined ? `${node.wordCount} words` : undefined
+
     return (
-      <div key={node.id}>
+      <div key={node.id} style={{ marginLeft: `${depth * 12}px` }}>
         <div
-          className={`
-            flex items-center gap-1 px-2 py-1.5 text-sm cursor-pointer
-            hover:bg-gray-100 rounded
-            ${isSelected ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}
-          `}
-          style={{ paddingLeft: `${depth * 12 + 8}px` }}
           onClick={() => {
             if (node.type === 'scene') {
               handleSceneClick(node.id, node.chapterId!)
             } else if (node.type === 'chapter') {
-              // Emit chapter navigation event
               if (typeof window !== 'undefined') {
                 window.dispatchEvent(
                   new CustomEvent('bobbinry:navigate', {
@@ -204,7 +202,6 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
               }
               toggleNode(node.id)
             } else if (node.type === 'book') {
-              // Emit book navigation event
               if (typeof window !== 'undefined') {
                 window.dispatchEvent(
                   new CustomEvent('bobbinry:navigate', {
@@ -221,29 +218,10 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
               toggleNode(node.id)
             }
           }}
+          className={`p-2 mb-1 border border-gray-200 dark:border-gray-700 rounded cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 text-sm ${isSelected ? 'border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'bg-white dark:bg-gray-900'}`}
         >
-          {hasChildren && (
-            <span className="w-4 text-gray-400 flex-shrink-0">
-              {isExpanded ? '▼' : '▶'}
-            </span>
-          )}
-          {!hasChildren && <span className="w-4" />}
-
-          <span className="flex-shrink-0">
-            {node.type === 'book' && '📚'}
-            {node.type === 'chapter' && '📑'}
-            {node.type === 'scene' && '📝'}
-          </span>
-
-          <span className="flex-1 truncate" title={node.title}>
-            {node.title}
-          </span>
-
-          {node.type === 'scene' && node.wordCount !== undefined && (
-            <span className="text-xs text-gray-500 flex-shrink-0">
-              {node.wordCount}
-            </span>
-          )}
+          <div className="font-medium text-gray-900 dark:text-gray-100">{title}</div>
+          {subtitle && <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">{subtitle}</div>}
         </div>
 
         {hasChildren && isExpanded && (
@@ -257,7 +235,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
 
   if (loading) {
     return (
-      <div className="p-4 text-center text-sm text-gray-500">
+      <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
         <div className="animate-pulse">Loading...</div>
       </div>
     )
@@ -265,7 +243,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
 
   if (!projectId) {
     return (
-      <div className="p-4 text-center text-sm text-gray-500">
+      <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
         No project selected
       </div>
     )
@@ -273,7 +251,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
 
   if (outline.length === 0) {
     return (
-      <div className="p-4 text-center text-sm text-gray-500">
+      <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
         <div className="mb-2">No content yet</div>
         <div className="text-xs">Create a book in the Outline view</div>
       </div>
@@ -281,12 +259,12 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   }
 
   return (
-    <div className="h-full flex flex-col bg-white">
-      <div className="p-3 border-b border-gray-200 flex justify-between items-center">
-        <h3 className="text-sm font-semibold text-gray-700">Manuscript</h3>
+    <div className="h-full flex flex-col bg-white dark:bg-gray-900">
+      <div className="p-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Manuscript</h3>
         <button
           onClick={loadOutline}
-          className="text-xs text-gray-500 hover:text-gray-700"
+          className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
           title="Refresh"
         >
           ↻

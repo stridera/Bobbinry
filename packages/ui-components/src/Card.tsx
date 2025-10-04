@@ -6,7 +6,7 @@ export interface CardProps {
   /** Card subtitle */
   subtitle?: string
   /** Card children */
-  children: React.ReactNode
+  children?: React.ReactNode
   /** Additional actions or content in the header */
   headerActions?: React.ReactNode
   /** Additional CSS classes */
@@ -70,9 +70,11 @@ export function Card({
         </div>
       )}
 
-      <div className="p-4">
-        {children}
-      </div>
+      {children && (
+        <div className="p-4">
+          {children}
+        </div>
+      )}
     </CardComponent>
   )
 }

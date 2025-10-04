@@ -309,16 +309,154 @@ export class EntityAPI {
   }
 }
 
+// Shell configuration access
+export interface ShellConfig {
+  theme: 'light' | 'dark'
+  projectId: string
+  user: {
+    id: string
+    name: string
+    email?: string
+  }
+  locale: string
+  capabilities: string[]
+  api: {
+    baseUrl: string
+    wsUrl?: string
+  }
+}
+
+type ConfigChangeCallback = (config: ShellConfig) => void
+
+export class ShellAPI {
+  private config: ShellConfig | null = null
+  private configListeners: ConfigChangeCallback[] = []
+  private messageBus: MessageBus
+  private isIframe: boolean
+
+  constructor(messageBus: MessageBus) {
+    this.messageBus = messageBus
+    this.isIframe = typeof window !== 'undefined' && window.parent !== window
+    this.setupConfigListener()
+    this.requestInitialConfig()
+  }
+
+  private setupConfigListener() {
+    if (typeof window === 'undefined') return
+
+    window.addEventListener('message', (event) => {
+      const msg = event.data
+
+      // Handle new message envelope format
+      if (msg && msg.namespace === 'SHELL') {
+        if (msg.type === 'SHELL_INIT' && msg.payload?.config) {
+          this.config = msg.payload.config
+          this.notifyListeners()
+        } else if (msg.type === 'SHELL_CONFIG_RESPONSE' && msg.payload?.config) {
+          this.config = msg.payload.config
+          this.notifyListeners()
+        } else if (msg.type === 'SHELL_THEME_UPDATE' && msg.payload?.theme) {
+          if (this.config) {
+            this.config.theme = msg.payload.theme
+            this.notifyListeners()
+          }
+        }
+      }
+    })
+  }
+
+  private requestInitialConfig() {
+    if (!this.isIframe || typeof window === 'undefined') return
+
+    // Request config from parent using new message format
+    window.parent.postMessage({
+      namespace: 'SHELL',
+      type: 'SHELL_CONFIG_REQUEST',
+      payload: {},
+      metadata: {
+        source: 'sdk',
+        timestamp: Date.now()
+      }
+    }, '*')
+  }
+
+  private notifyListeners() {
+    if (!this.config) return
+    this.configListeners.forEach(listener => listener(this.config!))
+  }
+
+  /**
+   * Get current shell configuration
+   * Returns null if config hasn't been received yet
+   */
+  getConfig(): ShellConfig | null {
+    return this.config
+  }
+
+  /**
+   * Get current theme
+   * Returns 'light' as default if config not available
+   */
+  getTheme(): 'light' | 'dark' {
+    return this.config?.theme || 'light'
+  }
+
+  /**
+   * Get current project ID
+   */
+  getProjectId(): string {
+    return this.config?.projectId || ''
+  }
+
+  /**
+   * Get current user
+   */
+  getUser() {
+    return this.config?.user || { id: '', name: '' }
+  }
+
+  /**
+   * Listen for configuration changes
+   * Returns unsubscribe function
+   */
+  onConfigChange(callback: ConfigChangeCallback): () => void {
+    this.configListeners.push(callback)
+    
+    // Immediately call with current config if available
+    if (this.config) {
+      callback(this.config)
+    }
+
+    return () => {
+      const index = this.configListeners.indexOf(callback)
+      if (index > -1) {
+        this.configListeners.splice(index, 1)
+      }
+    }
+  }
+
+  /**
+   * Listen for theme changes only
+   */
+  onThemeChange(callback: (theme: 'light' | 'dark') => void): () => void {
+    return this.onConfigChange((config) => {
+      callback(config.theme)
+    })
+  }
+}
+
 // Main SDK class
 export class BobbinrySDK {
   public api: BobbinryAPI
   public messageBus: MessageBus
   public entities: EntityAPI
+  public shell: ShellAPI
 
   constructor(componentId: string, apiBaseURL?: string) {
     this.api = new BobbinryAPI(apiBaseURL)
     this.messageBus = new MessageBus(componentId)
     this.entities = new EntityAPI(this.api, '') // Project ID will be set when project is loaded
+    this.shell = new ShellAPI(this.messageBus)
   }
 
   setProject(projectId: string) {

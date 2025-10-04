@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@bobbinry/types": "workspace:*",
+    "@bobbinry/ui-components": "workspace:*",
     "@tiptap/extension-character-count": "^3.6.2",
     "@tiptap/extension-placeholder": "^3.6.2",
     "@tiptap/pm": "^3.6.2",

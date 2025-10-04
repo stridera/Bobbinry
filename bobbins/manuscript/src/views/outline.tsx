@@ -100,28 +100,17 @@ export default function OutlineView({ projectId, sdk }: OutlineViewProps) {
     const indent = depth * 20
     const isSelected = selectedNode === node.id
 
+    const icon = node.type === 'book' ? '📚' : node.type === 'chapter' ? '📑' : '📝'
+    const subtitle = node.wordCount !== undefined ? `${node.wordCount} words` : undefined
+
     return (
       <div key={node.id} style={{ marginLeft: indent }}>
         <div
           onClick={() => setSelectedNode(node.id)}
-          style={{
-            padding: '8px 12px',
-            cursor: 'pointer',
-            backgroundColor: isSelected ? '#e3f2fd' : 'transparent',
-            borderRadius: '4px',
-            marginBottom: '2px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
-          }}
+          className={`p-3 mb-2 border border-gray-200 dark:border-gray-700 rounded cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 ${isSelected ? 'border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'bg-white dark:bg-gray-900'}`}
         >
-          <span>
-            {node.type === 'book' && '📚'} {node.type === 'chapter' && '📑'}{' '}
-            {node.type === 'scene' && '📝'} {node.title}
-          </span>
-          {node.wordCount !== undefined && (
-            <span style={{ fontSize: '12px', color: '#666' }}>{node.wordCount} words</span>
-          )}
+          <div className="font-medium text-gray-900 dark:text-gray-100">{`${icon} ${node.title}`}</div>
+          {subtitle && <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">{subtitle}</div>}
         </div>
         {node.children && node.children.map(child => renderNode(child, depth + 1))}
       </div>
