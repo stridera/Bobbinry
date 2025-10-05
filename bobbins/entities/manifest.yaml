@@ -1,0 +1,78 @@
+id: entities
+name: Entities
+version: 1.0.0
+author: "Bobbins Core"
+description: "Configurable entity system for characters, spells, locations, items, and more"
+tags: [worldbuilding, rpg, entities, configurable]
+license: MIT
+
+capabilities:
+  publishable: false
+  external: false
+  ai: false
+  customViews: true
+
+execution:
+  mode: native
+  signature: dev_mode_skip
+
+data:
+  collections:
+    - name: entity_type_definitions
+      fields:
+        - { name: type_id, type: text, required: true }
+        - { name: label, type: text, required: true }
+        - { name: icon, type: text }
+        - { name: template_id, type: text }
+        - { name: base_fields, type: json }
+        - { name: custom_fields, type: json }
+        - { name: editor_layout, type: json }
+        - { name: list_layout, type: json }
+        - { name: subtitle_fields, type: json }
+
+ui:
+  views:
+    - id: config
+      name: Entity Configuration
+      type: tree
+      source: entity_type_definitions
+      handlers:
+        - entity_type_definitions
+    - id: entity-list
+      name: Entity List
+      type: custom
+      source: "*"
+      handlers:
+        - "*"
+    - id: entity-editor
+      name: Entity Editor
+      type: custom
+      source: "*"
+      handlers:
+        - "*"
+
+interactions:
+  actions:
+    - id: create_entity_type
+      name: Create Entity Type
+      type: create
+      target: entity_type_definitions
+
+extensions:
+  contributions:
+    - slot: shell.leftPanel
+      type: panel
+      id: navigation
+      title: "Entities"
+      entry: views/navigation
+
+external: null
+
+linking:
+  entities: []
+
+publish: null
+
+compatibility:
+  minShellVersion: 1.0.0
+  migrations: []

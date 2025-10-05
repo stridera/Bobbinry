@@ -172,9 +172,21 @@ export class ViewRegistry {
    */
   getViewsByHandler(entityType: string): ViewRegistryEntry[] {
     const allViews = Array.from(this.views.values())
+    
+    // Debug logging
+    console.log('[ViewRegistry] getViewsByHandler called for:', entityType)
+    console.log('[ViewRegistry] Total registered views:', allViews.length)
+    console.log('[ViewRegistry] All views:', allViews.map(v => ({ 
+      viewId: v.viewId, 
+      bobbinId: v.bobbinId,
+      handlers: v.handlers 
+    })))
+    
     const matchingViews = allViews.filter(view => 
-      view.handlers?.includes(entityType)
+      view.handlers?.includes(entityType) || view.handlers?.includes('*')
     )
+    
+    console.log('[ViewRegistry] Matching views for', entityType, ':', matchingViews.map(v => v.viewId))
 
     // Sort by priority (higher first), then by viewId for stability
     return matchingViews.sort((a, b) => {

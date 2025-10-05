@@ -147,7 +147,7 @@ export function ExtensionSlot({
     const isSandboxed = extension.contribution.entry?.endsWith('.html')
 
     if (isValidComponent) {
-      return <Component context={context} />
+      return <Component {...context} context={context} />
     } else if (isSandboxed) {
       return (
         <iframe

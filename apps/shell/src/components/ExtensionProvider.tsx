@@ -146,11 +146,13 @@ export function useManifestExtensions() {
 
   const registerManifestExtensions = useCallback((bobbinId: string, manifest: any) => {
     console.log('[ExtensionProvider] registerManifestExtensions called for:', bobbinId, 'mode:', manifest.execution?.mode)
-    
+    console.log('[ExtensionProvider] Full manifest:', JSON.stringify(manifest, null, 2))
+
     try {
       // Register native views in viewRegistry
       if (manifest.execution?.mode === 'native' && manifest.ui?.views) {
         console.log('[ExtensionProvider] Native views found, registering in viewRegistry')
+        console.log('[ExtensionProvider] manifest.ui.views:', JSON.stringify(manifest.ui.views, null, 2))
         const { viewRegistry } = require('../lib/view-registry')
         const { createComponentLoader } = require('../lib/native-view-loader')
         

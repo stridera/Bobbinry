@@ -26,6 +26,7 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
   const [currentNav, setCurrentNav] = useState<NavigationState | null>(null)
   const [ViewComponent, setViewComponent] = useState<React.ComponentType<any> | null>(null)
   const isNavigatingRef = useRef(false)
+  const lastDispatchedViewRef = useRef<string | null>(null)
 
   // Check for initial state from history on mount
   useEffect(() => {
@@ -88,6 +89,7 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
   useEffect(() => {
     if (!currentNav) {
       setViewComponent(null)
+      lastDispatchedViewRef.current = null
       // Clear current view context
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('bobbinry:view-context-change', {
@@ -110,13 +112,26 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
         return
       }
 
-      // TODO: Check user preferences for preferred view
-      // For now, just use the first (highest priority) view
-      const selectedView = compatibleViews[0]
+      // Check if a specific view was requested in metadata
+      let selectedView = compatibleViews[0]
+      if (currentNav.metadata?.view) {
+        const requestedViewId = `${currentNav.bobbinId}.${currentNav.metadata.view}`
+        const matchingView = compatibleViews.find(v => v.viewId === requestedViewId)
+        if (matchingView) {
+          selectedView = matchingView
+          console.log('[ViewRouter] Using requested view from metadata:', requestedViewId)
+        } else {
+          console.warn(`[ViewRouter] Requested view ${requestedViewId} not found, using default`)
+        }
+      } else {
+        console.log('[ViewRouter] No view preference, using first (highest priority) view')
+      }
       console.log('[ViewRouter] Selected view:', selectedView.viewId)
 
-      // Dispatch view context change event for extension slots
-      if (typeof window !== 'undefined') {
+      // Dispatch view context change event for extension slots (only if changed)
+      const viewKey = `${selectedView.viewId}:${entityType}:${currentNav.entityId}`
+      if (typeof window !== 'undefined' && lastDispatchedViewRef.current !== viewKey) {
+        lastDispatchedViewRef.current = viewKey
         window.dispatchEvent(new CustomEvent('bobbinry:view-context-change', {
           detail: {
             currentView: selectedView.viewId,
@@ -127,6 +142,8 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
           }
         }))
         console.log('[ViewRouter] Dispatched view-context-change:', selectedView.viewId)
+      } else {
+        console.log('[ViewRouter] Skipping duplicate view-context-change dispatch')
       }
 
       // Load the component
