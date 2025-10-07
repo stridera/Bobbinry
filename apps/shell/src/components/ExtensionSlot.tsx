@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState, useRef, ReactNode, useCallback } from 'react'
+// Fixed: Moved hooks to correct order and added memoization to prevent iframe reload loop
+import { useEffect, useState, useRef, ReactNode, useCallback, useMemo, memo } from 'react'
 import { extensionRegistry, RegisteredExtension } from '@/lib/extensions'
 import { ResizablePanelStack } from './ResizablePanelStack'
 import { useTheme } from '@/contexts/ThemeContext'
@@ -14,6 +15,68 @@ interface ExtensionSlotProps {
   fallback?: ReactNode
 }
 
+// Memoized component for panel content to prevent unnecessary iframe reloads
+const PanelContent = memo(function PanelContent({ 
+  extension, 
+  context, 
+  theme,
+  iframeRefs,
+  buildShellConfig 
+}: { 
+  extension: RegisteredExtension
+  context: any
+  theme: string
+  iframeRefs: React.MutableRefObject<Map<string, HTMLIFrameElement>>
+  buildShellConfig: () => ShellConfig
+}) {
+  const Component = extension.component
+  const isValidComponent = typeof Component === 'function'
+  const isSandboxed = extension.contribution.entry?.endsWith('.html')
+
+  if (isValidComponent) {
+    return <Component {...context} context={context} />
+  } else if (isSandboxed) {
+    return (
+      <iframe
+        key={extension.id}
+        ref={(el) => {
+          if (el) {
+            iframeRefs.current.set(extension.id, el)
+            iframeBroadcaster.register(extension.id, el)
+          } else {
+            iframeRefs.current.delete(extension.id)
+            iframeBroadcaster.unregister(extension.id)
+          }
+        }}
+        onLoad={(e) => {
+          const iframe = e.currentTarget
+          setTimeout(() => {
+            const config = buildShellConfig()
+            const initMessage = MessageBuilder.shellInit(config, extension.bobbinId, extension.id)
+            sendToIframe(iframe, initMessage)
+            console.log(`[ExtensionSlot] Sent init config to iframe ${extension.id}`)
+          }, 50)
+        }}
+        src={`/bobbins/${extension.bobbinId}/${extension.contribution.entry}`}
+        className="w-full h-full border-0"
+        title={extension.contribution.title || extension.id}
+        sandbox="allow-scripts allow-same-origin"
+      />
+    )
+  } else {
+    return (
+      <div className="text-xs text-gray-400">
+        Loading {extension.contribution.title || extension.id}...
+      </div>
+    )
+  }
+}, (prevProps, nextProps) => {
+  // Custom comparison - only re-render if extension ID, theme, or component changes
+  return prevProps.extension.id === nextProps.extension.id &&
+         prevProps.theme === nextProps.theme &&
+         prevProps.extension.component === nextProps.extension.component
+})
+
 export function ExtensionSlot({
   slotId,
   context,
@@ -25,6 +88,23 @@ export function ExtensionSlot({
   const [isHydrated, setIsHydrated] = useState(false)
   const contextRef = useRef(context)
   const iframeRefs = useRef<Map<string, HTMLIFrameElement>>(new Map())
+
+  // Helper to build shell config - memoized to prevent breaking PanelContent memo
+  const buildShellConfig = useCallback((): ShellConfig => {
+    return {
+      theme: theme as 'light' | 'dark',
+      projectId: context?.projectId || '',
+      user: {
+        id: 'user-1', // TODO: Get from auth context
+        name: 'User',
+      },
+      locale: 'en',
+      capabilities: ['read', 'write', 'create', 'delete'],
+      api: {
+        baseUrl: process.env.NODE_ENV === 'development' ? 'http://localhost:4000' : '',
+      },
+    }
+  }, [theme, context])
 
   // Keep context ref up to date
   useEffect(() => {
@@ -57,24 +137,7 @@ export function ExtensionSlot({
       unsubscribeConfigRequest()
       cleanup()
     }
-  }, [theme, context])
-
-  // Helper to build shell config
-  const buildShellConfig = (): ShellConfig => {
-    return {
-      theme: theme as 'light' | 'dark',
-      projectId: context?.projectId || '',
-      user: {
-        id: 'user-1', // TODO: Get from auth context
-        name: 'User',
-      },
-      locale: 'en',
-      capabilities: ['read', 'write', 'create', 'delete'],
-      api: {
-        baseUrl: process.env.NODE_ENV === 'development' ? 'http://localhost:4000' : '',
-      },
-    }
-  }
+  }, [theme, context, buildShellConfig])
 
   // Send theme updates to iframes when theme changes
   useEffect(() => {
@@ -122,6 +185,23 @@ export function ExtensionSlot({
     return unsubscribe
   }, [slotId])
 
+  // Memoize panels to prevent recreating iframes on every render
+  const panels = useMemo(() => {
+    return extensions.map(extension => ({
+      id: extension.id,
+      title: extension.contribution.title || extension.id,
+      content: (
+        <PanelContent
+          extension={extension}
+          context={context}
+          theme={theme}
+          iframeRefs={iframeRefs}
+          buildShellConfig={buildShellConfig}
+        />
+      )
+    }))
+  }, [extensions, context, theme])
+
   // Show skeleton while hydrating
   if (!isHydrated) {
     return (
@@ -140,62 +220,8 @@ export function ExtensionSlot({
     return <>{fallback || <div className="text-xs text-gray-400">No extensions for {slotId}</div>}</>
   }
 
-  // Helper function to render extension content
-  const renderExtensionContent = (extension: RegisteredExtension) => {
-    const Component = extension.component
-    const isValidComponent = typeof Component === 'function'
-    const isSandboxed = extension.contribution.entry?.endsWith('.html')
-
-    if (isValidComponent) {
-      return <Component {...context} context={context} />
-    } else if (isSandboxed) {
-      return (
-        <iframe
-          ref={(el) => {
-            if (el) {
-              iframeRefs.current.set(extension.id, el)
-              // Register iframe with global broadcaster
-              iframeBroadcaster.register(extension.id, el)
-            } else {
-              iframeRefs.current.delete(extension.id)
-              // Unregister iframe from global broadcaster
-              iframeBroadcaster.unregister(extension.id)
-            }
-          }}
-          onLoad={(e) => {
-            const iframe = e.currentTarget
-            // Small delay to ensure iframe script is ready
-            setTimeout(() => {
-              // Send full shell config on load
-              const config = buildShellConfig()
-              const initMessage = MessageBuilder.shellInit(config, extension.bobbinId, extension.id)
-              sendToIframe(iframe, initMessage)
-              console.log(`[ExtensionSlot] Sent init config to iframe ${extension.id}`)
-            }, 50)
-          }}
-          src={`/bobbins/${extension.bobbinId}/${extension.contribution.entry}`}
-          className="w-full h-full border-0"
-          title={extension.contribution.title || extension.id}
-          sandbox="allow-scripts allow-same-origin"
-        />
-      )
-    } else {
-      return (
-        <div className="text-xs text-gray-400">
-          Loading {extension.contribution.title || extension.id}...
-        </div>
-      )
-    }
-  }
-
   // Use ResizablePanelStack for multiple extensions
   if (extensions.length > 1) {
-    const panels = extensions.map(extension => ({
-      id: extension.id,
-      title: extension.contribution.title || extension.id,
-      content: renderExtensionContent(extension)
-    }))
-
     return (
       <div className={className}>
         <ResizablePanelStack panels={panels} slotId={slotId} />
@@ -208,7 +234,13 @@ export function ExtensionSlot({
   return (
     <div className={className}>
       <div className="h-full">
-        {renderExtensionContent(extension)}
+        <PanelContent
+          extension={extension}
+          context={context}
+          theme={theme}
+          iframeRefs={iframeRefs}
+          buildShellConfig={buildShellConfig}
+        />
       </div>
     </div>
   )

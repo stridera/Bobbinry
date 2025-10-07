@@ -67,11 +67,16 @@ function applyTheme(theme) {
   console.log('[Debugger] Body classes after theme:', document.body.className)
 }
 
-// Listen for all messages
+// Listen for all messages (excluding SHELL namespace to avoid logging control messages)
 window.addEventListener('message', (event) => {
   if (isPaused) return
 
   const data = event.data
+  
+  // Skip SHELL namespace messages (these are control messages, not app messages to debug)
+  if (data && data.namespace === 'SHELL') {
+    return
+  }
   
   // Handle new message envelope format
   if (data && data.namespace && data.type && data.metadata) {

@@ -72,11 +72,11 @@ export default function EditorView({ sdk, projectId, entityType, entityId }: Edi
     onSelectionUpdate: ({ editor }) => {
       // Clear existing timeout
       if (selectionTimeoutRef.current) {
-        clearTimeout(selectionTimeoutRef.current)
+        window.clearTimeout(selectionTimeoutRef.current)
       }
 
       // Debounce selection events
-      selectionTimeoutRef.current = setTimeout(() => {
+      selectionTimeoutRef.current = window.setTimeout(() => {
         // Get selected text
         const { from, to } = editor.state.selection
         const text = editor.state.doc.textBetween(from, to, ' ')

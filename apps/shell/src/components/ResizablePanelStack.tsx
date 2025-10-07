@@ -24,6 +24,7 @@ const DIVIDER_HEIGHT = 4
 
 export function ResizablePanelStack({ panels, slotId }: ResizablePanelStackProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const [containerHeight, setContainerHeight] = useState(600)
   const [panelState, setPanelState] = useState<PanelState>(() => {
     // Try to load saved state from localStorage
     const saved = localStorage.getItem(`panelLayout:${slotId}`)
@@ -48,6 +49,22 @@ export function ResizablePanelStack({ panels, slotId }: ResizablePanelStackProps
   })
 
   const [dragging, setDragging] = useState<{ index: number; startY: number; startSizes: number[] } | null>(null)
+
+  // Measure container height on mount and when window resizes
+  useEffect(() => {
+    const updateHeight = () => {
+      if (containerRef.current) {
+        setContainerHeight(containerRef.current.getBoundingClientRect().height)
+      }
+    }
+
+    // Initial measurement
+    updateHeight()
+
+    // Update on resize
+    window.addEventListener('resize', updateHeight)
+    return () => window.removeEventListener('resize', updateHeight)
+  }, [])
 
   // Save state to localStorage when it changes
   useEffect(() => {
@@ -121,7 +138,6 @@ export function ResizablePanelStack({ panels, slotId }: ResizablePanelStackProps
   }
 
   // Calculate actual heights in pixels
-  const containerHeight = containerRef.current?.getBoundingClientRect().height || 600
   const collapsedHeightTotal = panelState.collapsed.reduce((sum, isCollapsed) =>
     sum + (isCollapsed ? HEADER_HEIGHT : 0), 0
   )

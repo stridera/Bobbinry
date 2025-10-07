@@ -1,0 +1,281 @@
+id: web-publisher
+name: Web Publisher
+version: 1.0.0
+author: Bobbins Core
+description: Native on-platform reader with subscriptions, analytics, and engagement
+tags: [publishing, reader, monetization, analytics, community]
+license: MIT
+
+capabilities:
+  publishable: true
+  external: false
+  ai: false
+  customViews: true
+
+execution:
+  mode: native
+  signature: dev_mode_skip
+
+data:
+  collections:
+    - name: PublishedChapter
+      fields:
+        - { name: chapter_id, type: text, required: true }
+        - { name: slug, type: text, required: true }
+        - { name: published_version, type: number }
+        - { name: is_published, type: boolean }
+        - { name: published_at, type: datetime }
+        - { name: access_level, type: text }  # public, subscribers_only, tier_specific
+        - { name: embargo_until, type: datetime }
+        - { name: preview_paragraphs, type: number }  # Number of paragraphs visible to non-subscribers
+        
+    - name: ReaderProgress
+      fields:
+        - { name: reader_id, type: text, required: true }
+        - { name: chapter_id, type: text, required: true }
+        - { name: position_percent, type: number }
+        - { name: position_bookmark, type: text }  # Paragraph or section ID
+        - { name: completed, type: boolean }
+        - { name: last_read_at, type: datetime }
+        - { name: reading_time_seconds, type: number }
+        - { name: device, type: text }
+        
+    - name: ReaderList
+      fields:
+        - { name: reader_id, type: text, required: true }
+        - { name: list_name, type: text, required: true }
+        - { name: project_id, type: text }
+        - { name: created_at, type: datetime }
+        - { name: updated_at, type: datetime }
+        
+    - name: AnalyticsSnapshot
+      fields:
+        - { name: snapshot_date, type: datetime, required: true }
+        - { name: total_views, type: number }
+        - { name: unique_readers, type: number }
+        - { name: new_subscribers, type: number }
+        - { name: total_comments, type: number }
+        - { name: total_reactions, type: number }
+        - { name: avg_read_time, type: number }
+        - { name: top_chapters, type: json }  # Array of chapter IDs with metrics
+
+ui:
+  views:
+    - id: reader
+      name: Reader
+      type: custom
+      source: PublishedChapter
+      template: reader
+      layout:
+        features:
+          - customizable_fonts
+          - theme_toggle
+          - progress_tracking
+          - bookmarks
+          - social_sharing
+          - comments
+          - reactions
+          
+    - id: analytics-dashboard
+      name: Analytics
+      type: custom
+      source: AnalyticsSnapshot
+      layout:
+        widgets:
+          - id: view_count_chart
+            type: line_chart
+            title: Views Over Time
+            metric: total_views
+            
+          - id: completion_rate
+            type: stat
+            title: Avg. Completion Rate
+            metric: completion_percentage
+            
+          - id: subscriber_growth
+            type: area_chart
+            title: Subscriber Growth
+            metric: new_subscribers
+            
+          - id: top_chapters
+            type: table
+            title: Top Chapters
+            columns:
+              - chapter_title
+              - views
+              - completion_rate
+              - avg_read_time
+              
+          - id: engagement_metrics
+            type: stat_grid
+            metrics:
+              - total_comments
+              - total_reactions
+              - unique_commenters
+              
+          - id: reader_demographics
+            type: pie_chart
+            title: Reader Devices
+            metric: device_distribution
+            
+    - id: subscription-manager
+      name: Subscriptions
+      type: table
+      source: subscription_tiers  # From core schema
+      layout:
+        columns:
+          - { field: tier_name, label: "Tier" }
+          - { field: subscriber_count, label: "Subscribers" }
+          - { field: monthly_revenue, label: "Revenue" }
+          - { field: churn_rate, label: "Churn Rate" }
+        actions:
+          - view_subscribers
+          - send_announcement
+          - export_list
+          
+    - id: reader-engagement
+      name: Reader Engagement
+      type: custom
+      source: ReaderProgress
+      layout:
+        sections:
+          - id: active_readers
+            type: table
+            title: Recently Active Readers
+            
+          - id: completion_funnel
+            type: funnel_chart
+            title: Chapter Completion Funnel
+            
+          - id: reading_patterns
+            type: heatmap
+            title: Reading Time Heatmap
+            
+    - id: content-moderation
+      name: Moderation
+      type: table
+      source: comments  # From core schema
+      layout:
+        filters:
+          - status
+          - chapter
+          - date_range
+        actions:
+          - approve
+          - hide
+          - delete
+          - ban_user
+
+interactions:
+  triggers:
+    - id: on_chapter_view
+      event: update
+      target: PublishedChapter
+      actions:
+        - track_view
+        - update_reading_progress
+        
+    - id: on_chapter_complete
+      event: update
+      target: PublishedChapter
+      actions:
+        - mark_completed
+        - send_completion_notification
+        
+    - id: on_subscription_created
+      event: create
+      target: subscriptions
+      actions:
+        - send_welcome_email
+        - grant_access
+        
+  actions:
+    - id: publish_chapter
+      name: Publish Chapter
+      type: custom
+      target: Chapter
+      handler: publishChapter
+      description: Make chapter available to readers based on access rules
+      
+    - id: schedule_release
+      name: Schedule Release
+      type: custom
+      target: Chapter
+      handler: scheduleChapterRelease
+      description: Set future publish date with tier-based delays
+      
+    - id: unpublish_chapter
+      name: Unpublish Chapter
+      type: custom
+      target: PublishedChapter
+      handler: unpublishChapter
+      description: Remove chapter from public view
+      
+    - id: track_view
+      name: Track View
+      type: custom
+      handler: trackChapterView
+      description: Record analytics for chapter view
+      
+    - id: update_reading_progress
+      name: Update Progress
+      type: custom
+      handler: updateReaderProgress
+      description: Save reader's current position
+      
+    - id: check_access
+      name: Check Access
+      type: custom
+      handler: checkReaderAccess
+      description: Determine if reader can access chapter
+      
+    - id: export_analytics
+      name: Export Analytics
+      type: custom
+      handler: exportAnalyticsData
+      description: Generate CSV/JSON export of analytics
+      
+    - id: send_announcement
+      name: Send Announcement
+      type: custom
+      handler: sendSubscriberAnnouncement
+      description: Email all subscribers in a tier
+
+external: null
+
+publish:
+  entities: [PublishedChapter, ReaderProgress]
+  fields: [chapter_id, slug, is_published, published_at, access_level]
+  output:
+    - format: html
+      template: reader
+    - format: json
+      template: api
+
+linking:
+  entities:
+    - collection: PublishedChapter
+      display:
+        template: "{{chapter_title}} (Published)"
+        
+    - collection: ReaderProgress
+      display:
+        template: "Reading: {{chapter_title}} ({{position_percent}}%)"
+
+compatibility:
+  minShellVersion: 1.0.0
+  requiredBobbins:
+    - manuscript  # Depends on manuscript bobbin for Chapter entities
+  migrations:
+    - version: 1.0.0
+      description: Initial web publisher setup
+      up: |
+        -- Create default published chapter records for existing chapters
+        INSERT INTO published_chapters (chapter_id, slug, is_published, published_version)
+        SELECT id, LOWER(REGEXP_REPLACE(title, '[^a-zA-Z0-9]+', '-', 'g')), false, 1
+        FROM entities
+        WHERE bobbin_id = 'manuscript' AND collection_name = 'Chapter'
+        ON CONFLICT DO NOTHING;
+      down: |
+        -- Remove published chapter records
+        DELETE FROM published_chapters WHERE TRUE;

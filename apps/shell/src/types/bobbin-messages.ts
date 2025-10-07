@@ -111,6 +111,21 @@ export interface ApiResponseMessage extends BaseBobbinMessage {
   }
 }
 
+// Custom action messages (for manifest-defined actions)
+export interface CustomActionMessage extends BaseBobbinMessage {
+  type: 'CUSTOM_ACTION'
+  requestId: string
+  payload: {
+    actionId: string
+    params: Record<string, any>
+    context?: {
+      userId?: string
+      projectId?: string
+      entityId?: string
+    }
+  }
+}
+
 // System messages
 export interface ThemeUpdateMessage extends BaseBobbinMessage {
   type: 'THEME_UPDATE'
@@ -137,6 +152,7 @@ export type BobbinMessage =
   | EntityUpdateMessage
   | EntityDeleteMessage
   | BatchOperationMessage
+  | CustomActionMessage
   | ApiResponseMessage
   | ThemeUpdateMessage
   | PermissionUpdateMessage

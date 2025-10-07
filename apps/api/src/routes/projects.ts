@@ -353,6 +353,47 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
       return reply.status(500).send({ error: 'Failed to uninstall bobbin' })
     }
   })
+
+  // Update project details
+  fastify.put<{
+    Params: { projectId: string }
+    Body: {
+      name?: string
+      description?: string
+    }
+  }>('/projects/:projectId', async (request, reply) => {
+    try {
+      const { projectId } = request.params
+      const { name, description } = request.body
+
+      if (!isValidUUID(projectId)) {
+        return reply.status(400).send({ error: 'Invalid project ID format' })
+      }
+
+      const updates: any = {}
+      if (name !== undefined) updates.name = name
+      if (description !== undefined) updates.description = description
+
+      if (Object.keys(updates).length === 0) {
+        return reply.status(400).send({ error: 'No updates provided' })
+      }
+
+      const [project] = await db
+        .update(projects)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(projects.id, projectId))
+        .returning()
+
+      if (!project) {
+        return reply.status(404).send({ error: 'Project not found' })
+      }
+
+      return reply.send({ project })
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.status(500).send({ error: 'Failed to update project' })
+    }
+  })
 }
 
 export default projectsPlugin

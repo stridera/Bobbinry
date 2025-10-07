@@ -43,7 +43,7 @@ export async function GET(
 
     const entity = {
       id: result.id,
-      ...result.entityData,
+      ...(result.entityData as Record<string, unknown>),
       created_at: result.createdAt,
       updated_at: result.updatedAt
     }
@@ -104,7 +104,7 @@ export async function PUT(
 
     const entity = {
       id: updated.id,
-      ...updated.entityData,
+      ...(updated.entityData as Record<string, unknown>),
       updated_at: updated.updatedAt
     }
 

@@ -11,12 +11,10 @@ import {
   isMessageEnvelope,
   SHELL_MESSAGES,
   BUS_MESSAGES,
-  DEBUG_MESSAGES,
   ShellConfig,
   ShellInitPayload,
   ShellConfigResponsePayload,
   ShellThemeUpdatePayload,
-  LEGACY_MESSAGE_TYPES,
 } from '@/types/shell-messages'
 
 // ============================================================================
@@ -43,8 +41,8 @@ export class MessageBuilder {
       payload,
       metadata: {
         source: options.source,
-        target: options.target,
-        requestId: options.requestId,
+        ...(options.target && { target: options.target }),
+        ...(options.requestId && { requestId: options.requestId }),
         timestamp: Date.now(),
       },
     }
@@ -57,7 +55,7 @@ export class MessageBuilder {
     return this.create(
       'SHELL',
       SHELL_MESSAGES.INIT,
-      { config, bobbinId, viewId },
+      { config, bobbinId, ...(viewId && { viewId }) },
       { source: 'shell', target: bobbinId }
     )
   }

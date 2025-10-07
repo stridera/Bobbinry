@@ -6,6 +6,15 @@ import { randomUUID } from 'crypto'
 import projectsPlugin from './routes/projects'
 import viewsPlugin from './routes/views'
 import entitiesPlugin from './routes/entities'
+import usersPlugin from './routes/users'
+import subscriptionsPlugin from './routes/subscriptions'
+import stripePlugin from './routes/stripe'
+import publishingPlugin from './routes/publishing'
+import readerPlugin from './routes/reader'
+import bobbinActionsPlugin from './routes/bobbin-actions'
+import collectionsPlugin from './routes/collections'
+import dashboardPlugin from './routes/dashboard'
+import authPlugin from './routes/auth'
 import { checkDatabaseHealth } from './db/connection'
 
 export function build(opts = {}): FastifyInstance {
@@ -154,6 +163,15 @@ export function build(opts = {}): FastifyInstance {
   server.register(projectsPlugin, { prefix: '/api' })
   server.register(viewsPlugin, { prefix: '/api' })
   server.register(entitiesPlugin, { prefix: '/api' })
+  server.register(usersPlugin, { prefix: '/api' })
+  server.register(subscriptionsPlugin, { prefix: '/api' })
+  server.register(stripePlugin, { prefix: '/api' })
+  server.register(publishingPlugin, { prefix: '/api' })
+  server.register(readerPlugin, { prefix: '/api' })
+  server.register(bobbinActionsPlugin, { prefix: '/api' })
+  server.register(collectionsPlugin, { prefix: '/api' })
+  server.register(dashboardPlugin, { prefix: '/api' })
+  server.register(authPlugin, { prefix: '/api' })
 
   return server
 }

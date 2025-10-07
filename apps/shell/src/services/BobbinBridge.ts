@@ -7,6 +7,7 @@ import {
   EntityUpdateMessage,
   EntityDeleteMessage,
   BatchOperationMessage,
+  CustomActionMessage,
   InitContextMessage,
   ThemeUpdateMessage,
   Theme,
@@ -250,6 +251,10 @@ export class BobbinBridge {
         await this.handleBatchOperation(message as BatchOperationMessage)
         break
 
+      case 'CUSTOM_ACTION':
+        await this.handleCustomAction(message as CustomActionMessage)
+        break
+
       case 'API_RESPONSE':
         this.handleApiResponse(message as ApiResponseMessage)
         break
@@ -329,8 +334,8 @@ export class BobbinBridge {
       const { operations, atomic = false } = message.payload
 
       if (atomic) {
-        // TODO: Implement atomic batch operations when database supports transactions
-        throw new BobbinError('Atomic batch operations not yet supported', 'NOT_IMPLEMENTED')
+        // Implement atomic batch operations using API transaction endpoint
+        return await this.handleAtomicBatch(message, operations)
       }
 
       const results = []
@@ -366,6 +371,80 @@ export class BobbinBridge {
       }
 
       this.sendResponse(message.requestId, { success: true, data: results })
+    } catch (error) {
+      this.sendErrorResponse(message.requestId, error as Error)
+    }
+  }
+
+  private async handleAtomicBatch(message: BatchOperationMessage, operations: any[]) {
+    try {
+      // Call API endpoint that handles atomic batch operations with transactions
+      const response = await fetch(`${process.env.NODE_ENV === 'development' ? 'http://localhost:4000' : ''}/api/entities/batch/atomic`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          projectId: this.projectId,
+          operations: operations.map(op => ({
+            type: op.type,
+            collection: op.collection,
+            id: op.id,
+            data: op.data
+          }))
+        })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new BobbinError(
+          error.error || 'Atomic batch operation failed',
+          'ATOMIC_BATCH_FAILED',
+          false,
+          response.status
+        )
+      }
+
+      const result = await response.json()
+      this.sendResponse(message.requestId, { success: true, data: result.results })
+    } catch (error) {
+      this.sendErrorResponse(message.requestId, error as Error)
+    }
+  }
+
+  private async handleCustomAction(message: CustomActionMessage) {
+    try {
+      const { actionId, params, context } = message.payload
+
+      // Forward custom action to API which will invoke the bobbin's action handler
+      const response = await fetch(`${process.env.NODE_ENV === 'development' ? 'http://localhost:4000' : ''}/api/bobbins/${this.bobbinId}/actions/${actionId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          params,
+          context: {
+            ...context,
+            projectId: this.projectId,
+            bobbinId: this.bobbinId,
+            viewId: this.viewId
+          }
+        })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new BobbinError(
+          error.error || 'Custom action failed',
+          'CUSTOM_ACTION_FAILED',
+          true,
+          response.status
+        )
+      }
+
+      const result = await response.json()
+      this.sendResponse(message.requestId, { success: true, data: result })
     } catch (error) {
       this.sendErrorResponse(message.requestId, error as Error)
     }
@@ -415,7 +494,7 @@ export class BobbinBridge {
 
     try {
       this.iframe.contentWindow.postMessage(message, '*')
-    } catch (error) {
+    } catch {
       throw new BobbinError('Failed to send message', 'MESSAGE_SEND_FAILED')
     }
   }

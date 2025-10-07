@@ -34,6 +34,14 @@ data:
         - { name: pov, type: text }
         - { name: tags, type: json }
         - { name: word_count, type: number }
+        # Publishing fields
+        - { name: publish_status, type: text }  # draft, scheduled, published, archived
+        - { name: published_at, type: datetime }
+        - { name: embargo_until, type: datetime }
+        - { name: version_number, type: number }
+        - { name: slug, type: text }
+        - { name: seo_description, type: text }
+        - { name: content_warnings, type: json }  # Array of warning IDs
       relationships:
         - { name: book, type: one-to-one, target: Book }
         - { name: scenes, type: one-to-many, target: Scene }

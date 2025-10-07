@@ -4,7 +4,7 @@ import { useEffect, useState, Suspense } from 'react'
 import type { ComponentType } from 'react'
 import { BobbinrySDK } from '@bobbinry/sdk'
 import { loadNativeView } from '../lib/native-view-loader'
-import ErrorBoundary from './ErrorBoundary'
+import { ErrorBoundary } from './ErrorBoundary'
 
 interface NativeViewRendererProps {
   projectId: string

@@ -26,9 +26,16 @@ export async function POST(request: NextRequest) {
       })
       .returning()
 
+    if (!inserted) {
+      return NextResponse.json(
+        { error: 'Failed to create entity' },
+        { status: 500 }
+      )
+    }
+
     const entity = {
       id: inserted.id,
-      ...inserted.entityData,
+      ...(inserted.entityData as Record<string, unknown>),
       created_at: inserted.createdAt,
       updated_at: inserted.updatedAt
     }

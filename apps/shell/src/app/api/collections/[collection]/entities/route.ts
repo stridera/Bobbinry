@@ -38,7 +38,7 @@ export async function GET(
     // Transform results to extract entity data
     const transformedEntities = results.map(row => ({
       id: row.id,
-      ...row.entityData,
+      ...(row.entityData as Record<string, unknown>),
       created_at: row.createdAt,
       updated_at: row.updatedAt
     }))

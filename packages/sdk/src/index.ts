@@ -331,11 +331,9 @@ type ConfigChangeCallback = (config: ShellConfig) => void
 export class ShellAPI {
   private config: ShellConfig | null = null
   private configListeners: ConfigChangeCallback[] = []
-  private messageBus: MessageBus
   private isIframe: boolean
 
-  constructor(messageBus: MessageBus) {
-    this.messageBus = messageBus
+  constructor() {
     this.isIframe = typeof window !== 'undefined' && window.parent !== window
     this.setupConfigListener()
     this.requestInitialConfig()
@@ -456,7 +454,7 @@ export class BobbinrySDK {
     this.api = new BobbinryAPI(apiBaseURL)
     this.messageBus = new MessageBus(componentId)
     this.entities = new EntityAPI(this.api, '') // Project ID will be set when project is loaded
-    this.shell = new ShellAPI(this.messageBus)
+    this.shell = new ShellAPI()
   }
 
   setProject(projectId: string) {

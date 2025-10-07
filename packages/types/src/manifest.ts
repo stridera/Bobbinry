@@ -65,6 +65,7 @@ export interface Manifest {
     collections?: {
       target: string
       fields: Field[]
+      requiredPermission?: string
     }[]
   }
 
@@ -78,12 +79,17 @@ export interface Manifest {
   offline?: {
     defaultCache?: 'none' | 'open_entities' | 'all_entities' | 'custom'
     redactFields?: string[]
+    maxAge?: number // Cache max age in milliseconds
+    maxSize?: number // Cache max size in MB
+    collections?: string[] // Specific collections to cache (for 'custom' mode)
   }
 
   // v0.2: Sync and conflict resolution
   sync?: {
     conflictPolicy?: 'text_delta' | 'field_merge' | 'last_write_wins'
     fieldPolicies?: Record<string, 'text_delta' | 'field_merge' | 'last_write_wins'>
+    syncInterval?: number // Sync interval in milliseconds
+    optimisticUpdates?: boolean // Enable optimistic UI updates
   }
 
   // v0.2: Execution mode - native vs sandboxed
@@ -329,6 +335,8 @@ export interface ExtensionContribution {
   type: 'panel' | 'view' | 'action' | 'menu'
   id: string
   title?: string
+  label?: string
+  icon?: string
   entry?: string
   when?: ExtensionCondition
   pubsub?: {
@@ -356,6 +364,7 @@ export interface TopicProducer {
   schema?: any
   sensitivity?: 'low' | 'medium' | 'high'
   qos?: 'realtime' | 'batch' | 'state'
+  rate?: string // e.g., "100/60" for 100 messages per 60 seconds
   rateLimit?: {
     maxPerSecond: number
     maxPerMinute: number
@@ -366,4 +375,5 @@ export interface TopicConsumer {
   topic: string
   intent?: string
   sensitivityRequired?: 'low' | 'medium' | 'high'
+  minSensitivity?: 'low' | 'medium' | 'high'
 }

@@ -248,21 +248,119 @@ function notifyClients(type, data) {
 
 // IndexedDB operations (stubs - will be implemented with proper IndexedDB wrapper)
 async function getPendingChanges() {
-  // TODO: Implement IndexedDB read
-  return []
+  try {
+    const db = await openSyncDB()
+    const tx = db.transaction('pendingChanges', 'readonly')
+    const store = tx.objectStore('pendingChanges')
+    return await store.getAll()
+  } catch (error) {
+    console.error('Failed to get pending changes:', error)
+    return []
+  }
 }
 
 async function removePendingChange(id) {
-  // TODO: Implement IndexedDB delete
+  try {
+    const db = await openSyncDB()
+    const tx = db.transaction('pendingChanges', 'readwrite')
+    const store = tx.objectStore('pendingChanges')
+    await store.delete(id)
+  } catch (error) {
+    console.error('Failed to remove pending change:', error)
+  }
 }
 
 async function getPendingMessages() {
-  // TODO: Implement IndexedDB read
-  return []
+  try {
+    const db = await openSyncDB()
+    const tx = db.transaction('pendingMessages', 'readonly')
+    const store = tx.objectStore('pendingMessages')
+    return await store.getAll()
+  } catch (error) {
+    console.error('Failed to get pending messages:', error)
+    return []
+  }
 }
 
 async function removePendingMessage(id) {
-  // TODO: Implement IndexedDB delete
+  try {
+    const db = await openSyncDB()
+    const tx = db.transaction('pendingMessages', 'readwrite')
+    const store = tx.objectStore('pendingMessages')
+    await store.delete(id)
+  } catch (error) {
+    console.error('Failed to remove pending message:', error)
+  }
+}
+
+// IndexedDB connection management
+let dbInstance = null
+
+async function openSyncDB() {
+  if (dbInstance) return dbInstance
+
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('BobbinrySync', 1)
+
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      dbInstance = request.result
+      resolve(dbInstance)
+    }
+
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result
+
+      // Create object stores for offline sync
+      if (!db.objectStoreNames.contains('pendingChanges')) {
+        const changesStore = db.createObjectStore('pendingChanges', { keyPath: 'id' })
+        changesStore.createIndex('timestamp', 'timestamp', { unique: false })
+        changesStore.createIndex('projectId', 'projectId', { unique: false })
+      }
+
+      if (!db.objectStoreNames.contains('pendingMessages')) {
+        const messagesStore = db.createObjectStore('pendingMessages', { keyPath: 'id' })
+        messagesStore.createIndex('timestamp', 'timestamp', { unique: false })
+      }
+
+      if (!db.objectStoreNames.contains('offlineCache')) {
+        const cacheStore = db.createObjectStore('offlineCache', { keyPath: 'key' })
+        cacheStore.createIndex('expiresAt', 'expiresAt', { unique: false })
+      }
+    }
+  })
+}
+
+// Helper to add pending change
+async function addPendingChange(change) {
+  try {
+    const db = await openSyncDB()
+    const tx = db.transaction('pendingChanges', 'readwrite')
+    const store = tx.objectStore('pendingChanges')
+    await store.add({
+      id: change.id || crypto.randomUUID(),
+      timestamp: Date.now(),
+      ...change
+    })
+  } catch (error) {
+    console.error('Failed to add pending change:', error)
+  }
+}
+
+// Helper to add pending message
+async function addPendingMessage(message) {
+  try {
+    const db = await openSyncDB()
+    const tx = db.transaction('pendingMessages', 'readwrite')
+    const store = tx.objectStore('pendingMessages')
+    await store.add({
+      id: message.id || crypto.randomUUID(),
+      timestamp: Date.now(),
+      ...message
+    })
+  } catch (error) {
+    console.error('Failed to add pending message:', error)
+  }
 }
 
 console.log('Bobbinry Service Worker loaded')

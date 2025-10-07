@@ -14,6 +14,8 @@ export default [
       ecmaVersion: 'latest',
       sourceType: 'module',
     },
-    rules: {},
+    rules: {
+      'no-console': ['warn', { allow: ['warn', 'error'] }],
+    },
   },
 ];

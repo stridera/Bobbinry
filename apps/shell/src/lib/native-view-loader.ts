@@ -48,10 +48,6 @@ const NATIVE_VIEW_MAP: Record<string, () => Promise<any>> = {
   'manuscript.outline': () => import('@bobbinry/manuscript/views/outline'),
   'manuscript.editor': () => import('@bobbinry/manuscript/views/editor'),
   'manuscript.panels/navigation': () => import('@bobbinry/manuscript/panels/navigation'),
-  'entities.config': () => import('@bobbinry/entities/views/config'),
-  'entities.entity-editor': () => import('@bobbinry/entities/views/entity-editor'),
-  'entities.entity-list': () => import('@bobbinry/entities/views/entity-list'),
-  'entities.views/navigation': () => import('@bobbinry/entities/views/navigation'),
 }
 
 export async function loadNativeView(

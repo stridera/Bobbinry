@@ -6,6 +6,9 @@ import { BobbinrySDK } from '@bobbinry/sdk'
 import { ShellLayout } from '@/components/ShellLayout'
 import { ViewRouter } from '@/components/ViewRouter'
 import { useManifestExtensions } from '@/components/ExtensionProvider'
+import { ProjectHeader } from './components/ProjectHeader'
+import { ProjectWelcome } from './components/ProjectWelcome'
+import { BobbinMarketplace } from './components/BobbinMarketplace'
 
 interface InstalledBobbin {
   id: string
@@ -35,6 +38,7 @@ export default function ProjectPage() {
   const [sdk] = useState(() => new BobbinrySDK('shell'))
   const [installedBobbins, setInstalledBobbins] = useState<InstalledBobbin[]>([])
   const [loading, setLoading] = useState(true)
+  const [showMarketplace, setShowMarketplace] = useState(false)
 
   // Memoize context to prevent unnecessary re-renders
   const shellContext = useMemo(() => ({ projectId }), [projectId])
@@ -98,19 +102,61 @@ export default function ProjectPage() {
     }
   }, [projectId, sdk])
   
+  const handleInstallComplete = () => {
+    // Reload bobbins after installation
+    const loadBobbins = async () => {
+      try {
+        const response = await sdk.api.getInstalledBobbins(projectId)
+        const newBobbins = response.bobbins || []
+        setInstalledBobbins(newBobbins)
+        
+        // Register extensions for newly installed bobbins
+        newBobbins.forEach((bobbin: InstalledBobbin) => {
+          registerManifestExtensions(bobbin.id, bobbin.manifest)
+        })
+      } catch (error) {
+        console.error('Failed to reload bobbins:', error)
+      }
+    }
+    loadBobbins()
+  }
+
   if (loading) {
     return (
-      <ShellLayout currentView="project" context={shellContext}>
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <ProjectHeader />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-gray-500">Loading project...</div>
         </div>
-      </ShellLayout>
+      </div>
     )
   }
 
+  const hasBobbins = installedBobbins.length > 0
+
   return (
-    <ShellLayout currentView="project" context={shellContext}>
-      <ViewRouter projectId={projectId} sdk={sdk} />
-    </ShellLayout>
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <ProjectHeader />
+      
+      {!hasBobbins ? (
+        <ProjectWelcome
+          projectId={projectId}
+          onInstallBobbins={() => setShowMarketplace(true)}
+        />
+      ) : (
+        <ShellLayout currentView="project" context={shellContext}>
+          <ViewRouter projectId={projectId} sdk={sdk} />
+        </ShellLayout>
+      )}
+
+      {showMarketplace && (
+        <BobbinMarketplace
+          projectId={projectId}
+          installedBobbins={installedBobbins}
+          onInstallComplete={handleInstallComplete}
+          onClose={() => setShowMarketplace(false)}
+        />
+      )}
+    </div>
   )
 }

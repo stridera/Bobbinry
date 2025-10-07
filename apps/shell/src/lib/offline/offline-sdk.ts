@@ -12,7 +12,7 @@ export class OfflineBobbinrySDK extends BobbinrySDK {
   private useOffline: boolean = true
 
   constructor(baseURL?: string) {
-    super()
+    super(baseURL || 'http://localhost:4000/api')
 
     // Start sync manager
     if (typeof window !== 'undefined') {
@@ -51,8 +51,8 @@ export class OfflineBobbinrySDK extends BobbinrySDK {
         const result = await offlineStorage.queryEntities({
           projectId,
           collection: params.collection,
-          limit: params.limit,
-          offset: params.offset
+          ...(params.limit !== undefined && { limit: params.limit }),
+          ...(params.offset !== undefined && { offset: params.offset })
         })
 
         return {
@@ -80,8 +80,8 @@ export class OfflineBobbinrySDK extends BobbinrySDK {
         const result = await offlineStorage.queryEntities({
           projectId,
           collection: params.collection,
-          limit: params.limit,
-          offset: params.offset
+          ...(params.limit !== undefined && { limit: params.limit }),
+          ...(params.offset !== undefined && { offset: params.offset })
         })
 
         return {
@@ -236,23 +236,23 @@ export class OfflineBobbinrySDK extends BobbinrySDK {
   // Server methods (fallback to parent class or implement directly)
   private async fetchFromServer<T>(params: any): Promise<{ data: T[]; total: number }> {
     // Call parent implementation or API directly
-    return super.entities.query(params) as Promise<{ data: T[]; total: number }>
+    return this.entities.query(params) as Promise<{ data: T[]; total: number }>
   }
 
   private async createOnServer<T>(collection: string, data: Record<string, any>): Promise<T> {
-    return super.entities.create({ collection, data }) as Promise<T>
+    return this.entities.create(collection, data) as Promise<T>
   }
 
   private async updateOnServer<T>(collection: string, entityId: string, data: Record<string, any>): Promise<T> {
-    return super.entities.update(entityId, { collection, data }) as Promise<T>
+    return this.entities.update(collection, entityId, data) as Promise<T>
   }
 
   private async deleteOnServer(collection: string, entityId: string): Promise<void> {
-    return super.entities.delete(entityId, { collection })
+    return this.entities.delete(collection, entityId)
   }
 
   private async getFromServer<T>(collection: string, entityId: string): Promise<T | null> {
-    return super.entities.get(entityId, { collection }) as Promise<T | null>
+    return this.entities.get(collection, entityId) as Promise<T | null>
   }
 }
 

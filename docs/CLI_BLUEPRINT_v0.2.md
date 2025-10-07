@@ -1,4 +1,4 @@
-# Bobbinry — CLI Build Blueprint (v0.2)
+`# Bobbinry — CLI Build Blueprint (v0.2)
 
 > **Purpose:** Updated, actionable plan your CLI can follow to scaffold the Bobbinry project with the latest decisions: **offline‑first v1**, **local pub/sub (LEB)**, **extensions/slots**, **manifest v0.2**, and the **tiered storage compiler**. As before: generate structure and stubs only — no app logic beyond a walking skeleton.
 

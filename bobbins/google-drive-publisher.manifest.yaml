@@ -1,0 +1,180 @@
+id: google-drive-publisher
+name: Google Drive Publisher
+version: 1.0.0
+author: Bobbins Core
+description: Sync chapters to Google Drive folders in real-time
+tags: [publishing, integration, cloud-storage, automation]
+license: MIT
+
+capabilities:
+  publishable: true
+  external: true  # Requires Google Drive API access
+  ai: false
+  customViews: false
+
+execution:
+  mode: sandboxed
+  signature: dev_mode_skip
+
+data:
+  collections:
+    - name: DriveConnection
+      fields:
+        - { name: folder_id, type: text, required: true }
+        - { name: folder_name, type: text }
+        - { name: access_token, type: text, required: true }  # Encrypted at rest
+        - { name: refresh_token, type: text, required: true }  # Encrypted at rest
+        - { name: token_expires_at, type: datetime }
+        - { name: is_active, type: boolean }
+        - { name: auto_sync, type: boolean }
+        - { name: sync_format, type: text }  # markdown, docx, pdf
+        
+    - name: SyncLog
+      fields:
+        - { name: chapter_id, type: text, required: true }
+        - { name: chapter_title, type: text }
+        - { name: drive_file_id, type: text }
+        - { name: drive_file_url, type: text }
+        - { name: sync_status, type: text }  # success, failed, pending, in_progress
+        - { name: synced_at, type: datetime }
+        - { name: error_message, type: text }
+        - { name: retry_count, type: number }
+        - { name: file_size_bytes, type: number }
+
+ui:
+  views:
+    - id: drive-settings
+      name: Drive Settings
+      type: form
+      source: DriveConnection
+      layout:
+        fields:
+          - folder_id
+          - folder_name
+          - auto_sync
+          - sync_format
+        actions:
+          - authorize_drive
+          - test_connection
+          - manual_sync_all
+          
+    - id: sync-history
+      name: Sync History
+      type: table
+      source: SyncLog
+      layout:
+        columns:
+          - { field: chapter_title, label: "Chapter" }
+          - { field: sync_status, label: "Status" }
+          - { field: synced_at, label: "Synced At" }
+          - { field: error_message, label: "Error" }
+        filters:
+          - status
+          - date_range
+        actions:
+          - retry_failed
+          - view_in_drive
+
+interactions:
+  triggers:
+    - id: on_chapter_create
+      event: create
+      target: Chapter  # From manuscript bobbin
+      actions:
+        - sync_to_drive
+        
+    - id: on_chapter_update
+      event: update
+      target: Chapter
+      actions:
+        - sync_to_drive
+        
+    - id: on_chapter_publish
+      event: publish
+      target: Chapter
+      actions:
+        - sync_published_version
+        
+  actions:
+    - id: authorize_drive
+      name: Authorize Google Drive
+      type: custom
+      handler: initiateDriveOAuth
+      description: Start OAuth flow to connect Google Drive account
+      
+    - id: sync_to_drive
+      name: Sync to Drive
+      type: custom
+      handler: syncChapterToDrive
+      description: Upload or update chapter in Google Drive
+      
+    - id: sync_published_version
+      name: Sync Published Version
+      type: custom
+      handler: syncPublishedChapter
+      description: Sync only the published version of a chapter
+      
+    - id: test_connection
+      name: Test Connection
+      type: custom
+      handler: testDriveConnection
+      description: Verify Drive credentials are valid
+      
+    - id: manual_sync_all
+      name: Sync All Chapters
+      type: custom
+      handler: syncAllChapters
+      description: Manually trigger sync of all chapters
+      
+    - id: retry_failed
+      name: Retry Failed Syncs
+      type: custom
+      handler: retryFailedSyncs
+      description: Retry all failed sync operations
+
+external:
+  endpoints:
+    - id: drive_files_list
+      url: https://www.googleapis.com/drive/v3/files
+      method: GET
+      description: List files in Google Drive
+    - id: drive_files_create
+      url: https://www.googleapis.com/drive/v3/files
+      method: POST
+      description: Create or upload files to Google Drive
+    - id: drive_files_update
+      url: https://www.googleapis.com/drive/v3/files/*
+      method: PUT
+      description: Update existing files in Google Drive
+    - id: oauth_token
+      url: https://www.googleapis.com/oauth2/v4/token
+      method: POST
+      description: Exchange authorization code for access token
+  auth:
+    type: oauth
+    config:
+      provider: google
+      scopes:
+        - https://www.googleapis.com/auth/drive.file
+        - https://www.googleapis.com/auth/drive.appdata
+  permissions:
+    - endpoint: googleapis.com/drive
+      reason: Sync chapters to Google Drive folders
+      required: true
+    - endpoint: googleapis.com/oauth2
+      reason: Authenticate with Google OAuth
+      required: true
+
+publish: null
+
+linking:
+  entities:
+    - collection: SyncLog
+      display:
+        template: "Sync: {{chapter_title}}"
+
+compatibility:
+  minShellVersion: 1.0.0
+  requiredBobbins:
+    - manuscript  # Depends on manuscript bobbin for Chapter entities
+  migrations: []

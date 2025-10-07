@@ -215,11 +215,8 @@ build_packages() {
         exit 1
     }
 
-    log_info "Building API..."
-    pnpm --filter=api build || {
-        log_error "Failed to build API"
-        exit 1
-    }
+    # Skip building API in dev mode - it uses tsx which doesn't need compilation
+    log_info "Skipping API build (using tsx in dev mode)"
 
     log_success "All packages built successfully"
 }
@@ -232,8 +229,10 @@ start_api() {
 
     cd "$PROJECT_ROOT"
 
-    # Start API server in background
-    NODE_ENV=development pnpm --filter=api start > "$PID_DIR/api.log" 2>&1 &
+    # Start API server in background using dev command (tsx watch)
+    # Note: Migrations run automatically on startup
+    # If you encounter migration issues, run: pnpm --filter=api db:reset
+    NODE_ENV=development pnpm --filter=api dev > "$PID_DIR/api.log" 2>&1 &
     local api_pid=$!
     echo $api_pid > "$API_PID_FILE"
 
@@ -242,6 +241,7 @@ start_api() {
     # Wait for API to be ready
     wait_for_service "http://localhost:$API_PORT/health" "API server" || {
         log_error "API server failed to start. Check logs at $PID_DIR/api.log"
+        log_error "If migration errors occurred, try: pnpm --filter=api db:reset"
         exit 1
     }
 

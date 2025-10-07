@@ -5,15 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1758634078991,
-      "tag": "0000_safe_bug",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1758737770239,
-      "tag": "0001_sudden_photon",
+      "when": 1759854827964,
+      "tag": "0000_warm_sphinx",
       "breakpoints": true
     }
   ]

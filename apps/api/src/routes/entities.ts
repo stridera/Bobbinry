@@ -298,6 +298,158 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
+  // Atomic batch operations
+  fastify.post<{
+    Body: {
+      projectId: string
+      operations: Array<{
+        type: 'create' | 'update' | 'delete'
+        collection: string
+        id?: string
+        data?: Record<string, any>
+      }>
+    }
+  }>('/entities/batch/atomic', async (request, reply) => {
+    try {
+      const { projectId, operations } = request.body
+
+      if (!operations || operations.length === 0) {
+        return reply.status(400).send({ error: 'No operations provided' })
+      }
+
+      // Start a transaction
+      const results = await db.transaction(async (tx) => {
+        const opResults = []
+
+        for (const operation of operations) {
+          const { type, collection, id, data } = operation
+
+          try {
+            let result
+            
+            switch (type) {
+              case 'create':
+                if (!data) {
+                  throw new Error('Create operation requires data')
+                }
+                
+                // Find target bobbin
+                const installations = await tx
+                  .select()
+                  .from(bobbinsInstalled)
+                  .where(and(
+                    eq(bobbinsInstalled.projectId, projectId),
+                    eq(bobbinsInstalled.enabled, true)
+                  ))
+
+                let targetBobbin = null
+                for (const install of installations) {
+                  const manifest = install.manifestJson as any
+                  const collections = manifest.data?.collections || []
+                  if (collections.some((c: any) => c.name === collection)) {
+                    targetBobbin = install
+                    break
+                  }
+                }
+
+                if (!targetBobbin) {
+                  throw new Error(`Collection '${collection}' not found`)
+                }
+
+                const entityId = crypto.randomUUID()
+                const created = await tx
+                  .insert(entities)
+                  .values({
+                    id: entityId,
+                    projectId,
+                    bobbinId: targetBobbin.bobbinId,
+                    collectionName: collection,
+                    entityData: data
+                  })
+                  .returning()
+
+                result = {
+                  id: created[0]!.id,
+                  ...(created[0]!.entityData as object)
+                }
+                break
+
+              case 'update':
+                if (!id || !data) {
+                  throw new Error('Update operation requires id and data')
+                }
+                
+                const updated = await tx
+                  .update(entities)
+                  .set({
+                    entityData: data,
+                    updatedAt: new Date()
+                  })
+                  .where(and(
+                    eq(entities.id, id),
+                    eq(entities.projectId, projectId),
+                    eq(entities.collectionName, collection)
+                  ))
+                  .returning()
+
+                if (updated.length === 0) {
+                  throw new Error(`Entity ${id} not found`)
+                }
+
+                result = {
+                  id: updated[0]!.id,
+                  ...(updated[0]!.entityData as object)
+                }
+                break
+
+              case 'delete':
+                if (!id) {
+                  throw new Error('Delete operation requires id')
+                }
+                
+                const deleted = await tx
+                  .delete(entities)
+                  .where(and(
+                    eq(entities.id, id),
+                    eq(entities.projectId, projectId),
+                    eq(entities.collectionName, collection)
+                  ))
+                  .returning({ id: entities.id })
+
+                if (deleted.length === 0) {
+                  throw new Error(`Entity ${id} not found`)
+                }
+
+                result = { deleted: true, id }
+                break
+
+              default:
+                throw new Error(`Unknown operation type: ${type}`)
+            }
+
+            opResults.push({ success: true, data: result })
+          } catch (err) {
+            // In atomic mode, any failure should rollback the transaction
+            throw err
+          }
+        }
+
+        return opResults
+      })
+
+      return { success: true, results }
+
+    } catch (error) {
+      fastify.log.error(error)
+      
+      // Transaction was rolled back
+      return reply.status(500).send({
+        error: 'Atomic batch operation failed - all changes rolled back',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      })
+    }
+  })
+
   // Get single entity
   fastify.get<{
     Params: { entityId: string }

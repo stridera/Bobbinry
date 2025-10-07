@@ -113,7 +113,7 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
       }
 
       // Check if a specific view was requested in metadata
-      let selectedView = compatibleViews[0]
+      let selectedView = compatibleViews[0]!
       if (currentNav.metadata?.view) {
         const requestedViewId = `${currentNav.bobbinId}.${currentNav.metadata.view}`
         const matchingView = compatibleViews.find(v => v.viewId === requestedViewId)

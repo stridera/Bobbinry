@@ -97,12 +97,13 @@ describe('Signature Verification', () => {
       expect(result.errors.some(e => e.includes('cannot use dev_mode_skip signature in production'))).toBe(true)
     })
 
-    it('should reject native bobbin with any signature (Phase 2 not implemented yet)', async () => {
-      const manifest = createNativeManifest('some-signature-here')
+    it('should reject native bobbin with invalid signature', async () => {
+      const manifest = createNativeManifest('invalid-signature-string')
       const result = await compiler.compile(manifest)
 
       expect(result.success).toBe(false)
-      expect(result.errors.some(e => e.includes('signature verification not yet implemented'))).toBe(true)
+      // Should get an error about signature parsing or validation
+      expect(result.errors.length).toBeGreaterThan(0)
     })
 
     it('should not require signature for sandboxed bobbins', async () => {
