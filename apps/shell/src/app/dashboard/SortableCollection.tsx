@@ -93,19 +93,19 @@ export function SortableCollection({ collection, onReorder }: SortableCollection
   }
 
   return (
-    <div className="bg-white rounded-lg shadow p-6">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">{collection.name}</h2>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">{collection.name}</h2>
           {collection.description && (
-            <p className="text-sm text-gray-600 mt-1">{collection.description}</p>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{collection.description}</p>
           )}
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-500">
+          <span className="text-sm text-gray-500 dark:text-gray-400">
             {projects.length} project{projects.length !== 1 ? 's' : ''}
           </span>
-          <span className="text-xs text-gray-400">• Drag to reorder</span>
+          <span className="text-xs text-gray-400 dark:text-gray-500">• Drag to reorder</span>
         </div>
       </div>
 

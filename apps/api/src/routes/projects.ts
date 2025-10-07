@@ -360,11 +360,12 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
     Body: {
       name?: string
       description?: string
+      coverImage?: string | null
     }
   }>('/projects/:projectId', async (request, reply) => {
     try {
       const { projectId } = request.params
-      const { name, description } = request.body
+      const { name, description, coverImage } = request.body
 
       if (!isValidUUID(projectId)) {
         return reply.status(400).send({ error: 'Invalid project ID format' })
@@ -373,6 +374,7 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
       const updates: any = {}
       if (name !== undefined) updates.name = name
       if (description !== undefined) updates.description = description
+      if (coverImage !== undefined) updates.coverImage = coverImage
 
       if (Object.keys(updates).length === 0) {
         return reply.status(400).send({ error: 'No updates provided' })

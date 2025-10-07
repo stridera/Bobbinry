@@ -7,13 +7,13 @@
  */
 
 import { useState, useEffect } from 'react'
-import { signOut } from 'next-auth/react'
 import Link from 'next/link'
 import { ProjectCard } from './ProjectCard'
 import { RecentActivityPanel } from './RecentActivityPanel'
 import { SortableCollection } from './SortableCollection'
 import { DashboardLoadingState } from '@/components/LoadingState'
 import { EmptyState } from '@/components/EmptyState'
+import { UserMenu } from '@/components/UserMenu'
 
 interface User {
   id: string
@@ -119,14 +119,14 @@ export function DashboardContent({ user }: { user: User }) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200">
+      <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Bobbinry</h1>
-              <p className="text-sm text-gray-600 mt-1">Welcome back, {user.name || user.email}</p>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Bobbinry</h1>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Welcome back, {user.name || user.email}</p>
             </div>
             <div className="flex items-center gap-4">
               <Link
@@ -135,29 +135,24 @@ export function DashboardContent({ user }: { user: User }) {
               >
                 + New Project
               </Link>
-              <button
-                onClick={() => signOut({ callbackUrl: '/login' })}
-                className="px-4 py-2 text-gray-600 hover:text-gray-900"
-              >
-                Sign Out
-              </button>
+              <UserMenu user={user} />
             </div>
           </div>
 
           {/* Stats */}
           {stats && (
             <div className="mt-6 grid grid-cols-3 gap-4">
-              <div className="bg-blue-50 rounded-lg p-4">
-                <div className="text-2xl font-bold text-blue-600">{stats.projects.active}</div>
-                <div className="text-sm text-gray-600">Active Projects</div>
+              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
+                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{stats.projects.active}</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">Active Projects</div>
               </div>
-              <div className="bg-purple-50 rounded-lg p-4">
-                <div className="text-2xl font-bold text-purple-600">{stats.collections.total}</div>
-                <div className="text-sm text-gray-600">Collections</div>
+              <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4">
+                <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">{stats.collections.total}</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">Collections</div>
               </div>
-              <div className="bg-green-50 rounded-lg p-4">
-                <div className="text-2xl font-bold text-green-600">{stats.entities.total}</div>
-                <div className="text-sm text-gray-600">Total Items</div>
+              <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
+                <div className="text-2xl font-bold text-green-600 dark:text-green-400">{stats.entities.total}</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">Total Items</div>
               </div>
             </div>
           )}
@@ -170,10 +165,10 @@ export function DashboardContent({ user }: { user: User }) {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search projects..."
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
-            <label className="flex items-center gap-2 text-sm text-gray-600">
+            <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
               <input
                 type="checkbox"
                 checked={showArchived}
@@ -207,8 +202,8 @@ export function DashboardContent({ user }: { user: User }) {
 
             {/* Uncategorized projects */}
             {data?.uncategorized && filteredProjects(data.uncategorized).length > 0 && (
-              <div className="bg-white rounded-lg shadow p-6">
-                <h2 className="text-xl font-bold text-gray-900 mb-4">Uncategorized</h2>
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">Uncategorized</h2>
                 <div className="grid gap-4">
                   {filteredProjects(data.uncategorized).map((project) => (
                     <ProjectCard key={project.id} project={project} />

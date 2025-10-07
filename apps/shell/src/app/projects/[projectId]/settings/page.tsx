@@ -40,6 +40,8 @@ export default function ProjectSettingsPage() {
   // Form state
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [coverImage, setCoverImage] = useState('')
+  const [uploading, setUploading] = useState(false)
 
   useEffect(() => {
     loadProject()
@@ -54,6 +56,7 @@ export default function ProjectSettingsPage() {
         setProject(data.project)
         setName(data.project.name)
         setDescription(data.project.description || '')
+        setCoverImage(data.project.coverImage || '')
       }
     } catch (err) {
       console.error('Failed to load project:', err)
@@ -93,7 +96,11 @@ export default function ProjectSettingsPage() {
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name.trim(), description: description.trim() || null })
+          body: JSON.stringify({ 
+            name: name.trim(), 
+            description: description.trim() || null,
+            coverImage: coverImage || null
+          })
         }
       )
 
@@ -181,22 +188,22 @@ export default function ProjectSettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200">
+      <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center gap-2 text-sm text-gray-600 mb-1">
-            <Link href="/dashboard" className="hover:text-gray-900">Dashboard</Link>
+          <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 mb-1">
+            <Link href="/dashboard" className="hover:text-gray-900 dark:hover:text-gray-100">Dashboard</Link>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
-            <Link href={`/projects/${projectId}`} className="hover:text-gray-900">{project?.name}</Link>
+            <Link href={`/projects/${projectId}`} className="hover:text-gray-900 dark:hover:text-gray-100">{project?.name}</Link>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
-            <span className="text-gray-900">Settings</span>
+            <span className="text-gray-900 dark:text-gray-100">Settings</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Project Settings</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Project Settings</h1>
         </div>
       </header>
 
@@ -204,24 +211,24 @@ export default function ProjectSettingsPage() {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         {/* Success/Error messages */}
         {success && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <p className="text-sm text-green-700">{success}</p>
+          <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+            <p className="text-sm text-green-700 dark:text-green-300">{success}</p>
           </div>
         )}
 
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <p className="text-sm text-red-700">{error}</p>
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+            <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
           </div>
         )}
 
         {/* General Settings */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">General Settings</h2>
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">General Settings</h2>
 
           <form onSubmit={handleSaveGeneral} className="space-y-4">
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Project Name
               </label>
               <input
@@ -229,13 +236,13 @@ export default function ProjectSettingsPage() {
                 id="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 required
               />
             </div>
 
             <div>
-              <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="description" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Description
               </label>
               <textarea
@@ -243,8 +250,29 @@ export default function ProjectSettingsPage() {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
+            </div>
+
+            <div>
+              <label htmlFor="coverImage" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Cover Image URL
+              </label>
+              <input
+                type="url"
+                id="coverImage"
+                value={coverImage}
+                onChange={(e) => setCoverImage(e.target.value)}
+                placeholder="https://example.com/image.jpg"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Enter a URL for your project's cover image</p>
+              {coverImage && (
+                <div className="mt-3">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Preview:</p>
+                  <img src={coverImage} alt="Cover preview" className="w-full max-w-md h-48 object-cover rounded-lg border border-gray-300 dark:border-gray-600" onError={(e) => { e.currentTarget.style.display = 'none' }} />
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end">
@@ -260,25 +288,25 @@ export default function ProjectSettingsPage() {
         </div>
 
         {/* Installed Bobbins */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Installed Bobbins</h2>
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Installed Bobbins</h2>
 
           {bobbins.length === 0 ? (
-            <p className="text-gray-600">No bobbins installed yet.</p>
+            <p className="text-gray-600 dark:text-gray-400">No bobbins installed yet.</p>
           ) : (
             <div className="space-y-3">
               {bobbins.map((bobbin) => (
-                <div key={bobbin.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                <div key={bobbin.id} className="flex items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
                   <div className="flex-1">
-                    <h3 className="font-medium text-gray-900">{bobbin.manifest.name}</h3>
+                    <h3 className="font-medium text-gray-900 dark:text-gray-100">{bobbin.manifest.name}</h3>
                     {bobbin.manifest.description && (
-                      <p className="text-sm text-gray-600 mt-1">{bobbin.manifest.description}</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{bobbin.manifest.description}</p>
                     )}
-                    <p className="text-xs text-gray-500 mt-1">Version {bobbin.version}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">Version {bobbin.version}</p>
                   </div>
                   <button
                     onClick={() => handleUninstallBobbin(bobbin.id)}
-                    className="ml-4 px-4 py-2 text-red-600 hover:text-red-700 border border-red-300 rounded-lg hover:border-red-400"
+                    className="ml-4 px-4 py-2 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 border border-red-300 dark:border-red-700 rounded-lg hover:border-red-400 dark:hover:border-red-600"
                   >
                     Uninstall
                   </button>
@@ -289,9 +317,9 @@ export default function ProjectSettingsPage() {
         </div>
 
         {/* Archive/Unarchive */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Archive Project</h2>
-          <p className="text-sm text-gray-600 mb-4">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Archive Project</h2>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
             {project?.isArchived
               ? 'This project is archived. Unarchive it to make it visible in your active projects.'
               : 'Archive this project to hide it from your active projects. You can unarchive it later.'}
@@ -309,9 +337,9 @@ export default function ProjectSettingsPage() {
         </div>
 
         {/* Danger Zone */}
-        <div className="bg-white rounded-lg shadow p-6 border-2 border-red-200">
-          <h2 className="text-lg font-semibold text-red-600 mb-4">Danger Zone</h2>
-          <p className="text-sm text-gray-600 mb-4">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border-2 border-red-200 dark:border-red-800">
+          <h2 className="text-lg font-semibold text-red-600 dark:text-red-400 mb-4">Danger Zone</h2>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
             Once you delete a project, there is no going back. This action cannot be undone.
           </p>
           <button

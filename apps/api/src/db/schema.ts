@@ -425,6 +425,7 @@ export const projects = pgTable('projects', {
   ownerId: uuid('owner_id').references(() => users.id).notNull(),
   name: varchar('name', { length: 255 }).notNull(),
   description: text('description'),
+  coverImage: text('cover_image'),
   shortUrl: varchar('short_url', { length: 12 }).unique(),
   shortUrlClaimedAt: timestamp('short_url_claimed_at'),
   isArchived: boolean('is_archived').default(false).notNull(),

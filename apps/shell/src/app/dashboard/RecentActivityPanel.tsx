@@ -59,13 +59,13 @@ export function RecentActivityPanel({ userId }: { userId: string }) {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-lg font-bold text-gray-900 mb-4">Recent Activity</h2>
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4">Recent Activity</h2>
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
             <div key={i} className="animate-pulse">
-              <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
-              <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+              <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
+              <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
             </div>
           ))}
         </div>
@@ -74,11 +74,11 @@ export function RecentActivityPanel({ userId }: { userId: string }) {
   }
 
   return (
-    <div className="bg-white rounded-lg shadow p-6 sticky top-4">
-      <h2 className="text-lg font-bold text-gray-900 mb-4">Recent Activity</h2>
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 sticky top-4">
+      <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4">Recent Activity</h2>
 
       {activity.length === 0 ? (
-        <p className="text-sm text-gray-500">No recent activity</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">No recent activity</p>
       ) : (
         <div className="space-y-4">
           {activity.map((item) => (
@@ -88,13 +88,13 @@ export function RecentActivityPanel({ userId }: { userId: string }) {
               className="block group"
             >
               <div className="text-sm">
-                <div className="font-medium text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-1">
+                <div className="font-medium text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-1">
                   {getEntityTitle(item.entity)}
                 </div>
-                <div className="text-xs text-gray-500 mt-1">
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   {getEntityType(item.entity.collectionName)} in {item.projectName}
                 </div>
-                <div className="text-xs text-gray-400 mt-1">
+                <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                   {formatDistanceToNow(new Date(item.entity.lastEditedAt), { addSuffix: true })}
                 </div>
               </div>
@@ -103,10 +103,10 @@ export function RecentActivityPanel({ userId }: { userId: string }) {
         </div>
       )}
 
-      <div className="mt-6 pt-4 border-t border-gray-200">
+      <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
         <Link
           href="/activity"
-          className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+          className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
         >
           View all activity →
         </Link>
