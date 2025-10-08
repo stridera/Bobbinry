@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { BobbinrySDK } from '@bobbinry/sdk'
 
 interface NavigationPanelProps {
@@ -9,125 +9,150 @@ interface NavigationPanelProps {
   }
 }
 
-interface OutlineNode {
+interface TreeNode {
   id: string
   title: string
-  type: 'book' | 'chapter' | 'scene'
-  children?: OutlineNode[]
-  wordCount?: number
-  chapterId?: string
+  nodeType: 'container' | 'content'
+  type: string
+  icon?: string
+  children?: TreeNode[]
+  parentId?: string | null
 }
 
 /**
  * Navigation Panel for Manuscript bobbin
- * Displays hierarchical tree in the shell's left panel
- * Allows navigation to scenes in the editor
+ * Displays hierarchical tree of containers and content with drag/drop support
  */
 export default function NavigationPanel({ context }: NavigationPanelProps) {
-  const [outline, setOutline] = useState<OutlineNode[]>([])
+  const [tree, setTree] = useState<TreeNode[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
-  const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null)
-  
-  // Create SDK instance for the panel
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string; nodeType: 'container' | 'content' } | null>(null)
+  const [editingNodeId, setEditingNodeId] = useState<string | null>(null)
+  const [editingValue, setEditingValue] = useState('')
+  const [draggedNode, setDraggedNode] = useState<{ id: string; nodeType: 'container' | 'content' } | null>(null)
+  const [dragOverNode, setDragOverNode] = useState<string | null>(null)
+
   const [sdk] = useState(() => new BobbinrySDK('manuscript'))
-  
-  // Get projectId from context
-  const projectId = context?.projectId || context?.currentProject
-  
-  console.log('[NavigationPanel] Render - projectId:', projectId, 'loading:', loading, 'context:', context, 'theme-aware')
+  const projectId = useMemo(() => context?.projectId || context?.currentProject, [context?.projectId, context?.currentProject])
+
+  const [isLoadingRef] = useState({ current: false })
 
   useEffect(() => {
-    console.log('[NavigationPanel] useEffect - projectId:', projectId)
     if (projectId) {
       sdk.setProject(projectId)
-      loadOutline()
+      
+      if (!isLoadingRef.current) {
+        isLoadingRef.current = true
+        loadTree().finally(() => {
+          isLoadingRef.current = false
+        })
+      }
     } else {
-      // No project selected, stop loading
       setLoading(false)
-      setOutline([])
+      setTree([])
     }
-  }, [projectId, sdk])
+  }, [projectId])
 
-  async function loadOutline() {
-    if (!sdk) {
-      console.log('[NavigationPanel] loadOutline - SDK not available')
-      return
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as HTMLElement
+      if (!target.closest('.dropdown-container')) {
+        setShowDropdown(false)
+      }
+      if (!target.closest('.context-menu')) {
+        setContextMenu(null)
+      }
     }
 
-    console.log('[NavigationPanel] loadOutline - Starting to load outline')
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  async function loadTree() {
+    if (!sdk) return
 
     try {
       setLoading(true)
 
-      // Fetch books
-      const books = await sdk.entities.query({
-        collection: 'books',
-        sort: [{ field: 'created_at', direction: 'asc' }]
-      })
+      const [allContainers, allContent] = await Promise.all([
+        sdk.entities.query({ collection: 'containers', limit: 1000 }),
+        sdk.entities.query({ collection: 'content', limit: 1000 })
+      ])
 
-      const outlineData: OutlineNode[] = []
+      const containerMap = new Map<string, any>()
+      const childrenMap = new Map<string, any[]>()
+      const contentByContainer = new Map<string, any[]>()
 
-      for (const book of books.data as any[]) {
-        const bookNode: OutlineNode = {
-          id: book.id,
-          title: book.title || 'Untitled Book',
-          type: 'book',
-          children: []
-        }
-
-        // Fetch chapters for this book
-        const chapters = await sdk.entities.query({
-          collection: 'chapters',
-          filters: { book_id: book.id },
-          sort: [{ field: 'order', direction: 'asc' }]
-        })
-
-        for (const chapter of chapters.data as any[]) {
-          const chapterNode: OutlineNode = {
-            id: chapter.id,
-            title: chapter.title || 'Untitled Chapter',
-            type: 'chapter',
-            children: []
-          }
-
-          // Fetch scenes for this chapter
-          const scenes = await sdk.entities.query({
-            collection: 'scenes',
-            filters: { chapter_id: chapter.id },
-            sort: [{ field: 'order', direction: 'asc' }]
-          })
-
-          for (const scene of scenes.data as any[]) {
-            chapterNode.children!.push({
-              id: scene.id,
-              title: scene.title || 'Untitled Scene',
-              type: 'scene',
-              wordCount: scene.word_count,
-              chapterId: chapter.id
-            })
-          }
-
-          bookNode.children!.push(chapterNode)
-        }
-
-        outlineData.push(bookNode)
+      for (const container of allContainers.data as any[]) {
+        containerMap.set(container.id, container)
+        childrenMap.set(container.id, [])
       }
 
-      setOutline(outlineData)
+      for (const container of allContainers.data as any[]) {
+        const parentId = container.parent_id || container.parentId || 'ROOT'
+        if (!childrenMap.has(parentId)) {
+          childrenMap.set(parentId, [])
+        }
+        childrenMap.get(parentId)!.push(container)
+      }
 
-      // Auto-expand all nodes on first load
+      for (const content of allContent.data as any[]) {
+        const containerId = content.containerId || content.container_id
+        if (!contentByContainer.has(containerId)) {
+          contentByContainer.set(containerId, [])
+        }
+        contentByContainer.get(containerId)!.push(content)
+      }
+
+      function buildNode(container: any): TreeNode {
+        const node: TreeNode = {
+          id: container.id,
+          title: container.title || 'Untitled',
+          nodeType: 'container',
+          type: container.type || 'folder',
+          icon: container.icon,
+          children: [],
+          parentId: container.parent_id
+        }
+
+        const childContainers = childrenMap.get(container.id) || []
+        for (const child of childContainers) {
+          node.children!.push(buildNode(child))
+        }
+
+        const contentItems = contentByContainer.get(container.id) || []
+        for (const content of contentItems) {
+          node.children!.push({
+            id: content.id,
+            title: content.title || 'Untitled',
+            nodeType: 'content',
+            type: content.type || 'scene',
+            parentId: container.id
+          })
+        }
+
+        return node
+      }
+
+      const rootContainers = childrenMap.get('ROOT') || []
+      const treeData = rootContainers.map(buildNode)
+
+      setTree(treeData)
+
       const allNodeIds = new Set<string>()
-      const collectIds = (nodes: OutlineNode[]) => {
+      const collectIds = (nodes: TreeNode[]) => {
         nodes.forEach(node => {
           allNodeIds.add(node.id)
           if (node.children) collectIds(node.children)
         })
       }
-      collectIds(outlineData)
+      collectIds(treeData)
       setExpandedNodes(allNodeIds)
     } catch (error) {
-      console.error('[NavigationPanel] Failed to load outline:', error)
+      console.error('[NavigationPanel] Failed to load tree:', error)
     } finally {
       setLoading(false)
     }
@@ -145,89 +170,291 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     })
   }
 
-  function handleSceneClick(sceneId: string, chapterId: string) {
-    setSelectedSceneId(sceneId)
+  function handleNodeClick(node: TreeNode) {
+    setSelectedNodeId(node.id)
 
-    // Emit new universal navigation event
     if (typeof window !== 'undefined') {
       window.dispatchEvent(
         new CustomEvent('bobbinry:navigate', {
           detail: {
-            entityType: 'scene',
-            entityId: sceneId,
+            entityType: node.nodeType === 'container' ? 'container' : 'content',
+            entityId: node.id,
             bobbinId: 'manuscript',
             metadata: {
-              chapterId
+              type: node.type,
+              parentId: node.parentId
             }
           }
         })
       )
+    }
 
-      // Keep old event for backward compatibility during transition
-      window.dispatchEvent(
-        new CustomEvent('manuscript:navigate-to-scene', {
-          detail: { sceneId }
-        })
-      )
+    if (node.nodeType === 'container') {
+      toggleNode(node.id)
     }
   }
 
-  function renderNode(node: OutlineNode, depth: number = 0): JSX.Element {
+  async function createContainer(parentId: string | null = null) {
+    try {
+      const newContainer = await sdk.entities.create('containers', {
+        title: 'New Container',
+        type: 'folder',
+        parent_id: parentId,
+        order: Date.now(),
+        icon: '📁',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }) as any
+
+      await loadTree()
+
+      if (parentId) {
+        setExpandedNodes(prev => new Set(prev).add(parentId))
+      }
+
+      setSelectedNodeId(newContainer.id)
+      setEditingNodeId(newContainer.id)
+      setEditingValue('New Container')
+    } catch (error) {
+      console.error('Failed to create container:', error)
+      alert('Failed to create container: ' + (error instanceof Error ? error.message : 'Unknown error'))
+    }
+  }
+
+  async function createContent(containerId: string) {
+    try {
+      const newContent = await sdk.entities.create('content', {
+        title: 'New Content',
+        type: 'scene',
+        container_id: containerId,
+        order: Date.now(),
+        word_count: 0,
+        status: 'draft',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }) as any
+
+      await loadTree()
+      setExpandedNodes(prev => new Set(prev).add(containerId))
+
+      setSelectedNodeId(newContent.id)
+      setEditingNodeId(newContent.id)
+      setEditingValue('New Content')
+    } catch (error) {
+      console.error('Failed to create content:', error)
+      alert('Failed to create content: ' + (error instanceof Error ? error.message : 'Unknown error'))
+    }
+  }
+
+  async function handleRename(nodeId: string, nodeType: 'container' | 'content', newTitle: string) {
+    if (!newTitle.trim()) {
+      setEditingNodeId(null)
+      return
+    }
+
+    try {
+      const collection = nodeType === 'container' ? 'containers' : 'content'
+      
+      await sdk.entities.update(collection, nodeId, { 
+        title: newTitle.trim(), 
+        updated_at: new Date().toISOString() 
+      })
+      await loadTree()
+      setEditingNodeId(null)
+    } catch (error) {
+      console.error('Failed to rename:', error)
+      alert('Failed to rename: ' + (error instanceof Error ? error.message : 'Unknown error'))
+    }
+  }
+
+  async function handleDelete(nodeId: string, nodeType: 'container' | 'content') {
+    const collection = nodeType === 'container' ? 'containers' : 'content'
+    const itemType = nodeType === 'container' ? 'container' : 'content item'
+    
+    if (!confirm(`Are you sure you want to delete this ${itemType}? This cannot be undone.`)) {
+      return
+    }
+
+    try {
+      // Server now handles cascade delete for containers
+      await sdk.entities.delete(collection, nodeId)
+      
+      await loadTree()
+      setContextMenu(null)
+      
+      if (selectedNodeId === nodeId) {
+        setSelectedNodeId(null)
+      }
+    } catch (error) {
+      console.error('Failed to delete:', error)
+      alert('Failed to delete: ' + (error instanceof Error ? error.message : 'Unknown error'))
+    }
+  }
+
+  async function handleDrop(draggedId: string, draggedType: 'container' | 'content', targetId: string | null) {
+    try {
+      const collection = draggedType === 'container' ? 'containers' : 'content'
+      
+      if (draggedType === 'container') {
+        await sdk.entities.update(collection, draggedId, {
+          parent_id: targetId,
+          updated_at: new Date().toISOString()
+        })
+      } else {
+        if (!targetId) {
+          alert('Content must be placed inside a container')
+          return
+        }
+        
+        await sdk.entities.update(collection, draggedId, {
+          container_id: targetId,
+          updated_at: new Date().toISOString()
+        })
+      }
+      
+      await loadTree()
+      
+      if (targetId) {
+        setExpandedNodes(prev => new Set(prev).add(targetId))
+      }
+    } catch (error) {
+      console.error('Failed to move item:', error)
+      alert('Failed to move item: ' + (error instanceof Error ? error.message : 'Unknown error'))
+    }
+  }
+
+  function handleDragStart(e: React.DragEvent, nodeId: string, nodeType: 'container' | 'content') {
+    e.stopPropagation()
+    setDraggedNode({ id: nodeId, nodeType })
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  function handleDragOver(e: React.DragEvent, nodeId: string, isContainer: boolean) {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    if (isContainer) {
+      setDragOverNode(nodeId)
+      e.dataTransfer.dropEffect = 'move'
+    }
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragOverNode(null)
+  }
+
+  function handleDropOnNode(e: React.DragEvent, targetId: string, targetIsContainer: boolean) {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    if (!draggedNode) return
+    
+    if (draggedNode.id === targetId) {
+      setDraggedNode(null)
+      setDragOverNode(null)
+      return
+    }
+    
+    if (targetIsContainer) {
+      handleDrop(draggedNode.id, draggedNode.nodeType, targetId)
+    }
+    
+    setDraggedNode(null)
+    setDragOverNode(null)
+  }
+
+  function handleDropOnRoot(e: React.DragEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    if (!draggedNode) return
+    
+    if (draggedNode.nodeType === 'content') {
+      alert('Content must be placed inside a container')
+      setDraggedNode(null)
+      setDragOverNode(null)
+      return
+    }
+    
+    handleDrop(draggedNode.id, draggedNode.nodeType, null)
+    setDraggedNode(null)
+    setDragOverNode(null)
+  }
+
+  function handleContextMenu(e: React.MouseEvent, nodeId: string, nodeType: 'container' | 'content') {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenu({ x: e.clientX, y: e.clientY, nodeId, nodeType })
+  }
+
+  function renderNode(node: TreeNode, depth: number = 0): JSX.Element {
     const isExpanded = expandedNodes.has(node.id)
     const hasChildren = node.children && node.children.length > 0
-    const isSelected = node.type === 'scene' && selectedSceneId === node.id
+    const isSelected = selectedNodeId === node.id
+    const isContainer = node.nodeType === 'container'
+    const isEditing = editingNodeId === node.id
+    const isDragOver = dragOverNode === node.id && isContainer
+    const isDragging = draggedNode?.id === node.id
 
-    const icon = node.type === 'book' ? '📚' : node.type === 'chapter' ? '📑' : '📝'
-    const expandIcon = hasChildren ? (isExpanded ? '▼' : '▶') : ''
-    const title = `${expandIcon} ${icon} ${node.title}`
-    const subtitle = node.type === 'scene' && node.wordCount !== undefined ? `${node.wordCount} words` : undefined
+    const icon = node.icon || (isContainer ? '📁' : '📝')
 
     return (
-      <div key={node.id} style={{ marginLeft: `${depth * 12}px` }}>
+      <div key={node.id}>
         <div
-          onClick={() => {
-            if (node.type === 'scene') {
-              handleSceneClick(node.id, node.chapterId!)
-            } else if (node.type === 'chapter') {
-              if (typeof window !== 'undefined') {
-                window.dispatchEvent(
-                  new CustomEvent('bobbinry:navigate', {
-                    detail: {
-                      entityType: 'chapter',
-                      entityId: node.id,
-                      bobbinId: 'manuscript'
-                    }
-                  })
-                )
-              }
-              toggleNode(node.id)
-            } else if (node.type === 'book') {
-              if (typeof window !== 'undefined') {
-                window.dispatchEvent(
-                  new CustomEvent('bobbinry:navigate', {
-                    detail: {
-                      entityType: 'book',
-                      entityId: node.id,
-                      bobbinId: 'manuscript'
-                    }
-                  })
-                )
-              }
-              toggleNode(node.id)
-            } else if (hasChildren) {
-              toggleNode(node.id)
-            }
-          }}
-          className={`p-2 mb-1 border border-gray-200 dark:border-gray-700 rounded cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 text-sm ${isSelected ? 'border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'bg-white dark:bg-gray-900'}`}
+          draggable={!isEditing}
+          onDragStart={(e) => handleDragStart(e, node.id, node.nodeType)}
+          onDragOver={(e) => handleDragOver(e, node.id, isContainer)}
+          onDragLeave={handleDragLeave}
+          onDrop={(e) => handleDropOnNode(e, node.id, isContainer)}
+          className={`pr-2 py-1 cursor-pointer hover:bg-gray-700 text-sm flex items-center gap-1.5 ${isSelected ? 'bg-gray-700' : ''} ${isDragOver ? 'bg-blue-600' : ''} ${isDragging ? 'opacity-50' : ''}`}
+          style={{ paddingLeft: `${depth * 16 + 8}px` }}
+          onContextMenu={(e) => handleContextMenu(e, node.id, node.nodeType)}
+          onClick={() => !isEditing && handleNodeClick(node)}
         >
-          <div className="font-medium text-gray-900 dark:text-gray-100">{title}</div>
-          {subtitle && <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">{subtitle}</div>}
+          {hasChildren && (
+            <span 
+              className="text-gray-400 text-xs w-3 flex-shrink-0"
+              onClick={(e) => {
+                e.stopPropagation()
+                toggleNode(node.id)
+              }}
+            >
+              {isExpanded ? '▼' : '▶'}
+            </span>
+          )}
+          {!hasChildren && <span className="w-3 flex-shrink-0"></span>}
+          
+          <span className="flex-shrink-0">{icon}</span>
+          
+          {isEditing ? (
+            <input
+              type="text"
+              value={editingValue}
+              onChange={(e) => setEditingValue(e.target.value)}
+              onBlur={() => handleRename(node.id, node.nodeType, editingValue)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleRename(node.id, node.nodeType, editingValue)
+                } else if (e.key === 'Escape') {
+                  setEditingNodeId(null)
+                }
+              }}
+              autoFocus
+              onFocus={(e) => e.target.select()}
+              className="flex-1 px-1 py-0.5 bg-gray-800 border border-gray-600 rounded text-gray-100"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <span className="flex-1 text-gray-200 truncate">{node.title}</span>
+          )}
         </div>
 
         {hasChildren && isExpanded && (
-          <div>
+          <>
             {node.children!.map(child => renderNode(child, depth + 1))}
-          </div>
+          </>
         )}
       </div>
     )
@@ -249,31 +476,142 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     )
   }
 
-  if (outline.length === 0) {
-    return (
-      <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
-        <div className="mb-2">No content yet</div>
-        <div className="text-xs">Create a book in the Outline view</div>
-      </div>
-    )
-  }
-
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-gray-900">
-      <div className="p-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Manuscript</h3>
+    <div className="h-full flex flex-col bg-gray-800">
+      <div className="px-3 py-2 border-b border-gray-700 flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-gray-200">📝 Manuscript</h3>
+          <div className="relative dropdown-container">
+            <button
+              onClick={() => setShowDropdown(!showDropdown)}
+              className="text-lg leading-none text-gray-400 hover:text-gray-200 w-6 h-6 flex items-center justify-center"
+              title="Create new item"
+            >
+              +
+            </button>
+            {showDropdown && (
+              <div className="absolute left-0 top-full mt-1 bg-gray-700 border border-gray-600 rounded shadow-lg z-10 min-w-[150px]">
+                <button
+                  onClick={() => {
+                    createContainer(null)
+                    setShowDropdown(false)
+                  }}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-600 text-gray-100"
+                >
+                  📁 Create Container
+                </button>
+                {tree.length > 0 && tree[0] && (
+                  <button
+                    onClick={() => {
+                      createContent(tree[0]!.id)
+                      setShowDropdown(false)
+                    }}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-600 text-gray-100 border-t border-gray-600"
+                  >
+                    📝 Create Content
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
         <button
-          onClick={loadOutline}
-          className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+          onClick={loadTree}
+          className="text-xs text-gray-400 hover:text-gray-200"
           title="Refresh"
         >
           ↻
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2">
-        {outline.map(node => renderNode(node))}
+      <div 
+        className="flex-1 overflow-y-auto"
+        onDragOver={(e) => {
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'move'
+        }}
+        onDrop={handleDropOnRoot}
+      >
+        {tree.length === 0 ? (
+          <div className="p-4 text-center text-sm text-gray-400">
+            <div className="mb-3">No content yet</div>
+            <button
+              onClick={() => createContainer(null)}
+              className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 rounded"
+            >
+              Create Your First Container
+            </button>
+          </div>
+        ) : (
+          tree.map(node => renderNode(node))
+        )}
       </div>
+
+      {contextMenu && (() => {
+        const menuNodeId = contextMenu.nodeId
+        const menuNodeType = contextMenu.nodeType
+        const isContainer = menuNodeType === 'container'
+        
+        return (
+          <div
+            className="fixed bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-lg z-50 min-w-[150px] context-menu"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+          >
+            {isContainer && (
+              <>
+                <button
+                  onClick={() => {
+                    createContainer(menuNodeId)
+                    setContextMenu(null)
+                  }}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-gray-100"
+                >
+                  📁 Add Container
+                </button>
+                <button
+                  onClick={() => {
+                    createContent(menuNodeId)
+                    setContextMenu(null)
+                  }}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-gray-100 border-t border-gray-200 dark:border-gray-700"
+                >
+                  📝 Add Content
+                </button>
+                <div className="border-t border-gray-200 dark:border-gray-700"></div>
+              </>
+            )}
+            <button
+              onClick={() => {
+                setEditingNodeId(menuNodeId)
+                const findNode = (nodes: TreeNode[]): TreeNode | null => {
+                  for (const node of nodes) {
+                    if (node.id === menuNodeId) return node
+                    if (node.children) {
+                      const found = findNode(node.children)
+                      if (found) return found
+                    }
+                  }
+                  return null
+                }
+                const node = findNode(tree)
+                if (node) {
+                  setEditingValue(node.title)
+                }
+                setContextMenu(null)
+              }}
+              className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-gray-100"
+            >
+              ✏️ Rename
+            </button>
+            <button
+              onClick={() => handleDelete(menuNodeId, menuNodeType)}
+              className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-red-600 dark:text-red-400 border-t border-gray-200 dark:border-gray-700"
+            >
+              🗑️ Delete
+            </button>
+          </div>
+        )
+      })()}
     </div>
   )
 }

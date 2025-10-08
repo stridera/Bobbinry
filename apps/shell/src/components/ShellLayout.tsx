@@ -54,7 +54,7 @@ export function ShellLayout({ children, currentView = 'default', context = {} }:
         <div className="flex items-center space-x-4">
           <button
             onClick={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
-            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300"
             title="Toggle left panel"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -62,9 +62,7 @@ export function ShellLayout({ children, currentView = 'default', context = {} }:
             </svg>
           </button>
 
-          <a href="/" className="text-lg font-semibold hover:text-blue-600 transition-colors cursor-pointer">
-            Bobbinry
-          </a>
+
         </div>
 
         <div className="flex-1 flex justify-center">
@@ -78,7 +76,7 @@ export function ShellLayout({ children, currentView = 'default', context = {} }:
         <div className="flex items-center space-x-2">
           <button
             onClick={toggleTheme}
-            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300"
             title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
           >
             {theme === 'light' ? (
@@ -93,7 +91,7 @@ export function ShellLayout({ children, currentView = 'default', context = {} }:
           </button>
           <button
             onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
-            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300"
             title="Toggle right panel"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

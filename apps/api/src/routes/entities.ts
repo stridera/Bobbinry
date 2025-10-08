@@ -7,9 +7,10 @@ import { eq, and, sql, or } from 'drizzle-orm'
 // Input validation schemas
 const EntityQuerySchema = z.object({
   projectId: z.string().uuid('Invalid project ID format'),
-  limit: z.coerce.number().min(1).max(100).default(50),
+  limit: z.coerce.number().min(1).max(5000).default(50),
   offset: z.coerce.number().min(0).default(0),
-  search: z.string().max(200).optional()
+  search: z.string().max(200).optional(),
+  filters: z.string().optional() // JSON string of filters
 })
 
 const EntityParamsSchema = z.object({
@@ -46,7 +47,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       const query = EntityQuerySchema.parse(request.query)
 
       const { collection } = params
-      const { projectId, limit, offset, search } = query
+      const { projectId, limit, offset, search, filters } = query
 
       // For now, use JSONB storage (Tier 1)
       // In production, this would check if collection has been promoted to physical tables
@@ -56,6 +57,30 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
         eq(entities.projectId, projectId),
         eq(entities.collectionName, collection)
       )
+
+      // Add custom filters if provided
+      if (filters) {
+        try {
+          const filterObj = JSON.parse(filters)
+          for (const [key, value] of Object.entries(filterObj)) {
+            if (value === null) {
+              // Filter for NULL values
+              whereCondition = and(
+                whereCondition,
+                sql`${entities.entityData}->>${key} IS NULL`
+              )
+            } else {
+              // Filter for specific values
+              whereCondition = and(
+                whereCondition,
+                sql`${entities.entityData}->>${key} = ${value}`
+              )
+            }
+          }
+        } catch (error) {
+          fastify.log.warn('Invalid filters JSON:', filters)
+        }
+      }
 
       // Add search filter if provided
       if (search) {
@@ -223,10 +248,31 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       const { entityId } = request.params
       const { collection, projectId, data } = request.body
 
+      // First, fetch the current entity to merge with existing data
+      const current = await db
+        .select()
+        .from(entities)
+        .where(and(
+          eq(entities.id, entityId),
+          eq(entities.projectId, projectId),
+          eq(entities.collectionName, collection)
+        ))
+        .limit(1)
+
+      if (current.length === 0) {
+        return reply.status(404).send({ error: 'Entity not found' })
+      }
+
+      // Merge the new data with existing entity_data to preserve unmodified fields
+      const mergedData = {
+        ...(current[0]!.entityData as object),
+        ...data
+      }
+
       const result = await db
         .update(entities)
         .set({
-          entityData: data,
+          entityData: mergedData,
           updatedAt: new Date()
         })
         .where(and(
@@ -237,7 +283,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
         .returning()
 
       if (result.length === 0) {
-        return reply.status(404).send({ error: 'Entity not found' })
+        return reply.status(500).send({ error: 'Update failed' })
       }
 
       const updated = result[0]!  // Safe because we check result.length above
@@ -262,6 +308,48 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
+  // Recursive helper function to delete container and all its children
+  async function deleteContainerCascade(projectId: string, containerId: string, tx: any) {
+    // Find all child containers - check both camelCase and snake_case field names
+    const childContainers = await tx
+      .select()
+      .from(entities)
+      .where(and(
+        eq(entities.projectId, projectId),
+        eq(entities.collectionName, 'containers'),
+        or(
+          sql`${entities.entityData}->>'parent_id' = ${containerId}`,
+          sql`${entities.entityData}->>'parentId' = ${containerId}`
+        )
+      ))
+
+    // Recursively delete child containers
+    for (const child of childContainers) {
+      await deleteContainerCascade(projectId, child.id, tx)
+    }
+
+    // Delete all content in this container - check both camelCase and snake_case
+    await tx
+      .delete(entities)
+      .where(and(
+        eq(entities.projectId, projectId),
+        eq(entities.collectionName, 'content'),
+        or(
+          sql`${entities.entityData}->>'container_id' = ${containerId}`,
+          sql`${entities.entityData}->>'containerId' = ${containerId}`
+        )
+      ))
+
+    // Delete the container itself
+    await tx
+      .delete(entities)
+      .where(and(
+        eq(entities.id, containerId),
+        eq(entities.projectId, projectId),
+        eq(entities.collectionName, 'containers')
+      ))
+  }
+
   // Delete entity
   fastify.delete<{
     Params: { entityId: string }
@@ -274,6 +362,16 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       const { entityId } = request.params
       const { projectId, collection } = request.query
 
+      // If deleting a container, use cascade delete in a transaction
+      if (collection === 'containers') {
+        await db.transaction(async (tx) => {
+          await deleteContainerCascade(projectId, entityId, tx)
+        })
+
+        return { success: true, id: entityId }
+      }
+
+      // For non-container entities, simple delete
       const result = await db
         .delete(entities)
         .where(and(
@@ -407,20 +505,26 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
                   throw new Error('Delete operation requires id')
                 }
                 
-                const deleted = await tx
-                  .delete(entities)
-                  .where(and(
-                    eq(entities.id, id),
-                    eq(entities.projectId, projectId),
-                    eq(entities.collectionName, collection)
-                  ))
-                  .returning({ id: entities.id })
+                // Use cascade delete for containers
+                if (collection === 'containers') {
+                  await deleteContainerCascade(projectId, id, tx)
+                  result = { deleted: true, id }
+                } else {
+                  const deleted = await tx
+                    .delete(entities)
+                    .where(and(
+                      eq(entities.id, id),
+                      eq(entities.projectId, projectId),
+                      eq(entities.collectionName, collection)
+                    ))
+                    .returning({ id: entities.id })
 
-                if (deleted.length === 0) {
-                  throw new Error(`Entity ${id} not found`)
+                  if (deleted.length === 0) {
+                    throw new Error(`Entity ${id} not found`)
+                  }
+
+                  result = { deleted: true, id }
                 }
-
-                result = { deleted: true, id }
                 break
 
               default:

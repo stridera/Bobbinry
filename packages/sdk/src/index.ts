@@ -217,7 +217,8 @@ export class EntityAPI {
       projectId: this.projectId,
       ...(query.limit && { limit: query.limit.toString() }),
       ...(query.offset && { offset: query.offset.toString() }),
-      ...(query.search && { search: query.search })
+      ...(query.search && { search: query.search }),
+      ...(query.filters && { filters: JSON.stringify(query.filters) })
     })
 
     const response = await fetch(`${this.api.apiBaseUrl}/collections/${query.collection}/entities?${params}`)

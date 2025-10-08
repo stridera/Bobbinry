@@ -165,11 +165,16 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
 
       // Parse manifest
       let manifest
+      console.log('[BOBBIN INSTALL] Parsing manifest...')
       try {
         if (type === 'yaml') {
           manifest = parseYAML(content)
         } else {
           manifest = JSON.parse(content)
+        }
+        console.log('[BOBBIN INSTALL] Parsed manifest has extensions:', !!manifest.extensions)
+        if (manifest.extensions) {
+          console.log('[BOBBIN INSTALL] Extensions:', JSON.stringify(manifest.extensions, null, 2))
         }
       } catch (parseError) {
         return reply.status(400).send({
@@ -181,6 +186,11 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
       // Validate and compile manifest
       const compiler = new ManifestCompiler({ projectId })
       const result = await compiler.compile(manifest)
+      
+      console.log('[BOBBIN INSTALL] After compilation, manifest has extensions:', !!manifest.extensions)
+      if (manifest.extensions) {
+        console.log('[BOBBIN INSTALL] Extensions after compilation:', JSON.stringify(manifest.extensions, null, 2))
+      }
 
       if (!result.success) {
         return reply.status(400).send({

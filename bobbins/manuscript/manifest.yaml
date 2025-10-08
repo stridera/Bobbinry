@@ -32,58 +32,34 @@ extensions:
 
 data:
   collections:
-    - name: books
-      displayName: Books
+    - name: containers
+      displayName: Containers
       fields:
         - name: title
           type: text
           displayName: Title
           required: true
-          validation:
-            required: true
-        - name: description
-          type: markdown
-          displayName: Description
-        - name: genre
+        - name: parent_id
           type: text
-          displayName: Genre
-        - name: target_words
-          type: number
-          displayName: Target Word Count
-        - name: status
+          displayName: Parent Container
+          required: false
+        - name: type
           type: text
-          displayName: Status
-          default: draft
-        - name: created_at
-          type: datetime
-          displayName: Created At
-        - name: updated_at
-          type: datetime
-          displayName: Updated At
-      hints:
-        searchable: [title, description, genre]
-        sortKey: created_at
-        displayField: title
-        icon: book
-
-    - name: chapters
-      displayName: Chapters
-      fields:
-        - name: title
-          type: text
-          displayName: Title
+          displayName: Type
           required: true
-        - name: description
-          type: text
-          displayName: Description
+          default: folder
         - name: order
           type: number
           displayName: Order
           required: true
-        - name: word_count
-          type: number
-          displayName: Word Count
-          default: 0
+        - name: icon
+          type: text
+          displayName: Icon
+          required: false
+        - name: metadata
+          type: json
+          displayName: Metadata
+          required: false
         - name: created_at
           type: datetime
           displayName: Created At
@@ -91,27 +67,33 @@ data:
           type: datetime
           displayName: Updated At
       relationships:
-        - name: book
+        - name: parent
           type: one-to-many
-          target: books
-          foreignKey: book_id
-          displayName: Book
+          target: containers
+          foreignKey: parent_id
+          displayName: Parent Container
       hints:
-        searchable: [title, description]
+        searchable: [title, type]
         sortKey: order
         displayField: title
-        icon: bookmark
+        icon: folder
 
-    - name: scenes
-      displayName: Scenes
+    - name: content
+      displayName: Content
       fields:
         - name: title
           type: text
           displayName: Title
           required: true
-        - name: description
+        - name: container_id
           type: text
-          displayName: Description
+          displayName: Container
+          required: true
+        - name: type
+          type: text
+          displayName: Type
+          required: true
+          default: scene
         - name: body
           type: rich_text
           displayName: Content
@@ -130,6 +112,10 @@ data:
         - name: notes
           type: markdown
           displayName: Notes
+        - name: metadata
+          type: json
+          displayName: Metadata
+          required: false
         - name: created_at
           type: datetime
           displayName: Created At
@@ -137,13 +123,13 @@ data:
           type: datetime
           displayName: Updated At
       relationships:
-        - name: chapter
+        - name: container
           type: one-to-many
-          target: chapters
-          foreignKey: chapter_id
-          displayName: Chapter
+          target: containers
+          foreignKey: container_id
+          displayName: Container
       hints:
-        searchable: [title, description, body]
+        searchable: [title, body, notes]
         sortKey: order
         displayField: title
         icon: file-text
@@ -155,28 +141,23 @@ ui:
       name: Outline
       source: views/outline
       handlers:
-        - book
-        - chapter
+        - container
       priority: 10
       layout:
-        groups:
-          - field: status
-            direction: asc
         sort:
           - field: order
             direction: asc
       actions:
-        - create_book
-        - create_chapter
-        - create_scene
+        - create_container
+        - create_content
         - reorder
 
     - id: editor
       type: editor
-      name: Scene Editor
+      name: Content Editor
       source: views/editor
       handlers:
-        - scene
+        - content
       priority: 10
       layout:
         columns:
@@ -191,39 +172,33 @@ ui:
 
 interactions:
   actions:
-    - id: create_book
-      name: Create Book
+    - id: create_container
+      name: Create Container
       type: create
-      target: books
+      target: containers
       parameters:
         - name: title
           type: text
           required: true
-        - name: description
+        - name: type
           type: text
+          required: true
+        - name: parent_id
+          type: reference
           required: false
 
-    - id: create_chapter
-      name: Create Chapter
+    - id: create_content
+      name: Create Content
       type: create
-      target: chapters
+      target: content
       parameters:
         - name: title
           type: text
           required: true
-        - name: book_id
-          type: reference
-          required: true
-
-    - id: create_scene
-      name: Create Scene
-      type: create
-      target: scenes
-      parameters:
-        - name: title
+        - name: type
           type: text
           required: true
-        - name: chapter_id
+        - name: container_id
           type: reference
           required: true
 
@@ -247,28 +222,23 @@ interactions:
 
 linking:
   entities:
-    - collection: books
+    - collection: containers
       display:
         template: "{{title}}"
-        preview: [title, description, status]
-    - collection: chapters
+        preview: [title, type]
+    - collection: content
       display:
-        template: "{{title}} ({{book.title}})"
-        preview: [title, description, word_count]
-    - collection: scenes
-      display:
-        template: "{{title}} ({{chapter.title}})"
-        preview: [title, description, word_count, status]
+        template: "{{title}}"
+        preview: [title, type, word_count, status]
 
 publish:
   entities:
-    - books
-    - chapters
-    - scenes
+    - containers
+    - content
   fields:
     - title
     - body
-    - description
+    - type
     - order
   output:
     - format: html

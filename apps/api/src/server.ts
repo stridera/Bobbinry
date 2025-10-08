@@ -94,7 +94,7 @@ export function build(opts = {}): FastifyInstance {
 
   // Rate limiting
   server.register(rateLimit, {
-    max: 100,
+    max: process.env.NODE_ENV === 'development' ? 1000 : 100,
     timeWindow: '1 minute',
     errorResponseBuilder: (request, context) => ({
       code: 429,
