@@ -188,10 +188,6 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
         })
       )
     }
-
-    if (node.nodeType === 'container') {
-      toggleNode(node.id)
-    }
   }
 
   async function createContainer(parentId: string | null = null) {
@@ -411,11 +407,10 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
           className={`pr-2 py-1 cursor-pointer hover:bg-gray-700 text-sm flex items-center gap-1.5 ${isSelected ? 'bg-gray-700' : ''} ${isDragOver ? 'bg-blue-600' : ''} ${isDragging ? 'opacity-50' : ''}`}
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
           onContextMenu={(e) => handleContextMenu(e, node.id, node.nodeType)}
-          onClick={() => !isEditing && handleNodeClick(node)}
         >
           {hasChildren && (
             <span 
-              className="text-gray-400 text-xs w-3 flex-shrink-0"
+              className="text-gray-400 text-xs w-3 flex-shrink-0 hover:text-gray-200"
               onClick={(e) => {
                 e.stopPropagation()
                 toggleNode(node.id)
@@ -426,7 +421,15 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
           )}
           {!hasChildren && <span className="w-3 flex-shrink-0"></span>}
           
-          <span className="flex-shrink-0">{icon}</span>
+          <span 
+            className="flex-shrink-0"
+            onClick={(e) => {
+              e.stopPropagation()
+              if (!isEditing) handleNodeClick(node)
+            }}
+          >
+            {icon}
+          </span>
           
           {isEditing ? (
             <input
@@ -447,7 +450,15 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            <span className="flex-1 text-gray-200 truncate">{node.title}</span>
+            <span 
+              className="flex-1 text-gray-200 truncate"
+              onClick={(e) => {
+                e.stopPropagation()
+                if (!isEditing) handleNodeClick(node)
+              }}
+            >
+              {node.title}
+            </span>
           )}
         </div>
 

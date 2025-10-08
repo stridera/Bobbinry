@@ -6,6 +6,7 @@ import { BobbinrySDK } from '@bobbinry/sdk'
 import { ShellLayout } from '@/components/ShellLayout'
 import { ViewRouter } from '@/components/ViewRouter'
 import { useManifestExtensions } from '@/components/ExtensionProvider'
+import { ProjectHeader } from '../components/ProjectHeader'
 
 interface InstalledBobbin {
   id: string
@@ -106,17 +107,21 @@ export default function ProjectDeepLinkPage() {
   
   if (loading) {
     return (
-      <ShellLayout currentView="project" context={shellContext}>
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <ProjectHeader />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-gray-500">Loading project...</div>
         </div>
-      </ShellLayout>
+      </div>
     )
   }
 
   return (
-    <ShellLayout currentView="project" context={shellContext}>
-      <ViewRouter projectId={projectId} sdk={sdk} />
-    </ShellLayout>
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <ProjectHeader />
+      <ShellLayout currentView="project" context={shellContext}>
+        <ViewRouter projectId={projectId} sdk={sdk} />
+      </ShellLayout>
+    </div>
   )
 }
