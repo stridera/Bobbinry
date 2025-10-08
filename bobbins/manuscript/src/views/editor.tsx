@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
@@ -25,6 +25,10 @@ export default function EditorView({ sdk, entityType, entityId }: EditorViewProp
   const [saving, setSaving] = useState(false)
   const [wordCount, setWordCount] = useState(0)
   const saveTimeoutRef = useState<NodeJS.Timeout | null>(null)[0]
+  
+  // Debounce timer for selection events
+  const selectionTimeoutRef = useRef<number | null>(null)
+  const lastSelectionRef = useRef<string>('')
 
   const editor = useEditor({
     extensions: [
@@ -45,6 +49,44 @@ export default function EditorView({ sdk, entityType, entityId }: EditorViewProp
       const count = editor.storage.characterCount.words()
       setWordCount(count)
       debouncedSave(editor.getHTML())
+    },
+    onSelectionUpdate: ({ editor }) => {
+      // Clear existing timeout
+      if (selectionTimeoutRef.current) {
+        clearTimeout(selectionTimeoutRef.current)
+      }
+
+      // Debounce selection events
+      selectionTimeoutRef.current = window.setTimeout(() => {
+        // Get selected text
+        const { from, to } = editor.state.selection
+        const text = editor.state.doc.textBetween(from, to, ' ')
+        const trimmedText = text.trim()
+
+        // Only publish if text is selected and different from last selection
+        if (trimmedText && trimmedText !== lastSelectionRef.current) {
+          lastSelectionRef.current = trimmedText
+
+          // Post message using new envelope format
+          if (typeof window !== 'undefined') {
+            window.parent.postMessage({
+              namespace: 'BUS',
+              type: 'BUS_EVENT',
+              payload: {
+                topic: 'manuscript.editor.selection.v1',
+                data: {
+                  text: trimmedText,
+                  length: trimmedText.length
+                },
+                source: 'manuscript.editor'
+              },
+              metadata: {
+                timestamp: Date.now()
+              }
+            }, '*')
+          }
+        }
+      }, 300) // 300ms debounce
     }
   })
 
