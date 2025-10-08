@@ -24,6 +24,7 @@ export default function EditorView({ sdk, entityType, entityId }: EditorViewProp
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [wordCount, setWordCount] = useState(0)
+  const saveTimeoutRef = useState<NodeJS.Timeout | null>(null)[0]
 
   const editor = useEditor({
     extensions: [
@@ -35,20 +36,25 @@ export default function EditorView({ sdk, entityType, entityId }: EditorViewProp
     ],
     content: '',
     immediatelyRender: false,
+    editorProps: {
+      attributes: {
+        class: 'prose prose-lg dark:prose-invert max-w-none min-h-full outline-none text-gray-900 dark:text-gray-100'
+      }
+    },
     onUpdate: ({ editor }) => {
       const count = editor.storage.characterCount.words()
       setWordCount(count)
-      handleAutoSave(editor.getHTML())
+      debouncedSave(editor.getHTML())
     }
   })
 
   useEffect(() => {
-    if (entityType === 'content' && entityId) {
+    if (entityType === 'content' && entityId && editor) {
       loadContent()
     } else {
       setLoading(false)
     }
-  }, [entityId, entityType])
+  }, [entityId, entityType, editor])
 
   async function loadContent() {
     if (!entityId) return
@@ -66,6 +72,18 @@ export default function EditorView({ sdk, entityType, entityId }: EditorViewProp
     } finally {
       setLoading(false)
     }
+  }
+
+  function debouncedSave(html: string) {
+    if (saveTimeoutRef) {
+      clearTimeout(saveTimeoutRef)
+    }
+    
+    const timeout = setTimeout(() => {
+      handleAutoSave(html)
+    }, 1000) // Wait 1 second after typing stops
+    
+    Object.assign(saveTimeoutRef, timeout)
   }
 
   async function handleAutoSave(html: string) {
@@ -99,6 +117,12 @@ export default function EditorView({ sdk, entityType, entityId }: EditorViewProp
     }
   }
 
+  function handleEditorClick() {
+    if (editor && !editor.isFocused) {
+      editor.commands.focus('end')
+    }
+  }
+
   if (loading) {
     return (
       <div className="p-8 text-center text-gray-500 dark:text-gray-400">
@@ -123,7 +147,7 @@ export default function EditorView({ sdk, entityType, entityId }: EditorViewProp
           value={title}
           onChange={(e) => handleTitleChange(e.target.value)}
           placeholder="Untitled"
-          className="w-full text-2xl font-bold bg-transparent border-none outline-none text-gray-900 dark:text-gray-100"
+          className="w-full text-2xl font-bold bg-transparent border-none outline-none text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
         />
         <div className="flex justify-between mt-2 text-sm text-gray-500 dark:text-gray-400">
           <span>{wordCount} words</span>
@@ -131,10 +155,13 @@ export default function EditorView({ sdk, entityType, entityId }: EditorViewProp
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div 
+        className="flex-1 overflow-y-auto p-4 cursor-text"
+        onClick={handleEditorClick}
+      >
         <EditorContent
           editor={editor}
-          className="prose prose-lg dark:prose-invert max-w-none"
+          className="h-full"
         />
       </div>
     </div>

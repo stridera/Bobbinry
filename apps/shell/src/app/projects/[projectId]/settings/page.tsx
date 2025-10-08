@@ -289,7 +289,17 @@ export default function ProjectSettingsPage() {
 
         {/* Installed Bobbins */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Installed Bobbins</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Installed Bobbins</h2>
+            {bobbins.length > 0 && (
+              <a
+                href={`/projects/${params.projectId}/marketplace`}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm"
+              >
+                Browse Marketplace
+              </a>
+            )}
+          </div>
 
           {bobbins.length === 0 ? (
             <p className="text-gray-600 dark:text-gray-400">No bobbins installed yet.</p>

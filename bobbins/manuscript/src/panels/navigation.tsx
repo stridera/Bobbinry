@@ -171,6 +171,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   }
 
   function handleNodeClick(node: TreeNode) {
+    console.log('[NavigationPanel] handleNodeClick called with node:', node)
     setSelectedNodeId(node.id)
 
     if (typeof window !== 'undefined') {
