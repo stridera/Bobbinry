@@ -9,6 +9,7 @@ import { db } from '../db/connection'
 import { users } from '../db/schema'
 import { eq } from 'drizzle-orm'
 import { randomBytes, scryptSync, timingSafeEqual } from 'crypto'
+import { requireAuth } from '../middleware/auth'
 
 const authPlugin: FastifyPluginAsync = async (fastify) => {
   /**
@@ -130,34 +131,24 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
   /**
    * Get current user session
    * GET /auth/session
+   *
+   * Requires valid JWT token in Authorization header.
+   * Returns the authenticated user's information.
    */
-  fastify.get<{
-    Querystring: {
-      userId?: string
-    }
-  }>('/auth/session', async (request, reply) => {
+  fastify.get('/auth/session', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
-      const { userId } = request.query
+      // User is guaranteed to exist after requireAuth middleware
+      const user = request.user!
 
-      if (!userId) {
-        return reply.status(401).send({ error: 'Not authenticated' })
-      }
-
-      const [user] = await db
-        .select({
-          id: users.id,
-          email: users.email,
-          name: users.name
-        })
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1)
-
-      if (!user) {
-        return reply.status(404).send({ error: 'User not found' })
-      }
-
-      return reply.send({ user })
+      return reply.send({
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name
+        }
+      })
     } catch (error) {
       fastify.log.error({ error }, 'Session check failed')
       return reply.status(500).send({ error: 'Session check failed' })

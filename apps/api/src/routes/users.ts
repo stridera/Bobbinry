@@ -1,7 +1,6 @@
 import { FastifyPluginAsync } from 'fastify'
 import { db } from '../db/connection'
 import {
-  users,
   userProfiles,
   subscriptionTiers,
   userFollowers,
@@ -10,6 +9,7 @@ import {
   betaReaders
 } from '../db/schema'
 import { eq, and, or, desc, isNull } from 'drizzle-orm'
+import { requireAuth, requireSelf } from '../middleware/auth'
 
 // Helper to validate UUID
 function isValidUUID(uuid: string): boolean {
@@ -22,7 +22,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
   // USER PROFILE ROUTES
   // ============================================================================
 
-  // Get user profile
+  // Get user profile (public - anyone can view profiles)
   fastify.get<{
     Params: { userId: string }
   }>('/users/:userId/profile', async (request, reply) => {
@@ -50,7 +50,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // Create or update user profile
+  // Create or update user profile (own profile only)
   fastify.put<{
     Params: { userId: string }
     Body: {
@@ -63,25 +63,15 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
       discordHandle?: string
       otherSocials?: Record<string, any>
     }
-  }>('/users/:userId/profile', async (request, reply) => {
+  }>('/users/:userId/profile', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { userId } = request.params
       const profileData = request.body
 
-      if (!isValidUUID(userId)) {
-        return reply.status(400).send({ error: 'Invalid user ID format' })
-      }
-
-      // Verify user exists
-      const user = await db
-        .select()
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1)
-
-      if (user.length === 0) {
-        return reply.status(404).send({ error: 'User not found' })
-      }
+      // Verify user is updating their own profile
+      if (!requireSelf(request, reply, userId)) return
 
       // Check if profile exists
       const existingProfile = await db
@@ -124,7 +114,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
   // SUBSCRIPTION TIER ROUTES
   // ============================================================================
 
-  // Get all tiers for an author
+  // Get all tiers for an author (public - visible for potential subscribers)
   fastify.get<{
     Params: { userId: string }
   }>('/users/:userId/subscription-tiers', async (request, reply) => {
@@ -148,7 +138,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // Create subscription tier
+  // Create subscription tier (own tiers only)
   fastify.post<{
     Params: { userId: string }
     Body: {
@@ -160,14 +150,15 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
       chapterDelayDays?: string
       tierLevel: string
     }
-  }>('/users/:userId/subscription-tiers', async (request, reply) => {
+  }>('/users/:userId/subscription-tiers', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { userId } = request.params
       const tierData = request.body
 
-      if (!isValidUUID(userId)) {
-        return reply.status(400).send({ error: 'Invalid user ID format' })
-      }
+      // Verify user is creating their own tier
+      if (!requireSelf(request, reply, userId)) return
 
       if (!tierData.name || tierData.name.trim().length === 0) {
         return reply.status(400).send({ error: 'Tier name is required' })
@@ -195,7 +186,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // Update subscription tier
+  // Update subscription tier (own tiers only)
   fastify.put<{
     Params: { userId: string; tierId: string }
     Body: {
@@ -208,13 +199,18 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
       tierLevel?: string
       isActive?: boolean
     }
-  }>('/users/:userId/subscription-tiers/:tierId', async (request, reply) => {
+  }>('/users/:userId/subscription-tiers/:tierId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { userId, tierId } = request.params
       const tierData = request.body
 
-      if (!isValidUUID(userId) || !isValidUUID(tierId)) {
-        return reply.status(400).send({ error: 'Invalid ID format' })
+      // Verify user is updating their own tier
+      if (!requireSelf(request, reply, userId)) return
+
+      if (!isValidUUID(tierId)) {
+        return reply.status(400).send({ error: 'Invalid tier ID format' })
       }
 
       const [updated] = await db
@@ -240,15 +236,20 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // Delete subscription tier
+  // Delete subscription tier (own tiers only)
   fastify.delete<{
     Params: { userId: string; tierId: string }
-  }>('/users/:userId/subscription-tiers/:tierId', async (request, reply) => {
+  }>('/users/:userId/subscription-tiers/:tierId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { userId, tierId } = request.params
 
-      if (!isValidUUID(userId) || !isValidUUID(tierId)) {
-        return reply.status(400).send({ error: 'Invalid ID format' })
+      // Verify user is deleting their own tier
+      if (!requireSelf(request, reply, userId)) return
+
+      if (!isValidUUID(tierId)) {
+        return reply.status(400).send({ error: 'Invalid tier ID format' })
       }
 
       await db
@@ -304,17 +305,22 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // Follow a user
+  // Follow a user (requires auth, own actions only)
   fastify.post<{
     Params: { userId: string }
     Body: { followingId: string }
-  }>('/users/:userId/follow', async (request, reply) => {
+  }>('/users/:userId/follow', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { userId } = request.params
       const { followingId } = request.body
 
-      if (!isValidUUID(userId) || !isValidUUID(followingId)) {
-        return reply.status(400).send({ error: 'Invalid user ID format' })
+      // Verify user is performing their own follow action
+      if (!requireSelf(request, reply, userId)) return
+
+      if (!isValidUUID(followingId)) {
+        return reply.status(400).send({ error: 'Invalid following ID format' })
       }
 
       if (userId === followingId) {
@@ -349,15 +355,20 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // Unfollow a user
+  // Unfollow a user (requires auth, own actions only)
   fastify.delete<{
     Params: { userId: string; followingId: string }
-  }>('/users/:userId/follow/:followingId', async (request, reply) => {
+  }>('/users/:userId/follow/:followingId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { userId, followingId } = request.params
 
-      if (!isValidUUID(userId) || !isValidUUID(followingId)) {
-        return reply.status(400).send({ error: 'Invalid user ID format' })
+      // Verify user is performing their own unfollow action
+      if (!requireSelf(request, reply, userId)) return
+
+      if (!isValidUUID(followingId)) {
+        return reply.status(400).send({ error: 'Invalid following ID format' })
       }
 
       await db
@@ -378,16 +389,17 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
   // NOTIFICATION PREFERENCES ROUTES
   // ============================================================================
 
-  // Get notification preferences
+  // Get notification preferences (own preferences only)
   fastify.get<{
     Params: { userId: string }
-  }>('/users/:userId/notification-preferences', async (request, reply) => {
+  }>('/users/:userId/notification-preferences', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { userId } = request.params
 
-      if (!isValidUUID(userId)) {
-        return reply.status(400).send({ error: 'Invalid user ID format' })
-      }
+      // Verify user is accessing their own preferences
+      if (!requireSelf(request, reply, userId)) return
 
       const preferences = await db
         .select()
@@ -418,7 +430,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // Update notification preferences
+  // Update notification preferences (own preferences only)
   fastify.put<{
     Params: { userId: string }
     Body: {
@@ -430,14 +442,15 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
       pushNewChapter?: boolean
       pushNewComment?: boolean
     }
-  }>('/users/:userId/notification-preferences', async (request, reply) => {
+  }>('/users/:userId/notification-preferences', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { userId } = request.params
       const prefsData = request.body
 
-      if (!isValidUUID(userId)) {
-        return reply.status(400).send({ error: 'Invalid user ID format' })
-      }
+      // Verify user is updating their own preferences
+      if (!requireSelf(request, reply, userId)) return
 
       // Check if preferences exist
       const existing = await db
@@ -480,16 +493,17 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
   // READING PREFERENCES ROUTES
   // ============================================================================
 
-  // Get reading preferences
+  // Get reading preferences (own preferences only)
   fastify.get<{
     Params: { userId: string }
-  }>('/users/:userId/reading-preferences', async (request, reply) => {
+  }>('/users/:userId/reading-preferences', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { userId } = request.params
 
-      if (!isValidUUID(userId)) {
-        return reply.status(400).send({ error: 'Invalid user ID format' })
-      }
+      // Verify user is accessing their own preferences
+      if (!requireSelf(request, reply, userId)) return
 
       const preferences = await db
         .select()
@@ -518,7 +532,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // Update reading preferences
+  // Update reading preferences (own preferences only)
   fastify.put<{
     Params: { userId: string }
     Body: {
@@ -528,14 +542,15 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
       theme?: 'light' | 'dark' | 'auto' | 'sepia'
       readerWidth?: 'narrow' | 'standard' | 'wide' | 'full'
     }
-  }>('/users/:userId/reading-preferences', async (request, reply) => {
+  }>('/users/:userId/reading-preferences', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { userId } = request.params
       const prefsData = request.body
 
-      if (!isValidUUID(userId)) {
-        return reply.status(400).send({ error: 'Invalid user ID format' })
-      }
+      // Verify user is updating their own preferences
+      if (!requireSelf(request, reply, userId)) return
 
       // Check if preferences exist
       const existing = await db
@@ -578,18 +593,19 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
   // BETA READER ROUTES
   // ============================================================================
 
-  // Get beta readers for an author
+  // Get beta readers for an author (own beta readers only)
   fastify.get<{
     Params: { userId: string }
     Querystring: { projectId?: string }
-  }>('/users/:userId/beta-readers', async (request, reply) => {
+  }>('/users/:userId/beta-readers', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { userId } = request.params
       const { projectId } = request.query
 
-      if (!isValidUUID(userId)) {
-        return reply.status(400).send({ error: 'Invalid user ID format' })
-      }
+      // Verify user is accessing their own beta readers
+      if (!requireSelf(request, reply, userId)) return
 
       if (projectId && !isValidUUID(projectId)) {
         return reply.status(400).send({ error: 'Invalid project ID format' })
@@ -617,7 +633,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // Add beta reader
+  // Add beta reader (own beta readers only)
   fastify.post<{
     Params: { userId: string }
     Body: {
@@ -626,13 +642,18 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
       accessLevel?: 'beta' | 'arc' | 'early_access'
       notes?: string
     }
-  }>('/users/:userId/beta-readers', async (request, reply) => {
+  }>('/users/:userId/beta-readers', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { userId } = request.params
       const { readerId, projectId, accessLevel = 'beta', notes } = request.body
 
-      if (!isValidUUID(userId) || !isValidUUID(readerId)) {
-        return reply.status(400).send({ error: 'Invalid user ID format' })
+      // Verify user is adding their own beta reader
+      if (!requireSelf(request, reply, userId)) return
+
+      if (!isValidUUID(readerId)) {
+        return reply.status(400).send({ error: 'Invalid reader ID format' })
       }
 
       if (projectId && !isValidUUID(projectId)) {
@@ -673,7 +694,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // Update beta reader
+  // Update beta reader (own beta readers only)
   fastify.put<{
     Params: { userId: string; betaReaderId: string }
     Body: {
@@ -681,13 +702,18 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
       notes?: string
       isActive?: boolean
     }
-  }>('/users/:userId/beta-readers/:betaReaderId', async (request, reply) => {
+  }>('/users/:userId/beta-readers/:betaReaderId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { userId, betaReaderId } = request.params
       const updateData = request.body
 
-      if (!isValidUUID(userId) || !isValidUUID(betaReaderId)) {
-        return reply.status(400).send({ error: 'Invalid ID format' })
+      // Verify user is updating their own beta reader
+      if (!requireSelf(request, reply, userId)) return
+
+      if (!isValidUUID(betaReaderId)) {
+        return reply.status(400).send({ error: 'Invalid beta reader ID format' })
       }
 
       const [updated] = await db
@@ -713,15 +739,20 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // Remove beta reader
+  // Remove beta reader (own beta readers only)
   fastify.delete<{
     Params: { userId: string; betaReaderId: string }
-  }>('/users/:userId/beta-readers/:betaReaderId', async (request, reply) => {
+  }>('/users/:userId/beta-readers/:betaReaderId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { userId, betaReaderId } = request.params
 
-      if (!isValidUUID(userId) || !isValidUUID(betaReaderId)) {
-        return reply.status(400).send({ error: 'Invalid ID format' })
+      // Verify user is removing their own beta reader
+      if (!requireSelf(request, reply, userId)) return
+
+      if (!isValidUUID(betaReaderId)) {
+        return reply.status(400).send({ error: 'Invalid beta reader ID format' })
       }
 
       await db

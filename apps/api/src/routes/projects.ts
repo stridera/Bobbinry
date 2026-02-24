@@ -1,38 +1,38 @@
 import { FastifyPluginAsync } from 'fastify'
 import { parse as parseYAML } from 'yaml'
+import * as path from 'path'
 import { db } from '../db/connection'
 import { projects, bobbinsInstalled } from '../db/schema'
 import { eq, and } from 'drizzle-orm'
 import { ManifestCompiler } from '@bobbinry/compiler'
+import { requireAuth, requireProjectOwnership } from '../middleware/auth'
 
 const projectsPlugin: FastifyPluginAsync = async (fastify) => {
-  // Create a new project
+  // Create a new project (requires authentication)
   fastify.post<{
     Body: {
       name: string
       description?: string
-      ownerId: string
     }
-  }>('/projects', async (request, reply) => {
+  }>('/projects', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
-      const { name, description, ownerId } = request.body
+      const { name, description } = request.body
+      const user = request.user!
 
       // Validate input
       if (!name || name.trim().length === 0) {
         return reply.status(400).send({ error: 'Project name is required' })
       }
 
-      if (!ownerId) {
-        return reply.status(400).send({ error: 'Owner ID is required' })
-      }
-
-      // Create project
+      // Create project with authenticated user as owner
       const [project] = await db
         .insert(projects)
         .values({
           name: name.trim(),
           description: description?.trim(),
-          ownerId
+          ownerId: user.id
         })
         .returning()
 
@@ -47,22 +47,18 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // List projects for a user
-  fastify.get<{
-    Querystring: {
-      ownerId?: string
-    }
-  }>('/projects', async (request, reply) => {
+  // List projects for authenticated user
+  fastify.get('/projects', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
-      const { ownerId } = request.query
+      const user = request.user!
 
-      let query = db.select().from(projects)
-
-      if (ownerId) {
-        query = query.where(eq(projects.ownerId, ownerId)) as any
-      }
-
-      const projectList = await query
+      // Only return projects owned by the authenticated user
+      const projectList = await db
+        .select()
+        .from(projects)
+        .where(eq(projects.ownerId, user.id))
 
       return reply.status(200).send(projectList)
     } catch (error) {
@@ -71,41 +67,33 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // Helper to validate UUID
-  function isValidUUID(uuid: string): boolean {
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    return uuidRegex.test(uuid)
-  }
-
-  // Get project by ID
+  // Get project by ID (requires ownership)
   fastify.get<{
     Params: { projectId: string }
-  }>('/projects/:projectId', async (request, reply) => {
+  }>('/projects/:projectId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { projectId } = request.params
 
-      if (!isValidUUID(projectId)) {
-        return reply.status(400).send({ error: 'Invalid project ID format' })
-      }
+      // Check ownership (also validates UUID and checks project exists)
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return // Response already sent
 
-      const project = await db
+      const [project] = await db
         .select()
         .from(projects)
         .where(eq(projects.id, projectId))
         .limit(1)
 
-      if (project.length === 0) {
-        return reply.status(404).send({ error: 'Project not found' })
-      }
-
-      return { project: project[0] }
+      return { project }
     } catch (error) {
       fastify.log.error(error)
       return reply.status(500).send({ error: 'Failed to fetch project' })
     }
   })
 
-  // Install bobbin to project
+  // Install bobbin to project (requires ownership)
   fastify.post<{
     Params: { projectId: string }
     Body: {
@@ -113,39 +101,42 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
       manifestContent?: string
       manifestType?: 'yaml' | 'json'
     }
-  }>('/projects/:projectId/bobbins/install', async (request, reply) => {
+  }>('/projects/:projectId/bobbins/install', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { projectId } = request.params
       const { manifestPath, manifestContent, manifestType } = request.body
 
-      if (!isValidUUID(projectId)) {
-        return reply.status(404).send({ error: 'Project not found' })
-      }
-
-      // Verify project exists
-      const project = await db
-        .select()
-        .from(projects)
-        .where(eq(projects.id, projectId))
-        .limit(1)
-
-      if (project.length === 0) {
-        return reply.status(404).send({ error: 'Project not found' })
-      }
+      // Check ownership
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       // Get manifest content
       let content: string
       let type: 'yaml' | 'json'
 
       if (manifestPath) {
-        // Read from file
+        // Read from file - SECURITY: Only allow paths within bobbins directory
         const fs = await import('fs/promises')
-        const path = await import('path')
-        
+
+        // Resolve paths
+        const projectRoot = path.resolve(__dirname, '../../../..')
+        const bobbinsDir = path.resolve(projectRoot, 'bobbins')
+        const fullPath = path.resolve(projectRoot, manifestPath)
+
+        // Security check: Ensure the resolved path is within allowed directories
+        const normalizedPath = path.normalize(fullPath)
+        const isInBobbins = normalizedPath.startsWith(bobbinsDir + path.sep)
+
+        if (!isInBobbins) {
+          return reply.status(403).send({
+            error: 'Access denied',
+            message: 'Manifest path must be within the bobbins directory'
+          })
+        }
+
         try {
-          // Resolve path relative to project root (two levels up from api/src)
-          const projectRoot = path.resolve(__dirname, '../../../..')
-          const fullPath = path.resolve(projectRoot, manifestPath)
           content = await fs.readFile(fullPath, 'utf-8')
           type = manifestPath.endsWith('.yaml') || manifestPath.endsWith('.yml') ? 'yaml' : 'json'
         } catch (error) {
@@ -279,12 +270,18 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // List installed bobbins for project
+  // List installed bobbins for project (requires ownership)
   fastify.get<{
     Params: { projectId: string }
-  }>('/projects/:projectId/bobbins', async (request, reply) => {
+  }>('/projects/:projectId/bobbins', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { projectId } = request.params
+
+      // Check ownership
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       const installations = await db
         .select()
@@ -308,23 +305,18 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // Uninstall bobbin from project
+  // Uninstall bobbin from project (requires ownership)
   fastify.delete<{
     Params: { projectId: string; bobbinId: string }
-  }>('/projects/:projectId/bobbins/:bobbinId', async (request, reply) => {
+  }>('/projects/:projectId/bobbins/:bobbinId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { projectId, bobbinId } = request.params
 
-      // Verify project exists
-      const project = await db
-        .select()
-        .from(projects)
-        .where(eq(projects.id, projectId))
-        .limit(1)
-
-      if (project.length === 0) {
-        return reply.status(404).send({ error: 'Project not found' })
-      }
+      // Check ownership
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       // Check if bobbin is installed
       const installation = await db
@@ -364,7 +356,7 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // Update project details
+  // Update project details (requires ownership)
   fastify.put<{
     Params: { projectId: string }
     Body: {
@@ -372,16 +364,18 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
       description?: string
       coverImage?: string | null
     }
-  }>('/projects/:projectId', async (request, reply) => {
+  }>('/projects/:projectId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { projectId } = request.params
       const { name, description, coverImage } = request.body
 
-      if (!isValidUUID(projectId)) {
-        return reply.status(400).send({ error: 'Invalid project ID format' })
-      }
+      // Check ownership
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
-      const updates: any = {}
+      const updates: Record<string, unknown> = {}
       if (name !== undefined) updates.name = name
       if (description !== undefined) updates.description = description
       if (coverImage !== undefined) updates.coverImage = coverImage

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { db } from '../db/connection'
 import { bobbinsInstalled, entities } from '../db/schema'
 import { eq, and, sql, or } from 'drizzle-orm'
+import { requireAuth, requireProjectOwnership } from '../middleware/auth'
 
 // Input validation schemas
 const EntityQuerySchema = z.object({
@@ -31,7 +32,7 @@ const EntityCreateSchema = z.object({
 
 const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
 
-  // Query entities from a collection
+  // Query entities from a collection (requires project ownership)
   fastify.get<{
     Params: { collection: string }
     Querystring: {
@@ -40,7 +41,9 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       offset?: string
       search?: string
     }
-  }>('/collections/:collection/entities', async (request, reply) => {
+  }>('/collections/:collection/entities', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       // Validate input
       const params = EntityParamsSchema.parse(request.params)
@@ -48,6 +51,10 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
 
       const { collection } = params
       const { projectId, limit, offset, search, filters } = query
+
+      // Check project ownership
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       // For now, use JSONB storage (Tier 1)
       // In production, this would check if collection has been promoted to physical tables
@@ -62,23 +69,31 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       if (filters) {
         try {
           const filterObj = JSON.parse(filters)
+          // Allowlist of valid field name patterns to prevent SQL injection
+          // Only allow simple identifiers: start with letter/underscore, followed by alphanumeric/underscore
+          const validFieldPattern = /^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/
+
           for (const [key, value] of Object.entries(filterObj)) {
+            // Validate field name to prevent SQL injection
+            if (!validFieldPattern.test(key)) {
+              fastify.log.warn({ key }, 'Invalid filter key rejected')
+              continue
+            }
+
+            // Key is validated above, safe to interpolate
+            // Value is always parameterized by Drizzle's template
             if (value === null) {
-              // Filter for NULL values
-              whereCondition = and(
-                whereCondition,
-                sql`${entities.entityData}->>${key} IS NULL`
-              )
+              // Filter for NULL values - key is pre-validated
+              const nullCheckSql = sql.raw(`entity_data->>'${key}' IS NULL`)
+              whereCondition = and(whereCondition, nullCheckSql)
             } else {
-              // Filter for specific values
-              whereCondition = and(
-                whereCondition,
-                sql`${entities.entityData}->>${key} = ${value}`
-              )
+              // Filter for specific values - value is parameterized via template
+              const valueSql = sql.raw(`entity_data->>'${key}' = '${String(value).replace(/'/g, "''")}'`)
+              whereCondition = and(whereCondition, valueSql)
             }
           }
-        } catch (error) {
-          fastify.log.warn('Invalid filters JSON:', filters)
+        } catch {
+          fastify.log.warn({ filters }, 'Invalid filters JSON')
         }
       }
 
@@ -141,18 +156,24 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // Create new entity
+  // Create new entity (requires project ownership)
   fastify.post<{
     Body: {
       collection: string
       projectId: string
       data: Record<string, any>
     }
-  }>('/entities', async (request, reply) => {
+  }>('/entities', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       // Validate input
       const body = EntityCreateSchema.parse(request.body)
       const { collection, projectId, data } = body
+
+      // Check project ownership
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       // Validate that the collection exists in an installed bobbin
       const installation = await db
@@ -235,7 +256,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // Update entity
+  // Update entity (requires project ownership)
   fastify.put<{
     Params: { entityId: string }
     Body: {
@@ -243,10 +264,19 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       projectId: string
       data: Record<string, any>
     }
-  }>('/entities/:entityId', async (request, reply) => {
+  }>('/entities/:entityId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { entityId } = request.params
-      const { collection, projectId, data } = request.body
+
+      // Validate input with Zod
+      const body = EntityCreateSchema.parse(request.body)
+      const { collection, projectId, data } = body
+
+      // Check project ownership
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       // First, fetch the current entity to merge with existing data
       const current = await db
@@ -350,17 +380,23 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       ))
   }
 
-  // Delete entity
+  // Delete entity (requires project ownership)
   fastify.delete<{
     Params: { entityId: string }
     Querystring: {
       projectId: string
       collection: string
     }
-  }>('/entities/:entityId', async (request, reply) => {
+  }>('/entities/:entityId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { entityId } = request.params
       const { projectId, collection } = request.query
+
+      // Check project ownership
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       // If deleting a container, use cascade delete in a transaction
       if (collection === 'containers') {
@@ -396,7 +432,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // Atomic batch operations
+  // Atomic batch operations (requires project ownership)
   fastify.post<{
     Body: {
       projectId: string
@@ -407,13 +443,19 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
         data?: Record<string, any>
       }>
     }
-  }>('/entities/batch/atomic', async (request, reply) => {
+  }>('/entities/batch/atomic', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { projectId, operations } = request.body
 
       if (!operations || operations.length === 0) {
         return reply.status(400).send({ error: 'No operations provided' })
       }
+
+      // Check project ownership
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       // Start a transaction
       const results = await db.transaction(async (tx) => {
@@ -554,17 +596,23 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // Get single entity
+  // Get single entity (requires project ownership)
   fastify.get<{
     Params: { entityId: string }
     Querystring: {
       projectId: string
       collection: string
     }
-  }>('/entities/:entityId', async (request, reply) => {
+  }>('/entities/:entityId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { entityId } = request.params
       const { projectId, collection } = request.query
+
+      // Check project ownership
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       const result = await db
         .select()
