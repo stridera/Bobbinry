@@ -129,6 +129,103 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
   })
 
   /**
+   * OAuth user provisioning
+   * POST /auth/oauth-provision
+   *
+   * Called by NextAuth during OAuth sign-in to find or create a user
+   * without a password. This is a server-to-server call, not user-facing.
+   */
+  fastify.post<{
+    Body: {
+      email: string
+      name?: string
+    }
+  }>('/auth/oauth-provision', async (request, reply) => {
+    try {
+      const { email, name } = request.body
+
+      if (!email) {
+        return reply.status(400).send({ error: 'Email is required' })
+      }
+
+      // Check if user already exists
+      const [existing] = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1)
+
+      if (existing) {
+        return reply.send({
+          id: existing.id,
+          email: existing.email,
+          name: existing.name
+        })
+      }
+
+      // Create new user without password
+      const [newUser] = await db
+        .insert(users)
+        .values({
+          email,
+          name: name || null,
+          passwordHash: null
+        })
+        .returning()
+
+      if (!newUser) {
+        return reply.status(500).send({ error: 'Failed to create user' })
+      }
+
+      return reply.status(201).send({
+        id: newUser.id,
+        email: newUser.email,
+        name: newUser.name
+      })
+    } catch (error) {
+      fastify.log.error({ error }, 'OAuth provisioning failed')
+      return reply.status(500).send({ error: 'OAuth provisioning failed' })
+    }
+  })
+
+  /**
+   * Look up user by email
+   * GET /users/by-email?email=...
+   *
+   * Used by NextAuth to check if an OAuth user already exists.
+   */
+  fastify.get<{
+    Querystring: { email: string }
+  }>('/users/by-email', async (request, reply) => {
+    try {
+      const { email } = request.query
+
+      if (!email) {
+        return reply.status(400).send({ error: 'Email query parameter is required' })
+      }
+
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1)
+
+      if (!user) {
+        return reply.status(404).send({ error: 'User not found' })
+      }
+
+      return reply.send({
+        id: user.id,
+        email: user.email,
+        name: user.name
+      })
+    } catch (error) {
+      fastify.log.error({ error }, 'User lookup failed')
+      return reply.status(500).send({ error: 'User lookup failed' })
+    }
+  })
+
+  /**
    * Get current user session
    * GET /auth/session
    *

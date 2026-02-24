@@ -13,7 +13,7 @@ interface OutlineViewProps {
  * Outline View for Manuscript bobbin
  * Displays container hierarchy
  */
-export default function OutlineView({ projectId, bobbinId, sdk, entityId }: OutlineViewProps) {
+export default function OutlineView({ projectId, sdk, entityId }: OutlineViewProps) {
   const [container, setContainer] = useState<any>(null)
   const [children, setChildren] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -40,7 +40,7 @@ export default function OutlineView({ projectId, bobbinId, sdk, entityId }: Outl
       // Load all child containers
       const childContainers = await sdk.entities.query({
         collection: 'containers',
-        filter: { parent_id: entityId },
+        filters: { parent_id: entityId },
         sort: [{ field: 'order', direction: 'asc' }],
         limit: 1000
       })
@@ -48,7 +48,7 @@ export default function OutlineView({ projectId, bobbinId, sdk, entityId }: Outl
       // Load all content items in this container
       const contentItems = await sdk.entities.query({
         collection: 'content',
-        filter: { container_id: entityId },
+        filters: { container_id: entityId },
         sort: [{ field: 'order', direction: 'asc' }],
         limit: 1000
       })

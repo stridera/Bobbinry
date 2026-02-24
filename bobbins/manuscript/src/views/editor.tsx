@@ -24,7 +24,7 @@ export default function EditorView({ sdk, entityType, entityId }: EditorViewProp
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [wordCount, setWordCount] = useState(0)
-  const saveTimeoutRef = useState<NodeJS.Timeout | null>(null)[0]
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   
   // Debounce timer for selection events
   const selectionTimeoutRef = useRef<number | null>(null)
@@ -117,15 +117,13 @@ export default function EditorView({ sdk, entityType, entityId }: EditorViewProp
   }
 
   function debouncedSave(html: string) {
-    if (saveTimeoutRef) {
-      clearTimeout(saveTimeoutRef)
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current)
     }
-    
-    const timeout = setTimeout(() => {
+
+    saveTimeoutRef.current = setTimeout(() => {
       handleAutoSave(html)
     }, 1000) // Wait 1 second after typing stops
-    
-    Object.assign(saveTimeoutRef, timeout)
   }
 
   async function handleAutoSave(html: string) {

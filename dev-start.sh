@@ -184,6 +184,16 @@ start_database() {
     log_success "Database containers are running"
 }
 
+# Function to ensure .env symlinks exist for Next.js / app-level env loading
+ensure_env_symlinks() {
+    for app_dir in "$PROJECT_ROOT/apps/shell" "$PROJECT_ROOT/apps/api"; do
+        if [ ! -e "$app_dir/.env" ] && [ -f "$PROJECT_ROOT/.env" ]; then
+            ln -s ../../.env "$app_dir/.env"
+            log_info "Created .env symlink in $(basename "$app_dir")"
+        fi
+    done
+}
+
 # Function to build packages
 build_packages() {
     log_info "Building required packages..."
@@ -299,6 +309,7 @@ main() {
     # Pre-flight checks
     check_docker
     check_dependencies
+    ensure_env_symlinks
 
     # Start services in order
     start_database
