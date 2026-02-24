@@ -1,10 +1,11 @@
 import type { Config } from 'drizzle-kit'
+import { env } from './src/lib/env'
 
 export default {
   schema: './src/db/schema.ts',
   out: '../../infra/db/migrations',
   dialect: 'postgresql',
   dbCredentials: {
-    url: process.env.DATABASE_URL || 'postgres://bobbinry:bobbinry@localhost:5433/bobbinry'
+    url: env.DATABASE_URL
   }
 } satisfies Config

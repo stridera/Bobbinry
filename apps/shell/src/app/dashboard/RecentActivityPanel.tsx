@@ -9,6 +9,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { formatDistanceToNow } from 'date-fns'
+import { config } from '@/lib/config'
 
 interface Activity {
   entity: {
@@ -33,7 +34,7 @@ export function RecentActivityPanel({ userId }: { userId: string }) {
   const loadActivity = async () => {
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4100'}/api/users/me/recent-activity?userId=${userId}&limit=20`
+        `${config.apiUrl}/api/users/me/recent-activity?userId=${userId}&limit=20`
       )
 
       if (response.ok) {

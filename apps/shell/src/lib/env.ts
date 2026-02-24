@@ -1,14 +1,15 @@
 /**
  * Environment Variable Validation
- * 
- * Validates required environment variables at startup
+ *
+ * Single source of truth for all shell configuration. Every module should
+ * import from here instead of reading process.env directly.
  */
 
 interface EnvConfig {
   NEXTAUTH_SECRET?: string
-  NEXT_PUBLIC_API_URL?: string
-  DATABASE_URL?: string
-  NODE_ENV?: string
+  NEXT_PUBLIC_API_URL: string
+  DATABASE_URL: string
+  NODE_ENV: string
 }
 
 const requiredEnvVars = {
@@ -18,8 +19,8 @@ const requiredEnvVars = {
 } as const
 
 export function validateEnv(): EnvConfig {
-  const env = process.env.NODE_ENV || 'development'
-  const required = requiredEnvVars[env as keyof typeof requiredEnvVars] || []
+  const nodeEnv = process.env.NODE_ENV || 'development'
+  const required = requiredEnvVars[nodeEnv as keyof typeof requiredEnvVars] || []
 
   const missing: string[] = []
 
@@ -39,8 +40,8 @@ export function validateEnv(): EnvConfig {
   return {
     NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET,
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4100',
-    DATABASE_URL: process.env.DATABASE_URL,
-    NODE_ENV: env
+    DATABASE_URL: process.env.DATABASE_URL || 'postgres://bobbinry:bobbinry@localhost:5433/bobbinry',
+    NODE_ENV: nodeEnv
   }
 }
 

@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { UserMenu } from '@/components/UserMenu'
+import { config } from '@/lib/config'
 
 interface Project {
   id: string
@@ -22,7 +23,7 @@ export function ProjectHeader() {
   useEffect(() => {
     const loadProject = async () => {
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4100'}/api/projects/${projectId}`)
+        const response = await fetch(`${config.apiUrl}/api/projects/${projectId}`)
         if (response.ok) {
           const data = await response.json()
           setProject(data.project)

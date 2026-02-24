@@ -13,6 +13,7 @@ import {
   Theme,
   MessageSchemas
 } from '../types/bobbin-messages'
+import { config } from '@/lib/config'
 
 // Enhanced error handling
 export class BobbinError extends Error {
@@ -145,7 +146,7 @@ export class BobbinBridge {
             projectId: this.projectId,
             bobbinId: this.bobbinId,
             viewId: this.viewId,
-            apiBaseUrl: process.env.NODE_ENV === 'development' ? 'http://localhost:4100' : '',
+            apiBaseUrl: config.apiUrl,
             theme: this.getCurrentTheme(),
             permissions: ['read', 'write', 'create', 'delete'] // TODO: Get from user/project settings
           }
@@ -169,8 +170,7 @@ export class BobbinBridge {
       // The strict event.source check can fail due to timing/reference issues
       const isFromIframe = event.source === this.iframe.contentWindow
       const isFromSameOrigin = event.origin === window.location.origin || 
-                               event.origin === 'http://localhost:4100' ||
-                               event.origin === 'http://localhost:3100'
+                               event.origin === config.apiUrl
       
       if (!isFromIframe && !isFromSameOrigin) {
         console.log('🔇 Ignoring message from untrusted origin:', event.origin)
@@ -379,7 +379,7 @@ export class BobbinBridge {
   private async handleAtomicBatch(message: BatchOperationMessage, operations: any[]) {
     try {
       // Call API endpoint that handles atomic batch operations with transactions
-      const response = await fetch(`${process.env.NODE_ENV === 'development' ? 'http://localhost:4100' : ''}/api/entities/batch/atomic`, {
+      const response = await fetch(`${config.apiUrl}/api/entities/batch/atomic`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -417,7 +417,7 @@ export class BobbinBridge {
       const { actionId, params, context } = message.payload
 
       // Forward custom action to API which will invoke the bobbin's action handler
-      const response = await fetch(`${process.env.NODE_ENV === 'development' ? 'http://localhost:4100' : ''}/api/bobbins/${this.bobbinId}/actions/${actionId}`, {
+      const response = await fetch(`${config.apiUrl}/api/bobbins/${this.bobbinId}/actions/${actionId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

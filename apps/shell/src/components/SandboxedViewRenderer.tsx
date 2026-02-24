@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useMemo } from 'react'
 import { BobbinrySDK } from '@bobbinry/sdk'
 import { BobbinBridge } from '../services/BobbinBridge'
 import { Theme } from '../types/bobbin-messages'
+import { config } from '@/lib/config'
 
 interface SandboxedViewRendererProps {
   projectId: string
@@ -30,12 +31,12 @@ export function SandboxedViewRenderer({
   const [viewReady, setViewReady] = useState(false)
 
   // Use hardcoded API URL for testing - memoize to prevent re-calculation
-  const apiBaseUrl = 'http://localhost:4100'
+  const apiBaseUrl = config.apiUrl
 
   // Memoize viewSrc to prevent unnecessary re-renders
   const viewSrc = useMemo(() => {
     // FORCE absolute URL to fix port issue
-    const baseUrl = 'http://localhost:4100'
+    const baseUrl = config.apiUrl
     const url = bobbinId && viewId && projectId
       ? `${baseUrl}/api/views/${bobbinId}/${viewId}?projectId=${projectId}`
       : ''

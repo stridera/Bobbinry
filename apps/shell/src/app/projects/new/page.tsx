@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
+import { config } from '@/lib/config'
 
 interface Template {
   id: string
@@ -64,7 +65,7 @@ export default function NewProjectPage() {
 
     try {
       // Create project
-      const projectRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4100'}/api/projects`, {
+      const projectRes = await fetch(`${config.apiUrl}/api/projects`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -88,7 +89,7 @@ export default function NewProjectPage() {
         for (const bobbinId of template.bobbins) {
           try {
             await fetch(
-              `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4100'}/api/projects/${projectId}/bobbins/install`,
+              `${config.apiUrl}/api/projects/${projectId}/bobbins/install`,
               {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

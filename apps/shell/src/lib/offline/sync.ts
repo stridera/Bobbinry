@@ -6,6 +6,7 @@
 
 import { db, type PendingOperation, getPendingOperations } from './db'
 import { offlineStorage } from './storage'
+import { config } from '../config'
 
 const MAX_RETRY_ATTEMPTS = 5
 const RETRY_DELAY_BASE = 1000 // 1 second
@@ -16,7 +17,7 @@ export class SyncManager {
   private syncInterval: NodeJS.Timeout | null = null
   private apiBaseUrl: string
 
-  constructor(apiBaseUrl = 'http://localhost:4100/api') {
+  constructor(apiBaseUrl = `${config.apiUrl}/api`) {
     this.apiBaseUrl = apiBaseUrl
   }
 

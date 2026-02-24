@@ -1,9 +1,10 @@
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import * as schema from './schema'
+import { env } from '../lib/env'
 
 // Connection configuration with security settings
-const connectionString = process.env.DATABASE_URL || 'postgres://bobbinry:bobbinry@localhost:5433/bobbinry'
+const connectionString = env.DATABASE_URL
 
 // Create postgres client with comprehensive security
 const client = postgres(connectionString, {

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { config } from '@/lib/config'
 
 interface BobbinInfo {
   id: string
@@ -65,7 +66,7 @@ export function BobbinMarketplace({ projectId, installedBobbins, onInstallComple
 
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4100'}/api/projects/${projectId}/bobbins/install`,
+        `${config.apiUrl}/api/projects/${projectId}/bobbins/install`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

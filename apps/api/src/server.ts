@@ -16,6 +16,7 @@ import collectionsPlugin from './routes/collections'
 import dashboardPlugin from './routes/dashboard'
 import authPlugin from './routes/auth'
 import { checkDatabaseHealth } from './db/connection'
+import { env } from './lib/env'
 
 export function build(opts = {}): FastifyInstance {
   const server = Fastify({
@@ -119,9 +120,9 @@ export function build(opts = {}): FastifyInstance {
 
   // CORS configuration - environment-aware origins
   server.register(cors, {
-    origin: process.env.NODE_ENV === 'production'
-      ? (process.env.WEB_ORIGIN ? [process.env.WEB_ORIGIN] : false)
-      : ['http://localhost:3100'],
+    origin: env.NODE_ENV === 'production'
+      ? [env.WEB_ORIGIN]
+      : [env.WEB_ORIGIN],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Correlation-ID']

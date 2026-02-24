@@ -7,6 +7,7 @@ import { ResizablePanelStack } from './ResizablePanelStack'
 import { useTheme } from '@/contexts/ThemeContext'
 import { MessageBuilder, sendToIframe, messageRouter, setupMessageListener, iframeBroadcaster } from '@/lib/message-router'
 import { SHELL_MESSAGES, ShellConfig } from '@/types/shell-messages'
+import { config } from '@/lib/config'
 
 interface ExtensionSlotProps {
   slotId: string
@@ -101,7 +102,7 @@ export function ExtensionSlot({
       locale: 'en',
       capabilities: ['read', 'write', 'create', 'delete'],
       api: {
-        baseUrl: process.env.NODE_ENV === 'development' ? 'http://localhost:4100' : '',
+        baseUrl: config.apiUrl,
       },
     }
   }, [theme, context])

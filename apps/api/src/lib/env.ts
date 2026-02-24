@@ -1,16 +1,17 @@
 /**
  * Environment Variable Validation for API
- * 
- * Validates required environment variables at startup
+ *
+ * Single source of truth for all configuration. Every module should import
+ * from here instead of reading process.env directly.
  */
 
 interface EnvConfig {
   DATABASE_URL: string
-  PORT: string
+  PORT: number
   NODE_ENV: string
   LOG_LEVEL: string
-  WEB_ORIGIN?: string
-  API_JWT_SECRET?: string
+  WEB_ORIGIN: string
+  API_JWT_SECRET: string | undefined
 }
 
 const requiredEnvVars = {
@@ -20,8 +21,8 @@ const requiredEnvVars = {
 } as const
 
 export function validateEnv(): EnvConfig {
-  const env = process.env.NODE_ENV || 'development'
-  const required = requiredEnvVars[env as keyof typeof requiredEnvVars] || []
+  const nodeEnv = process.env.NODE_ENV || 'development'
+  const required = requiredEnvVars[nodeEnv as keyof typeof requiredEnvVars] || []
 
   const missing: string[] = []
 
@@ -40,10 +41,10 @@ export function validateEnv(): EnvConfig {
 
   return {
     DATABASE_URL: process.env.DATABASE_URL || 'postgres://bobbinry:bobbinry@localhost:5433/bobbinry',
-    PORT: process.env.PORT || '4100',
-    NODE_ENV: env,
+    PORT: parseInt(process.env.PORT || '4100', 10),
+    NODE_ENV: nodeEnv,
     LOG_LEVEL: process.env.LOG_LEVEL || 'info',
-    WEB_ORIGIN: process.env.WEB_ORIGIN,
+    WEB_ORIGIN: process.env.WEB_ORIGIN || 'http://localhost:3100',
     API_JWT_SECRET: process.env.API_JWT_SECRET
   }
 }

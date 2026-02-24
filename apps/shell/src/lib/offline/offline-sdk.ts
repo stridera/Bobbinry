@@ -6,13 +6,14 @@
 
 import { BobbinrySDK } from '@bobbinry/sdk'
 import { offlineStorage } from './storage'
+import { config } from '@/lib/config'
 import { syncManager } from './sync'
 
 export class OfflineBobbinrySDK extends BobbinrySDK {
   private useOffline: boolean = true
 
   constructor(baseURL?: string) {
-    super(baseURL || 'http://localhost:4100/api')
+    super(baseURL || `${config.apiUrl}/api`)
 
     // Start sync manager
     if (typeof window !== 'undefined') {

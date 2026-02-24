@@ -16,6 +16,7 @@ import {
 } from '../db/schema'
 import { eq, and, desc, sql, isNull, or } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
+import { env } from '../lib/env'
 
 // ============================================
 // ACCESS CONTROL
@@ -374,7 +375,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       }
 
       const projectData = project.entityData as any
-      const baseUrl = process.env.WEB_ORIGIN || 'http://localhost:3100'
+      const baseUrl = env.WEB_ORIGIN
 
       // Get stats
       const stats = await db
@@ -482,7 +483,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         .limit(1)
 
       const projectData = project?.entityData as any
-      const baseUrl = process.env.WEB_ORIGIN || 'http://localhost:3100'
+      const baseUrl = env.WEB_ORIGIN
 
       // Generate excerpt from content
       const excerpt = (chapter.content || '').substring(0, 200).replace(/\n/g, ' ') + '...'
@@ -560,7 +561,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         ))
         .orderBy(sql`COALESCE((${entities}.data->>'order')::int, 0)`)
 
-      const baseUrl = process.env.WEB_ORIGIN || 'http://localhost:3100'
+      const baseUrl = env.WEB_ORIGIN
 
       // Build XML sitemap
       const urls = chapters.map(chapter => {
@@ -619,7 +620,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       }
 
       const projectData = project.entityData as any
-      const baseUrl = process.env.WEB_ORIGIN || 'http://localhost:3100'
+      const baseUrl = env.WEB_ORIGIN
 
       // Get recent published chapters
       const chapters = await db

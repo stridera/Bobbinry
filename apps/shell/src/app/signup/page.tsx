@@ -10,6 +10,7 @@ import { useState } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { config } from '@/lib/config'
 
 export default function SignupPage() {
   const router = useRouter()
@@ -27,7 +28,7 @@ export default function SignupPage() {
 
     try {
       // Call API to create user
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4100'}/api/auth/signup`, {
+      const response = await fetch(`${config.apiUrl}/api/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, name })

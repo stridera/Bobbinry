@@ -17,7 +17,8 @@ function hashPassword(password: string): string {
  * WARNING: Only run this in development environments!
  */
 async function seed() {
-  const connectionString = process.env.DATABASE_URL || 'postgres://bobbinry:bobbinry@localhost:5433/bobbinry'
+  const { env } = await import('../lib/env')
+  const connectionString = env.DATABASE_URL
 
   const client = postgres(connectionString)
   const db = drizzle(client)
