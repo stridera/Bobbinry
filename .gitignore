@@ -1,7 +1,6 @@
-# Node / PNPM / Next / Turbo
+# Node / Bun / Next / Turbo
 node_modules/
 .pnp.*
-pnpm-lock.yaml
 .next/
 .out/
 dist/
@@ -20,6 +19,5 @@ Thumbs.db
 # Logs
 npm-debug.log*
 yarn-debug.log*
-pnpm-debug.log*
 *.log
 .dev-pids/

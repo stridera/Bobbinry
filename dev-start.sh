@@ -127,19 +127,19 @@ check_docker() {
     log_success "Docker is running"
 }
 
-# Function to check Node.js and pnpm
+# Function to check Node.js and bun
 check_dependencies() {
     if ! command -v node >/dev/null 2>&1; then
         log_error "Node.js is not installed"
         exit 1
     fi
 
-    if ! command -v pnpm >/dev/null 2>&1; then
-        log_error "pnpm is not installed. Install it with: npm install -g pnpm"
+    if ! command -v bun >/dev/null 2>&1; then
+        log_error "bun is not installed. Install it with: curl -fsSL https://bun.sh/install | bash"
         exit 1
     fi
 
-    log_success "Node.js $(node --version) and pnpm $(pnpm --version) are available"
+    log_success "Node.js $(node --version) and bun $(bun --version) are available"
 }
 
 # Function to start database containers
@@ -193,24 +193,24 @@ build_packages() {
     # Install dependencies if node_modules is missing
     if [ ! -d "node_modules" ]; then
         log_info "Installing dependencies..."
-        pnpm install
+        bun install
     fi
 
     # Build packages in correct order
     log_info "Building types package..."
-    pnpm --filter=@bobbinry/types build || {
+    bun run --filter=@bobbinry/types build || {
         log_error "Failed to build types package"
         exit 1
     }
 
     log_info "Building compiler package..."
-    pnpm --filter=@bobbinry/compiler build || {
+    bun run --filter=@bobbinry/compiler build || {
         log_error "Failed to build compiler package"
         exit 1
     }
 
     log_info "Building SDK package..."
-    pnpm --filter=@bobbinry/sdk build || {
+    bun run --filter=@bobbinry/sdk build || {
         log_error "Failed to build SDK package"
         exit 1
     }
@@ -231,8 +231,8 @@ start_api() {
 
     # Start API server in background using dev command (tsx watch)
     # Note: Migrations run automatically on startup
-    # If you encounter migration issues, run: pnpm --filter=api db:reset
-    NODE_ENV=development pnpm --filter=api dev > "$PID_DIR/api.log" 2>&1 &
+    # If you encounter migration issues, run: bun run --filter=api db:reset
+    NODE_ENV=development bun run --filter=api dev > "$PID_DIR/api.log" 2>&1 &
     local api_pid=$!
     echo $api_pid > "$API_PID_FILE"
 
@@ -241,7 +241,7 @@ start_api() {
     # Wait for API to be ready
     wait_for_service "http://localhost:$API_PORT/health" "API server" || {
         log_error "API server failed to start. Check logs at $PID_DIR/api.log"
-        log_error "If migration errors occurred, try: pnpm --filter=api db:reset"
+        log_error "If migration errors occurred, try: bun run --filter=api db:reset"
         exit 1
     }
 
@@ -257,7 +257,7 @@ start_shell() {
     cd "$PROJECT_ROOT"
 
     # Start shell in background
-    NODE_ENV=development pnpm --filter=shell dev > "$PID_DIR/shell.log" 2>&1 &
+    NODE_ENV=development bun run --filter=shell dev > "$PID_DIR/shell.log" 2>&1 &
     local shell_pid=$!
     echo $shell_pid > "$SHELL_PID_FILE"
 

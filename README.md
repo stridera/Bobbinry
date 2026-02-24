@@ -5,8 +5,8 @@ A modular, open-source platform for writers and worldbuilders. Create projects, 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js 18+
-- pnpm 8+
+- Node.js 20+
+- Bun 1.0+
 - PostgreSQL 14+
 - Docker & Docker Compose (optional, for local infrastructure)
 
@@ -16,7 +16,7 @@ A modular, open-source platform for writers and worldbuilders. Create projects, 
    ```bash
    git clone <repository-url>
    cd bobbins
-   pnpm install
+   bun install
    ```
 
 2. **Set up environment variables**
@@ -43,21 +43,21 @@ A modular, open-source platform for writers and worldbuilders. Create projects, 
 
    ```bash
    # Generate migration from schema changes
-   pnpm --filter api db:generate
+   bun run --filter api db:generate
 
    # Migrations will apply automatically on next server start
    # Or manually apply with:
-   pnpm --filter api db:migrate
+   bun run --filter api db:migrate
 
    # Reset database (drops all tables, regenerates migrations)
    # WARNING: This destroys all data - use only in development!
-   pnpm --filter api db:reset
+   bun run --filter api db:reset
 
    # Reset and seed with test users
-   pnpm --filter api db:reset -- --seed
+   bun run --filter api db:reset -- --seed
 
    # Seed test users into existing database
-   pnpm --filter api db:seed
+   bun run --filter api db:seed
    ```
 
    **Test Users** (created by `db:seed`):
@@ -68,7 +68,7 @@ A modular, open-source platform for writers and worldbuilders. Create projects, 
 5. **Start development servers**
    ```bash
    # From project root
-   pnpm dlx turbo run dev
+   bun run dev
    ```
 
    This starts:
@@ -149,22 +149,22 @@ bobbins/
 
 ```bash
 # Install dependencies
-pnpm install
+bun install
 
 # Run all development servers
-pnpm dlx turbo run dev
+bun run dev
 
 # Build all packages
-pnpm dlx turbo run build
+bun run build
 
 # Type checking
-pnpm dlx turbo run typecheck
+bun run typecheck
 
 # Linting
-pnpm dlx turbo run lint
+bun run lint
 
 # Run tests (when available)
-pnpm dlx turbo run test
+bun run test
 ```
 
 ### Working with Bobbins
@@ -172,7 +172,7 @@ pnpm dlx turbo run test
 Create a new bobbin using the template generator:
 
 ```bash
-pnpm create-bobbin my-custom-bobbin
+bun run create-bobbin my-custom-bobbin
 ```
 
 See **[Bobbin Development Guide](docs/BOBBIN_DEVELOPMENT_GUIDE.md)** for detailed instructions.
@@ -184,17 +184,17 @@ See **[Bobbin Development Guide](docs/BOBBIN_DEVELOPMENT_GUIDE.md)** for detaile
 vim apps/api/src/db/schema.ts
 
 # Generate migration from schema changes
-pnpm --filter api db:generate
+bun run --filter api db:generate
 
 # Migrations run automatically on server startup
 # Or manually apply with:
-pnpm --filter api db:migrate
+bun run --filter api db:migrate
 
 # Push schema directly without migrations (dev only)
-pnpm --filter api db:push
+bun run --filter api db:push
 
 # Open Drizzle Studio to browse database
-pnpm --filter api db:studio
+bun run --filter api db:studio
 ```
 
 **Note**: Migrations are automatically applied when the API server starts via `apps/api/src/db/migrate.ts`.
@@ -322,12 +322,12 @@ CSP_ENABLE_STRICT=true
 - [ ] Set up SSL/TLS certificates
 - [ ] Configure CORS origins appropriately
 - [ ] Run database migrations
-- [ ] Build production assets: `pnpm dlx turbo run build`
+- [ ] Build production assets: `bun run build`
 
 ### Infrastructure Requirements
 
 - PostgreSQL 14+ database
-- Node.js 18+ runtime
+- Node.js 20+ / Bun 1.0+ runtime
 - 512MB+ RAM recommended
 - Optional: S3-compatible object storage for file uploads
 - Optional: Redis for session store (future enhancement)

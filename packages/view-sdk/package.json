@@ -12,13 +12,12 @@
   "keywords": ["bobbinry", "view", "sdk", "postmessage", "iframe"],
   "author": "Bobbinry",
   "license": "Apache-2.0",
-  "packageManager": "pnpm@10.17.1",
   "dependencies": {
     "@bobbinry/types": "workspace:*",
     "@bobbinry/event-bus": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.19.17",
-    "typescript": "^5.9.2"
+    "typescript": "6.0.0-beta"
   }
 }

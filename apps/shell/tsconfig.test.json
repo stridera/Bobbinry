@@ -13,7 +13,7 @@
         // Allow more flexible imports for tests
         "allowJs": true,
         "esModuleInterop": true,
-        "moduleResolution": "Node"
+        "moduleResolution": "Bundler"
     },
     "include": [
         "next-env.d.ts",
