@@ -33,7 +33,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         try {
           // In Phase 7, we'll call the API to verify credentials
           // For now, use a simple check (replace with actual API call)
-          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/auth/login`, {
+          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4100'}/api/auth/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

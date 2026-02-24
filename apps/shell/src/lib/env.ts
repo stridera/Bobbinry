@@ -38,7 +38,7 @@ export function validateEnv(): EnvConfig {
 
   return {
     NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET,
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000',
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4100',
     DATABASE_URL: process.env.DATABASE_URL,
     NODE_ENV: env
   }

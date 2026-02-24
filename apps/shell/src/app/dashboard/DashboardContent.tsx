@@ -65,8 +65,8 @@ export function DashboardContent({ user }: { user: User }) {
   const loadDashboard = async () => {
     try {
       const [projectsRes, statsRes] = await Promise.all([
-        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/users/me/projects/grouped?userId=${user.id}`),
-        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/dashboard/stats?userId=${user.id}`)
+        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4100'}/api/users/me/projects/grouped?userId=${user.id}`),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4100'}/api/dashboard/stats?userId=${user.id}`)
       ])
 
       if (projectsRes.ok && statsRes.ok) {
@@ -97,7 +97,7 @@ export function DashboardContent({ user }: { user: User }) {
   const handleReorder = async (collectionId: string, projectIds: string[]) => {
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/collections/${collectionId}/projects/reorder`,
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4100'}/api/collections/${collectionId}/projects/reorder`,
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },

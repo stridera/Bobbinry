@@ -12,7 +12,7 @@ export class OfflineBobbinrySDK extends BobbinrySDK {
   private useOffline: boolean = true
 
   constructor(baseURL?: string) {
-    super(baseURL || 'http://localhost:4000/api')
+    super(baseURL || 'http://localhost:4100/api')
 
     // Start sync manager
     if (typeof window !== 'undefined') {

@@ -35,7 +35,7 @@ describe('SDK Utils', () => {
   describe('API Client', () => {
     it('should construct URL correctly', () => {
       class SimpleAPI {
-        constructor(private baseURL: string = 'http://localhost:4000/api') {}
+        constructor(private baseURL: string = 'http://localhost:4100/api') {}
 
         getProjectURL(projectId: string) {
           return `${this.baseURL}/projects/${projectId}`

@@ -39,8 +39,8 @@ export function validateEnv(): EnvConfig {
   }
 
   return {
-    DATABASE_URL: process.env.DATABASE_URL || 'postgres://bobbinry:bobbinry@localhost:5432/bobbinry',
-    PORT: process.env.PORT || '4000',
+    DATABASE_URL: process.env.DATABASE_URL || 'postgres://bobbinry:bobbinry@localhost:5433/bobbinry',
+    PORT: process.env.PORT || '4100',
     NODE_ENV: env,
     LOG_LEVEL: process.env.LOG_LEVEL || 'info',
     WEB_ORIGIN: process.env.WEB_ORIGIN,

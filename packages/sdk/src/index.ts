@@ -2,7 +2,7 @@
 export class BobbinryAPI {
   private baseURL: string
 
-  constructor(baseURL: string = 'http://localhost:4000/api') {
+  constructor(baseURL: string = 'http://localhost:4100/api') {
     this.baseURL = baseURL
   }
 

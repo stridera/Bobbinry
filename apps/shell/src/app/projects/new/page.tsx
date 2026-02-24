@@ -64,7 +64,7 @@ export default function NewProjectPage() {
 
     try {
       // Create project
-      const projectRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/projects`, {
+      const projectRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4100'}/api/projects`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -88,7 +88,7 @@ export default function NewProjectPage() {
         for (const bobbinId of template.bobbins) {
           try {
             await fetch(
-              `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/projects/${projectId}/bobbins/install`,
+              `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4100'}/api/projects/${projectId}/bobbins/install`,
               {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

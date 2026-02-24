@@ -18,7 +18,7 @@ export const entities = pgTable('entities', {
 const schema = { entities }
 
 // Connection configuration
-const connectionString = process.env.DATABASE_URL || 'postgres://bobbinry:bobbinry@localhost:5432/bobbinry'
+const connectionString = process.env.DATABASE_URL || 'postgres://bobbinry:bobbinry@localhost:5433/bobbinry'
 
 // Create postgres client
 const client = postgres(connectionString, {

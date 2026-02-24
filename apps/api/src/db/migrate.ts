@@ -7,7 +7,7 @@ import postgres from 'postgres'
  * This should be called on server startup to ensure the database schema is up to date
  */
 export async function runMigrations() {
-  const connectionString = process.env.DATABASE_URL || 'postgres://bobbinry:bobbinry@localhost:5432/bobbinry'
+  const connectionString = process.env.DATABASE_URL || 'postgres://bobbinry:bobbinry@localhost:5433/bobbinry'
   
   // Create a dedicated connection for migrations
   const migrationClient = postgres(connectionString, { max: 1 })

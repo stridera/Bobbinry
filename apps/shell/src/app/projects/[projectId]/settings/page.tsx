@@ -50,7 +50,7 @@ export default function ProjectSettingsPage() {
 
   const loadProject = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/projects/${projectId}`)
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4100'}/api/projects/${projectId}`)
       if (response.ok) {
         const data = await response.json()
         setProject(data.project)
@@ -68,7 +68,7 @@ export default function ProjectSettingsPage() {
 
   const loadBobbins = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/projects/${projectId}/bobbins`)
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4100'}/api/projects/${projectId}/bobbins`)
       if (response.ok) {
         const data = await response.json()
         setBobbins(data.bobbins || [])
@@ -92,7 +92,7 @@ export default function ProjectSettingsPage() {
 
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/projects/${projectId}`,
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4100'}/api/projects/${projectId}`,
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -131,7 +131,7 @@ export default function ProjectSettingsPage() {
     try {
       const endpoint = project.isArchived ? 'unarchive' : 'archive'
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/projects/${projectId}/${endpoint}`,
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4100'}/api/projects/${projectId}/${endpoint}`,
         { method: 'PUT' }
       )
 
@@ -155,7 +155,7 @@ export default function ProjectSettingsPage() {
 
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/projects/${projectId}/bobbins/${bobbinId}`,
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4100'}/api/projects/${projectId}/bobbins/${bobbinId}`,
         { method: 'DELETE' }
       )
 

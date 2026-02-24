@@ -101,7 +101,7 @@ export function ExtensionSlot({
       locale: 'en',
       capabilities: ['read', 'write', 'create', 'delete'],
       api: {
-        baseUrl: process.env.NODE_ENV === 'development' ? 'http://localhost:4000' : '',
+        baseUrl: process.env.NODE_ENV === 'development' ? 'http://localhost:4100' : '',
       },
     }
   }, [theme, context])

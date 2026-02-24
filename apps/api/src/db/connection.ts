@@ -3,7 +3,7 @@ import postgres from 'postgres'
 import * as schema from './schema'
 
 // Connection configuration with security settings
-const connectionString = process.env.DATABASE_URL || 'postgres://bobbinry:bobbinry@localhost:5432/bobbinry'
+const connectionString = process.env.DATABASE_URL || 'postgres://bobbinry:bobbinry@localhost:5433/bobbinry'
 
 // Create postgres client with comprehensive security
 const client = postgres(connectionString, {

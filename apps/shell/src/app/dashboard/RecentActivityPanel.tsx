@@ -33,7 +33,7 @@ export function RecentActivityPanel({ userId }: { userId: string }) {
   const loadActivity = async () => {
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/users/me/recent-activity?userId=${userId}&limit=20`
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4100'}/api/users/me/recent-activity?userId=${userId}&limit=20`
       )
 
       if (response.ok) {

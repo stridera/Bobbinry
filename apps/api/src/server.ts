@@ -121,7 +121,7 @@ export function build(opts = {}): FastifyInstance {
   server.register(cors, {
     origin: process.env.NODE_ENV === 'production'
       ? (process.env.WEB_ORIGIN ? [process.env.WEB_ORIGIN] : false)
-      : ['http://localhost:3000'],
+      : ['http://localhost:3100'],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Correlation-ID']

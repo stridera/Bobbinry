@@ -30,12 +30,12 @@ export function SandboxedViewRenderer({
   const [viewReady, setViewReady] = useState(false)
 
   // Use hardcoded API URL for testing - memoize to prevent re-calculation
-  const apiBaseUrl = 'http://localhost:4000'
+  const apiBaseUrl = 'http://localhost:4100'
 
   // Memoize viewSrc to prevent unnecessary re-renders
   const viewSrc = useMemo(() => {
     // FORCE absolute URL to fix port issue
-    const baseUrl = 'http://localhost:4000'
+    const baseUrl = 'http://localhost:4100'
     const url = bobbinId && viewId && projectId
       ? `${baseUrl}/api/views/${bobbinId}/${viewId}?projectId=${projectId}`
       : ''

@@ -1,6 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
+    // TS6 beta: silence deprecation errors from tools using old defaults
+    "ignoreDeprecations": "6.0",
     // Language and Environment
     "target": "ES2022",
     "lib": [

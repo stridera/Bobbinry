@@ -16,7 +16,7 @@ export class SyncManager {
   private syncInterval: NodeJS.Timeout | null = null
   private apiBaseUrl: string
 
-  constructor(apiBaseUrl = 'http://localhost:4000/api') {
+  constructor(apiBaseUrl = 'http://localhost:4100/api') {
     this.apiBaseUrl = apiBaseUrl
   }
 

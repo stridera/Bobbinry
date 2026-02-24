@@ -32,8 +32,8 @@ log_error() {
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR"
-API_PORT=4000
-SHELL_PORT=3000
+API_PORT=4100
+SHELL_PORT=3100
 DB_CONTAINER_NAME="bobbins-postgres-1"
 MINIO_CONTAINER_NAME="bobbins-minio-1"
 PID_DIR="$PROJECT_ROOT/.dev-pids"

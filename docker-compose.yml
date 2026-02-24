@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: bobbinry
       POSTGRES_DB: bobbinry
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
   minio:
@@ -16,8 +16,8 @@ services:
       MINIO_ROOT_USER: admin
       MINIO_ROOT_PASSWORD: adminadmin
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "9100:9000"
+      - "9101:9001"
     volumes:
       - minio:/data
 volumes:
