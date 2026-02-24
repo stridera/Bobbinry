@@ -11,6 +11,7 @@ declare module 'next-auth' {
     user: {
       id: string
     } & DefaultSession['user']
+    apiToken: string
   }
 
   interface User {
@@ -23,5 +24,6 @@ declare module 'next-auth' {
 declare module 'next-auth/jwt' {
   interface JWT {
     id: string
+    apiToken: string
   }
 }

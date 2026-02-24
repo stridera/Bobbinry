@@ -52,6 +52,14 @@ export function ExtensionProvider({ children }: ExtensionProviderProps) {
     setExtensions(extensionRegistry.getAllExtensions())
     setStats(extensionRegistry.getStats())
 
+    // Subscribe to registry changes so React state stays in sync
+    // This handles cases where extensions are registered directly on the singleton
+    const unsubscribeChange = extensionRegistry.onChange(() => {
+      console.log('[EXTENSIONS] Registry changed, syncing React state')
+      setExtensions(extensionRegistry.getAllExtensions())
+      setStats(extensionRegistry.getStats())
+    })
+
     // Notify all slots that we're hydrated (triggers re-render with current extensions)
     setTimeout(() => {
       console.log('[EXTENSIONS] Notifying all slots after hydration')
@@ -68,6 +76,7 @@ export function ExtensionProvider({ children }: ExtensionProviderProps) {
 
     // Cleanup on unmount
     return () => {
+      unsubscribeChange()
       extensionRegistry.clearAllListeners()
     }
   }, [])
@@ -140,26 +149,23 @@ export function ExtensionProvider({ children }: ExtensionProviderProps) {
 }
 
 // Manifest extensions hook
+// Uses extensionRegistry singleton directly to avoid stale closure issues
+// with React context callbacks. The ExtensionProvider syncs its state
+// from the registry via onChange subscription.
 export function useManifestExtensions() {
-  const extensions = useExtensions()
-  const { registerExtension, unregisterBobbin } = extensions || {}
-
   const registerManifestExtensions = useCallback((bobbinId: string, manifest: any) => {
     console.log('[ExtensionProvider] registerManifestExtensions called for:', bobbinId, 'mode:', manifest.execution?.mode)
-    console.log('[ExtensionProvider] Full manifest:', JSON.stringify(manifest, null, 2))
 
     try {
       // Register native views in viewRegistry
       if (manifest.execution?.mode === 'native' && manifest.ui?.views) {
-        console.log('[ExtensionProvider] Native views found, registering in viewRegistry')
-        console.log('[ExtensionProvider] manifest.ui.views:', JSON.stringify(manifest.ui.views, null, 2))
         const { viewRegistry } = require('../lib/view-registry')
         const { createComponentLoader } = require('../lib/native-view-loader')
-        
+
         for (const view of manifest.ui.views) {
           const fullViewId = `${bobbinId}.${view.id}`
           console.log(`[ExtensionProvider] Registering native view: ${fullViewId}`)
-          
+
           viewRegistry.register({
             viewId: fullViewId,
             bobbinId: bobbinId,
@@ -172,61 +178,45 @@ export function useManifestExtensions() {
               type: view.type,
               source: view.source
             },
-            // NEW: Pass handlers and priority from manifest
             handlers: view.handlers,
             priority: view.priority
           })
         }
       }
 
-      // Register extension contributions
-      console.log('[ExtensionProvider] Checking extensions:', {
-        hasExtensions: !!manifest.extensions,
-        hasContributions: !!manifest.extensions?.contributions,
-        contributionsLength: manifest.extensions?.contributions?.length,
-        hasRegisterExtension: !!registerExtension
-      })
-
-      if (manifest.extensions?.contributions && registerExtension) {
-        console.log('[ExtensionProvider] Registering extension contributions for', bobbinId)
+      // Register extension contributions directly on the singleton registry
+      if (manifest.extensions?.contributions) {
+        console.log('[ExtensionProvider] Registering extension contributions for', bobbinId, ':', manifest.extensions.contributions.length, 'contributions')
         const { loadNativeView } = require('../lib/native-view-loader')
 
         for (const contribution of manifest.extensions.contributions) {
           console.log('[ExtensionProvider] Registering extension:', contribution.id, 'slot:', contribution.slot)
-          registerExtension(bobbinId, contribution)
+          extensionRegistry.registerExtension(bobbinId, contribution)
 
           // For native panels, load and attach the component
           if (manifest.execution?.mode === 'native' && contribution.type === 'panel' && contribution.entry) {
             console.log(`[ExtensionProvider] Loading native panel component: ${bobbinId}.${contribution.entry}`)
 
-            try {
-              // Load the component asynchronously
-              loadNativeView(bobbinId, contribution.entry).then((component: any) => {
-                console.log(`[ExtensionProvider] Component loaded for ${bobbinId}.${contribution.entry}:`, component)
-                console.log(`[ExtensionProvider] Component type:`, typeof component)
-                console.log(`[ExtensionProvider] Component is function:`, typeof component === 'function')
-                const { extensionRegistry } = require('../lib/extensions')
-                const extensionId = `${bobbinId}.${contribution.id}`
-                extensionRegistry.registerExtensionComponent(extensionId, component)
-                console.log(`[ExtensionProvider] Registered component for panel: ${extensionId}`)
-              }).catch((error: any) => {
-                console.error(`[ExtensionProvider] Failed to load panel component ${bobbinId}.${contribution.entry}:`, error)
-              })
-            } catch (error) {
-              console.error(`[ExtensionProvider] Error loading panel component:`, error)
-            }
+            loadNativeView(bobbinId, contribution.entry).then((component: any) => {
+              console.log(`[ExtensionProvider] Component loaded for ${bobbinId}.${contribution.entry}:`, typeof component)
+              const extensionId = `${bobbinId}.${contribution.id}`
+              extensionRegistry.registerExtensionComponent(extensionId, component)
+              console.log(`[ExtensionProvider] Registered component for panel: ${extensionId}`)
+            }).catch((error: any) => {
+              console.error(`[ExtensionProvider] Failed to load panel component ${bobbinId}.${contribution.entry}:`, error)
+            })
           }
         }
+      } else {
+        console.log('[ExtensionProvider] No extension contributions found for', bobbinId)
       }
     } catch (error) {
       console.error(`Failed to register extensions for bobbin ${bobbinId}:`, error)
       throw error
     }
-  }, [registerExtension])
+  }, [])
 
   const unregisterManifestExtensions = useCallback((bobbinId: string) => {
-    if (!unregisterBobbin) return
-    
     // Unregister views from viewRegistry
     try {
       const { viewRegistry } = require('../lib/view-registry')
@@ -235,10 +225,10 @@ export function useManifestExtensions() {
     } catch (error) {
       console.error(`Failed to unregister views for bobbin ${bobbinId}:`, error)
     }
-    
-    // Unregister extension contributions
-    unregisterBobbin(bobbinId)
-  }, [unregisterBobbin])
+
+    // Unregister extension contributions directly from registry
+    extensionRegistry.unregisterBobbin(bobbinId)
+  }, [])
 
   return {
     registerManifestExtensions,

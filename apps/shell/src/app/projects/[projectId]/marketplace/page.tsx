@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import { BobbinrySDK } from '@bobbinry/sdk'
 import { ClientWrapper } from '@/components/ClientWrapper'
 
@@ -38,6 +39,7 @@ interface InstalledBobbin {
 function MarketplaceContent() {
   const params = useParams()
   const router = useRouter()
+  const { data: session } = useSession()
   const projectId = params.projectId as string
   const [sdk] = useState(() => new BobbinrySDK('shell'))
   const [availableBobbins, setAvailableBobbins] = useState<BobbinMetadata[]>([])
@@ -74,8 +76,17 @@ function MarketplaceContent() {
     }
   }
 
+  // Pass auth token to SDK
+  useEffect(() => {
+    if (session?.apiToken) {
+      sdk.api.setAuthToken(session.apiToken)
+    }
+  }, [session?.apiToken, sdk])
+
   // Load all bobbins on mount
   useEffect(() => {
+    if (!session?.apiToken) return
+
     const loadAllData = async () => {
       setLoading(true)
       const [available, installed] = await Promise.all([
@@ -101,7 +112,7 @@ function MarketplaceContent() {
     if (typeof window !== 'undefined') {
       loadAllData()
     }
-  }, [projectId])
+  }, [projectId, session?.apiToken])
 
   // Install bobbin
   const installBobbin = async (bobbin: BobbinMetadata) => {

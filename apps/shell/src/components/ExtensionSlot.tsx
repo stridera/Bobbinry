@@ -3,6 +3,7 @@
 // Fixed: Moved hooks to correct order and added memoization to prevent iframe reload loop
 import { useEffect, useState, useRef, ReactNode, useCallback, useMemo, memo } from 'react'
 import { extensionRegistry, RegisteredExtension } from '@/lib/extensions'
+import { useExtensions } from './ExtensionProvider'
 import { ResizablePanelStack } from './ResizablePanelStack'
 import { useTheme } from '@/contexts/ThemeContext'
 import { MessageBuilder, sendToIframe, messageRouter, setupMessageListener, iframeBroadcaster } from '@/lib/message-router'
@@ -85,6 +86,10 @@ export function ExtensionSlot({
   fallback
 }: ExtensionSlotProps) {
   const { theme } = useTheme()
+  const extensionContext = useExtensions()
+  // Use the provider's extensions array length as a signal to re-query the registry.
+  // This ensures slots update even if they miss a setTimeout-based slot notification.
+  const registeredCount = extensionContext?.extensions?.length ?? 0
   const [extensions, setExtensions] = useState<RegisteredExtension[]>([])
   const [isHydrated, setIsHydrated] = useState(false)
   const contextRef = useRef(context)
@@ -154,14 +159,14 @@ export function ExtensionSlot({
     return () => clearTimeout(timeout)
   }, [theme, extensions])
 
-  // Update extensions whenever context changes
+  // Update extensions whenever context changes or new extensions are registered
   useEffect(() => {
     if (!isHydrated) return
 
     const currentExtensions = extensionRegistry.getExtensionsForSlot(slotId, context)
-    console.log(`[ExtensionSlot] ${slotId} - Extensions updated due to context change:`, currentExtensions)
+    console.log(`[ExtensionSlot] ${slotId} - Extensions updated:`, currentExtensions.length, 'extensions (registered:', registeredCount, ')')
     setExtensions(currentExtensions)
-  }, [context, slotId, isHydrated])
+  }, [context, slotId, isHydrated, registeredCount])
 
   // Hydration and subscription (only depends on slotId)
   useEffect(() => {

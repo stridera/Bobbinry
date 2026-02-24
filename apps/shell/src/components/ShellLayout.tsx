@@ -17,12 +17,10 @@ export function ShellLayout({ children, currentView = 'default', context = {} }:
   const [isHydrated, setIsHydrated] = useState(false)
   const [dynamicContext, setDynamicContext] = useState<Record<string, any>>({})
 
-  // Hydration safety
   useEffect(() => {
     setIsHydrated(true)
   }, [])
 
-  // Listen for view context changes from ViewRouter
   useEffect(() => {
     const handleViewContextChange = (event: Event) => {
       const customEvent = event as CustomEvent<Record<string, any>>
@@ -50,19 +48,17 @@ export function ShellLayout({ children, currentView = 'default', context = {} }:
   return (
     <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
       {/* Top Bar */}
-      <header className="h-12 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center px-4">
-        <div className="flex items-center space-x-4">
+      <header className="h-11 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center px-4">
+        <div className="flex items-center space-x-3">
           <button
             onClick={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
-            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300"
+            className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500 dark:text-gray-400 transition-colors"
             title="Toggle left panel"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-
-
         </div>
 
         <div className="flex-1 flex justify-center">
@@ -76,25 +72,25 @@ export function ShellLayout({ children, currentView = 'default', context = {} }:
         <div className="flex items-center space-x-2">
           <button
             onClick={toggleTheme}
-            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300"
+            className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500 dark:text-gray-400 transition-colors"
             title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
           >
             {theme === 'light' ? (
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
               </svg>
             ) : (
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
               </svg>
             )}
           </button>
           <button
             onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
-            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300"
+            className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500 dark:text-gray-400 transition-colors"
             title="Toggle right panel"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zM12 13a1 1 0 110-2 1 1 0 010 2zM12 20a1 1 0 110-2 1 1 0 010 2z" />
             </svg>
           </button>
@@ -115,7 +111,7 @@ export function ShellLayout({ children, currentView = 'default', context = {} }:
               context={shellContext}
               className="h-full"
               fallback={
-                <div className="p-4 text-gray-500 dark:text-gray-400 text-sm">
+                <div className="p-4 text-gray-400 dark:text-gray-500 text-sm italic">
                   No navigation panels installed
                 </div>
               }
@@ -140,7 +136,7 @@ export function ShellLayout({ children, currentView = 'default', context = {} }:
               context={shellContext}
               className="h-full"
               fallback={
-                <div className="p-4 text-gray-500 dark:text-gray-400 text-sm">
+                <div className="p-4 text-gray-400 dark:text-gray-500 text-sm italic">
                   No contextual panels available
                 </div>
               }
@@ -156,7 +152,7 @@ export function ShellLayout({ children, currentView = 'default', context = {} }:
           context={shellContext}
           className="flex items-center space-x-4 w-full"
           fallback={
-            <div className="text-xs text-gray-500">
+            <div className="text-xs text-gray-400 dark:text-gray-500">
               Ready
             </div>
           }

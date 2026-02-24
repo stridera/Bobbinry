@@ -42,13 +42,9 @@ export interface LoadedNativeView {
  * // Imports from: @bobbinry/manuscript/views/outline
  * ```
  */
-// Known native view mappings
-// These are statically imported so webpack can bundle them properly
-const NATIVE_VIEW_MAP: Record<string, () => Promise<any>> = {
-  'manuscript.outline': () => import('@bobbinry/manuscript/views/outline'),
-  'manuscript.editor': () => import('@bobbinry/manuscript/views/editor'),
-  'manuscript.panels/navigation': () => import('@bobbinry/manuscript/panels/navigation'),
-}
+// Static import map generated from bobbin manifests.
+// Run `bun run generate:views` to regenerate.
+import { NATIVE_VIEW_MAP } from './native-view-map.generated'
 
 export async function loadNativeView(
   bobbinId: string,

@@ -56,6 +56,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@auth/core": "^0.40.0",
+        "@bobbinry/entities": "workspace:*",
         "@bobbinry/manuscript": "workspace:*",
         "@bobbinry/sdk": "workspace:*",
         "@bobbinry/types": "workspace:*",
@@ -67,6 +68,7 @@
         "dexie": "^4.2.0",
         "drizzle-orm": "^0.44.5",
         "idb-keyval": "^6.2.2",
+        "jose": "^6.1.3",
         "next": "15.5.4",
         "next-auth": "5.0.0-beta.29",
         "postcss": "^8.5.6",

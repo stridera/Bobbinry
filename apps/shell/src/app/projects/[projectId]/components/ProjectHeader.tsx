@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { UserMenu } from '@/components/UserMenu'
-import { config } from '@/lib/config'
+import { apiFetch } from '@/lib/api'
 
 interface Project {
   id: string
@@ -22,8 +22,9 @@ export function ProjectHeader() {
 
   useEffect(() => {
     const loadProject = async () => {
+      if (!session?.apiToken) return
       try {
-        const response = await fetch(`${config.apiUrl}/api/projects/${projectId}`)
+        const response = await apiFetch(`/api/projects/${projectId}`, session.apiToken)
         if (response.ok) {
           const data = await response.json()
           setProject(data.project)
@@ -38,15 +39,15 @@ export function ProjectHeader() {
     if (projectId) {
       loadProject()
     }
-  }, [projectId])
+  }, [projectId, session?.apiToken])
 
   if (loading) {
     return (
-      <header className="bg-white border-b border-gray-200">
+      <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="animate-pulse">
-            <div className="h-4 bg-gray-200 rounded w-32 mb-2" />
-            <div className="h-6 bg-gray-200 rounded w-48" />
+            <div className="h-4 bg-gray-100 dark:bg-gray-700 rounded w-32 mb-2" />
+            <div className="h-6 bg-gray-100 dark:bg-gray-700 rounded w-48" />
           </div>
         </div>
       </header>
@@ -58,25 +59,25 @@ export function ProjectHeader() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
         <div className="flex items-center justify-between">
           <div className="flex-1">
-            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 mb-1">
-              <Link href="/dashboard" className="hover:text-gray-900 dark:hover:text-gray-100">
+            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-1">
+              <Link href="/dashboard" className="hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
                 Dashboard
               </Link>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
               <span className="text-gray-900 dark:text-gray-100">{project?.name || 'Project'}</span>
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{project?.name || 'Untitled Project'}</h1>
+            <h1 className="font-display text-2xl font-bold text-gray-900 dark:text-gray-100">{project?.name || 'Untitled Project'}</h1>
             {project?.description && (
-              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{project.description}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{project.description}</p>
             )}
           </div>
 
           <div className="flex items-center gap-3">
             <Link
               href={`/projects/${projectId}/settings`}
-              className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 border border-gray-300 dark:border-gray-600 rounded-lg hover:border-gray-400 dark:hover:border-gray-500"
+              className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 border border-gray-200 dark:border-gray-600 rounded-lg hover:border-gray-300 dark:hover:border-gray-500 transition-colors text-sm"
             >
               Settings
             </Link>

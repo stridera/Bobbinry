@@ -1,3 +1,166 @@
 @import "tailwindcss";
 
 @variant dark (&:where(.dark, .dark *));
+
+/* =============================================
+   BOBBINRY DESIGN SYSTEM
+   A warm, literary aesthetic for writers
+   ============================================= */
+
+@theme {
+  /* --- Warm Grays (Paper & Ink) --- */
+  --color-gray-50: #faf8f4;
+  --color-gray-100: #f3ede5;
+  --color-gray-200: #e5ddd2;
+  --color-gray-300: #d0c5b7;
+  --color-gray-400: #b3a594;
+  --color-gray-500: #968778;
+  --color-gray-600: #7a6c5e;
+  --color-gray-700: #5e5247;
+  --color-gray-800: #3b342d;
+  --color-gray-900: #231f1b;
+  --color-gray-950: #141210;
+
+  /* --- Primary: Deep Teal --- */
+  --color-blue-50: #f0f7f6;
+  --color-blue-100: #d9edeb;
+  --color-blue-200: #b5dbd7;
+  --color-blue-300: #84c2bc;
+  --color-blue-400: #5ba69f;
+  --color-blue-500: #418b85;
+  --color-blue-600: #33706b;
+  --color-blue-700: #2c5b57;
+  --color-blue-800: #274a47;
+  --color-blue-900: #243e3c;
+  --color-blue-950: #112323;
+
+  /* --- Secondary: Warm Amber --- */
+  --color-purple-50: #fdf8ef;
+  --color-purple-100: #faefd6;
+  --color-purple-200: #f5dbac;
+  --color-purple-300: #eec278;
+  --color-purple-400: #e6a44a;
+  --color-purple-500: #de8c2b;
+  --color-purple-600: #c97221;
+  --color-purple-700: #a7561d;
+  --color-purple-800: #88441f;
+  --color-purple-900: #70391c;
+  --color-purple-950: #3c1c0d;
+
+  /* --- Success: Olive Green --- */
+  --color-green-50: #f4f7f0;
+  --color-green-100: #e6eddc;
+  --color-green-200: #cddcbc;
+  --color-green-300: #aac492;
+  --color-green-400: #89aa6d;
+  --color-green-500: #6c8f50;
+  --color-green-600: #54723d;
+  --color-green-700: #425832;
+  --color-green-800: #37472b;
+  --color-green-900: #2f3d27;
+  --color-green-950: #172012;
+
+  /* --- Danger: Warm Red --- */
+  --color-red-50: #fdf3f0;
+  --color-red-100: #fce4dd;
+  --color-red-200: #faccc0;
+  --color-red-300: #f5a793;
+  --color-red-400: #ed7a5e;
+  --color-red-500: #e25536;
+  --color-red-600: #cf3c23;
+  --color-red-700: #ad2e1a;
+  --color-red-800: #8f291b;
+  --color-red-900: #77261d;
+  --color-red-950: #40100b;
+}
+
+/* --- Display Font Utility --- */
+@utility font-display {
+  font-family: var(--font-playfair, "Playfair Display"), Georgia, "Times New Roman", serif;
+}
+
+/* --- Animation Utilities --- */
+@utility animate-fade-in {
+  animation: fade-in 0.4s ease-out both;
+}
+
+@utility animate-fade-in-up {
+  animation: fade-in-up 0.5s ease-out both;
+}
+
+@utility animate-fade-in-scale {
+  animation: fade-in-scale 0.3s ease-out both;
+}
+
+/* --- Base Styles --- */
+@layer base {
+  body {
+    font-family: var(--font-dm-sans, "DM Sans"), system-ui, -apple-system, sans-serif;
+  }
+
+  ::selection {
+    background-color: #b5dbd780;
+    color: #112323;
+  }
+
+  .dark ::selection {
+    background-color: #274a4780;
+    color: #d9edeb;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Refined scrollbar */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #d0c5b7 transparent;
+  }
+
+  .dark * {
+    scrollbar-color: #5e5247 transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #d0c5b7;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #b3a594;
+  }
+
+  .dark ::-webkit-scrollbar-thumb {
+    background: #5e5247;
+  }
+
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: #7a6c5e;
+  }
+}
+
+/* --- Keyframes --- */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in-scale {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useParams } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import { BobbinrySDK } from '@bobbinry/sdk'
 import { ShellLayout } from '@/components/ShellLayout'
 import { ViewRouter } from '@/components/ViewRouter'
@@ -30,6 +31,7 @@ interface InstalledBobbin {
 
 export default function ProjectDeepLinkPage() {
   const params = useParams()
+  const { data: session } = useSession()
   const projectId = params.projectId as string
   const slug = params.slug as string[]
 
@@ -43,8 +45,17 @@ export default function ProjectDeepLinkPage() {
   // Get extension registration hooks
   const { registerManifestExtensions, unregisterManifestExtensions } = useManifestExtensions()
 
+  // Pass auth token to SDK
+  useEffect(() => {
+    if (session?.apiToken) {
+      sdk.api.setAuthToken(session.apiToken)
+    }
+  }, [session?.apiToken, sdk])
+
   // Load installed bobbins and their views
   useEffect(() => {
+    if (!session?.apiToken) return
+
     const loadProject = async () => {
       try {
         console.log('🔄 DEEP LINK PAGE: Starting loadProject for:', projectId)
@@ -80,7 +91,7 @@ export default function ProjectDeepLinkPage() {
     if (projectId) {
       loadProject()
     }
-  }, [projectId, sdk])
+  }, [projectId, sdk, session?.apiToken])
 
   // Parse the slug and trigger navigation once loaded
   useEffect(() => {

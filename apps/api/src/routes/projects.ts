@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify'
 import { parse as parseYAML } from 'yaml'
 import * as path from 'path'
+import * as fs from 'fs/promises'
 import { db } from '../db/connection'
 import { projects, bobbinsInstalled } from '../db/schema'
 import { eq, and } from 'drizzle-orm'
@@ -290,6 +291,45 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
           eq(bobbinsInstalled.projectId, projectId),
           eq(bobbinsInstalled.enabled, true)
         ))
+
+      // In development, refresh manifests from disk to pick up YAML changes
+      // This prevents stale manifests when devs edit YAML without re-installing
+      if (process.env.NODE_ENV === 'development') {
+        const projectRoot = path.resolve(__dirname, '../../../..')
+        for (const install of installations) {
+          try {
+            const manifestPath = path.resolve(projectRoot, `bobbins/${install.bobbinId}/manifest.yaml`)
+            const content = await fs.readFile(manifestPath, 'utf-8')
+            const freshManifest = parseYAML(content)
+            const stored = install.manifestJson as Record<string, any>
+
+            // Compare key sections that affect the shell
+            const sectionsToSync = ['extensions', 'ui', 'execution', 'capabilities', 'data', 'interactions'] as const
+            let needsUpdate = false
+            const merged = { ...stored }
+
+            for (const section of sectionsToSync) {
+              const freshVal = JSON.stringify(freshManifest[section] ?? null)
+              const storedVal = JSON.stringify(stored[section] ?? null)
+              if (freshVal !== storedVal) {
+                console.log(`[DEV] Manifest ${install.bobbinId}: "${section}" section changed on disk`)
+                merged[section] = freshManifest[section]
+                needsUpdate = true
+              }
+            }
+
+            if (needsUpdate) {
+              console.log(`[DEV] Refreshing stale manifest for ${install.bobbinId}`)
+              await db.update(bobbinsInstalled)
+                .set({ manifestJson: merged })
+                .where(eq(bobbinsInstalled.id, install.id))
+              install.manifestJson = merged
+            }
+          } catch {
+            // Manifest file not found on disk - skip refresh
+          }
+        }
+      }
 
       return {
         bobbins: installations.map((install: any) => ({

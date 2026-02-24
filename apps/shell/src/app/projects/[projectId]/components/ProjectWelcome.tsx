@@ -8,63 +8,67 @@ interface ProjectWelcomeProps {
 export function ProjectWelcome({ projectId, onInstallBobbins }: ProjectWelcomeProps) {
   return (
     <div className="flex-1 flex items-center justify-center p-8">
-      <div className="max-w-2xl w-full text-center">
-        <div className="mb-6">
+      <div className="max-w-2xl w-full text-center animate-fade-in">
+        <div className="mb-8">
           <svg
-            className="mx-auto h-24 w-24 text-gray-400"
+            className="mx-auto h-20 w-20 text-blue-400/60 dark:text-blue-400/40"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
+            strokeWidth={1.2}
           >
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"
             />
           </svg>
         </div>
 
-        <h2 className="text-3xl font-bold text-gray-900 mb-4">Welcome to Your Project</h2>
-        <p className="text-lg text-gray-600 mb-8">
-          Get started by installing bobbins - modular tools that add functionality to your project.
+        <h2 className="font-display text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3">Begin Your Story</h2>
+        <p className="text-lg text-gray-500 dark:text-gray-400 mb-8">
+          Install bobbins to add tools and structure to your project.
         </p>
 
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-8">
-          <h3 className="font-semibold text-blue-900 mb-3">What are bobbins?</h3>
-          <ul className="text-left text-sm text-blue-800 space-y-2">
+        <div className="bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/30 rounded-lg p-6 mb-8 text-left">
+          <h3 className="font-semibold text-blue-800 dark:text-blue-300 mb-3">Available bobbins</h3>
+          <ul className="space-y-3">
             <li className="flex items-start">
-              <svg className="w-5 h-5 text-blue-600 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              <svg className="w-5 h-5 text-blue-500 dark:text-blue-400 mr-3 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span><strong>Manuscript:</strong> Writing system with chapters, scenes, and rich text editing</span>
+              <span className="text-gray-700 dark:text-gray-300">
+                <strong className="text-gray-900 dark:text-gray-100">Manuscript</strong> &mdash; Writing with chapters, scenes, and rich text editing
+              </span>
             </li>
             <li className="flex items-start">
-              <svg className="w-5 h-5 text-blue-600 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              <svg className="w-5 h-5 text-blue-500 dark:text-blue-400 mr-3 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span><strong>Corkboard:</strong> Visual organization with drag-and-drop cards</span>
+              <span className="text-gray-700 dark:text-gray-300">
+                <strong className="text-gray-900 dark:text-gray-100">Corkboard</strong> &mdash; Visual organization with drag-and-drop cards
+              </span>
             </li>
             <li className="flex items-start">
-              <svg className="w-5 h-5 text-blue-600 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              <svg className="w-5 h-5 text-blue-500 dark:text-blue-400 mr-3 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span><strong>Dictionary:</strong> Glossary and terminology management</span>
+              <span className="text-gray-700 dark:text-gray-300">
+                <strong className="text-gray-900 dark:text-gray-100">Dictionary</strong> &mdash; Glossary and terminology management
+              </span>
             </li>
           </ul>
         </div>
 
-        <div className="flex items-center justify-center gap-4">
-          <button
-            onClick={onInstallBobbins}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-lg"
-          >
-            Browse Bobbins
-          </button>
-        </div>
+        <button
+          onClick={onInstallBobbins}
+          className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white rounded-lg font-medium text-lg transition-colors"
+        >
+          Browse Bobbins
+        </button>
 
-        <p className="text-sm text-gray-500 mt-6">
-          You can always add more bobbins later from the project settings
+        <p className="text-sm text-gray-400 dark:text-gray-500 mt-6">
+          You can always add more bobbins later from project settings
         </p>
       </div>
     </div>

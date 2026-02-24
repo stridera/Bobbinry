@@ -10,8 +10,22 @@ import NextAuth from 'next-auth'
 import Credentials from 'next-auth/providers/credentials'
 import Google from 'next-auth/providers/google'
 import GitHub from 'next-auth/providers/github'
+import { SignJWT } from 'jose'
 import type { User } from 'next-auth'
 import { config } from '@/lib/config'
+
+/** Shared secret used by both NextAuth and the API for JWT verification */
+const jwtSecret = new TextEncoder().encode(
+  process.env.NEXTAUTH_SECRET || 'development-secret-only-for-local-dev'
+)
+
+/** Sign a JWT that the API can verify via its requireAuth middleware */
+async function signApiToken(userId: string): Promise<string> {
+  return new SignJWT({ id: userId })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setExpirationTime('30d')
+    .sign(jwtSecret)
+}
 
 // Type for our user from the API
 interface BobbinryUser {
@@ -135,6 +149,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id
+        token.apiToken = await signApiToken(user.id)
       }
       return token
     },
@@ -142,6 +157,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (session.user) {
         session.user.id = token.id as string
       }
+      session.apiToken = token.apiToken as string
       return session
     }
   },

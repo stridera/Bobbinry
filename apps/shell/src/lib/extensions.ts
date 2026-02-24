@@ -188,6 +188,7 @@ class ExtensionRegistry {
 
     // Notify slot listeners (throttled to prevent infinite loops)
     this.notifySlotListeners(contribution.slot)
+    this.notifyChangeListeners()
   }
 
   unregisterExtension(extensionId: string): void {
@@ -195,6 +196,7 @@ class ExtensionRegistry {
     if (extension) {
       this.extensions.delete(extensionId)
       this.notifySlotListeners(extension.contribution.slot)
+      this.notifyChangeListeners()
     }
   }
 
@@ -254,6 +256,7 @@ class ExtensionRegistry {
       extension.isActive = active
       console.log(`Extension ${extensionId} ${active ? 'activated' : 'deactivated'}`)
       this.notifySlotListeners(extension.contribution.slot)
+      this.notifyChangeListeners()
     }
   }
 
@@ -341,6 +344,7 @@ class ExtensionRegistry {
       console.log(`Registered component for extension: ${extensionId}`)
       // Notify slot listeners so UI can re-render with the component
       this.notifySlotListeners(extension.contribution.slot)
+      this.notifyChangeListeners()
     }
   }
 
@@ -364,6 +368,26 @@ class ExtensionRegistry {
     // Clear any pending notification timeouts
     this.notificationTimeouts.forEach(timeout => clearTimeout(timeout))
     this.notificationTimeouts.clear()
+  }
+
+  // General change listener - fires whenever extensions are added/removed/changed
+  private changeListeners = new Set<() => void>()
+
+  onChange(callback: () => void): () => void {
+    this.changeListeners.add(callback)
+    return () => {
+      this.changeListeners.delete(callback)
+    }
+  }
+
+  private notifyChangeListeners(): void {
+    this.changeListeners.forEach(callback => {
+      try {
+        callback()
+      } catch (error) {
+        console.error('[EXTENSIONS] Error in change listener:', error)
+      }
+    })
   }
 
   // Statistics and debugging

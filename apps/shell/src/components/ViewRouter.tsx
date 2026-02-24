@@ -31,8 +31,14 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
   // Check for initial state from history on mount
   useEffect(() => {
     if (typeof window !== 'undefined' && window.history.state) {
-      console.log('[ViewRouter] Restoring state from history:', window.history.state)
-      setCurrentNav(window.history.state as NavigationState)
+      const state = window.history.state as NavigationState
+      // Only restore if the state has required fields (filter out stale/invalid states)
+      if (state.entityType && state.entityId && state.bobbinId) {
+        console.log('[ViewRouter] Restoring state from history:', state)
+        setCurrentNav(state)
+      } else {
+        console.log('[ViewRouter] Ignoring invalid history state:', state)
+      }
     }
   }, [])
 

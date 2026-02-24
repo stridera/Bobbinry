@@ -6,6 +6,7 @@ interface NavigationPanelProps {
     projectId?: string
     currentProject?: string
     currentView?: string
+    apiToken?: string
   }
 }
 
@@ -40,21 +41,28 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
 
   const [isLoadingRef] = useState({ current: false })
 
+  // Set auth token on SDK when available from context
   useEffect(() => {
-    if (projectId) {
+    if (context?.apiToken) {
+      sdk.api.setAuthToken(context.apiToken)
+    }
+  }, [context?.apiToken, sdk])
+
+  useEffect(() => {
+    if (projectId && context?.apiToken) {
       sdk.setProject(projectId)
-      
+
       if (!isLoadingRef.current) {
         isLoadingRef.current = true
         loadTree().finally(() => {
           isLoadingRef.current = false
         })
       }
-    } else {
+    } else if (!projectId) {
       setLoading(false)
       setTree([])
     }
-  }, [projectId])
+  }, [projectId, context?.apiToken])
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {

@@ -1,6 +1,7 @@
 // API client for communicating with the Bobbinry API
 export class BobbinryAPI {
   private baseURL: string
+  private authToken: string | null = null
 
   constructor(baseURL: string = 'http://localhost:4100/api') {
     this.baseURL = baseURL
@@ -10,9 +11,25 @@ export class BobbinryAPI {
     return this.baseURL
   }
 
+  /** Set the JWT token used to authenticate API requests */
+  setAuthToken(token: string) {
+    this.authToken = token
+  }
+
+  /** Build headers for an authenticated request */
+  getAuthHeaders(extra?: Record<string, string>): Record<string, string> {
+    const headers: Record<string, string> = { ...extra }
+    if (this.authToken) {
+      headers['Authorization'] = `Bearer ${this.authToken}`
+    }
+    return headers
+  }
+
   // Project management
   async getProject(projectId: string) {
-    const response = await fetch(`${this.baseURL}/projects/${projectId}`)
+    const response = await fetch(`${this.baseURL}/projects/${projectId}`, {
+      headers: this.getAuthHeaders()
+    })
     if (!response.ok) {
       throw new Error(`Failed to fetch project: ${response.statusText}`)
     }
@@ -23,9 +40,7 @@ export class BobbinryAPI {
   async installBobbin(projectId: string, manifestContent: string, manifestType: 'yaml' | 'json' = 'yaml') {
     const response = await fetch(`${this.baseURL}/projects/${projectId}/bobbins/install`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: this.getAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         manifestContent,
         manifestType
@@ -41,7 +56,9 @@ export class BobbinryAPI {
   }
 
   async getInstalledBobbins(projectId: string) {
-    const response = await fetch(`${this.baseURL}/projects/${projectId}/bobbins`)
+    const response = await fetch(`${this.baseURL}/projects/${projectId}/bobbins`, {
+      headers: this.getAuthHeaders()
+    })
     if (!response.ok) {
       throw new Error(`Failed to fetch bobbins: ${response.statusText}`)
     }
@@ -50,7 +67,8 @@ export class BobbinryAPI {
 
   async uninstallBobbin(projectId: string, bobbinId: string) {
     const response = await fetch(`${this.baseURL}/projects/${projectId}/bobbins/${bobbinId}`, {
-      method: 'DELETE'
+      method: 'DELETE',
+      headers: this.getAuthHeaders()
     })
 
     if (!response.ok) {
@@ -221,7 +239,9 @@ export class EntityAPI {
       ...(query.filters && { filters: JSON.stringify(query.filters) })
     })
 
-    const response = await fetch(`${this.api.apiBaseUrl}/collections/${query.collection}/entities?${params}`)
+    const response = await fetch(`${this.api.apiBaseUrl}/collections/${query.collection}/entities?${params}`, {
+      headers: this.api.getAuthHeaders()
+    })
 
     if (!response.ok) {
       throw new Error(`Failed to query entities: ${response.statusText}`)
@@ -241,7 +261,9 @@ export class EntityAPI {
       collection
     })
 
-    const response = await fetch(`${this.api.apiBaseUrl}/entities/${id}?${params}`)
+    const response = await fetch(`${this.api.apiBaseUrl}/entities/${id}?${params}`, {
+      headers: this.api.getAuthHeaders()
+    })
 
     if (!response.ok) {
       if (response.status === 404) {
@@ -256,9 +278,7 @@ export class EntityAPI {
   async create<T = any>(collection: string, data: Partial<T>): Promise<T> {
     const response = await fetch(`${this.api.apiBaseUrl}/entities`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: this.api.getAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         collection,
         projectId: this.projectId,
@@ -277,9 +297,7 @@ export class EntityAPI {
   async update<T = any>(collection: string, id: string, data: Partial<T>): Promise<T> {
     const response = await fetch(`${this.api.apiBaseUrl}/entities/${id}`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: this.api.getAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         collection,
         projectId: this.projectId,
@@ -301,7 +319,8 @@ export class EntityAPI {
     })
 
     const response = await fetch(`${this.api.apiBaseUrl}/entities/${id}?${params}`, {
-      method: 'DELETE'
+      method: 'DELETE',
+      headers: this.api.getAuthHeaders()
     })
 
     if (!response.ok) {

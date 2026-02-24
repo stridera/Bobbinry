@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { config } from '@/lib/config'
+import { useSession } from 'next-auth/react'
+import { apiFetch } from '@/lib/api'
 
 interface BobbinInfo {
   id: string
@@ -44,6 +45,7 @@ const AVAILABLE_BOBBINS: Omit<BobbinInfo, 'installed'>[] = [
 ]
 
 export function BobbinMarketplace({ projectId, installedBobbins, onInstallComplete, onClose }: BobbinMarketplaceProps) {
+  const { data: session } = useSession()
   const [installing, setInstalling] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [bobbins, setBobbins] = useState<BobbinInfo[]>([])
@@ -65,8 +67,12 @@ export function BobbinMarketplace({ projectId, installedBobbins, onInstallComple
     setError(null)
 
     try {
-      const response = await fetch(
-        `${config.apiUrl}/api/projects/${projectId}/bobbins/install`,
+      if (!session?.apiToken) {
+        throw new Error('You must be logged in to install bobbins')
+      }
+      const response = await apiFetch(
+        `/api/projects/${projectId}/bobbins/install`,
+        session.apiToken,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

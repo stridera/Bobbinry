@@ -6,7 +6,7 @@
  */
 
 interface EnvConfig {
-  NEXTAUTH_SECRET?: string
+  NEXTAUTH_SECRET: string | undefined
   NEXT_PUBLIC_API_URL: string
   DATABASE_URL: string
   NODE_ENV: string

@@ -3,7 +3,7 @@
 /**
  * Recent Activity Panel Component
  *
- * Shows recent edits across all user's projects (Campfire-style)
+ * Shows recent edits across all user's projects
  */
 
 import { useState, useEffect } from 'react'
@@ -53,20 +53,19 @@ export function RecentActivityPanel({ userId }: { userId: string }) {
   }
 
   const getEntityType = (collectionName: string) => {
-    // Capitalize and make singular
     const singular = collectionName.endsWith('s') ? collectionName.slice(0, -1) : collectionName
     return singular.charAt(0).toUpperCase() + singular.slice(1)
   }
 
   if (loading) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4">Recent Activity</h2>
-        <div className="space-y-3">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+        <h2 className="font-display text-lg font-bold text-gray-900 dark:text-gray-100 mb-4">Recent Activity</h2>
+        <div className="space-y-4">
           {[1, 2, 3].map((i) => (
             <div key={i} className="animate-pulse">
-              <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
-              <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+              <div className="h-4 bg-gray-100 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
+              <div className="h-3 bg-gray-100 dark:bg-gray-700 rounded w-1/2"></div>
             </div>
           ))}
         </div>
@@ -75,11 +74,11 @@ export function RecentActivityPanel({ userId }: { userId: string }) {
   }
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 sticky top-4">
-      <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4">Recent Activity</h2>
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 sticky top-4">
+      <h2 className="font-display text-lg font-bold text-gray-900 dark:text-gray-100 mb-4">Recent Activity</h2>
 
       {activity.length === 0 ? (
-        <p className="text-sm text-gray-500 dark:text-gray-400">No recent activity</p>
+        <p className="text-sm text-gray-400 dark:text-gray-500 italic">No recent activity yet</p>
       ) : (
         <div className="space-y-4">
           {activity.map((item) => (
@@ -95,7 +94,7 @@ export function RecentActivityPanel({ userId }: { userId: string }) {
                 <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   {getEntityType(item.entity.collectionName)} in {item.projectName}
                 </div>
-                <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                   {formatDistanceToNow(new Date(item.entity.lastEditedAt), { addSuffix: true })}
                 </div>
               </div>
@@ -109,7 +108,7 @@ export function RecentActivityPanel({ userId }: { userId: string }) {
           href="/activity"
           className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
         >
-          View all activity →
+          View all activity &rarr;
         </Link>
       </div>
     </div>
