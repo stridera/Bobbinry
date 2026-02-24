@@ -16,6 +16,9 @@ coverage/
 Thumbs.db
 .idea/
 .vscode/
+# TypeScript build cache
+*.tsbuildinfo
+
 # Logs
 npm-debug.log*
 yarn-debug.log*
