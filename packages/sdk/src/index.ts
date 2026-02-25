@@ -306,7 +306,8 @@ export class EntityAPI {
     })
 
     if (!response.ok) {
-      throw new Error(`Failed to update entity: ${response.statusText}`)
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+      throw new Error(`Failed to update entity: ${errorData.details || errorData.error || response.statusText}`)
     }
 
     return response.json()

@@ -1,5 +1,5 @@
 import { pgTable, uuid, text, timestamp, jsonb, boolean, varchar, integer, bigint, decimal, index } from 'drizzle-orm/pg-core'
-import { relations } from 'drizzle-orm'
+import { relations, sql } from 'drizzle-orm'
 
 // Users table - authentication and user management
 export const users = pgTable('users', {
@@ -500,7 +500,7 @@ export const entities = pgTable('entities', {
 }, (table) => ({
   projectCollectionIdx: index('entities_project_collection_idx').on(table.projectId, table.collectionName),
   searchIdx: index('entities_search_idx').using('gin', table.entityData),
-  orderIdx: index('entities_order_idx').on(table.projectId, table.collectionName, table.entityData),
+  orderIdx: index('entities_order_idx').using('btree', table.projectId, table.collectionName, sql`(entity_data->>'order')`),
   lastEditedIdx: index('entities_last_edited_idx').on(table.lastEditedAt),
   projectEditedIdx: index('entities_project_edited_idx').on(table.projectId, table.lastEditedAt)
 }))

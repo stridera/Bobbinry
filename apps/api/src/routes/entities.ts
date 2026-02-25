@@ -331,6 +331,19 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
 
     } catch (error) {
       fastify.log.error(error)
+
+      // Handle validation errors
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`).join('; '),
+          issues: error.issues.map(issue => ({
+            field: issue.path.join('.'),
+            message: issue.message
+          }))
+        })
+      }
+
       return reply.status(500).send({
         error: 'Failed to update entity',
         details: error instanceof Error ? error.message : 'Unknown error'

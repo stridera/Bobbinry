@@ -140,11 +140,8 @@ export class MessageRouter {
    * Route an incoming message to appropriate handlers
    */
   async route(message: any): Promise<void> {
-    // Validate message structure
+    // Silently drop non-envelope messages (react-devtools, browser extensions, etc.)
     if (!isMessageEnvelope(message)) {
-      if (this.debugMode) {
-        console.warn('[MessageRouter] Invalid message format:', message)
-      }
       return
     }
 

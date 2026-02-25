@@ -79,6 +79,45 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  // Listen for entity updates (e.g. title changes from the editor)
+  useEffect(() => {
+    function handleEntityUpdated(e: Event) {
+      const detail = (e as CustomEvent).detail
+      if (!detail?.entityId || !detail?.changes?.title) return
+
+      setTree(prev => {
+        const updateNode = (nodes: TreeNode[]): TreeNode[] =>
+          nodes.map(node => {
+            if (node.id === detail.entityId) {
+              return { ...node, title: detail.changes.title }
+            }
+            if (node.children) {
+              return { ...node, children: updateNode(node.children) }
+            }
+            return node
+          })
+        return updateNode(prev)
+      })
+    }
+
+    window.addEventListener('bobbinry:entity-updated', handleEntityUpdated)
+    return () => window.removeEventListener('bobbinry:entity-updated', handleEntityUpdated)
+  }, [])
+
+  // Sync sidebar highlight with the actual view the router navigated to.
+  // This prevents desync during rapid clicking — ViewRouter is the source of truth.
+  useEffect(() => {
+    function handleViewContextChange(e: Event) {
+      const detail = (e as CustomEvent).detail
+      if (detail?.entityId) {
+        setSelectedNodeId(detail.entityId)
+      }
+    }
+
+    window.addEventListener('bobbinry:view-context-change', handleViewContextChange)
+    return () => window.removeEventListener('bobbinry:view-context-change', handleViewContextChange)
+  }, [])
+
   async function loadTree() {
     if (!sdk) return
 

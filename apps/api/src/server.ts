@@ -105,10 +105,10 @@ export function build(opts = {}): FastifyInstance {
     })
   })
 
-  // Request size limits
-  server.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+  // Request size limits — 5MB to accommodate large manuscript chapters
+  server.addContentTypeParser('application/json', { parseAs: 'string', bodyLimit: 5 * 1024 * 1024 }, (_req, body, done) => {
     try {
-      if (typeof body === 'string' && body.length > 1024 * 1024) { // 1MB limit
+      if (typeof body === 'string' && body.length > 5 * 1024 * 1024) {
         done(new Error('Request body too large'), undefined)
         return
       }
