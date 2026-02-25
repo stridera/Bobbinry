@@ -6,9 +6,16 @@ import {
   userFollowers,
   userNotificationPreferences,
   userReadingPreferences,
-  betaReaders
+  betaReaders,
+  projects,
+  projectPublishConfig,
+  users,
+  userBobbinsInstalled,
+  chapterViews,
+  chapterPublications,
+  entities
 } from '../db/schema'
-import { eq, and, or, desc, isNull } from 'drizzle-orm'
+import { eq, and, or, desc, isNull, sql, count, isNotNull } from 'drizzle-orm'
 import { requireAuth, requireSelf } from '../middleware/auth'
 
 // Helper to validate UUID
@@ -766,6 +773,462 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
     } catch (error) {
       fastify.log.error(error)
       return reply.status(500).send({ error: 'Failed to remove beta reader' })
+    }
+  })
+
+  // ============================================================================
+  // READER BOBBIN ROUTES
+  // ============================================================================
+
+  // Get installed reader bobbins for a user (own bobbins only)
+  fastify.get<{
+    Params: { userId: string }
+  }>('/users/:userId/reader-bobbins', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    try {
+      const { userId } = request.params
+      if (!requireSelf(request, reply, userId)) return
+
+      const bobbins = await db
+        .select()
+        .from(userBobbinsInstalled)
+        .where(eq(userBobbinsInstalled.userId, userId))
+        .orderBy(desc(userBobbinsInstalled.installedAt))
+
+      return reply.status(200).send({ bobbins })
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.status(500).send({ error: 'Failed to fetch reader bobbins' })
+    }
+  })
+
+  // Install a reader bobbin (own account only)
+  fastify.post<{
+    Params: { userId: string }
+    Body: {
+      bobbinId: string
+      bobbinType: 'reader_enhancement' | 'delivery_channel'
+      config?: Record<string, any>
+    }
+  }>('/users/:userId/reader-bobbins', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    try {
+      const { userId } = request.params
+      const { bobbinId, bobbinType, config } = request.body
+      if (!requireSelf(request, reply, userId)) return
+
+      if (!bobbinId || !bobbinType) {
+        return reply.status(400).send({ error: 'bobbinId and bobbinType are required' })
+      }
+
+      // Check if already installed
+      const [existing] = await db
+        .select()
+        .from(userBobbinsInstalled)
+        .where(and(
+          eq(userBobbinsInstalled.userId, userId),
+          eq(userBobbinsInstalled.bobbinId, bobbinId)
+        ))
+        .limit(1)
+
+      if (existing) {
+        return reply.status(400).send({ error: 'Bobbin already installed' })
+      }
+
+      const [installed] = await db
+        .insert(userBobbinsInstalled)
+        .values({
+          userId,
+          bobbinId,
+          bobbinType,
+          config: config || null,
+          isEnabled: true
+        })
+        .returning()
+
+      return reply.status(201).send({ bobbin: installed })
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.status(500).send({ error: 'Failed to install reader bobbin' })
+    }
+  })
+
+  // Update reader bobbin config (own account only)
+  fastify.put<{
+    Params: { userId: string; bobbinInstallId: string }
+    Body: {
+      config?: Record<string, any>
+      isEnabled?: boolean
+    }
+  }>('/users/:userId/reader-bobbins/:bobbinInstallId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    try {
+      const { userId, bobbinInstallId } = request.params
+      const updateData = request.body
+      if (!requireSelf(request, reply, userId)) return
+
+      if (!isValidUUID(bobbinInstallId)) {
+        return reply.status(400).send({ error: 'Invalid bobbin install ID format' })
+      }
+
+      const [updated] = await db
+        .update(userBobbinsInstalled)
+        .set({
+          ...updateData,
+          updatedAt: new Date()
+        })
+        .where(and(
+          eq(userBobbinsInstalled.id, bobbinInstallId),
+          eq(userBobbinsInstalled.userId, userId)
+        ))
+        .returning()
+
+      if (!updated) {
+        return reply.status(404).send({ error: 'Reader bobbin not found' })
+      }
+
+      return reply.status(200).send({ bobbin: updated })
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.status(500).send({ error: 'Failed to update reader bobbin' })
+    }
+  })
+
+  // Uninstall a reader bobbin (own account only)
+  fastify.delete<{
+    Params: { userId: string; bobbinInstallId: string }
+  }>('/users/:userId/reader-bobbins/:bobbinInstallId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    try {
+      const { userId, bobbinInstallId } = request.params
+      if (!requireSelf(request, reply, userId)) return
+
+      if (!isValidUUID(bobbinInstallId)) {
+        return reply.status(400).send({ error: 'Invalid bobbin install ID format' })
+      }
+
+      await db
+        .delete(userBobbinsInstalled)
+        .where(and(
+          eq(userBobbinsInstalled.id, bobbinInstallId),
+          eq(userBobbinsInstalled.userId, userId)
+        ))
+
+      return reply.status(200).send({ success: true })
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.status(500).send({ error: 'Failed to uninstall reader bobbin' })
+    }
+  })
+
+  // ============================================================================
+  // FEED & READING PROGRESS ROUTES
+  // ============================================================================
+
+  // Get user's feed - recent publications from followed authors
+  fastify.get<{
+    Params: { userId: string }
+    Querystring: { limit?: string; offset?: string }
+  }>('/users/:userId/feed', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    try {
+      const { userId } = request.params
+      if (!requireSelf(request, reply, userId)) return
+
+      const limit = Math.min(parseInt(request.query.limit || '20', 10), 100)
+      const offset = parseInt(request.query.offset || '0', 10)
+
+      // Get IDs of authors this user follows
+      const following = await db
+        .select({ followingId: userFollowers.followingId })
+        .from(userFollowers)
+        .where(eq(userFollowers.followerId, userId))
+
+      if (following.length === 0) {
+        return reply.status(200).send({ feed: [], total: 0 })
+      }
+
+      const followingIds = following.map(f => f.followingId)
+
+      // Get recent published chapters from followed authors
+      const feedItems = await db
+        .select({
+          publicationId: chapterPublications.id,
+          projectId: chapterPublications.projectId,
+          chapterId: chapterPublications.chapterId,
+          publishedAt: chapterPublications.publishedAt,
+          projectName: projects.name,
+          projectCoverImage: projects.coverImage,
+          projectShortUrl: projects.shortUrl,
+          authorId: projects.ownerId
+        })
+        .from(chapterPublications)
+        .innerJoin(projects, eq(projects.id, chapterPublications.projectId))
+        .where(and(
+          sql`${projects.ownerId} IN (${sql.join(followingIds.map(id => sql`${id}`), sql`, `)})`,
+          eq(chapterPublications.isPublished, true),
+          isNotNull(chapterPublications.publishedAt)
+        ))
+        .orderBy(desc(chapterPublications.publishedAt))
+        .limit(limit)
+        .offset(offset)
+
+      // Resolve chapter titles from entities
+      const feedWithTitles = await Promise.all(
+        feedItems.map(async (item) => {
+          let chapterTitle = 'Untitled'
+          try {
+            const [entity] = await db
+              .select({ entityData: entities.entityData })
+              .from(entities)
+              .where(eq(entities.id, item.chapterId))
+              .limit(1)
+            if (entity) {
+              chapterTitle = (entity.entityData as any)?.title || 'Untitled'
+            }
+          } catch {}
+
+          // Get author profile
+          let authorName = 'Unknown Author'
+          try {
+            const [profile] = await db
+              .select({ displayName: userProfiles.displayName, username: userProfiles.username })
+              .from(userProfiles)
+              .where(eq(userProfiles.userId, item.authorId))
+              .limit(1)
+            if (profile) {
+              authorName = profile.displayName || profile.username || 'Unknown Author'
+            }
+          } catch {}
+
+          return {
+            ...item,
+            chapterTitle,
+            authorName
+          }
+        })
+      )
+
+      return reply.status(200).send({ feed: feedWithTitles })
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.status(500).send({ error: 'Failed to fetch feed' })
+    }
+  })
+
+  // Get reading progress - recent incomplete chapter views
+  fastify.get<{
+    Params: { userId: string }
+    Querystring: { limit?: string }
+  }>('/users/:userId/reading-progress', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    try {
+      const { userId } = request.params
+      if (!requireSelf(request, reply, userId)) return
+
+      const limit = Math.min(parseInt(request.query.limit || '20', 10), 50)
+
+      // Get recent chapter views that are not completed
+      const progressItems = await db
+        .select({
+          viewId: chapterViews.id,
+          chapterId: chapterViews.chapterId,
+          lastPositionPercent: chapterViews.lastPositionPercent,
+          readTimeSeconds: chapterViews.readTimeSeconds,
+          startedAt: chapterViews.startedAt,
+          completedAt: chapterViews.completedAt
+        })
+        .from(chapterViews)
+        .where(and(
+          eq(chapterViews.readerId, userId),
+          isNull(chapterViews.completedAt)
+        ))
+        .orderBy(desc(chapterViews.startedAt))
+        .limit(limit)
+
+      // Resolve chapter details and project info
+      const progressWithDetails = await Promise.all(
+        progressItems.map(async (item) => {
+          let chapterTitle = 'Untitled'
+          let projectId: string | null = null
+          let projectName = 'Unknown Project'
+          let projectShortUrl: string | null = null
+
+          try {
+            const [entity] = await db
+              .select({
+                entityData: entities.entityData,
+                projectId: entities.projectId
+              })
+              .from(entities)
+              .where(eq(entities.id, item.chapterId))
+              .limit(1)
+
+            if (entity) {
+              chapterTitle = (entity.entityData as any)?.title || 'Untitled'
+              projectId = entity.projectId
+
+              const [project] = await db
+                .select({ name: projects.name, shortUrl: projects.shortUrl })
+                .from(projects)
+                .where(eq(projects.id, entity.projectId))
+                .limit(1)
+              if (project) {
+                projectName = project.name
+                projectShortUrl = project.shortUrl
+              }
+            }
+          } catch {}
+
+          return {
+            ...item,
+            chapterTitle,
+            projectId,
+            projectName,
+            projectShortUrl
+          }
+        })
+      )
+
+      return reply.status(200).send({ progress: progressWithDetails })
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.status(500).send({ error: 'Failed to fetch reading progress' })
+    }
+  })
+
+  // ============================================================================
+  // PUBLIC PROFILE ROUTES
+  // ============================================================================
+
+  // Get user profile by username (public)
+  fastify.get<{
+    Params: { username: string }
+  }>('/users/by-username/:username', async (request, reply) => {
+    try {
+      const { username } = request.params
+
+      if (!username || username.length < 1 || username.length > 50) {
+        return reply.status(400).send({ error: 'Invalid username' })
+      }
+
+      const [profile] = await db
+        .select({
+          userId: userProfiles.userId,
+          username: userProfiles.username,
+          displayName: userProfiles.displayName,
+          bio: userProfiles.bio,
+          avatarUrl: userProfiles.avatarUrl,
+          websiteUrl: userProfiles.websiteUrl,
+          twitterHandle: userProfiles.twitterHandle,
+          discordHandle: userProfiles.discordHandle,
+          otherSocials: userProfiles.otherSocials,
+          createdAt: userProfiles.createdAt,
+          userName: users.name,
+          userEmail: users.email
+        })
+        .from(userProfiles)
+        .innerJoin(users, eq(users.id, userProfiles.userId))
+        .where(eq(userProfiles.username, username))
+        .limit(1)
+
+      if (!profile) {
+        return reply.status(404).send({ error: 'User not found' })
+      }
+
+      // Get follower/following counts
+      const [followerCount] = await db
+        .select({ count: count() })
+        .from(userFollowers)
+        .where(eq(userFollowers.followingId, profile.userId))
+
+      const [followingCount] = await db
+        .select({ count: count() })
+        .from(userFollowers)
+        .where(eq(userFollowers.followerId, profile.userId))
+
+      return reply.status(200).send({
+        profile: {
+          ...profile,
+          followerCount: followerCount?.count ?? 0,
+          followingCount: followingCount?.count ?? 0
+        }
+      })
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.status(500).send({ error: 'Failed to fetch profile by username' })
+    }
+  })
+
+  // Get published projects for a user (public)
+  fastify.get<{
+    Params: { userId: string }
+  }>('/users/:userId/published-projects', async (request, reply) => {
+    try {
+      const { userId } = request.params
+
+      if (!isValidUUID(userId)) {
+        return reply.status(400).send({ error: 'Invalid user ID format' })
+      }
+
+      // Get projects that have a publish config with mode 'live'
+      const publishedProjects = await db
+        .select({
+          id: projects.id,
+          name: projects.name,
+          description: projects.description,
+          coverImage: projects.coverImage,
+          shortUrl: projects.shortUrl,
+          createdAt: projects.createdAt,
+          updatedAt: projects.updatedAt,
+          publishingMode: projectPublishConfig.publishingMode
+        })
+        .from(projects)
+        .innerJoin(projectPublishConfig, eq(projectPublishConfig.projectId, projects.id))
+        .where(and(
+          eq(projects.ownerId, userId),
+          eq(projects.isArchived, false),
+          eq(projectPublishConfig.publishingMode, 'live')
+        ))
+        .orderBy(desc(projects.updatedAt))
+
+      return reply.status(200).send({ projects: publishedProjects })
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.status(500).send({ error: 'Failed to fetch published projects' })
+    }
+  })
+
+  // Check if current user is following a target user (public, returns boolean)
+  fastify.get<{
+    Params: { userId: string; targetId: string }
+  }>('/users/:userId/is-following/:targetId', async (request, reply) => {
+    try {
+      const { userId, targetId } = request.params
+
+      if (!isValidUUID(userId) || !isValidUUID(targetId)) {
+        return reply.status(400).send({ error: 'Invalid user ID format' })
+      }
+
+      const [existing] = await db
+        .select()
+        .from(userFollowers)
+        .where(and(
+          eq(userFollowers.followerId, userId),
+          eq(userFollowers.followingId, targetId)
+        ))
+        .limit(1)
+
+      return reply.status(200).send({ isFollowing: !!existing })
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.status(500).send({ error: 'Failed to check follow status' })
     }
   })
 }

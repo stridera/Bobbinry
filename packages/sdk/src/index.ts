@@ -464,18 +464,158 @@ export class ShellAPI {
   }
 }
 
+// Publishing API - used by publisher bobbins (author-side)
+export interface PublishOptions {
+  accessLevel?: 'public' | 'subscribers_only' | 'tier_gated'
+  publicReleaseDate?: string
+  version?: string
+}
+
+export interface EmbargoSchedule {
+  tierId: string
+  releaseDate: string
+}
+
+export class PublishingAPI {
+  private api: BobbinryAPI
+
+  constructor(api: BobbinryAPI) {
+    this.api = api
+  }
+
+  async publishChapter(projectId: string, chapterId: string, options?: PublishOptions) {
+    const response = await fetch(`${this.api.apiBaseUrl}/publishing/projects/${projectId}/chapters/${chapterId}/publish`, {
+      method: 'POST',
+      headers: this.api.getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(options || {})
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: 'Unknown error' }))
+      throw new Error(err.error || `Publish failed: ${response.statusText}`)
+    }
+    return response.json()
+  }
+
+  async unpublishChapter(projectId: string, chapterId: string) {
+    const response = await fetch(`${this.api.apiBaseUrl}/publishing/projects/${projectId}/chapters/${chapterId}/unpublish`, {
+      method: 'POST',
+      headers: this.api.getAuthHeaders()
+    })
+    if (!response.ok) {
+      throw new Error(`Unpublish failed: ${response.statusText}`)
+    }
+    return response.json()
+  }
+
+  async createEmbargo(projectId: string, chapterId: string, tierSchedules: EmbargoSchedule[]) {
+    const response = await fetch(`${this.api.apiBaseUrl}/publishing/projects/${projectId}/embargoes`, {
+      method: 'POST',
+      headers: this.api.getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ entityId: chapterId, tierSchedules })
+    })
+    if (!response.ok) {
+      throw new Error(`Create embargo failed: ${response.statusText}`)
+    }
+    return response.json()
+  }
+
+  async getPublicationStatus(projectId: string, chapterId: string) {
+    const response = await fetch(`${this.api.apiBaseUrl}/publishing/projects/${projectId}/chapters/${chapterId}/status`, {
+      headers: this.api.getAuthHeaders()
+    })
+    if (!response.ok) {
+      throw new Error(`Get status failed: ${response.statusText}`)
+    }
+    return response.json()
+  }
+
+  async getAuthorTiers(authorId: string) {
+    const response = await fetch(`${this.api.apiBaseUrl}/users/${authorId}/subscription-tiers`, {
+      headers: this.api.getAuthHeaders()
+    })
+    if (!response.ok) {
+      throw new Error(`Get tiers failed: ${response.statusText}`)
+    }
+    return response.json()
+  }
+}
+
+// Reader API - used by reader bobbins (reader-side)
+export class ReaderAPI {
+  private api: BobbinryAPI
+
+  constructor(api: BobbinryAPI) {
+    this.api = api
+  }
+
+  async getPublishedContent(projectId: string, chapterId: string) {
+    const response = await fetch(`${this.api.apiBaseUrl}/public/projects/${projectId}/chapters/${chapterId}`, {
+      headers: this.api.getAuthHeaders()
+    })
+    if (!response.ok) {
+      if (response.status === 403) {
+        const data = await response.json()
+        throw new Error(data.error || 'Access denied')
+      }
+      throw new Error(`Get content failed: ${response.statusText}`)
+    }
+    return response.json()
+  }
+
+  async saveProgress(chapterId: string, position: number, readTime?: number) {
+    // Find project ID from chapter - use the view tracking endpoint
+    // This is a simplified version; bobbins should know their project context
+    const response = await fetch(`${this.api.apiBaseUrl}/public/projects/_/chapters/${chapterId}/view`, {
+      method: 'POST',
+      headers: this.api.getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ position, readTime })
+    })
+    return response.ok
+  }
+
+  async getProgress(chapterId: string) {
+    // Progress is returned as part of the chapter view data
+    // Reader bobbins can query the user's chapter_views
+    const response = await fetch(`${this.api.apiBaseUrl}/public/chapters/${chapterId}/progress`, {
+      headers: this.api.getAuthHeaders()
+    })
+    if (!response.ok) return null
+    return response.json()
+  }
+
+  async getPreferences() {
+    const response = await fetch(`${this.api.apiBaseUrl}/users/me/reading-preferences`, {
+      headers: this.api.getAuthHeaders()
+    })
+    if (!response.ok) return null
+    return response.json()
+  }
+
+  async checkAccess(projectId: string, chapterId: string): Promise<boolean> {
+    const response = await fetch(
+      `${this.api.apiBaseUrl}/public/projects/${projectId}/chapters/${chapterId}`,
+      { headers: this.api.getAuthHeaders(), method: 'HEAD' }
+    )
+    return response.ok
+  }
+}
+
 // Main SDK class
 export class BobbinrySDK {
   public api: BobbinryAPI
   public messageBus: MessageBus
   public entities: EntityAPI
   public shell: ShellAPI
+  public publishing: PublishingAPI
+  public reader: ReaderAPI
 
   constructor(componentId: string, apiBaseURL?: string) {
     this.api = new BobbinryAPI(apiBaseURL)
     this.messageBus = new MessageBus(componentId)
     this.entities = new EntityAPI(this.api, '') // Project ID will be set when project is loaded
     this.shell = new ShellAPI()
+    this.publishing = new PublishingAPI(this.api)
+    this.reader = new ReaderAPI(this.api)
   }
 
   setProject(projectId: string) {

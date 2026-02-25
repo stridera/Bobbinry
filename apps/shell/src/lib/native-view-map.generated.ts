@@ -14,4 +14,7 @@ export const NATIVE_VIEW_MAP: Record<string, () => Promise<any>> = {
   'entities.entity-list': () => import('@bobbinry/entities/views/entity-list'),
   'entities.entity-editor': () => import('@bobbinry/entities/views/entity-editor'),
   'entities.views/navigation': () => import('@bobbinry/entities/views/navigation'),
+  'web-publisher.publish-manager': () => import('@bobbinry/web-publisher/views/PublishManager'),
+  'smart-publisher.release-manager': () => import('@bobbinry/smart-publisher/views/ReleaseManager'),
+  'smart-publisher.release-config': () => import('@bobbinry/smart-publisher/views/ReleaseConfig'),
 }

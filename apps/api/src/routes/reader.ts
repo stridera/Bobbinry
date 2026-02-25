@@ -12,11 +12,21 @@ import {
   chapterViews,
   entities,
   betaReaders,
-  accessGrants
+  accessGrants,
+  projects,
+  projectPublishConfig,
+  subscriptions,
+  subscriptionTiers,
+  embargoSchedules,
+  userProfiles,
+  users,
+  comments,
+  reactions
 } from '../db/schema'
-import { eq, and, desc, sql, isNull, or } from 'drizzle-orm'
+import { eq, and, desc, asc, sql, isNull, or, count } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { env } from '../lib/env'
+import { optionalAuth } from '../middleware/auth'
 
 // ============================================
 // ACCESS CONTROL
@@ -78,9 +88,54 @@ async function checkPublicChapterAccess(
     if (grant) {
       return { canAccess: true }
     }
+
+    // Check subscription tier-based access
+    // Find the project owner to look up subscription
+    const [project] = await db
+      .select({ ownerId: projects.ownerId })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1)
+
+    if (project) {
+      const [sub] = await db
+        .select({
+          tierId: subscriptions.tierId,
+          status: subscriptions.status,
+          chapterDelayDays: subscriptionTiers.chapterDelayDays
+        })
+        .from(subscriptions)
+        .innerJoin(subscriptionTiers, eq(subscriptionTiers.id, subscriptions.tierId))
+        .where(and(
+          eq(subscriptions.subscriberId, userId),
+          eq(subscriptions.authorId, project.ownerId),
+          eq(subscriptions.status, 'active')
+        ))
+        .limit(1)
+
+      if (sub) {
+        // Subscriber: check if their tier delay has passed since publication
+        if (chapterPub.publishedAt) {
+          const delayMs = (sub.chapterDelayDays ?? 0) * 24 * 60 * 60 * 1000
+          const accessDate = new Date(chapterPub.publishedAt.getTime() + delayMs)
+          const now = new Date()
+          if (now >= accessDate) {
+            return { canAccess: true }
+          } else {
+            return {
+              canAccess: false,
+              reason: 'Chapter not yet available for your tier',
+              embargoUntil: accessDate
+            }
+          }
+        }
+        // Published but no date? Grant access
+        return { canAccess: true }
+      }
+    }
   }
 
-  // Check embargo (public release date)
+  // Check embargo (public release date) for free/anonymous users
   if (chapterPub.publicReleaseDate) {
     const now = new Date()
     if (chapterPub.publicReleaseDate > now) {
@@ -688,6 +743,300 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
     } catch (error) {
       fastify.log.error({ error, correlationId }, 'Failed to generate RSS feed')
       return reply.status(500).send({ error: 'Failed to generate RSS feed', correlationId })
+    }
+  })
+  // ============================================
+  // SLUG-BASED LOOKUP
+  // ============================================
+
+  /**
+   * Resolve a project slug to project details (public)
+   */
+  fastify.get<{
+    Params: { slug: string }
+  }>('/public/projects/by-slug/:slug', async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const { slug } = request.params
+
+      // Look up by shortUrl or slugPrefix in publish config
+      const [project] = await db
+        .select({
+          id: projects.id,
+          name: projects.name,
+          description: projects.description,
+          coverImage: projects.coverImage,
+          shortUrl: projects.shortUrl,
+          ownerId: projects.ownerId,
+          createdAt: projects.createdAt
+        })
+        .from(projects)
+        .where(eq(projects.shortUrl, slug))
+        .limit(1)
+
+      if (!project) {
+        // Try looking up by publish config slugPrefix
+        const [configMatch] = await db
+          .select({
+            id: projects.id,
+            name: projects.name,
+            description: projects.description,
+            coverImage: projects.coverImage,
+            shortUrl: projects.shortUrl,
+            ownerId: projects.ownerId,
+            createdAt: projects.createdAt
+          })
+          .from(projects)
+          .innerJoin(projectPublishConfig, eq(projectPublishConfig.projectId, projects.id))
+          .where(eq(projectPublishConfig.slugPrefix, slug))
+          .limit(1)
+
+        if (!configMatch) {
+          return reply.status(404).send({ error: 'Project not found', correlationId })
+        }
+
+        // Get author info
+        const [author] = await db
+          .select({
+            userId: userProfiles.userId,
+            username: userProfiles.username,
+            displayName: userProfiles.displayName,
+            avatarUrl: userProfiles.avatarUrl,
+            userName: users.name
+          })
+          .from(userProfiles)
+          .innerJoin(users, eq(users.id, userProfiles.userId))
+          .where(eq(userProfiles.userId, configMatch.ownerId))
+          .limit(1)
+
+        return reply.send({ project: configMatch, author: author || null, correlationId })
+      }
+
+      // Get author info
+      const [author] = await db
+        .select({
+          userId: userProfiles.userId,
+          username: userProfiles.username,
+          displayName: userProfiles.displayName,
+          avatarUrl: userProfiles.avatarUrl,
+          userName: users.name
+        })
+        .from(userProfiles)
+        .innerJoin(users, eq(users.id, userProfiles.userId))
+        .where(eq(userProfiles.userId, project.ownerId))
+        .limit(1)
+
+      return reply.send({ project, author: author || null, correlationId })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to resolve project slug')
+      return reply.status(500).send({ error: 'Failed to resolve project slug', correlationId })
+    }
+  })
+
+  // ============================================
+  // COMMENTS & REACTIONS
+  // ============================================
+
+  /**
+   * Get comments for a chapter (public)
+   */
+  fastify.get<{
+    Params: { chapterId: string }
+    Querystring: { limit?: number; offset?: number }
+  }>('/public/chapters/:chapterId/comments', async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const { chapterId } = request.params
+      const { limit = 50, offset = 0 } = request.query
+
+      const chapterComments = await db
+        .select({
+          id: comments.id,
+          content: comments.content,
+          parentId: comments.parentId,
+          authorId: comments.authorId,
+          authorName: users.name,
+          likeCount: comments.likeCount,
+          createdAt: comments.createdAt
+        })
+        .from(comments)
+        .innerJoin(users, eq(users.id, comments.authorId))
+        .where(and(
+          eq(comments.chapterId, chapterId),
+          eq(comments.moderationStatus, 'approved')
+        ))
+        .orderBy(desc(comments.createdAt))
+        .limit(limit)
+        .offset(offset)
+
+      const [total] = await db
+        .select({ count: count() })
+        .from(comments)
+        .where(and(
+          eq(comments.chapterId, chapterId),
+          eq(comments.moderationStatus, 'approved')
+        ))
+
+      return reply.send({
+        comments: chapterComments,
+        total: total?.count ?? 0,
+        correlationId
+      })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to get comments')
+      return reply.status(500).send({ error: 'Failed to get comments', correlationId })
+    }
+  })
+
+  /**
+   * Post a comment (requires auth)
+   */
+  fastify.post<{
+    Params: { chapterId: string }
+    Body: { content: string; parentId?: string }
+  }>('/public/chapters/:chapterId/comments', {
+    preHandler: optionalAuth
+  }, async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const { chapterId } = request.params
+      const { content, parentId } = request.body
+
+      if (!request.user) {
+        return reply.status(401).send({ error: 'Authentication required to comment', correlationId })
+      }
+
+      if (!content || content.trim().length === 0) {
+        return reply.status(400).send({ error: 'Comment content is required', correlationId })
+      }
+
+      if (content.length > 5000) {
+        return reply.status(400).send({ error: 'Comment too long (max 5000 characters)', correlationId })
+      }
+
+      const [comment] = await db
+        .insert(comments)
+        .values({
+          chapterId,
+          authorId: request.user.id,
+          content: content.trim(),
+          parentId: parentId || null,
+          moderationStatus: 'approved'
+        })
+        .returning()
+
+      return reply.status(201).send({ comment, correlationId })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to post comment')
+      return reply.status(500).send({ error: 'Failed to post comment', correlationId })
+    }
+  })
+
+  /**
+   * Get reactions for a chapter (public)
+   */
+  fastify.get<{
+    Params: { chapterId: string }
+  }>('/public/chapters/:chapterId/reactions', async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const { chapterId } = request.params
+
+      const reactionCounts = await db
+        .select({
+          reactionType: reactions.reactionType,
+          count: count()
+        })
+        .from(reactions)
+        .where(eq(reactions.chapterId, chapterId))
+        .groupBy(reactions.reactionType)
+
+      return reply.send({ reactions: reactionCounts, correlationId })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to get reactions')
+      return reply.status(500).send({ error: 'Failed to get reactions', correlationId })
+    }
+  })
+
+  /**
+   * Add/toggle a reaction (requires auth)
+   */
+  fastify.post<{
+    Params: { chapterId: string }
+    Body: { reactionType: string }
+  }>('/public/chapters/:chapterId/reactions', {
+    preHandler: optionalAuth
+  }, async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const { chapterId } = request.params
+      const { reactionType } = request.body
+
+      if (!request.user) {
+        return reply.status(401).send({ error: 'Authentication required to react', correlationId })
+      }
+
+      const validTypes = ['heart', 'laugh', 'wow', 'sad', 'fire', 'clap']
+      if (!validTypes.includes(reactionType)) {
+        return reply.status(400).send({ error: 'Invalid reaction type', correlationId })
+      }
+
+      // Toggle: check if already exists
+      const [existing] = await db
+        .select()
+        .from(reactions)
+        .where(and(
+          eq(reactions.chapterId, chapterId),
+          eq(reactions.userId, request.user.id),
+          eq(reactions.reactionType, reactionType)
+        ))
+        .limit(1)
+
+      if (existing) {
+        await db.delete(reactions).where(eq(reactions.id, existing.id))
+        return reply.send({ action: 'removed', correlationId })
+      } else {
+        await db.insert(reactions).values({
+          chapterId,
+          userId: request.user.id,
+          reactionType
+        })
+        return reply.status(201).send({ action: 'added', correlationId })
+      }
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to toggle reaction')
+      return reply.status(500).send({ error: 'Failed to toggle reaction', correlationId })
+    }
+  })
+
+  /**
+   * Delete a reaction (requires auth)
+   */
+  fastify.delete<{
+    Params: { chapterId: string; reactionType: string }
+  }>('/public/chapters/:chapterId/reactions/:reactionType', {
+    preHandler: optionalAuth
+  }, async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const { chapterId, reactionType } = request.params
+
+      if (!request.user) {
+        return reply.status(401).send({ error: 'Authentication required', correlationId })
+      }
+
+      await db
+        .delete(reactions)
+        .where(and(
+          eq(reactions.chapterId, chapterId),
+          eq(reactions.userId, request.user.id),
+          eq(reactions.reactionType, reactionType)
+        ))
+
+      return reply.send({ success: true, correlationId })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to delete reaction')
+      return reply.status(500).send({ error: 'Failed to delete reaction', correlationId })
     }
   })
 }

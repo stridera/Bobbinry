@@ -5,12 +5,90 @@ import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { useTheme } from '@/contexts/ThemeContext'
+import { config } from '@/lib/config'
+import { apiFetch } from '@/lib/api'
+
+interface ProfileForm {
+  username: string
+  displayName: string
+  bio: string
+  avatarUrl: string
+  websiteUrl: string
+  twitterHandle: string
+  discordHandle: string
+}
 
 export default function SettingsPage() {
   const { data: session, status } = useSession()
   const { theme, setTheme } = useTheme()
   const [saving, setSaving] = useState(false)
   const [success, setSuccess] = useState<string | null>(null)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [profileLoaded, setProfileLoaded] = useState(false)
+  const [profile, setProfile] = useState<ProfileForm>({
+    username: '',
+    displayName: '',
+    bio: '',
+    avatarUrl: '',
+    websiteUrl: '',
+    twitterHandle: '',
+    discordHandle: ''
+  })
+
+  useEffect(() => {
+    if (session?.user?.id && session?.apiToken) {
+      loadProfile()
+    }
+  }, [session?.user?.id, session?.apiToken])
+
+  const loadProfile = async () => {
+    if (!session?.apiToken || !session?.user?.id) return
+    try {
+      const res = await apiFetch(`/api/users/${session.user.id}/profile`, session.apiToken)
+      if (res.ok) {
+        const data = await res.json()
+        const p = data.profile
+        setProfile({
+          username: p.username || '',
+          displayName: p.displayName || '',
+          bio: p.bio || '',
+          avatarUrl: p.avatarUrl || '',
+          websiteUrl: p.websiteUrl || '',
+          twitterHandle: p.twitterHandle || '',
+          discordHandle: p.discordHandle || ''
+        })
+      }
+    } catch (err) {
+      console.error('Failed to load profile:', err)
+    } finally {
+      setProfileLoaded(true)
+    }
+  }
+
+  const saveProfile = async () => {
+    if (!session?.apiToken || !session?.user?.id) return
+    setSaving(true)
+    setProfileError(null)
+    setSuccess(null)
+    try {
+      const res = await apiFetch(`/api/users/${session.user.id}/profile`, session.apiToken, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profile)
+      })
+      if (res.ok) {
+        setSuccess('Profile saved successfully!')
+        setTimeout(() => setSuccess(null), 3000)
+      } else {
+        const data = await res.json().catch(() => ({}))
+        setProfileError(data.error || 'Failed to save profile')
+      }
+    } catch (err) {
+      setProfileError('Failed to save profile')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   if (status === 'loading') {
     return (
@@ -44,10 +122,15 @@ export default function SettingsPage() {
 
       {/* Main content */}
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6 animate-fade-in">
-        {/* Success message */}
+        {/* Success/Error messages */}
         {success && (
           <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
             <p className="text-sm text-green-700 dark:text-green-300">{success}</p>
+          </div>
+        )}
+        {profileError && (
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+            <p className="text-sm text-red-700 dark:text-red-300">{profileError}</p>
           </div>
         )}
 
@@ -80,6 +163,131 @@ export default function SettingsPage() {
               />
             </div>
           </div>
+        </div>
+
+        {/* Public Profile */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100">Public Profile</h2>
+            {profile.username && (
+              <Link
+                href={`/u/${profile.username}`}
+                className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                View profile &rarr;
+              </Link>
+            )}
+          </div>
+
+          {!profileLoaded ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">Loading profile...</p>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                    Username
+                  </label>
+                  <input
+                    type="text"
+                    value={profile.username}
+                    onChange={e => setProfile(p => ({ ...p, username: e.target.value }))}
+                    placeholder="your-username"
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900/50 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Used for your public profile URL</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                    Display Name
+                  </label>
+                  <input
+                    type="text"
+                    value={profile.displayName}
+                    onChange={e => setProfile(p => ({ ...p, displayName: e.target.value }))}
+                    placeholder="Your Name"
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900/50 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                  Bio
+                </label>
+                <textarea
+                  value={profile.bio}
+                  onChange={e => setProfile(p => ({ ...p, bio: e.target.value }))}
+                  placeholder="Tell readers about yourself..."
+                  rows={3}
+                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900/50 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                  Avatar URL
+                </label>
+                <input
+                  type="url"
+                  value={profile.avatarUrl}
+                  onChange={e => setProfile(p => ({ ...p, avatarUrl: e.target.value }))}
+                  placeholder="https://example.com/avatar.jpg"
+                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900/50 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                    Website
+                  </label>
+                  <input
+                    type="url"
+                    value={profile.websiteUrl}
+                    onChange={e => setProfile(p => ({ ...p, websiteUrl: e.target.value }))}
+                    placeholder="https://yoursite.com"
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900/50 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                    Twitter/X Handle
+                  </label>
+                  <input
+                    type="text"
+                    value={profile.twitterHandle}
+                    onChange={e => setProfile(p => ({ ...p, twitterHandle: e.target.value }))}
+                    placeholder="username"
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900/50 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                  Discord Handle
+                </label>
+                <input
+                  type="text"
+                  value={profile.discordHandle}
+                  onChange={e => setProfile(p => ({ ...p, discordHandle: e.target.value }))}
+                  placeholder="username#1234"
+                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900/50 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  onClick={saveProfile}
+                  disabled={saving}
+                  className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 font-medium text-sm"
+                >
+                  {saving ? 'Saving...' : 'Save Profile'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Appearance */}
@@ -119,6 +327,24 @@ export default function SettingsPage() {
                 <span className="font-medium text-gray-900 dark:text-gray-100">Dark</span>
               </button>
             </div>
+          </div>
+        </div>
+
+        {/* Monetization link */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100">Monetization</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Manage subscription tiers, Stripe connection, and discount codes.
+              </p>
+            </div>
+            <Link
+              href="/settings/monetization"
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+            >
+              Manage &rarr;
+            </Link>
           </div>
         </div>
 

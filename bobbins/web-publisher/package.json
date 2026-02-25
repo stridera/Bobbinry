@@ -1,0 +1,16 @@
+{
+  "name": "@bobbinry/web-publisher",
+  "version": "0.1.0",
+  "description": "Web Publisher bobbin - manual and scheduled chapter publishing",
+  "main": "views/PublishManager.tsx",
+  "exports": {
+    "./views/PublishManager": "./views/PublishManager.tsx"
+  },
+  "peerDependencies": {
+    "@bobbinry/sdk": "workspace:*",
+    "react": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19"
+  }
+}

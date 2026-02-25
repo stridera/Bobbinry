@@ -1,0 +1,71 @@
+id: smart-publisher
+name: Smart Publisher
+version: "0.1.0"
+description: >
+  Automated rolling release publisher. Configure release frequency,
+  tier-based delays, and a release queue. Chapters are published
+  automatically on schedule.
+
+requires:
+  - manuscript
+
+capabilities:
+  publishable: true
+
+execution:
+  mode: native
+
+data:
+  collections:
+    - name: ReleaseQueue
+      description: Ordered queue of chapters awaiting release
+      fields:
+        - { name: chapter_id, type: reference, required: true, hint: "Reference to manuscript.Chapter" }
+        - { name: queue_position, type: number, required: true }
+        - { name: authorized_at, type: datetime }
+        - { name: status, type: text, options: [queued, releasing, released, held] }
+        - { name: notes, type: text }
+
+    - name: ReleasePolicy
+      description: Configuration for automated release schedule
+      fields:
+        - { name: release_frequency, type: text, options: [daily, weekly, biweekly, monthly], required: true }
+        - { name: release_day, type: text, hint: "Day of week for weekly/biweekly releases" }
+        - { name: release_time, type: text, hint: "HH:MM in UTC" }
+        - { name: tier_delays, type: json, hint: "Array of { tierLevel, delayDays }" }
+        - { name: max_queue_size, type: number }
+        - { name: auto_authorize, type: boolean, hint: "Auto-authorize chapters when added to queue" }
+
+interactions:
+  actions:
+    - id: authorize_chapter
+      type: update
+      target: ReleaseQueue
+      description: Authorize a queued chapter for release on next schedule
+    - id: hold_chapter
+      type: update
+      target: ReleaseQueue
+      description: Hold a chapter from being released
+    - id: process_releases
+      type: custom
+      description: Process the release queue and publish authorized chapters
+
+  triggers:
+    - event: schedule
+      action: process_releases
+      config:
+        cron: "*/15 * * * *"
+      description: Check the release queue every 15 minutes
+
+ui:
+  views:
+    - id: release-manager
+      type: custom
+      source: views/ReleaseManager
+      name: Release Queue
+      description: Manage the chapter release queue with drag-to-reorder
+    - id: release-config
+      type: custom
+      source: views/ReleaseConfig
+      name: Release Settings
+      description: Configure release frequency and tier delays

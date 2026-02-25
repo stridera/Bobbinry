@@ -93,6 +93,21 @@ export const userReadingPreferences = pgTable('user_reading_preferences', {
   updatedAt: timestamp('updated_at').defaultNow().notNull()
 })
 
+// User-installed bobbins (reader-side, account-level)
+export const userBobbinsInstalled = pgTable('user_bobbins_installed', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  bobbinId: varchar('bobbin_id', { length: 255 }).notNull(),
+  bobbinType: varchar('bobbin_type', { length: 50 }).notNull(), // reader_enhancement, delivery_channel
+  config: jsonb('config'), // Per-bobbin configuration (e.g. kindle email, preferences)
+  isEnabled: boolean('is_enabled').default(true).notNull(),
+  installedAt: timestamp('installed_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull()
+}, (table) => ({
+  userIdx: index('user_bobbins_installed_user_idx').on(table.userId),
+  userBobbinIdx: index('user_bobbins_installed_user_bobbin_idx').on(table.userId, table.bobbinId)
+}))
+
 // Beta readers - special access users per author
 export const betaReaders = pgTable('beta_readers', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -620,6 +635,13 @@ export const userNotificationPreferencesRelations = relations(userNotificationPr
 export const userReadingPreferencesRelations = relations(userReadingPreferences, ({ one }) => ({
   user: one(users, {
     fields: [userReadingPreferences.userId],
+    references: [users.id]
+  })
+}))
+
+export const userBobbinsInstalledRelations = relations(userBobbinsInstalled, ({ one }) => ({
+  user: one(users, {
+    fields: [userBobbinsInstalled.userId],
     references: [users.id]
   })
 }))

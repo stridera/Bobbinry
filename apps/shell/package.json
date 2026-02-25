@@ -16,6 +16,8 @@
     "@auth/core": "^0.40.0",
     "@bobbinry/entities": "workspace:*",
     "@bobbinry/manuscript": "workspace:*",
+    "@bobbinry/web-publisher": "workspace:*",
+    "@bobbinry/smart-publisher": "workspace:*",
     "@bobbinry/sdk": "workspace:*",
     "@bobbinry/types": "workspace:*",
     "@dnd-kit/core": "^6.3.1",
