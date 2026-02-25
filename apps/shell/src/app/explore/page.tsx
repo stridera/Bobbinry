@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { config } from '@/lib/config'
 import { apiFetch } from '@/lib/api'
+import { SiteNav } from '@/components/SiteNav'
 
 interface DiscoverProject {
   id: string
@@ -219,45 +220,14 @@ export default function ExplorePage() {
   }
 
   function getProjectUrl(project: DiscoverProject): string {
-    if (project.shortUrl) return `/read/${project.shortUrl}`
-    return `/read/${project.id}`
+    const authorSlug = project.authorUsername || project.authorId
+    if (authorSlug && project.shortUrl) return `/read/${authorSlug}/${project.shortUrl}`
+    return '#'
   }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      {/* Header */}
-      <div className="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/dashboard"
-              className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Dashboard
-            </Link>
-            <span className="text-gray-300 dark:text-gray-700">/</span>
-            <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Explore</span>
-          </div>
-          {session ? (
-            <Link
-              href="/library"
-              className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
-            >
-              My Library
-            </Link>
-          ) : (
-            <Link
-              href="/login"
-              className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-            >
-              Sign In
-            </Link>
-          )}
-        </div>
-      </div>
+      <SiteNav />
 
       <div className="max-w-6xl mx-auto px-4 py-8">
         {/* Hero search area */}

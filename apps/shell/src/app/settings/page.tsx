@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { useTheme } from '@/contexts/ThemeContext'
 import { config } from '@/lib/config'
 import { apiFetch } from '@/lib/api'
+import { SiteNav } from '@/components/SiteNav'
 
 interface ProfileForm {
   username: string
@@ -16,6 +17,16 @@ interface ProfileForm {
   websiteUrl: string
   twitterHandle: string
   discordHandle: string
+}
+
+function validateUsername(username: string): string | null {
+  if (!username) return null // empty is fine (optional)
+  if (username.length < 3 || username.length > 30) return 'Username must be between 3 and 30 characters'
+  if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(username)) return 'Must start with a letter. Only letters, numbers, hyphens, and underscores allowed.'
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(username)) return 'Username cannot look like an ID'
+  const reserved = ['admin', 'api', 'read', 'explore', 'dashboard', 'settings', 'publish', 'login', 'signup', 'marketplace', 'library', 'u', 'auth']
+  if (reserved.includes(username.toLowerCase())) return 'This username is reserved'
+  return null
 }
 
 export default function SettingsPage() {
@@ -65,8 +76,14 @@ export default function SettingsPage() {
     }
   }
 
+  const usernameError = validateUsername(profile.username)
+
   const saveProfile = async () => {
     if (!session?.apiToken || !session?.user?.id) return
+    if (usernameError) {
+      setProfileError(usernameError)
+      return
+    }
     setSaving(true)
     setProfileError(null)
     setSuccess(null)
@@ -104,18 +121,11 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Header */}
+      <SiteNav />
+
+      {/* Sub-header */}
       <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-1">
-            <Link href="/dashboard" className="hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
-              Dashboard
-            </Link>
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-            <span className="text-gray-900 dark:text-gray-100">Settings</span>
-          </div>
           <h1 className="font-display text-2xl font-bold text-gray-900 dark:text-gray-100">User Settings</h1>
         </div>
       </header>
@@ -195,7 +205,11 @@ export default function SettingsPage() {
                     placeholder="your-username"
                     className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900/50 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Used for your public profile URL</p>
+                  {usernameError ? (
+                    <p className="text-xs text-red-500 dark:text-red-400 mt-1">{usernameError}</p>
+                  ) : (
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Used for your public profile URL</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">

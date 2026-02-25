@@ -336,7 +336,7 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/short-url', async (request, reply) => {
     try {
       const { projectId } = request.params
-      const { customUrl } = request.body
+      const { customUrl } = request.body || {}
 
       // Reserved words
       const reservedWords = [
@@ -347,9 +347,14 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
       let shortUrl: string
 
       if (customUrl) {
-        // Custom URL (premium feature - validation would happen here)
         if (reservedWords.includes(customUrl.toLowerCase())) {
           return reply.status(400).send({ error: 'Short URL is reserved' })
+        }
+        if (customUrl.length > 120) {
+          return reply.status(400).send({ error: 'Short URL must be 120 characters or less' })
+        }
+        if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(customUrl) && customUrl.length > 1) {
+          return reply.status(400).send({ error: 'Short URL must contain only lowercase letters, numbers, and hyphens' })
         }
         shortUrl = customUrl
       } else {
@@ -357,11 +362,11 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
         shortUrl = randomBytes(4).toString('hex')
       }
 
-      // Check availability
+      // Check availability (exclude the current project so re-claiming the same URL works)
       const [existing] = await db
-        .select()
+        .select({ id: projects.id })
         .from(projects)
-        .where(eq(projects.shortUrl, shortUrl))
+        .where(and(eq(projects.shortUrl, shortUrl), sql`${projects.id} != ${projectId}`))
         .limit(1)
 
       if (existing) {

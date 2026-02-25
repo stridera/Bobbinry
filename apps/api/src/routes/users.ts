@@ -80,6 +80,37 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
       // Verify user is updating their own profile
       if (!requireSelf(request, reply, userId)) return
 
+      // Validate username if provided
+      if (profileData.username !== undefined && profileData.username !== null && profileData.username !== '') {
+        const uname = profileData.username
+
+        // Length check
+        if (uname.length < 3 || uname.length > 30) {
+          return reply.status(400).send({ error: 'Username must be between 3 and 30 characters' })
+        }
+
+        // Only allow letters, numbers, hyphens, underscores — must start with a letter
+        if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(uname)) {
+          return reply.status(400).send({ error: 'Username must start with a letter and contain only letters, numbers, hyphens, and underscores' })
+        }
+
+        // Reject anything that looks like a UUID (prevents ambiguity with user ID URLs)
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uname)) {
+          return reply.status(400).send({ error: 'Username cannot be a UUID' })
+        }
+
+        // Reject hex-only strings 8+ chars (could be confused with truncated IDs)
+        if (/^[0-9a-f]{8,}$/i.test(uname) && !/[g-zG-Z]/.test(uname)) {
+          return reply.status(400).send({ error: 'Username must contain at least one non-hex letter' })
+        }
+
+        // Reserved words that conflict with routes
+        const reserved = ['admin', 'api', 'read', 'explore', 'dashboard', 'settings', 'publish', 'login', 'signup', 'marketplace', 'library', 'u', 'auth', 'null', 'undefined']
+        if (reserved.includes(uname.toLowerCase())) {
+          return reply.status(400).send({ error: 'This username is reserved' })
+        }
+      }
+
       // Check if profile exists
       const existingProfile = await db
         .select()

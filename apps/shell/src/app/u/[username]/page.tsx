@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { config } from '@/lib/config'
 import { apiFetch } from '@/lib/api'
+import { SiteNav } from '@/components/SiteNav'
 
 interface UserProfile {
   userId: string
@@ -179,22 +180,28 @@ export default function PublicProfilePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <div className="text-gray-500 dark:text-gray-400">Loading profile...</div>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <SiteNav />
+        <div className="flex items-center justify-center py-32">
+          <div className="text-gray-500 dark:text-gray-400">Loading profile...</div>
+        </div>
       </div>
     )
   }
 
   if (error || !profile) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
-            {error || 'Profile not found'}
-          </h1>
-          <Link href="/dashboard" className="text-blue-600 dark:text-blue-400 hover:underline">
-            Back to Dashboard
-          </Link>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <SiteNav />
+        <div className="flex items-center justify-center py-32">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+              {error || 'Profile not found'}
+            </h1>
+            <Link href="/explore" className="text-blue-600 dark:text-blue-400 hover:underline">
+              Browse Stories
+            </Link>
+          </div>
         </div>
       </div>
     )
@@ -204,14 +211,7 @@ export default function PublicProfilePage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Header */}
-      <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <Link href="/dashboard" className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
-            &larr; Back
-          </Link>
-        </div>
-      </header>
+      <SiteNav />
 
       {/* Profile section */}
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
@@ -334,7 +334,7 @@ export default function PublicProfilePage() {
               {projects.map(project => (
                 <Link
                   key={project.id}
-                  href={project.shortUrl ? `/read/${project.shortUrl}` : `/read/${project.id}`}
+                  href={project.shortUrl ? `/read/${profile?.username || profile?.userId}/${project.shortUrl}` : '#'}
                   className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 hover:shadow-md transition-shadow"
                 >
                   <div className="flex gap-3">

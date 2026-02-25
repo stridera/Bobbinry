@@ -11,7 +11,9 @@ import { UserMenu } from '@/components/UserMenu'
 import { useManifestExtensions } from '@/components/ExtensionProvider'
 import { ProjectWelcome } from './components/ProjectWelcome'
 import { BobbinMarketplace } from './components/BobbinMarketplace'
+import { PublishPanel } from '@/components/PublishPanel'
 import { apiFetch } from '@/lib/api'
+import { extensionRegistry } from '@/lib/extensions'
 
 interface InstalledBobbin {
   id: string
@@ -115,6 +117,19 @@ export default function ProjectPage() {
             console.log('🚀 PROJECT PAGE: Registering extensions for bobbin:', bobbin.id, 'mode:', bobbin.manifest.execution?.mode)
             registerManifestExtensions(bobbin.id, bobbin.manifest)
           })
+        }
+
+        // Register native publish panel extension
+        const publishExtId = '__shell__.publish-panel'
+        if (!extensionRegistry.getExtension(publishExtId)) {
+          extensionRegistry.registerExtension('__shell__', {
+            id: 'publish-panel',
+            slot: 'shell.rightPanel',
+            type: 'panel',
+            title: 'Publishing',
+            when: { inView: '*' },
+          })
+          extensionRegistry.registerExtensionComponent(publishExtId, PublishPanel)
         }
 
         console.log('✅ PROJECT PAGE: Bobbins loaded and registered')

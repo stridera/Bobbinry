@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { config } from '@/lib/config'
+import { ReaderNav } from '@/components/ReaderNav'
 
 interface ProjectInfo {
   id: string
@@ -42,7 +43,8 @@ interface SubscriptionTier {
 
 export default function ProjectReadingPage() {
   const params = useParams()
-  const slug = params.projectSlug as string
+  const authorUsername = params.authorUsername as string
+  const projectSlug = params.projectSlug as string
   const { data: session } = useSession()
 
   const [project, setProject] = useState<ProjectInfo | null>(null)
@@ -54,13 +56,15 @@ export default function ProjectReadingPage() {
 
   useEffect(() => {
     loadProject()
-  }, [slug])
+  }, [authorUsername, projectSlug])
 
   const loadProject = async () => {
     setLoading(true)
     try {
-      // Resolve slug to project
-      const res = await fetch(`${config.apiUrl}/api/public/projects/by-slug/${encodeURIComponent(slug)}`)
+      // Resolve by author + slug
+      const res = await fetch(
+        `${config.apiUrl}/api/public/projects/by-author-and-slug/${encodeURIComponent(authorUsername)}/${encodeURIComponent(projectSlug)}`
+      )
       if (!res.ok) {
         setError(res.status === 404 ? 'Project not found' : 'Failed to load project')
         return
@@ -97,22 +101,28 @@ export default function ProjectReadingPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-gray-500 dark:text-gray-400">Loading...</div>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+        <ReaderNav crumbs={[{ label: authorUsername, href: `/read/${authorUsername}` }]} />
+        <div className="flex items-center justify-center py-32">
+          <div className="text-gray-500 dark:text-gray-400">Loading...</div>
+        </div>
       </div>
     )
   }
 
   if (error || !project) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
-            {error || 'Project not found'}
-          </h1>
-          <Link href="/dashboard" className="text-blue-600 dark:text-blue-400 hover:underline">
-            Back to Dashboard
-          </Link>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+        <ReaderNav crumbs={[{ label: authorUsername, href: `/read/${authorUsername}` }]} />
+        <div className="flex items-center justify-center py-32">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+              {error || 'Project not found'}
+            </h1>
+            <Link href="/explore" className="text-blue-600 dark:text-blue-400 hover:underline">
+              Browse Stories
+            </Link>
+          </div>
         </div>
       </div>
     )
@@ -121,13 +131,13 @@ export default function ProjectReadingPage() {
   const authorName = author?.displayName || author?.userName || 'Unknown Author'
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Back nav */}
-      <div className="mb-6">
-        <Link href="/dashboard" className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
-          &larr; Back
-        </Link>
-      </div>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      <ReaderNav crumbs={[
+        { label: authorName, href: `/read/${authorUsername}` },
+        { label: project.name }
+      ]} />
+
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
       {/* Project header */}
       <div className="flex gap-6 mb-8">
@@ -144,7 +154,7 @@ export default function ProjectReadingPage() {
           </h1>
           {author && (
             <Link
-              href={author.username ? `/u/${author.username}` : '#'}
+              href={author.username ? `/read/${author.username}` : '#'}
               className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
             >
               by {authorName}
@@ -181,7 +191,7 @@ export default function ProjectReadingPage() {
                   </div>
                 ) : (
                   <Link
-                    href={`/read/${slug}/${chapter.id}`}
+                    href={`/read/${authorUsername}/${projectSlug}/${chapter.id}`}
                     className="flex items-center justify-between px-4 py-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-900/30 transition-colors group"
                   >
                     <div className="flex items-center gap-3">
@@ -230,6 +240,7 @@ export default function ProjectReadingPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   )
 }

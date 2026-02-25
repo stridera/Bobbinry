@@ -17,6 +17,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { config } from '@/lib/config'
 import { apiFetch } from '@/lib/api'
+import { SiteNav } from '@/components/SiteNav'
 
 interface ProgressItem {
   viewId: string
@@ -28,6 +29,7 @@ interface ProgressItem {
   projectId: string | null
   projectName: string
   projectShortUrl: string | null
+  authorUsername?: string | null
 }
 
 interface Subscription {
@@ -54,6 +56,7 @@ interface FeedItem {
   authorId: string
   chapterTitle: string
   authorName: string
+  authorUsername?: string | null
 }
 
 interface ReaderBobbin {
@@ -93,12 +96,49 @@ export default function LibraryPage() {
         apiFetch(`/api/users/${userId}/reader-bobbins`, apiToken).then(r => r.json())
       ])
 
-      if (results[0].status === 'fulfilled') {
-        setProgress(results[0].value.progress || [])
+      const progressItems: ProgressItem[] = results[0].status === 'fulfilled' ? (results[0].value.progress || []) : []
+      const feedItems: FeedItem[] = results[1].status === 'fulfilled' ? (results[1].value.feed || []) : []
+
+      // Resolve author usernames for feed items
+      const authorIds = new Set<string>()
+      for (const item of feedItems) {
+        if (item.authorId) authorIds.add(item.authorId)
       }
-      if (results[1].status === 'fulfilled') {
-        setFeed(results[1].value.feed || [])
+      for (const authorId of authorIds) {
+        try {
+          const res = await fetch(`${config.apiUrl}/api/users/${authorId}/profile`)
+          if (res.ok) {
+            const data = await res.json()
+            if (data.profile?.username) {
+              feedItems.forEach(item => {
+                if (item.authorId === authorId) item.authorUsername = data.profile.username
+              })
+            }
+          }
+        } catch {}
       }
+
+      // Resolve author usernames for progress items via project slug lookup
+      const slugsToResolve = new Set<string>()
+      for (const item of progressItems) {
+        if (item.projectShortUrl) slugsToResolve.add(item.projectShortUrl)
+      }
+      for (const slug of slugsToResolve) {
+        try {
+          const res = await fetch(`${config.apiUrl}/api/public/projects/by-slug/${encodeURIComponent(slug)}`)
+          if (res.ok) {
+            const data = await res.json()
+            if (data.author?.username) {
+              progressItems.forEach(item => {
+                if (item.projectShortUrl === slug) item.authorUsername = data.author.username
+              })
+            }
+          }
+        } catch {}
+      }
+
+      setProgress(progressItems)
+      setFeed(feedItems)
       if (results[3].status === 'fulfilled') {
         setReaderBobbins(results[3].value.bobbins || [])
       }
@@ -230,40 +270,19 @@ export default function LibraryPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      {/* Top bar */}
-      <div className="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-        <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/dashboard"
-              className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Dashboard
-            </Link>
-            <span className="text-gray-300 dark:text-gray-700">/</span>
-            <span className="text-sm font-medium text-gray-900 dark:text-gray-100">My Library</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <Link
-              href="/explore"
-              className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
-            >
-              Explore
-            </Link>
-            <button
-              onClick={openBillingPortal}
-              className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
-            >
-              Manage Billing
-            </button>
-          </div>
-        </div>
-      </div>
+      <SiteNav />
 
       <div className="max-w-4xl mx-auto px-4 py-8">
+        {/* Sub-header with billing */}
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="font-display text-2xl font-bold text-gray-900 dark:text-gray-100">My Library</h1>
+          <button
+            onClick={openBillingPortal}
+            className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+          >
+            Manage Billing
+          </button>
+        </div>
 
         {billingMessage && (
           <div className="mb-4 p-3 rounded text-sm bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 flex items-center justify-between">
@@ -311,7 +330,7 @@ export default function LibraryPage() {
                 {progress.map(item => (
                   <Link
                     key={item.viewId}
-                    href={item.projectShortUrl ? `/read/${item.projectShortUrl}/${item.chapterId}` : '#'}
+                    href={item.projectShortUrl ? `/read/${item.authorUsername || item.projectId}/${item.projectShortUrl}/${item.chapterId}` : '#'}
                     className="flex items-center gap-4 p-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
                   >
                     <div className="flex-1 min-w-0">
@@ -356,7 +375,7 @@ export default function LibraryPage() {
                 {feed.map(item => (
                   <Link
                     key={item.publicationId}
-                    href={item.projectShortUrl ? `/read/${item.projectShortUrl}/${item.chapterId}` : '#'}
+                    href={item.projectShortUrl ? `/read/${item.authorUsername || item.authorId}/${item.projectShortUrl}/${item.chapterId}` : '#'}
                     className="block p-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
                   >
                     <div className="flex items-start justify-between gap-3">

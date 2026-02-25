@@ -243,7 +243,9 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
           .update(chapterPublications)
           .set({
             publishStatus,
+            isPublished: publishStatus === 'published',
             publishedVersion: version,
+            publishedAt: publishStatus === 'published' ? now : null,
             lastPublishedAt: publishStatus === 'published' ? now : existing.lastPublishedAt,
             updatedAt: now
           })
@@ -259,7 +261,9 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
             projectId,
             chapterId,
             publishStatus,
+            isPublished: publishStatus === 'published',
             publishedVersion: version,
+            publishedAt: publishStatus === 'published' ? now : null,
             firstPublishedAt: firstPublishedAt ? new Date(firstPublishedAt) : publishStatus === 'published' ? now : null,
             lastPublishedAt: publishStatus === 'published' ? now : null
           })
@@ -297,6 +301,8 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
         .update(chapterPublications)
         .set({
           publishStatus: 'draft',
+          isPublished: false,
+          publishedAt: null,
           updatedAt: new Date()
         })
         .where(and(eq(chapterPublications.chapterId, chapterId), eq(chapterPublications.projectId, projectId)))
@@ -348,7 +354,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       const { projectId } = request.params
       const { status } = request.query
 
-      const whereConditions = status
+      const whereConditions = (status && status !== 'all')
         ? and(eq(chapterPublications.projectId, projectId), eq(chapterPublications.publishStatus, status))
         : eq(chapterPublications.projectId, projectId)
 

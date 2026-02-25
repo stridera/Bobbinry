@@ -12,13 +12,16 @@ export default auth((req) => {
   const { pathname } = req.nextUrl
 
   // Public routes that don't require authentication
-  const publicRoutes = ['/login', '/signup', '/api']
+  const publicRoutes = ['/login', '/signup', '/api', '/explore', '/marketplace']
   const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route))
 
   // Public reader routes (e.g., /p/shorturl or /public/...)
-  const isPublicReader = pathname.startsWith('/p/') || pathname.startsWith('/c/') || pathname.startsWith('/public/')
+  const isPublicReader = pathname.startsWith('/p/') || pathname.startsWith('/c/') || pathname.startsWith('/public/') || pathname.startsWith('/read/') || pathname.startsWith('/u/')
 
-  if (!isLoggedIn && !isPublicRoute && !isPublicReader) {
+  // Landing page is public
+  const isLandingPage = pathname === '/'
+
+  if (!isLoggedIn && !isPublicRoute && !isPublicReader && !isLandingPage) {
     // Redirect to login, preserving the intended destination
     const callbackUrl = encodeURIComponent(pathname)
     return NextResponse.redirect(new URL(`/login?callbackUrl=${callbackUrl}`, req.url))

@@ -175,11 +175,11 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       const publishedChapters = await db
         .select({
           chapterId: chapterPublications.chapterId,
-          title: sql<string>`(${entities}.data->>'title')`,
+          title: sql<string>`(${entities.entityData}->>'title')`,
           publishedAt: chapterPublications.publishedAt,
           publicReleaseDate: chapterPublications.publicReleaseDate,
           viewCount: chapterPublications.viewCount,
-          order: sql<number>`COALESCE((${entities}.data->>'order')::int, 0)`
+          order: sql<number>`COALESCE((${entities.entityData}->>'order')::bigint, 0)`
         })
         .from(chapterPublications)
         .innerJoin(entities, eq(entities.id, chapterPublications.chapterId))
@@ -187,7 +187,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           eq(chapterPublications.projectId, projectId),
           eq(chapterPublications.isPublished, true)
         ))
-        .orderBy(sql`COALESCE((${entities}.data->>'order')::int, 0)`)
+        .orderBy(sql`COALESCE((${entities.entityData}->>'order')::bigint, 0)`)
 
       // Filter chapters based on access control
       const accessibleChapters = []
@@ -253,11 +253,11 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       const [chapter] = await db
         .select({
           id: entities.id,
-          title: sql<string>`(${entities}.data->>'title')`,
-          content: sql<string>`(${entities}.data->>'content')`,
+          title: sql<string>`(${entities.entityData}->>'title')`,
+          content: sql<string>`(${entities.entityData}->>'body')`,
           publishedAt: chapterPublications.publishedAt,
           viewCount: chapterPublications.viewCount,
-          order: sql<number>`COALESCE((${entities}.data->>'order')::int, 0)`
+          order: sql<number>`COALESCE((${entities.entityData}->>'order')::bigint, 0)`
         })
         .from(entities)
         .innerJoin(chapterPublications, and(
@@ -278,7 +278,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       const allChapters = await db
         .select({
           id: entities.id,
-          order: sql<number>`COALESCE((${entities}.data->>'order')::int, 0)`
+          order: sql<number>`COALESCE((${entities.entityData}->>'order')::bigint, 0)`
         })
         .from(entities)
         .innerJoin(chapterPublications, eq(chapterPublications.chapterId, entities.id))
@@ -286,7 +286,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           eq(entities.projectId, projectId),
           eq(chapterPublications.isPublished, true)
         ))
-        .orderBy(sql`COALESCE((${entities}.data->>'order')::int, 0)`)
+        .orderBy(sql`COALESCE((${entities.entityData}->>'order')::bigint, 0)`)
 
       const currentIndex = allChapters.findIndex(c => c.id === chapterId)
       const previousChapter = currentIndex > 0 ? allChapters[currentIndex - 1] : null
@@ -513,8 +513,8 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       const [chapter] = await db
         .select({
           id: entities.id,
-          title: sql<string>`(${entities}.data->>'title')`,
-          content: sql<string>`(${entities}.data->>'content')`,
+          title: sql<string>`(${entities.entityData}->>'title')`,
+          content: sql<string>`(${entities.entityData}->>'body')`,
           publishedAt: chapterPublications.publishedAt,
           viewCount: chapterPublications.viewCount
         })
@@ -614,7 +614,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           eq(entities.projectId, projectId),
           eq(chapterPublications.isPublished, true)
         ))
-        .orderBy(sql`COALESCE((${entities}.data->>'order')::int, 0)`)
+        .orderBy(sql`COALESCE((${entities.entityData}->>'order')::bigint, 0)`)
 
       const baseUrl = env.WEB_ORIGIN
 
@@ -681,8 +681,8 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       const chapters = await db
         .select({
           id: entities.id,
-          title: sql<string>`(${entities}.data->>'title')`,
-          content: sql<string>`(${entities}.data->>'content')`,
+          title: sql<string>`(${entities.entityData}->>'title')`,
+          content: sql<string>`(${entities.entityData}->>'body')`,
           publishedAt: chapterPublications.publishedAt,
           updatedAt: chapterPublications.updatedAt
         })
@@ -830,6 +830,179 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
     } catch (error) {
       fastify.log.error({ error, correlationId }, 'Failed to resolve project slug')
       return reply.status(500).send({ error: 'Failed to resolve project slug', correlationId })
+    }
+  })
+
+  /**
+   * Resolve a project by author identifier + project slug (public)
+   * GET /public/projects/by-author-and-slug/:authorIdOrUsername/:projectSlug
+   * The author identifier can be a username or a user UUID.
+   */
+  fastify.get<{
+    Params: { username: string; projectSlug: string }
+  }>('/public/projects/by-author-and-slug/:username/:projectSlug', async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const { username, projectSlug } = request.params
+
+      // Try username first, then fall back to user ID (UUID)
+      let [author] = await db
+        .select({
+          userId: userProfiles.userId,
+          username: userProfiles.username,
+          displayName: userProfiles.displayName,
+          avatarUrl: userProfiles.avatarUrl,
+          userName: users.name
+        })
+        .from(userProfiles)
+        .innerJoin(users, eq(users.id, userProfiles.userId))
+        .where(eq(userProfiles.username, username))
+        .limit(1)
+
+      // If not found by username, try as a user ID
+      if (!author) {
+        [author] = await db
+          .select({
+            userId: userProfiles.userId,
+            username: userProfiles.username,
+            displayName: userProfiles.displayName,
+            avatarUrl: userProfiles.avatarUrl,
+            userName: users.name
+          })
+          .from(userProfiles)
+          .innerJoin(users, eq(users.id, userProfiles.userId))
+          .where(eq(userProfiles.userId, username))
+          .limit(1)
+      }
+
+      // Last resort: check users table directly (no profile created yet)
+      if (!author) {
+        const [user] = await db
+          .select({ id: users.id, name: users.name })
+          .from(users)
+          .where(eq(users.id, username))
+          .limit(1)
+        if (user) {
+          author = { userId: user.id, username: null, displayName: null, avatarUrl: null, userName: user.name }
+        }
+      }
+
+      if (!author) {
+        return reply.status(404).send({ error: 'Author not found', correlationId })
+      }
+
+      // Find project by owner + shortUrl
+      const [project] = await db
+        .select({
+          id: projects.id,
+          name: projects.name,
+          description: projects.description,
+          coverImage: projects.coverImage,
+          shortUrl: projects.shortUrl,
+          ownerId: projects.ownerId,
+          createdAt: projects.createdAt
+        })
+        .from(projects)
+        .where(and(
+          eq(projects.ownerId, author.userId),
+          eq(projects.shortUrl, projectSlug)
+        ))
+        .limit(1)
+
+      if (!project) {
+        return reply.status(404).send({ error: 'Project not found', correlationId })
+      }
+
+      return reply.send({ project, author, correlationId })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to resolve project by author and slug')
+      return reply.status(500).send({ error: 'Failed to resolve project', correlationId })
+    }
+  })
+
+  /**
+   * Get published projects for a given author (public)
+   * GET /public/authors/:username/projects
+   * The identifier can be a username or a user UUID.
+   */
+  fastify.get<{
+    Params: { username: string }
+  }>('/public/authors/:username/projects', async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const { username } = request.params
+
+      // Try username first, then fall back to user ID (UUID)
+      let [author] = await db
+        .select({
+          userId: userProfiles.userId,
+          username: userProfiles.username,
+          displayName: userProfiles.displayName,
+          avatarUrl: userProfiles.avatarUrl,
+          bio: userProfiles.bio,
+          userName: users.name
+        })
+        .from(userProfiles)
+        .innerJoin(users, eq(users.id, userProfiles.userId))
+        .where(eq(userProfiles.username, username))
+        .limit(1)
+
+      // If not found by username, try as a user ID
+      if (!author) {
+        [author] = await db
+          .select({
+            userId: userProfiles.userId,
+            username: userProfiles.username,
+            displayName: userProfiles.displayName,
+            avatarUrl: userProfiles.avatarUrl,
+            bio: userProfiles.bio,
+            userName: users.name
+          })
+          .from(userProfiles)
+          .innerJoin(users, eq(users.id, userProfiles.userId))
+          .where(eq(userProfiles.userId, username))
+          .limit(1)
+      }
+
+      // Last resort: check users table directly (no profile created yet)
+      if (!author) {
+        const [user] = await db
+          .select({ id: users.id, name: users.name })
+          .from(users)
+          .where(eq(users.id, username))
+          .limit(1)
+        if (user) {
+          author = { userId: user.id, username: null, displayName: null, avatarUrl: null, bio: null, userName: user.name }
+        }
+      }
+
+      if (!author) {
+        return reply.status(404).send({ error: 'Author not found', correlationId })
+      }
+
+      // Get published projects (those with shortUrl and live publish config)
+      const publishedProjects = await db
+        .select({
+          id: projects.id,
+          name: projects.name,
+          description: projects.description,
+          coverImage: projects.coverImage,
+          shortUrl: projects.shortUrl,
+          createdAt: projects.createdAt
+        })
+        .from(projects)
+        .innerJoin(projectPublishConfig, eq(projectPublishConfig.projectId, projects.id))
+        .where(and(
+          eq(projects.ownerId, author.userId),
+          eq(projectPublishConfig.publishingMode, 'live'),
+          sql`${projects.shortUrl} IS NOT NULL`
+        ))
+        .orderBy(desc(projects.createdAt))
+
+      return reply.send({ author, projects: publishedProjects, correlationId })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to get author projects')
+      return reply.status(500).send({ error: 'Failed to get author projects', correlationId })
     }
   })
 
