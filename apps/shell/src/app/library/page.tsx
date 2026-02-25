@@ -246,12 +246,20 @@ export default function LibraryPage() {
             <span className="text-gray-300 dark:text-gray-700">/</span>
             <span className="text-sm font-medium text-gray-900 dark:text-gray-100">My Library</span>
           </div>
-          <button
-            onClick={openBillingPortal}
-            className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
-          >
-            Manage Billing
-          </button>
+          <div className="flex items-center gap-4">
+            <Link
+              href="/explore"
+              className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+            >
+              Explore
+            </Link>
+            <button
+              onClick={openBillingPortal}
+              className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+            >
+              Manage Billing
+            </button>
+          </div>
         </div>
       </div>
 

@@ -15,6 +15,7 @@ import bobbinActionsPlugin from './routes/bobbin-actions'
 import collectionsPlugin from './routes/collections'
 import dashboardPlugin from './routes/dashboard'
 import authPlugin from './routes/auth'
+import discoverPlugin from './routes/discover'
 import { checkDatabaseHealth } from './db/connection'
 import { env } from './lib/env'
 import { startTriggerScheduler, stopTriggerScheduler } from './jobs/trigger-scheduler'
@@ -174,6 +175,7 @@ export function build(opts = {}): FastifyInstance {
   server.register(collectionsPlugin, { prefix: '/api' })
   server.register(dashboardPlugin, { prefix: '/api' })
   server.register(authPlugin, { prefix: '/api' })
+  server.register(discoverPlugin, { prefix: '/api' })
 
   // Start the trigger scheduler for cron-based bobbin actions
   server.addHook('onReady', async () => {
