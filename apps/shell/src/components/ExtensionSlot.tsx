@@ -67,8 +67,16 @@ const PanelContent = memo(function PanelContent({
     )
   } else {
     return (
-      <div className="text-xs text-gray-400">
-        Loading {extension.contribution.title || extension.id}...
+      <div className="h-full flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-700/50 flex items-center justify-center mb-3">
+          <svg className="w-4 h-4 text-gray-400 dark:text-gray-500 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+        </div>
+        <p className="text-xs text-gray-400 dark:text-gray-500">
+          Loading {extension.contribution.title || extension.id}
+        </p>
       </div>
     )
   }

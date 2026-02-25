@@ -1,15 +1,17 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { BobbinrySDK } from '@bobbinry/sdk'
 import { ShellLayout } from '@/components/ShellLayout'
 import { ViewRouter } from '@/components/ViewRouter'
+import { UserMenu } from '@/components/UserMenu'
 import { useManifestExtensions } from '@/components/ExtensionProvider'
-import { ProjectHeader } from './components/ProjectHeader'
 import { ProjectWelcome } from './components/ProjectWelcome'
 import { BobbinMarketplace } from './components/BobbinMarketplace'
+import { apiFetch } from '@/lib/api'
 
 interface InstalledBobbin {
   id: string
@@ -41,6 +43,24 @@ export default function ProjectPage() {
   const [installedBobbins, setInstalledBobbins] = useState<InstalledBobbin[]>([])
   const [loading, setLoading] = useState(true)
   const [showMarketplace, setShowMarketplace] = useState(false)
+  const [projectName, setProjectName] = useState<string | null>(null)
+
+  // Fetch project name
+  useEffect(() => {
+    if (!session?.apiToken || !projectId) return
+    const loadProjectInfo = async () => {
+      try {
+        const response = await apiFetch(`/api/projects/${projectId}`, session.apiToken)
+        if (response.ok) {
+          const data = await response.json()
+          setProjectName(data.project?.name || null)
+        }
+      } catch (error) {
+        console.error('Failed to load project info:', error)
+      }
+    }
+    loadProjectInfo()
+  }, [projectId, session?.apiToken])
 
   // Memoize context to prevent unnecessary re-renders
   const shellContext = useMemo(() => ({
@@ -137,10 +157,25 @@ export default function ProjectPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col">
-        <ProjectHeader />
+      <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
+        <header className="h-12 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center px-3 gap-1">
+          <Link
+            href="/dashboard"
+            className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400 dark:text-gray-500 transition-colors"
+            title="Back to dashboard"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </Link>
+          {projectName ? (
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">{projectName}</span>
+          ) : (
+            <div className="h-4 w-32 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+          )}
+        </header>
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-gray-500">Loading project...</div>
+          <div className="text-gray-500 dark:text-gray-400">Loading project...</div>
         </div>
       </div>
     )
@@ -149,16 +184,40 @@ export default function ProjectPage() {
   const hasBobbins = installedBobbins.length > 0
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <ProjectHeader />
-      
+    <>
       {!hasBobbins ? (
-        <ProjectWelcome
-          projectId={projectId}
-          onInstallBobbins={() => setShowMarketplace(true)}
-        />
+        <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
+          {/* Compact header for welcome state */}
+          <header className="h-12 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center px-3 gap-1">
+            <Link
+              href="/dashboard"
+              className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400 dark:text-gray-500 transition-colors shrink-0"
+              title="Back to dashboard"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </Link>
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">
+              {projectName || 'Project'}
+            </span>
+            <div className="flex-1" />
+            {session?.user && <UserMenu user={session.user} />}
+          </header>
+          <ProjectWelcome
+            projectId={projectId}
+            onInstallBobbins={() => setShowMarketplace(true)}
+          />
+        </div>
       ) : (
-        <ShellLayout currentView="project" context={shellContext}>
+        <ShellLayout
+          currentView="project"
+          context={shellContext}
+          onOpenMarketplace={() => setShowMarketplace(true)}
+          projectId={projectId}
+          projectName={projectName || undefined}
+          user={session?.user}
+        >
           <ViewRouter projectId={projectId} sdk={sdk} />
         </ShellLayout>
       )}
@@ -171,6 +230,6 @@ export default function ProjectPage() {
           onClose={() => setShowMarketplace(false)}
         />
       )}
-    </div>
+    </>
   )
 }

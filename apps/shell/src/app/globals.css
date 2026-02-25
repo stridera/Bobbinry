@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 @variant dark (&:where(.dark, .dark *));
 
@@ -147,6 +148,26 @@
   .dark ::-webkit-scrollbar-thumb:hover {
     background: #7a6c5e;
   }
+}
+
+/* --- TipTap Editor Styles --- */
+.tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: #d0c5b7;
+  pointer-events: none;
+  height: 0;
+  font-style: italic;
+}
+
+.dark .tiptap p.is-editor-empty:first-child::before {
+  color: #5e5247;
+}
+
+.tiptap h1,
+.tiptap h2,
+.tiptap h3 {
+  font-family: var(--font-playfair, "Playfair Display"), Georgia, "Times New Roman", serif;
 }
 
 /* --- Keyframes --- */
