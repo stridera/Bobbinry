@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@auth/core": "^0.40.0",
+    "@bobbinry/corkboard": "workspace:*",
     "@bobbinry/entities": "workspace:*",
     "@bobbinry/manuscript": "workspace:*",
     "@bobbinry/web-publisher": "workspace:*",

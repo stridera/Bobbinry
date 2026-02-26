@@ -189,6 +189,8 @@ export interface View {
   filters?: ViewFilter[]
   actions?: string[]
   permissions?: ViewPermission[]
+  handlers?: string[]  // Entity types this view can handle (e.g., ['container', 'content'])
+  priority?: number    // Higher = preferred default when multiple views match
 }
 
 export type ViewType =
@@ -338,6 +340,7 @@ export interface ExtensionContribution {
   label?: string
   icon?: string
   entry?: string
+  priority?: number
   when?: ExtensionCondition
   pubsub?: {
     produces?: TopicReference[]

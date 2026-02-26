@@ -52,6 +52,10 @@ data:
           type: number
           displayName: Order
           required: true
+        - name: synopsis
+          type: text
+          displayName: Synopsis
+          required: false
         - name: icon
           type: text
           displayName: Icon
@@ -73,7 +77,7 @@ data:
           foreignKey: parent_id
           displayName: Parent Container
       hints:
-        searchable: [title, type]
+        searchable: [title, type, synopsis]
         sortKey: order
         displayField: title
         icon: folder
@@ -109,6 +113,10 @@ data:
           type: text
           displayName: Status
           default: draft
+        - name: synopsis
+          type: text
+          displayName: Synopsis
+          required: false
         - name: notes
           type: markdown
           displayName: Notes
@@ -129,7 +137,7 @@ data:
           foreignKey: container_id
           displayName: Container
       hints:
-        searchable: [title, body, notes]
+        searchable: [title, body, synopsis, notes]
         sortKey: order
         displayField: title
         icon: file-text

@@ -1,0 +1,28 @@
+{
+  "name": "@bobbinry/corkboard",
+  "version": "1.0.0",
+  "description": "Corkboard bobbin - visual board view for organizing content cards",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./views/*": "./dist/views/*.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0"
+  },
+  "dependencies": {
+    "@bobbinry/sdk": "workspace:*",
+    "@bobbinry/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "typescript": "6.0.0-beta"
+  }
+}

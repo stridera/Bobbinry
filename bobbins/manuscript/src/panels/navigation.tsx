@@ -736,7 +736,25 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     <div className="h-full flex flex-col bg-gray-800">
       <div className="px-3 py-2 border-b border-gray-700 flex justify-between items-center">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-semibold text-gray-200">📝 Manuscript</h3>
+          <h3
+            className="text-sm font-semibold text-gray-200 cursor-pointer hover:text-white transition-colors"
+            onClick={() => {
+              setSelectedNodeId(null)
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(
+                  new CustomEvent('bobbinry:navigate', {
+                    detail: {
+                      entityType: 'container',
+                      entityId: 'ROOT',
+                      bobbinId: 'manuscript',
+                      metadata: { type: 'root' }
+                    }
+                  })
+                )
+              }
+            }}
+            title="View entire manuscript"
+          >📝 Manuscript</h3>
           <div className="relative dropdown-container">
             <button
               onClick={() => setShowDropdown(!showDropdown)}

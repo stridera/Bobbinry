@@ -233,7 +233,10 @@ class ExtensionRegistry {
         return true
       })
       .sort((a, b) => {
-        // Sort by title for now - could add priority later
+        // Sort by priority first (higher priority = earlier), then alphabetically by title
+        const priorityA = a.contribution.priority ?? 0
+        const priorityB = b.contribution.priority ?? 0
+        if (priorityA !== priorityB) return priorityB - priorityA
         return (a.contribution.title || a.contribution.id).localeCompare(
           b.contribution.title || b.contribution.id
         )

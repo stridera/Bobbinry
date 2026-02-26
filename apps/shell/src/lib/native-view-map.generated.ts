@@ -10,6 +10,7 @@ export const NATIVE_VIEW_MAP: Record<string, () => Promise<any>> = {
   'manuscript.outline': () => import('@bobbinry/manuscript/views/outline'),
   'manuscript.editor': () => import('@bobbinry/manuscript/views/editor'),
   'manuscript.panels/navigation': () => import('@bobbinry/manuscript/panels/navigation'),
+  'corkboard.board': () => import('@bobbinry/corkboard/views/board'),
   'entities.config': () => import('@bobbinry/entities/views/config'),
   'entities.entity-list': () => import('@bobbinry/entities/views/entity-list'),
   'entities.entity-editor': () => import('@bobbinry/entities/views/entity-editor'),
