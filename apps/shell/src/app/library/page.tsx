@@ -18,6 +18,8 @@ import Link from 'next/link'
 import { config } from '@/lib/config'
 import { apiFetch } from '@/lib/api'
 import { SiteNav } from '@/components/SiteNav'
+import { SkeletonList } from '@/components/LoadingState'
+import { EmptyState } from '@/components/EmptyState'
 
 interface ProgressItem {
   viewId: string
@@ -262,8 +264,12 @@ export default function LibraryPage() {
 
   if (status === 'loading' || loading) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
-        <p className="text-gray-500 dark:text-gray-400">Loading your library...</p>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+        <SiteNav />
+        <div className="max-w-4xl mx-auto px-4 py-8">
+          <div className="h-7 bg-gray-100 dark:bg-gray-700 rounded w-32 mb-6 animate-pulse" />
+          <SkeletonList count={4} />
+        </div>
       </div>
     )
   }
@@ -319,12 +325,11 @@ export default function LibraryPage() {
         {activeTab === 'reading' && (
           <div>
             {progress.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-gray-500 dark:text-gray-400 mb-2">No chapters in progress.</p>
-                <p className="text-sm text-gray-400 dark:text-gray-500">
-                  Start reading something and your progress will appear here.
-                </p>
-              </div>
+              <EmptyState
+                title="No chapters in progress"
+                description="Start reading something and your progress will appear here."
+                action={{ label: 'Explore Stories', href: '/explore' }}
+              />
             ) : (
               <div className="space-y-3">
                 {progress.map(item => (
@@ -364,12 +369,11 @@ export default function LibraryPage() {
         {activeTab === 'feed' && (
           <div>
             {feed.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-gray-500 dark:text-gray-400 mb-2">Your feed is empty.</p>
-                <p className="text-sm text-gray-400 dark:text-gray-500">
-                  Follow authors to see their new chapters here.
-                </p>
-              </div>
+              <EmptyState
+                title="Your feed is empty"
+                description="Follow authors to see their new chapters here."
+                action={{ label: 'Discover Authors', href: '/explore' }}
+              />
             ) : (
               <div className="space-y-3">
                 {feed.map(item => (
@@ -404,12 +408,11 @@ export default function LibraryPage() {
         {activeTab === 'subscriptions' && (
           <div>
             {Object.keys(authorProfiles).length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-gray-500 dark:text-gray-400 mb-2">You're not following any authors yet.</p>
-                <p className="text-sm text-gray-400 dark:text-gray-500">
-                  Discover authors and follow them to keep up with their work.
-                </p>
-              </div>
+              <EmptyState
+                title="No subscriptions yet"
+                description="Discover authors and follow them to keep up with their work."
+                action={{ label: 'Explore Authors', href: '/explore' }}
+              />
             ) : (
               <div className="space-y-3">
                 {Object.entries(authorProfiles).map(([authorId, profile]) => (
@@ -459,13 +462,10 @@ export default function LibraryPage() {
         {activeTab === 'bobbins' && (
           <div>
             {readerBobbins.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-gray-500 dark:text-gray-400 mb-2">No reader bobbins installed.</p>
-                <p className="text-sm text-gray-400 dark:text-gray-500">
-                  Reader bobbins can enhance your reading experience with features like
-                  Kindle delivery, translation, custom themes, and more.
-                </p>
-              </div>
+              <EmptyState
+                title="No reader bobbins installed"
+                description="Reader bobbins can enhance your reading experience with features like Kindle delivery, translation, custom themes, and more."
+              />
             ) : (
               <div className="space-y-3">
                 {readerBobbins.map(bobbin => (

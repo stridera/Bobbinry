@@ -1,250 +1,252 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
-import Link from 'next/link'
+import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
-import { BobbinrySDK } from '@bobbinry/sdk'
-import { ShellLayout } from '@/components/ShellLayout'
-import { ViewRouter } from '@/components/ViewRouter'
-import { UserMenu } from '@/components/UserMenu'
-import { useManifestExtensions } from '@/components/ExtensionProvider'
-import { ProjectWelcome } from './components/ProjectWelcome'
-import { BobbinMarketplace } from './components/BobbinMarketplace'
-import { PublishPanel } from '@/components/PublishPanel'
+import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
-import { extensionRegistry } from '@/lib/extensions'
+import { DashboardHero } from './components/dashboard/DashboardHero'
+import { StatsCards } from './components/dashboard/StatsCards'
+import { TagsEditor } from './components/dashboard/TagsEditor'
+import { ChapterOverview } from './components/dashboard/ChapterOverview'
+import { ScheduledReleases } from './components/dashboard/ScheduledReleases'
+import { PublishingSettings } from './components/dashboard/PublishingSettings'
+import { ProjectManagement } from './components/dashboard/ProjectManagement'
 
-interface InstalledBobbin {
+interface Tag {
   id: string
-  version: string
-  manifest: {
-    name: string
-    description?: string
-    execution?: {
-      mode: 'native' | 'sandboxed'
-    }
-    ui?: {
-      views?: Array<{
-        id: string
-        type: string
-        source: string
-      }>
-    }
-  }
-  installedAt: string
+  tagCategory: string
+  tagName: string
 }
 
-export default function ProjectPage() {
+interface DashboardData {
+  project: {
+    id: string
+    name: string
+    description: string | null
+    coverImage: string | null
+    shortUrl: string | null
+    isArchived: boolean
+    createdAt: string
+    updatedAt: string
+  }
+  authorUsername: string | null
+  tags: Tag[]
+  analytics: {
+    totalChapters: number
+    publishedChapters: number
+    totalViews: number
+    totalCompletions: number
+    avgViewsPerChapter: number
+  }
+  chapters: Array<{
+    id: string
+    title: string
+    order: number
+    collectionName: string
+    commentCount: number
+    reactionCount: number
+    publication: {
+      publishStatus: string
+      publishedAt: string | null
+      viewCount: number
+      uniqueViewCount: number
+      completionCount: number
+      avgReadTimeSeconds: number | null
+    } | null
+  }>
+  scheduledReleases: Array<{
+    chapterId: string
+    chapterTitle: string
+    scheduledDate: string | null
+    publishStatus: string
+  }>
+  publishConfig: {
+    projectId: string
+    publishingMode: string
+    defaultVisibility: string
+    autoReleaseEnabled: boolean
+    releaseFrequency: string
+    releaseDay?: string
+    releaseTime?: string
+    slugPrefix?: string
+    seoDescription?: string
+    ogImageUrl?: string
+    enableComments: boolean
+    enableReactions: boolean
+    moderationMode: string
+  }
+  bobbins: Array<{
+    id: string
+    bobbinId: string
+    version: string
+    manifest: { name: string; description: string }
+  }>
+}
+
+export default function ProjectDashboardPage() {
   const params = useParams()
   const { data: session } = useSession()
   const projectId = params.projectId as string
-  const [hasInitialNavigation, setHasInitialNavigation] = useState(false)
 
-  const [sdk] = useState(() => new BobbinrySDK('shell'))
-  const [installedBobbins, setInstalledBobbins] = useState<InstalledBobbin[]>([])
+  const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [showMarketplace, setShowMarketplace] = useState(false)
-  const [projectName, setProjectName] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
-  // Fetch project name
-  useEffect(() => {
-    if (!session?.apiToken || !projectId) return
-    const loadProjectInfo = async () => {
-      try {
-        const response = await apiFetch(`/api/projects/${projectId}`, session.apiToken)
-        if (response.ok) {
-          const data = await response.json()
-          setProjectName(data.project?.name || null)
-        }
-      } catch (error) {
-        console.error('Failed to load project info:', error)
-      }
-    }
-    loadProjectInfo()
-  }, [projectId, session?.apiToken])
-
-  // Memoize context to prevent unnecessary re-renders
-  const shellContext = useMemo(() => ({
-    projectId,
-    apiToken: session?.apiToken,
-  }), [projectId, session?.apiToken])
-
-  // Get extension registration hooks
-  const { registerManifestExtensions, unregisterManifestExtensions } = useManifestExtensions()
-
-  // Pass auth token to SDK when session is available
   useEffect(() => {
     if (session?.apiToken) {
-      sdk.api.setAuthToken(session.apiToken)
+      loadDashboard()
     }
-  }, [session?.apiToken, sdk])
+  }, [projectId, session?.apiToken])
 
-  // Load installed bobbins and their views
-  useEffect(() => {
-    if (!session?.apiToken) return
-
-    const loadProject = async () => {
-      try {
-        console.log('🔄 PROJECT PAGE: Starting loadProject for:', projectId)
-        setLoading(true)
-        sdk.setProject(projectId)
-
-        console.log('🔄 PROJECT PAGE: About to call getInstalledBobbins...')
-        const response = await sdk.api.getInstalledBobbins(projectId)
-        console.log('🚀 PROJECT PAGE: getInstalledBobbins response:', response)
-        console.log('🚀 PROJECT PAGE: response.bobbins:', response.bobbins)
-        console.log('🚀 PROJECT PAGE: response.bobbins type:', typeof response.bobbins)
-        console.log('🚀 PROJECT PAGE: response.bobbins length:', response.bobbins?.length)
-
-        const newBobbins = response.bobbins || []
-        const oldBobbinIds = installedBobbins.map(b => b.id)
-        const newBobbinIds = newBobbins.map((b: InstalledBobbin) => b.id)
-
-        // Unregister extensions for bobbins that were removed
-        const removedBobbinIds = oldBobbinIds.filter(id => !newBobbinIds.includes(id))
-        removedBobbinIds.forEach(bobbinId => {
-          console.log('🗑️ PROJECT PAGE: Unregistering extensions for removed bobbin:', bobbinId)
-          unregisterManifestExtensions(bobbinId)
-        })
-
-        setInstalledBobbins(newBobbins)
-
-        // Register extensions for all installed bobbins
-        if (newBobbins.length > 0) {
-          console.log('🚀 PROJECT PAGE: Registering extensions for', newBobbins.length, 'bobbins')
-          newBobbins.forEach((bobbin: InstalledBobbin) => {
-            console.log('🚀 PROJECT PAGE: Registering extensions for bobbin:', bobbin.id, 'mode:', bobbin.manifest.execution?.mode)
-            registerManifestExtensions(bobbin.id, bobbin.manifest)
-          })
-        }
-
-        // Register native publish panel extension
-        const publishExtId = '__shell__.publish-panel'
-        if (!extensionRegistry.getExtension(publishExtId)) {
-          extensionRegistry.registerExtension('__shell__', {
-            id: 'publish-panel',
-            slot: 'shell.rightPanel',
-            type: 'panel',
-            title: 'Publishing',
-            when: { inView: '*' },
-          })
-          extensionRegistry.registerExtensionComponent(publishExtId, PublishPanel)
-        }
-
-        console.log('✅ PROJECT PAGE: Bobbins loaded and registered')
-      } catch (error) {
-        console.error('❌ PROJECT PAGE: Failed to load project:', error)
-        console.error('❌ PROJECT PAGE: Error details:', {
-          message: error instanceof Error ? error.message : 'Unknown error',
-          stack: error instanceof Error ? error.stack : undefined,
-          error
-        })
-      } finally {
-        console.log('✅ PROJECT PAGE: Setting loading=false')
-        setLoading(false)
+  const loadDashboard = async () => {
+    const token = session?.apiToken
+    if (!token) return
+    try {
+      const response = await apiFetch(`/api/projects/${projectId}/dashboard`, token)
+      if (response.ok) {
+        const result = await response.json()
+        setData(result)
+      } else {
+        setError('Failed to load dashboard')
       }
+    } catch (err) {
+      console.error('Failed to load dashboard:', err)
+      setError('Failed to load dashboard')
+    } finally {
+      setLoading(false)
     }
-    
-    if (projectId) {
-      loadProject()
-    }
-  }, [projectId, sdk, session?.apiToken])
-  
-  const handleInstallComplete = () => {
-    // Reload bobbins after installation
-    const loadBobbins = async () => {
-      try {
-        const response = await sdk.api.getInstalledBobbins(projectId)
-        const newBobbins = response.bobbins || []
-        setInstalledBobbins(newBobbins)
-        
-        // Register extensions for newly installed bobbins
-        newBobbins.forEach((bobbin: InstalledBobbin) => {
-          registerManifestExtensions(bobbin.id, bobbin.manifest)
-        })
-      } catch (error) {
-        console.error('Failed to reload bobbins:', error)
-      }
-    }
-    loadBobbins()
   }
 
   if (loading) {
     return (
-      <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
-        <header className="h-12 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center px-3 gap-1">
-          <Link
-            href="/dashboard"
-            className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400 dark:text-gray-500 transition-colors"
-            title="Back to dashboard"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </Link>
-          {projectName ? (
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">{projectName}</span>
-          ) : (
-            <div className="h-4 w-32 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-          )}
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+        <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div className="animate-pulse">
+              <div className="h-4 bg-gray-100 dark:bg-gray-700 rounded w-32 mb-2" />
+              <div className="h-6 bg-gray-100 dark:bg-gray-700 rounded w-48" />
+            </div>
+          </div>
         </header>
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-gray-500 dark:text-gray-400">Loading project...</div>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+          <div className="animate-pulse h-60 bg-gray-200 dark:bg-gray-700 rounded-xl" />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="animate-pulse h-20 bg-gray-200 dark:bg-gray-700 rounded-lg" />
+            ))}
+          </div>
         </div>
       </div>
     )
   }
 
-  const hasBobbins = installedBobbins.length > 0
+  if (error || !data) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-600 dark:text-red-400 mb-4">{error || 'Something went wrong'}</p>
+          <button
+            onClick={() => { setError(null); setLoading(true); loadDashboard() }}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors cursor-pointer"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <>
-      {!hasBobbins ? (
-        <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
-          {/* Compact header for welcome state */}
-          <header className="h-12 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center px-3 gap-1">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      {/* Header */}
+      <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-1">
+            <Link href="/dashboard" className="hover:text-gray-900 dark:hover:text-gray-100 transition-colors">Dashboard</Link>
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            <span className="text-gray-900 dark:text-gray-100">{data.project.name}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <h1 className="font-display text-2xl font-bold text-gray-900 dark:text-gray-100">Project Dashboard</h1>
             <Link
-              href="/dashboard"
-              className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400 dark:text-gray-500 transition-colors shrink-0"
-              title="Back to dashboard"
+              href={`/projects/${projectId}/write`}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white rounded-lg font-medium text-sm transition-colors"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
+              Write
             </Link>
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">
-              {projectName || 'Project'}
-            </span>
-            <div className="flex-1" />
-            {session?.user && <UserMenu user={session.user} />}
-          </header>
-          <ProjectWelcome
-            projectId={projectId}
-            onInstallBobbins={() => setShowMarketplace(true)}
-          />
+          </div>
         </div>
-      ) : (
-        <ShellLayout
-          currentView="project"
-          context={shellContext}
-          onOpenMarketplace={() => setShowMarketplace(true)}
-          projectId={projectId}
-          projectName={projectName || undefined}
-          user={session?.user}
-        >
-          <ViewRouter projectId={projectId} sdk={sdk} />
-        </ShellLayout>
-      )}
+      </header>
 
-      {showMarketplace && (
-        <BobbinMarketplace
+      {/* Main content */}
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        <DashboardHero
           projectId={projectId}
-          installedBobbins={installedBobbins}
-          onInstallComplete={handleInstallComplete}
-          onClose={() => setShowMarketplace(false)}
+          name={data.project.name}
+          description={data.project.description}
+          coverImage={data.project.coverImage}
+          readerUrl={data.authorUsername && data.project.shortUrl
+            ? `/read/${data.authorUsername}/${data.project.shortUrl}`
+            : null}
+          onUpdate={(updates) => {
+            setData(prev => prev ? {
+              ...prev,
+              project: { ...prev.project, ...updates }
+            } : prev)
+          }}
         />
-      )}
-    </>
+
+        <StatsCards analytics={data.analytics} />
+
+        <TagsEditor
+          projectId={projectId}
+          tags={data.tags}
+          onTagsChange={(tags) => {
+            setData(prev => prev ? { ...prev, tags } : prev)
+          }}
+        />
+
+        <ChapterOverview
+          chapters={data.chapters}
+          readerBaseUrl={data.authorUsername && data.project.shortUrl
+            ? `/read/${data.authorUsername}/${data.project.shortUrl}`
+            : null}
+        />
+
+        <ScheduledReleases releases={data.scheduledReleases} />
+
+        <PublishingSettings
+          projectId={projectId}
+          config={data.publishConfig}
+          onUpdate={(config) => {
+            setData(prev => prev ? { ...prev, publishConfig: config } : prev)
+          }}
+        />
+
+        <ProjectManagement
+          projectId={projectId}
+          isArchived={data.project.isArchived}
+          bobbins={data.bobbins}
+          onArchiveChange={(isArchived) => {
+            setData(prev => prev ? {
+              ...prev,
+              project: { ...prev.project, isArchived }
+            } : prev)
+          }}
+          onBobbinUninstall={(bobbinId) => {
+            setData(prev => prev ? {
+              ...prev,
+              bobbins: prev.bobbins.filter(b => b.id !== bobbinId)
+            } : prev)
+          }}
+        />
+      </div>
+    </div>
   )
 }

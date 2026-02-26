@@ -180,7 +180,7 @@ export default function PublicProfilePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
         <SiteNav />
         <div className="flex items-center justify-center py-32">
           <div className="text-gray-500 dark:text-gray-400">Loading profile...</div>
@@ -191,7 +191,7 @@ export default function PublicProfilePage() {
 
   if (error || !profile) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
         <SiteNav />
         <div className="flex items-center justify-center py-32">
           <div className="text-center">
@@ -210,7 +210,7 @@ export default function PublicProfilePage() {
   const displayName = profile.displayName || profile.userName || profile.username
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       <SiteNav />
 
       {/* Profile section */}

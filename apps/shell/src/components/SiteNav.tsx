@@ -8,6 +8,7 @@ import { UserMenu } from './UserMenu'
 
 const NAV_LINKS = [
   { href: '/dashboard', label: 'Write' },
+  { href: '/publish', label: 'Publish' },
   { href: '/explore', label: 'Explore' },
   { href: '/marketplace', label: 'Bobbins' },
   { href: '/library', label: 'Library' },

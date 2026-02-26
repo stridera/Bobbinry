@@ -6,6 +6,8 @@ import Link from 'next/link'
 import { config } from '@/lib/config'
 import { apiFetch } from '@/lib/api'
 import { SiteNav } from '@/components/SiteNav'
+import { SkeletonGrid } from '@/components/LoadingState'
+import { EmptyState } from '@/components/EmptyState'
 
 interface DiscoverProject {
   id: string
@@ -232,7 +234,7 @@ export default function ExplorePage() {
       <div className="max-w-6xl mx-auto px-4 py-8">
         {/* Hero search area */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+          <h1 className="font-display text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">
             Discover Stories & Authors
           </h1>
           <p className="text-gray-500 dark:text-gray-400 mb-6">
@@ -365,19 +367,17 @@ export default function ExplorePage() {
         {activeTab === 'stories' && (
           <div>
             {loadingProjects ? (
-              <div className="text-center py-16">
-                <p className="text-gray-500 dark:text-gray-400">Loading stories...</p>
-              </div>
+              <SkeletonGrid count={6} />
             ) : projects.length === 0 ? (
-              <div className="text-center py-16">
-                <svg className="w-12 h-12 text-gray-300 dark:text-gray-700 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                </svg>
-                <p className="text-gray-500 dark:text-gray-400 mb-1">No published stories found.</p>
-                <p className="text-sm text-gray-400 dark:text-gray-500">
-                  {searchQuery || selectedGenre ? 'Try adjusting your search or filters.' : 'Check back later for new content.'}
-                </p>
-              </div>
+              <EmptyState
+                icon={
+                  <svg className="w-12 h-12 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
+                }
+                title="No published stories found"
+                description={searchQuery || selectedGenre ? 'Try adjusting your search or filters.' : 'Check back later for new content.'}
+              />
             ) : (
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -481,19 +481,17 @@ export default function ExplorePage() {
         {activeTab === 'authors' && (
           <div>
             {loadingAuthors ? (
-              <div className="text-center py-16">
-                <p className="text-gray-500 dark:text-gray-400">Loading authors...</p>
-              </div>
+              <SkeletonGrid count={6} />
             ) : authors.length === 0 ? (
-              <div className="text-center py-16">
-                <svg className="w-12 h-12 text-gray-300 dark:text-gray-700 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-                <p className="text-gray-500 dark:text-gray-400 mb-1">No authors found.</p>
-                <p className="text-sm text-gray-400 dark:text-gray-500">
-                  {searchQuery ? 'Try a different search term.' : 'Check back later for new authors.'}
-                </p>
-              </div>
+              <EmptyState
+                icon={
+                  <svg className="w-12 h-12 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                }
+                title="No authors found"
+                description={searchQuery ? 'Try a different search term.' : 'Check back later for new authors.'}
+              />
             ) : (
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">

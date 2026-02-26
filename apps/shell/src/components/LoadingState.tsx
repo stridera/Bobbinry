@@ -47,9 +47,74 @@ export function SkeletonPanel() {
   )
 }
 
+export function SkeletonGridCard() {
+  return (
+    <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden animate-pulse">
+      <div className="aspect-[16/9] bg-gray-100 dark:bg-gray-800" />
+      <div className="p-4">
+        <div className="h-5 bg-gray-100 dark:bg-gray-700 rounded w-3/4 mb-2" />
+        <div className="h-4 bg-gray-100 dark:bg-gray-700 rounded w-1/2 mb-3" />
+        <div className="h-3 bg-gray-100 dark:bg-gray-700 rounded w-full mb-2" />
+        <div className="h-3 bg-gray-100 dark:bg-gray-700 rounded w-2/3" />
+      </div>
+    </div>
+  )
+}
+
+export function SkeletonGrid({ count = 6 }: { count?: number }) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+      {Array.from({ length: count }, (_, i) => (
+        <SkeletonGridCard key={i} />
+      ))}
+    </div>
+  )
+}
+
+export function SkeletonListRow() {
+  return (
+    <div className="flex items-center gap-4 p-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 animate-pulse">
+      <div className="flex-1">
+        <div className="h-5 bg-gray-100 dark:bg-gray-700 rounded w-1/2 mb-2" />
+        <div className="h-4 bg-gray-100 dark:bg-gray-700 rounded w-1/3" />
+      </div>
+      <div className="h-4 bg-gray-100 dark:bg-gray-700 rounded w-20" />
+    </div>
+  )
+}
+
+export function SkeletonList({ count = 4 }: { count?: number }) {
+  return (
+    <div className="space-y-3">
+      {Array.from({ length: count }, (_, i) => (
+        <SkeletonListRow key={i} />
+      ))}
+    </div>
+  )
+}
+
+export function PageLoadingState({ layout = 'list' }: { layout?: 'grid' | 'list' }) {
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      {/* Header skeleton */}
+      <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 animate-pulse">
+          <div className="h-7 bg-gray-100 dark:bg-gray-700 rounded w-48 mb-2" />
+          <div className="h-4 bg-gray-100 dark:bg-gray-700 rounded w-72" />
+        </div>
+      </header>
+
+      {/* Content skeleton */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {layout === 'grid' ? <SkeletonGrid /> : <SkeletonList />}
+      </div>
+    </div>
+  )
+}
+
 export function DashboardLoadingState() {
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Header skeleton */}
       <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">

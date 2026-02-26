@@ -4,7 +4,6 @@ import { ReactNode, useState, useMemo, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { ExtensionSlot } from './ExtensionSlot'
 import { UserMenu } from './UserMenu'
-import { useTheme } from '@/contexts/ThemeContext'
 
 interface ShellLayoutProps {
   children: ReactNode
@@ -47,7 +46,6 @@ function EmptySlotFallback({
 }
 
 export function ShellLayout({ children, currentView = 'default', context = {}, onOpenMarketplace, projectId, projectName, user }: ShellLayoutProps) {
-  const { theme, toggleTheme } = useTheme()
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false)
   const [isHydrated, setIsHydrated] = useState(false)
@@ -127,7 +125,7 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
   }), [currentView, context, dynamicContext])
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
+    <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-950">
       {/* Top Bar */}
       <header className={`bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center px-3 gap-1 transition-all duration-300 ${focusMode ? 'h-0 border-b-0 opacity-0 overflow-hidden' : 'h-12'}`}>
         {/* Left: navigation + breadcrumb */}
@@ -156,7 +154,7 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
                 {projectName || 'Project'}
               </span>
               <Link
-                href={`/projects/${projectId}/settings`}
+                href={`/projects/${projectId}`}
                 className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400 dark:text-gray-500 transition-colors shrink-0"
                 title="Project dashboard"
               >
@@ -178,23 +176,8 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
           />
         </div>
 
-        {/* Right: theme, user, panel toggle */}
+        {/* Right: user, panel toggle */}
         <div className="flex items-center gap-0.5 shrink-0">
-          <button
-            onClick={toggleTheme}
-            className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500 dark:text-gray-400 transition-colors"
-            title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
-          >
-            {theme === 'light' ? (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-              </svg>
-            ) : (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
-            )}
-          </button>
           {user && <UserMenu user={user} />}
           <button
             onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}

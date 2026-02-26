@@ -56,13 +56,13 @@ export function ProjectCard({ project }: { project: Project }) {
             {/* Action buttons */}
             <div className="ml-4 flex-shrink-0 flex items-center gap-2">
               <Link
-                href={`/projects/${project.id}/settings`}
+                href={`/projects/${project.id}`}
                 className="px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 border border-gray-200 dark:border-gray-600 rounded-lg hover:border-gray-300 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
               >
                 Dashboard
               </Link>
               <Link
-                href={`/projects/${project.id}`}
+                href={`/projects/${project.id}/write`}
                 className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 rounded-lg transition-colors"
               >
                 Write

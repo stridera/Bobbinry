@@ -1073,7 +1073,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
       const limit = Math.min(parseInt(request.query.limit || '20', 10), 50)
 
       // Get recent chapter views that are not completed
-      const progressItems = await db
+      const allProgressItems = await db
         .select({
           viewId: chapterViews.id,
           chapterId: chapterViews.chapterId,
@@ -1088,7 +1088,14 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
           isNull(chapterViews.completedAt)
         ))
         .orderBy(desc(chapterViews.startedAt))
-        .limit(limit)
+
+      // Deduplicate by chapterId, keeping the most recent view per chapter
+      const seen = new Set<string>()
+      const progressItems = allProgressItems.filter(item => {
+        if (seen.has(item.chapterId)) return false
+        seen.add(item.chapterId)
+        return true
+      }).slice(0, limit)
 
       // Resolve chapter details and project info
       const progressWithDetails = await Promise.all(

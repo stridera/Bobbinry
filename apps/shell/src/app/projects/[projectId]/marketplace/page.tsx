@@ -236,7 +236,7 @@ function MarketplaceContent() {
 
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600 dark:text-gray-400">Loading marketplace...</p>
@@ -246,7 +246,7 @@ function MarketplaceContent() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
+    <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-950">
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
         <div className="flex items-center justify-between">
@@ -257,10 +257,10 @@ function MarketplaceContent() {
             </p>
           </div>
           <button
-            onClick={() => router.push(`/projects/${projectId}/settings`)}
+            onClick={() => router.push(`/projects/${projectId}`)}
             className="px-4 py-2 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600"
           >
-            ← Back to Settings
+            ← Back to Dashboard
           </button>
         </div>
 

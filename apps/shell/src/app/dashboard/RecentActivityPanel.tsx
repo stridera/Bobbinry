@@ -84,7 +84,7 @@ export function RecentActivityPanel({ userId }: { userId: string }) {
           {activity.map((item) => (
             <Link
               key={item.entity.id}
-              href={`/projects/${item.projectId}`}
+              href={`/projects/${item.projectId}/write`}
               className="block group"
             >
               <div className="text-sm">

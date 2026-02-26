@@ -8,6 +8,7 @@ import { useTheme } from '@/contexts/ThemeContext'
 import { config } from '@/lib/config'
 import { apiFetch } from '@/lib/api'
 import { SiteNav } from '@/components/SiteNav'
+import { SkeletonPanel } from '@/components/LoadingState'
 
 interface ProfileForm {
   username: string
@@ -109,8 +110,17 @@ export default function SettingsPage() {
 
   if (status === 'loading') {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <div className="text-gray-500 dark:text-gray-400">Loading...</div>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+        <SiteNav />
+        <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div className="h-7 bg-gray-100 dark:bg-gray-700 rounded w-36 animate-pulse" />
+          </div>
+        </header>
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+          <SkeletonPanel />
+          <SkeletonPanel />
+        </div>
       </div>
     )
   }
@@ -120,7 +130,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       <SiteNav />
 
       {/* Sub-header */}

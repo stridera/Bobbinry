@@ -140,7 +140,7 @@ export default function ProjectDeepLinkPage() {
   
   if (loading) {
     return (
-      <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
+      <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-950">
         <header className="h-12 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center px-3 gap-1">
           <Link
             href="/dashboard"

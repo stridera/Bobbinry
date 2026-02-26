@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { SiteNav } from '@/components/SiteNav'
+import { SkeletonList } from '@/components/LoadingState'
+import { EmptyState } from '@/components/EmptyState'
 import { config } from '@/lib/config'
 import { apiFetch } from '@/lib/api'
 
@@ -63,14 +65,36 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
           ...(data.uncategorized || []),
           ...(data.collections || []).flatMap((c: any) => c.projects || []),
         ]
-        setProjects(allProjects.filter(p => !p.isArchived))
+        const activeProjects = allProjects.filter(p => !p.isArchived)
+        setProjects(activeProjects)
+
+        // Pre-load publication counts for published projects
+        const published = activeProjects.filter(p => p.shortUrl)
+        const pubResults = await Promise.allSettled(
+          published.map(p =>
+            apiFetch(`/api/projects/${p.id}/publications?status=all`, apiToken)
+              .then(r => r.json())
+              .then(data => ({ projectId: p.id, publications: data.publications || [] }))
+          )
+        )
+        const pubMap: Record<string, Record<string, ChapterPublication>> = {}
+        for (const result of pubResults) {
+          if (result.status === 'fulfilled') {
+            const { projectId, publications: pubs } = result.value
+            pubMap[projectId] = {}
+            for (const pub of pubs) {
+              pubMap[projectId][pub.chapterId] = pub
+            }
+          }
+        }
+        setPublications(prev => ({ ...prev, ...pubMap }))
       }
     } catch (err) {
       console.error('Failed to load projects:', err)
     } finally {
       setLoading(false)
     }
-  }, [user.id])
+  }, [user.id, apiToken])
 
   // Load user profile for default slug generation
   useEffect(() => {
@@ -314,8 +338,14 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
         <SiteNav />
-        <div className="flex items-center justify-center py-32">
-          <p className="text-gray-500 dark:text-gray-400">Loading your projects...</p>
+        <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 animate-pulse">
+            <div className="h-7 bg-gray-100 dark:bg-gray-700 rounded w-48 mb-2" />
+            <div className="h-4 bg-gray-100 dark:bg-gray-700 rounded w-72" />
+          </div>
+        </header>
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+          <SkeletonList count={3} />
         </div>
       </div>
     )
@@ -326,7 +356,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
       <SiteNav />
 
       {/* Header */}
-      <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
+      <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
           <div className="flex items-center justify-between">
             <div>
@@ -365,21 +395,16 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
         )}
 
         {projects.length === 0 ? (
-          <div className="text-center py-16">
-            <svg className="w-12 h-12 text-gray-300 dark:text-gray-700 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-            </svg>
-            <p className="text-gray-500 dark:text-gray-400 mb-2">No projects yet</p>
-            <p className="text-sm text-gray-400 dark:text-gray-500 mb-4">
-              Create a project first, then come back here to publish it.
-            </p>
-            <Link
-              href="/projects/new"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors"
-            >
-              Create Project
-            </Link>
-          </div>
+          <EmptyState
+            icon={
+              <svg className="w-12 h-12 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+            }
+            title="No projects yet"
+            description="Create a project first, then come back here to publish it."
+            action={{ label: 'Create Project', href: '/projects/new' }}
+          />
         ) : (
           <div className="space-y-8">
             {/* Published Projects */}
@@ -453,7 +478,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
                                 href={`/projects/${project.id}`}
                                 className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
                               >
-                                Edit
+                                Dashboard
                               </Link>
                               <button
                                 onClick={() => disablePublishing(project.id)}
@@ -494,7 +519,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
                                   No chapters yet. Open the project editor to start writing.
                                 </p>
                                 <Link
-                                  href={`/projects/${project.id}`}
+                                  href={`/projects/${project.id}/write`}
                                   className="inline-block mt-2 text-sm text-blue-600 dark:text-blue-400 hover:underline"
                                 >
                                   Open Editor
@@ -620,7 +645,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
                               href={`/projects/${project.id}`}
                               className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
                             >
-                              Edit
+                              Dashboard
                             </Link>
                             <button
                               onClick={() => enablePublishing(project.id)}
