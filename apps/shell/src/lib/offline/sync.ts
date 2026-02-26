@@ -5,11 +5,9 @@
  */
 
 import { db, type PendingOperation, getPendingOperations } from './db'
-import { offlineStorage } from './storage'
 import { config } from '../config'
 
 const MAX_RETRY_ATTEMPTS = 5
-const RETRY_DELAY_BASE = 1000 // 1 second
 const SYNC_INTERVAL = 30000 // 30 seconds
 
 export class SyncManager {

@@ -17,13 +17,12 @@ import {
   projectPublishConfig,
   subscriptions,
   subscriptionTiers,
-  embargoSchedules,
   userProfiles,
   users,
   comments,
   reactions
 } from '../db/schema'
-import { eq, and, desc, asc, sql, isNull, or, count } from 'drizzle-orm'
+import { eq, and, desc, sql, isNull, or, count } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { env } from '../lib/env'
 import { optionalAuth } from '../middleware/auth'
@@ -341,8 +340,8 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           sessionId: sessionId || randomUUID(),
           deviceType,
           referrer,
-          readTimeSeconds: readTime ? String(readTime) : '0',
-          lastPositionPercent: position ? String(position) : '0'
+          readTimeSeconds: readTime ? Number(readTime) : 0,
+          lastPositionPercent: position ? Number(position) : 0
         })
         .returning()
 

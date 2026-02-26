@@ -928,12 +928,12 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
 
       const uniqueReaders = new Set(views.filter((v) => v.readerId).map((v) => v.readerId)).size
       const completedViews = views.filter((v) => v.completedAt).length
-      const totalReadTime = views.reduce((sum, v) => sum + parseInt(v.readTimeSeconds || '0'), 0)
+      const totalReadTime = views.reduce((sum, v) => sum + (v.readTimeSeconds || 0), 0)
       const avgReadTime = views.length > 0 ? Math.round(totalReadTime / views.length) : 0
 
       return reply.send({
         analytics: {
-          totalViews: parseInt(publication.viewCount),
+          totalViews: publication.viewCount,
           uniqueReaders,
           completions: completedViews,
           completionRate: views.length > 0 ? ((completedViews / views.length) * 100).toFixed(1) : '0',
@@ -966,8 +966,8 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
 
       const publications = await query
 
-      const totalViews = publications.reduce((sum, p) => sum + parseInt(p.viewCount), 0)
-      const totalCompletions = publications.reduce((sum, p) => sum + parseInt(p.completionCount), 0)
+      const totalViews = publications.reduce((sum, p) => sum + (p.viewCount || 0), 0)
+      const totalCompletions = publications.reduce((sum, p) => sum + (p.completionCount || 0), 0)
       const publishedCount = publications.filter((p) => p.publishStatus === 'published').length
 
       return reply.send({

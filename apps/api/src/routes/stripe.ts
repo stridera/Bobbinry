@@ -8,7 +8,7 @@ import {
   userPaymentConfig,
   users
 } from '../db/schema'
-import { eq, and } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { requireAuth, requireSelf } from '../middleware/auth'
 
 function isValidUUID(uuid: string): boolean {
@@ -147,12 +147,12 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
         // Create Express account
         const account = await stripe.accounts.create({
           type: 'express',
-          email: user?.email,
+          ...(user?.email ? { email: user.email } : {}),
           metadata: { bobbinry_user_id: userId },
           capabilities: {
             transfers: { requested: true }
           }
-        })
+        } as Stripe.AccountCreateParams)
         stripeAccountId = account.id
 
         // Save account ID
@@ -311,7 +311,7 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
             },
             product_data: {
               name: tier.name,
-              description: tier.description || undefined
+              ...(tier.description ? { description: tier.description } : {})
             }
           },
           quantity: 1
@@ -474,13 +474,14 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription, fast
       return
     }
 
+    const sub = subscription as any
     await db.insert(subscriptions).values({
       subscriberId,
       authorId,
       tierId,
       status: subscription.status as string,
-      currentPeriodStart: new Date(subscription.current_period_start * 1000),
-      currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+      currentPeriodStart: new Date((sub.current_period_start ?? 0) * 1000),
+      currentPeriodEnd: new Date((sub.current_period_end ?? 0) * 1000),
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
       stripeSubscriptionId: subscription.id
     })
@@ -502,9 +503,10 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription, fast
       return
     }
 
+    const subData = subscription as any
     await db.update(subscriptions).set({
       status: subscription.status as string,
-      currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+      currentPeriodEnd: new Date((subData.current_period_end ?? 0) * 1000),
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
       updatedAt: new Date()
     }).where(eq(subscriptions.id, sub.id))
@@ -532,7 +534,8 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription, fast
 
 async function handlePaymentSucceeded(invoice: Stripe.Invoice, fastify: FastifyInstance) {
   try {
-    const stripeSubId = typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id
+    const inv = invoice as any
+    const stripeSubId = typeof inv.subscription === 'string' ? inv.subscription : inv.subscription?.id
     if (!stripeSubId) return
 
     const [sub] = await db.select().from(subscriptions)
@@ -543,7 +546,7 @@ async function handlePaymentSucceeded(invoice: Stripe.Invoice, fastify: FastifyI
       return
     }
 
-    const paymentIntentId = typeof invoice.payment_intent === 'string' ? invoice.payment_intent : invoice.payment_intent?.id
+    const paymentIntentId = typeof inv.payment_intent === 'string' ? inv.payment_intent : inv.payment_intent?.id
 
     await db.insert(subscriptionPayments).values({
       subscriptionId: sub.id,
@@ -563,7 +566,8 @@ async function handlePaymentSucceeded(invoice: Stripe.Invoice, fastify: FastifyI
 
 async function handlePaymentFailed(invoice: Stripe.Invoice, fastify: FastifyInstance) {
   try {
-    const stripeSubId = typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id
+    const inv = invoice as any
+    const stripeSubId = typeof inv.subscription === 'string' ? inv.subscription : inv.subscription?.id
     if (!stripeSubId) return
 
     const [sub] = await db.select().from(subscriptions)
@@ -576,7 +580,7 @@ async function handlePaymentFailed(invoice: Stripe.Invoice, fastify: FastifyInst
       updatedAt: new Date()
     }).where(eq(subscriptions.id, sub.id))
 
-    const paymentIntentId = typeof invoice.payment_intent === 'string' ? invoice.payment_intent : invoice.payment_intent?.id
+    const paymentIntentId = typeof inv.payment_intent === 'string' ? inv.payment_intent : inv.payment_intent?.id
 
     await db.insert(subscriptionPayments).values({
       subscriptionId: sub.id,

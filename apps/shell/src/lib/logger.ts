@@ -22,13 +22,6 @@ class Logger {
     if (!this.isDevelopment && level === 'debug') return
 
     const timestamp = new Date().toISOString()
-    const logEntry = {
-      timestamp,
-      level,
-      message,
-      ...context
-    }
-
     switch (level) {
       case 'debug':
         if (this.isDevelopment) {

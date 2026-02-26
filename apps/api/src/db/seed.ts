@@ -1,7 +1,7 @@
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { randomBytes, scryptSync } from 'crypto'
-import { users, projects, bobbinsInstalled } from './schema'
+import { users } from './schema'
 
 /**
  * Hash password using the same method as the auth routes

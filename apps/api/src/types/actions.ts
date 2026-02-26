@@ -12,7 +12,7 @@ export interface ActionResult {
 
 export interface ActionContext {
   projectId: string
-  userId: string
+  userId?: string
   bobbinId: string
 }
 

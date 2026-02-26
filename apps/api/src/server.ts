@@ -60,7 +60,7 @@ export function build(opts = {}): FastifyInstance {
   })
 
   // Global error handler
-  server.setErrorHandler((error, request, reply) => {
+  server.setErrorHandler((error: Error & { code?: string; statusCode?: number }, request, reply) => {
     const correlationId = (request.headers['x-correlation-id'] as string) || request.id
 
     server.log.error({

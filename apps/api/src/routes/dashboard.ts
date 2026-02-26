@@ -113,9 +113,9 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
             .filter(p => p.collectionId === col.id)
             .map(p => p.project)
             .sort((a, b) => {
-              const aOrder = projectsWithCollections.find(p => p.project.id === a.id)?.orderIndex || '0'
-              const bOrder = projectsWithCollections.find(p => p.project.id === b.id)?.orderIndex || '0'
-              return parseInt(aOrder) - parseInt(bOrder)
+              const aOrder = projectsWithCollections.find(p => p.project.id === a.id)?.orderIndex || 0
+              const bOrder = projectsWithCollections.find(p => p.project.id === b.id)?.orderIndex || 0
+              return aOrder - bOrder
             })
         })),
         uncategorized: projectsWithCollections

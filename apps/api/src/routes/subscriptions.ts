@@ -177,9 +177,7 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
 
         // Check max uses
         if (discount.maxUses) {
-          const currentUses = parseInt(discount.currentUses)
-          const maxUses = parseInt(discount.maxUses)
-          if (currentUses >= maxUses) {
+          if (discount.currentUses >= discount.maxUses) {
             return reply.status(400).send({ error: 'Discount code has reached maximum uses' })
           }
         }
@@ -493,8 +491,8 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
           code: code.toUpperCase(),
           discountType,
           discountValue,
-          maxUses: maxUses || null,
-          currentUses: '0',
+          maxUses: maxUses ? Number(maxUses) : null,
+          currentUses: 0,
           expiresAt: expiresAt ? new Date(expiresAt) : null,
           isActive: true
         })
@@ -527,7 +525,8 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
       const [updated] = await db
         .update(discountCodes)
         .set({
-          ...updateData,
+          isActive: updateData.isActive,
+          maxUses: updateData.maxUses ? Number(updateData.maxUses) : undefined,
           expiresAt: updateData.expiresAt ? new Date(updateData.expiresAt) : undefined,
           updatedAt: new Date()
         })
@@ -608,9 +607,7 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
 
       // Check max uses
       if (discount.maxUses) {
-        const currentUses = parseInt(discount.currentUses)
-        const maxUses = parseInt(discount.maxUses)
-        if (currentUses >= maxUses) {
+        if (discount.currentUses >= discount.maxUses) {
           return reply.status(400).send({ valid: false, error: 'Code has reached maximum uses' })
         }
       }

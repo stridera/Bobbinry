@@ -289,7 +289,7 @@ const collectionsPlugin: FastifyPluginAsync = async (fastify) => {
         .values({
           collectionId,
           projectId,
-          orderIndex: String(orderIndex)
+          orderIndex: Number(orderIndex) || 0
         })
         .onConflictDoNothing()
         .returning()
@@ -361,7 +361,7 @@ const collectionsPlugin: FastifyPluginAsync = async (fastify) => {
         
         await db
           .update(projectCollectionMemberships)
-          .set({ orderIndex: String(i) })
+          .set({ orderIndex: i })
           .where(
             and(
               eq(projectCollectionMemberships.collectionId, collectionId),
