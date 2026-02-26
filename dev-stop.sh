@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Bobbins Development Environment Stop Script
-# This script cleanly stops all development services
+# Kills orphaned dev processes by port and optionally stops Docker containers
 
 set -e  # Exit on any error
 
@@ -36,68 +36,21 @@ API_PORT=4100
 SHELL_PORT=3100
 DB_CONTAINER_NAME="bobbins-postgres-1"
 MINIO_CONTAINER_NAME="bobbins-minio-1"
-PID_DIR="$PROJECT_ROOT/.dev-pids"
-API_PID_FILE="$PID_DIR/api.pid"
-SHELL_PID_FILE="$PID_DIR/shell.pid"
 
-# Function to kill process by PID file
-kill_service() {
-    local pid_file=$1
-    local service_name=$2
-    local timeout=${3:-10}
-
-    if [ -f "$pid_file" ]; then
-        local pid=$(cat "$pid_file")
-        if kill -0 "$pid" 2>/dev/null; then
-            log_info "Stopping $service_name (PID: $pid)..."
-
-            # Try graceful shutdown first
-            kill -TERM "$pid" 2>/dev/null || true
-
-            # Wait for graceful shutdown
-            local count=0
-            while kill -0 "$pid" 2>/dev/null && [ $count -lt $timeout ]; do
-                sleep 1
-                count=$((count + 1))
-            done
-
-            # Force kill if still running
-            if kill -0 "$pid" 2>/dev/null; then
-                log_warning "$service_name didn't stop gracefully, force killing..."
-                kill -KILL "$pid" 2>/dev/null || true
-                sleep 1
-            fi
-
-            if ! kill -0 "$pid" 2>/dev/null; then
-                log_success "$service_name stopped successfully"
-            else
-                log_error "Failed to stop $service_name"
-            fi
-        else
-            log_info "$service_name was not running"
-        fi
-        rm -f "$pid_file"
-    else
-        log_info "No PID file found for $service_name"
-    fi
-}
-
-# Function to kill processes by port
+# Function to kill processes by port using fuser
 kill_by_port() {
     local port=$1
     local service_name=$2
 
-    local pids=$(lsof -ti :$port 2>/dev/null || true)
-    if [ -n "$pids" ]; then
+    if fuser ${port}/tcp >/dev/null 2>&1; then
         log_info "Killing processes on port $port ($service_name)..."
-        echo "$pids" | xargs -r kill -TERM
-        sleep 2
+        fuser -k ${port}/tcp >/dev/null 2>&1 || true
+        sleep 1
 
-        # Force kill if still running
-        pids=$(lsof -ti :$port 2>/dev/null || true)
-        if [ -n "$pids" ]; then
+        # Verify
+        if fuser ${port}/tcp >/dev/null 2>&1; then
             log_warning "Force killing remaining processes on port $port..."
-            echo "$pids" | xargs -r kill -KILL
+            fuser -k -KILL ${port}/tcp >/dev/null 2>&1 || true
         fi
 
         log_success "Stopped processes on port $port"
@@ -110,28 +63,8 @@ kill_by_port() {
 stop_node_apps() {
     log_info "Stopping Node.js applications..."
 
-    # Stop via PID files first
-    kill_service "$SHELL_PID_FILE" "Shell application" 15
-    kill_service "$API_PID_FILE" "API server" 10
-
-    # Fallback: kill by port
     kill_by_port $SHELL_PORT "Shell application"
     kill_by_port $API_PORT "API server"
-
-    # Kill any remaining Node.js processes that might be related
-    local node_pids=$(pgrep -f "next dev\|node.*dist/index\.js" 2>/dev/null || true)
-    if [ -n "$node_pids" ]; then
-        log_info "Stopping remaining Node.js processes..."
-        echo "$node_pids" | xargs -r kill -TERM
-        sleep 2
-
-        # Force kill if needed
-        node_pids=$(pgrep -f "next dev\|node.*dist/index\.js" 2>/dev/null || true)
-        if [ -n "$node_pids" ]; then
-            log_warning "Force killing remaining Node.js processes..."
-            echo "$node_pids" | xargs -r kill -KILL
-        fi
-    fi
 }
 
 # Function to stop Docker containers
@@ -163,44 +96,35 @@ stop_docker_containers() {
     fi
 }
 
-# Function to clean up PID directory and logs
-cleanup_files() {
-    if [ -d "$PID_DIR" ]; then
-        log_info "Cleaning up PID files and logs..."
-        rm -rf "$PID_DIR"
-        log_success "Cleanup completed"
-    fi
-}
-
 # Function to show current status
 show_status() {
     echo
     log_info "Current service status:"
 
     # Check Node.js apps
-    if lsof -i :$SHELL_PORT >/dev/null 2>&1; then
-        echo "  🟢 Shell (port $SHELL_PORT): RUNNING"
+    if fuser ${SHELL_PORT}/tcp >/dev/null 2>&1; then
+        echo "  Shell (port $SHELL_PORT): RUNNING"
     else
-        echo "  🔴 Shell (port $SHELL_PORT): STOPPED"
+        echo "  Shell (port $SHELL_PORT): STOPPED"
     fi
 
-    if lsof -i :$API_PORT >/dev/null 2>&1; then
-        echo "  🟢 API (port $API_PORT): RUNNING"
+    if fuser ${API_PORT}/tcp >/dev/null 2>&1; then
+        echo "  API (port $API_PORT): RUNNING"
     else
-        echo "  🔴 API (port $API_PORT): STOPPED"
+        echo "  API (port $API_PORT): STOPPED"
     fi
 
     # Check Docker containers
-    if docker ps --format "table {{.Names}}" | grep -q "$DB_CONTAINER_NAME"; then
-        echo "  🟢 PostgreSQL: RUNNING"
+    if docker ps --format "table {{.Names}}" 2>/dev/null | grep -q "$DB_CONTAINER_NAME"; then
+        echo "  PostgreSQL: RUNNING"
     else
-        echo "  🔴 PostgreSQL: STOPPED"
+        echo "  PostgreSQL: STOPPED"
     fi
 
-    if docker ps --format "table {{.Names}}" | grep -q "$MINIO_CONTAINER_NAME"; then
-        echo "  🟢 MinIO: RUNNING"
+    if docker ps --format "table {{.Names}}" 2>/dev/null | grep -q "$MINIO_CONTAINER_NAME"; then
+        echo "  MinIO: RUNNING"
     else
-        echo "  🔴 MinIO: STOPPED"
+        echo "  MinIO: STOPPED"
     fi
 
     echo
@@ -213,7 +137,6 @@ show_usage() {
     echo "Options:"
     echo "  --containers    Also stop Docker containers (PostgreSQL, MinIO)"
     echo "  --status        Show current service status"
-    echo "  --force         Force kill all processes (no graceful shutdown)"
     echo "  --help          Show this help message"
     echo
     echo "Examples:"
@@ -227,7 +150,6 @@ show_usage() {
 main() {
     local stop_containers=false
     local show_status_only=false
-    local force_kill=false
 
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -238,10 +160,6 @@ main() {
                 ;;
             --status)
                 show_status_only=true
-                shift
-                ;;
-            --force)
-                force_kill=true
                 shift
                 ;;
             --help)
@@ -266,12 +184,11 @@ main() {
     # Stop services
     stop_node_apps
     stop_docker_containers $stop_containers
-    cleanup_files
 
     # Show final status
     show_status
 
-    log_success "🛑 Bobbins development environment stopped"
+    log_success "Bobbins development environment stopped"
 
     if [ "$stop_containers" = false ]; then
         log_info "To also stop Docker containers, run: $0 --containers"

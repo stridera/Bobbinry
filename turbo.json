@@ -1,5 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "concurrency": "20",
   "globalPassThroughEnv": [
     "NEXTAUTH_SECRET",
     "NEXTAUTH_URL",
@@ -27,6 +28,7 @@
       ]
     },
     "dev": {
+      "dependsOn": ["^build"],
       "cache": false,
       "persistent": true
     },
