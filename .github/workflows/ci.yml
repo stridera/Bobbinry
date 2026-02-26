@@ -9,6 +9,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      NEXTAUTH_SECRET: ci-build-placeholder
+      NEXTAUTH_URL: http://localhost:3000
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -19,8 +22,5 @@ jobs:
           node-version: 20
       - run: bun install --frozen-lockfile
       - run: bun run build
-        env:
-          NEXTAUTH_SECRET: ci-build-placeholder
-          NEXTAUTH_URL: http://localhost:3000
       - run: bun run typecheck
       - run: bun run lint
