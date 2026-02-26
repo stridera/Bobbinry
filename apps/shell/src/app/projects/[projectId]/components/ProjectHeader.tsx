@@ -79,7 +79,7 @@ export function ProjectHeader() {
               href={`/projects/${projectId}/settings`}
               className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 border border-gray-200 dark:border-gray-600 rounded-lg hover:border-gray-300 dark:hover:border-gray-500 transition-colors text-sm"
             >
-              Settings
+              Dashboard
             </Link>
             {session?.user && <UserMenu user={session.user} />}
           </div>

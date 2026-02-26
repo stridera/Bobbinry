@@ -5,7 +5,7 @@
  * Uses presigned URLs so binary data never touches the API server.
  */
 
-import { S3Client, HeadBucketCommand, CreateBucketCommand, PutBucketCorsCommand, HeadObjectCommand, DeleteObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, HeadBucketCommand, CreateBucketCommand, PutBucketCorsCommand, HeadObjectCommand, DeleteObjectCommand, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { env } from './env'
 
@@ -106,9 +106,31 @@ export async function deleteObject(key: string): Promise<void> {
 
 /**
  * Build a URL for reading an uploaded file.
- * In development (MinIO), files are accessible via the MinIO endpoint.
- * In production (R2), you'd use a CDN or presigned GET URL.
+ * Routes through the API image proxy so bucket access policy doesn't matter.
  */
 export function getPublicUrl(key: string): string {
-  return `${env.S3_ENDPOINT}/${env.S3_BUCKET}/${key}`
+  const host = env.NODE_ENV === 'production'
+    ? '' // Relative URL in production (same-origin or CDN)
+    : `http://localhost:${env.PORT}`
+  return `${host}/api/images/${encodeURIComponent(key)}`
+}
+
+/**
+ * Stream an object from S3 for the image proxy.
+ */
+export async function getObject(key: string): Promise<{ body: ReadableStream | NodeJS.ReadableStream; contentType: string | undefined; contentLength: number | undefined } | null> {
+  const client = getS3Client()
+  try {
+    const result = await client.send(new GetObjectCommand({
+      Bucket: env.S3_BUCKET,
+      Key: key,
+    }))
+    return {
+      body: result.Body as any,
+      contentType: result.ContentType ?? undefined,
+      contentLength: result.ContentLength ?? undefined,
+    }
+  } catch {
+    return null
+  }
 }

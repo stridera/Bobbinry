@@ -2,6 +2,7 @@
  * Project Card Component
  *
  * Displays a project card in the dashboard with warm literary styling
+ * and dual action buttons for Dashboard and Write access.
  */
 
 import Link from 'next/link'
@@ -18,13 +19,8 @@ interface Project {
 }
 
 export function ProjectCard({ project }: { project: Project }) {
-  const projectUrl = `/projects/${project.id}`
-
   return (
-    <Link
-      href={projectUrl}
-      className="group block border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg overflow-hidden hover:shadow-md hover:border-blue-300/50 dark:hover:border-blue-700/50 transition-all"
-    >
+    <div className="group border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg overflow-hidden hover:shadow-md hover:border-blue-300/50 dark:hover:border-blue-700/50 transition-all">
       <div className="flex">
         {/* Accent bar */}
         <div className="w-1 bg-blue-500/40 group-hover:bg-blue-500 dark:bg-blue-400/30 dark:group-hover:bg-blue-400 transition-colors" />
@@ -33,7 +29,7 @@ export function ProjectCard({ project }: { project: Project }) {
           <div className="flex items-start justify-between">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <h3 className="font-display font-semibold text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate">
+                <h3 className="font-display font-semibold text-gray-900 dark:text-gray-100 truncate">
                   {project.name}
                 </h3>
                 {project.isArchived && (
@@ -57,19 +53,24 @@ export function ProjectCard({ project }: { project: Project }) {
               </div>
             </div>
 
-            <div className="ml-4 flex-shrink-0">
-              <svg
-                className="w-4 h-4 text-gray-300 dark:text-gray-600 group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+            {/* Action buttons */}
+            <div className="ml-4 flex-shrink-0 flex items-center gap-2">
+              <Link
+                href={`/projects/${project.id}/settings`}
+                className="px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 border border-gray-200 dark:border-gray-600 rounded-lg hover:border-gray-300 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
+                Dashboard
+              </Link>
+              <Link
+                href={`/projects/${project.id}`}
+                className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 rounded-lg transition-colors"
+              >
+                Write
+              </Link>
             </div>
           </div>
         </div>
       </div>
-    </Link>
+    </div>
   )
 }

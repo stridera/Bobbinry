@@ -13,13 +13,12 @@
  */
 
 import { FastifyInstance } from 'fastify'
-import fp from 'fastify-plugin'
 import { randomUUID } from 'crypto'
 import { eq, and, desc, sql } from 'drizzle-orm'
 import { db } from '../db/connection'
 import { uploads } from '../db/schema'
 import { requireAuth, requireProjectOwnership } from '../middleware/auth'
-import { generatePresignedPutUrl, headObject, deleteObject, getPublicUrl } from '../lib/s3'
+import { generatePresignedPutUrl, headObject, deleteObject, getPublicUrl, getObject } from '../lib/s3'
 
 // --- Constants ---
 
@@ -329,6 +328,31 @@ async function uploadsPlugin(fastify: FastifyInstance) {
       offset,
     }
   })
+
+  // GET /images/:key — public image proxy (streams from S3)
+  fastify.get<{
+    Params: { key: string }
+  }>('/images/:key', async (request, reply) => {
+    const key = decodeURIComponent(request.params.key)
+
+    // Basic path traversal protection
+    if (key.includes('..') || key.startsWith('/')) {
+      return reply.status(400).send({ error: 'Invalid key' })
+    }
+
+    const result = await getObject(key)
+    if (!result) {
+      return reply.status(404).send({ error: 'Image not found' })
+    }
+
+    reply.header('Content-Type', result.contentType || 'application/octet-stream')
+    if (result.contentLength) {
+      reply.header('Content-Length', result.contentLength)
+    }
+    reply.header('Cache-Control', 'public, max-age=31536000, immutable')
+
+    return reply.send(result.body)
+  })
 }
 
-export default fp(uploadsPlugin, { name: 'uploads-plugin' })
+export default uploadsPlugin
