@@ -8,9 +8,11 @@ import {
   entities,
   projectPublishConfig,
   bobbinsInstalled,
-  userProfiles
+  userProfiles,
+  comments,
+  reactions
 } from '../db/schema'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, sql } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { requireAuth, requireProjectOwnership } from '../middleware/auth'
 
@@ -171,7 +173,9 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
         scheduledResult,
         configResult,
         bobbinsResult,
-        authorProfileResult
+        authorProfileResult,
+        commentCountsResult,
+        reactionCountsResult
       ] = await Promise.all([
         // 1. Project details
         db
@@ -215,7 +219,10 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
             chapterPublications,
             eq(chapterPublications.chapterId, entities.id)
           )
-          .where(eq(entities.projectId, projectId)),
+          .where(and(
+            eq(entities.projectId, projectId),
+            eq(entities.collectionName, 'content')
+          )),
 
         // 5. Scheduled releases
         db
@@ -262,7 +269,32 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
           })
           .from(userProfiles)
           .where(eq(userProfiles.userId, request.user!.id))
-          .limit(1)
+          .limit(1),
+
+        // 9. Comment counts per chapter
+        db
+          .select({
+            chapterId: comments.chapterId,
+            count: sql<number>`count(*)::int`.as('count')
+          })
+          .from(comments)
+          .innerJoin(entities, eq(entities.id, comments.chapterId))
+          .where(and(
+            eq(entities.projectId, projectId),
+            eq(comments.moderationStatus, 'approved')
+          ))
+          .groupBy(comments.chapterId),
+
+        // 10. Reaction counts per chapter
+        db
+          .select({
+            chapterId: reactions.chapterId,
+            count: sql<number>`count(*)::int`.as('count')
+          })
+          .from(reactions)
+          .innerJoin(entities, eq(entities.id, reactions.chapterId))
+          .where(eq(entities.projectId, projectId))
+          .groupBy(reactions.chapterId)
       ])
 
       const project = projectResult[0]
@@ -275,6 +307,10 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
       const totalCompletions = publicationsResult.reduce((sum, p) => sum + (p.completionCount ?? 0), 0)
       const publishedCount = publicationsResult.filter(p => p.publishStatus === 'published').length
 
+      // Build lookup maps for comment/reaction counts
+      const commentCountMap = new Map(commentCountsResult.map(c => [c.chapterId, c.count]))
+      const reactionCountMap = new Map(reactionCountsResult.map(r => [r.chapterId, r.count]))
+
       // Format chapters
       const chapters = chaptersResult.map(ch => {
         const data = ch.entityData as Record<string, any>
@@ -283,6 +319,8 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
           title: data?.title || 'Untitled',
           order: data?.order ?? data?.sortOrder ?? 0,
           collectionName: ch.collectionName,
+          commentCount: commentCountMap.get(ch.id) ?? 0,
+          reactionCount: reactionCountMap.get(ch.id) ?? 0,
           publication: ch.pubId ? {
             publishStatus: ch.publishStatus,
             publishedAt: ch.publishedAt,

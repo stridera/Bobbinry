@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { BobbinrySDK } from '@bobbinry/sdk'
 
 interface NavigationPanelProps {
@@ -16,13 +16,19 @@ interface TreeNode {
   nodeType: 'container' | 'content'
   type: string
   icon?: string
+  order: number
   children?: TreeNode[]
   parentId?: string | null
 }
 
+interface DropTarget {
+  nodeId: string
+  position: 'before' | 'after' | 'inside'
+}
+
 /**
  * Navigation Panel for Manuscript bobbin
- * Displays hierarchical tree of containers and content with drag/drop support
+ * Displays hierarchical tree of containers and content with drag/drop reorder
  */
 export default function NavigationPanel({ context }: NavigationPanelProps) {
   const [tree, setTree] = useState<TreeNode[]>([])
@@ -34,7 +40,10 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null)
   const [editingValue, setEditingValue] = useState('')
   const [draggedNode, setDraggedNode] = useState<{ id: string; nodeType: 'container' | 'content' } | null>(null)
-  const [dragOverNode, setDragOverNode] = useState<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
+
+  // Map nodeId → parentId for quick lookup during drag operations
+  const nodeParentMap = useRef(new Map<string, string | null>())
 
   const [sdk] = useState(() => new BobbinrySDK('manuscript'))
   const projectId = useMemo(() => context?.projectId || context?.currentProject, [context?.projectId, context?.currentProject])
@@ -105,7 +114,6 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   }, [])
 
   // Sync sidebar highlight with the actual view the router navigated to.
-  // This prevents desync during rapid clicking — ViewRouter is the source of truth.
   useEffect(() => {
     function handleViewContextChange(e: Event) {
       const detail = (e as CustomEvent).detail
@@ -154,39 +162,74 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
         contentByContainer.get(containerId)!.push(content)
       }
 
+      // Build parent map for drag-and-drop
+      const parentMap = new Map<string, string | null>()
+
       function buildNode(container: any): TreeNode {
+        const parentId = container.parent_id || container.parentId || null
+        parentMap.set(container.id, parentId)
+
         const node: TreeNode = {
           id: container.id,
           title: container.title || 'Untitled',
           nodeType: 'container',
           type: container.type || 'folder',
           icon: container.icon,
+          order: container.order || 0,
           children: [],
-          parentId: container.parent_id
+          parentId
         }
 
-        const childContainers = childrenMap.get(container.id) || []
+        const childContainers = (childrenMap.get(container.id) || [])
+          .sort((a: any, b: any) => (a.order || 0) - (b.order || 0))
         for (const child of childContainers) {
           node.children!.push(buildNode(child))
         }
 
-        const contentItems = contentByContainer.get(container.id) || []
+        const contentItems = (contentByContainer.get(container.id) || [])
+          .sort((a: any, b: any) => (a.order || 0) - (b.order || 0))
         for (const content of contentItems) {
+          parentMap.set(content.id, container.id)
           node.children!.push({
             id: content.id,
             title: content.title || 'Untitled',
             nodeType: 'content',
             type: content.type || 'scene',
+            order: content.order || 0,
             parentId: container.id
           })
         }
 
+        // Sort all children together by order
+        node.children!.sort((a, b) => a.order - b.order)
+
         return node
       }
 
-      const rootContainers = childrenMap.get('ROOT') || []
-      const treeData = rootContainers.map(buildNode)
+      const rootContainers = (childrenMap.get('ROOT') || [])
+        .sort((a: any, b: any) => (a.order || 0) - (b.order || 0))
+      const treeData: TreeNode[] = rootContainers.map(buildNode)
 
+      // Include root-level content (no container_id)
+      const rootContent = (allContent.data as any[])
+        .filter((c: any) => !c.containerId && !c.container_id)
+        .sort((a: any, b: any) => (a.order || 0) - (b.order || 0))
+      for (const content of rootContent) {
+        parentMap.set(content.id, null)
+        treeData.push({
+          id: content.id,
+          title: content.title || 'Untitled',
+          nodeType: 'content',
+          type: content.type || 'scene',
+          order: content.order || 0,
+          parentId: null
+        })
+      }
+
+      // Sort root level by order
+      treeData.sort((a, b) => a.order - b.order)
+
+      nodeParentMap.current = parentMap
       setTree(treeData)
 
       const allNodeIds = new Set<string>()
@@ -218,7 +261,6 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   }
 
   function handleNodeClick(node: TreeNode) {
-    console.log('[NavigationPanel] handleNodeClick called with node:', node)
     setSelectedNodeId(node.id)
 
     if (typeof window !== 'undefined') {
@@ -265,12 +307,12 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     }
   }
 
-  async function createContent(containerId: string) {
+  async function createContent(containerId: string | null = null) {
     try {
       const newContent = await sdk.entities.create('content', {
         title: 'New Content',
         type: 'scene',
-        container_id: containerId,
+        ...(containerId ? { container_id: containerId } : {}),
         order: Date.now(),
         word_count: 0,
         status: 'draft',
@@ -279,7 +321,9 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
       }) as any
 
       await loadTree()
-      setExpandedNodes(prev => new Set(prev).add(containerId))
+      if (containerId) {
+        setExpandedNodes(prev => new Set(prev).add(containerId))
+      }
 
       setSelectedNodeId(newContent.id)
       setEditingNodeId(newContent.id)
@@ -298,10 +342,10 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
 
     try {
       const collection = nodeType === 'container' ? 'containers' : 'content'
-      
-      await sdk.entities.update(collection, nodeId, { 
-        title: newTitle.trim(), 
-        updated_at: new Date().toISOString() 
+
+      await sdk.entities.update(collection, nodeId, {
+        title: newTitle.trim(),
+        updated_at: new Date().toISOString()
       })
       await loadTree()
       setEditingNodeId(null)
@@ -314,7 +358,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   async function handleDelete(nodeId: string, nodeType: 'container' | 'content') {
     const collection = nodeType === 'container' ? 'containers' : 'content'
     const itemType = nodeType === 'container' ? 'container' : 'content item'
-    
+
     if (!confirm(`Are you sure you want to delete this ${itemType}? This cannot be undone.`)) {
       return
     }
@@ -322,10 +366,10 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     try {
       // Server now handles cascade delete for containers
       await sdk.entities.delete(collection, nodeId)
-      
+
       await loadTree()
       setContextMenu(null)
-      
+
       if (selectedNodeId === nodeId) {
         setSelectedNodeId(null)
       }
@@ -335,96 +379,222 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     }
   }
 
-  async function handleDrop(draggedId: string, draggedType: 'container' | 'content', targetId: string | null) {
-    try {
-      const collection = draggedType === 'container' ? 'containers' : 'content'
-      
-      if (draggedType === 'container') {
-        await sdk.entities.update(collection, draggedId, {
-          parent_id: targetId,
-          updated_at: new Date().toISOString()
-        })
-      } else {
-        if (!targetId) {
-          alert('Content must be placed inside a container')
-          return
-        }
-        
-        await sdk.entities.update(collection, draggedId, {
-          container_id: targetId,
-          updated_at: new Date().toISOString()
-        })
-      }
-      
-      await loadTree()
-      
-      if (targetId) {
-        setExpandedNodes(prev => new Set(prev).add(targetId))
-      }
-    } catch (error) {
-      console.error('Failed to move item:', error)
-      alert('Failed to move item: ' + (error instanceof Error ? error.message : 'Unknown error'))
-    }
-  }
+  // ============================================
+  // DRAG AND DROP — supports both reorder & move
+  // ============================================
 
   function handleDragStart(e: React.DragEvent, nodeId: string, nodeType: 'container' | 'content') {
     e.stopPropagation()
     setDraggedNode({ id: nodeId, nodeType })
     e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', nodeId)
   }
 
-  function handleDragOver(e: React.DragEvent, nodeId: string, isContainer: boolean) {
+  function handleDragOverNode(e: React.DragEvent, nodeId: string, isContainer: boolean) {
     e.preventDefault()
     e.stopPropagation()
-    
-    if (isContainer) {
-      setDragOverNode(nodeId)
-      e.dataTransfer.dropEffect = 'move'
-    }
-  }
 
-  function handleDragLeave(e: React.DragEvent) {
-    e.preventDefault()
-    e.stopPropagation()
-    setDragOverNode(null)
-  }
-
-  function handleDropOnNode(e: React.DragEvent, targetId: string, targetIsContainer: boolean) {
-    e.preventDefault()
-    e.stopPropagation()
-    
-    if (!draggedNode) return
-    
-    if (draggedNode.id === targetId) {
-      setDraggedNode(null)
-      setDragOverNode(null)
+    if (!draggedNode || draggedNode.id === nodeId) {
+      setDropTarget(null)
       return
     }
-    
-    if (targetIsContainer) {
-      handleDrop(draggedNode.id, draggedNode.nodeType, targetId)
+
+    e.dataTransfer.dropEffect = 'move'
+
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const y = e.clientY - rect.top
+    const height = rect.height
+
+    if (isContainer) {
+      // For containers: top 25% = before, bottom 25% = after, middle = inside
+      if (y < height * 0.25) {
+        setDropTarget({ nodeId, position: 'before' })
+      } else if (y > height * 0.75) {
+        setDropTarget({ nodeId, position: 'after' })
+      } else {
+        setDropTarget({ nodeId, position: 'inside' })
+      }
+    } else {
+      // For content: top half = before, bottom half = after
+      if (y < height * 0.5) {
+        setDropTarget({ nodeId, position: 'before' })
+      } else {
+        setDropTarget({ nodeId, position: 'after' })
+      }
     }
-    
-    setDraggedNode(null)
-    setDragOverNode(null)
+  }
+
+  function handleDragLeaveNode(e: React.DragEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    // Only clear if leaving the actual element (not entering a child)
+    const related = e.relatedTarget as HTMLElement | null
+    if (!related || !e.currentTarget.contains(related)) {
+      setDropTarget(null)
+    }
+  }
+
+  /** Find siblings of a node by looking up its parent in the tree */
+  function findSiblings(parentId: string | null): TreeNode[] {
+    if (!parentId) {
+      return tree // root containers
+    }
+    const findInTree = (nodes: TreeNode[]): TreeNode[] | null => {
+      for (const node of nodes) {
+        if (node.id === parentId && node.children) {
+          return node.children
+        }
+        if (node.children) {
+          const found = findInTree(node.children)
+          if (found) return found
+        }
+      }
+      return null
+    }
+    return findInTree(tree) || []
+  }
+
+  async function handleDropOnNode(e: React.DragEvent, targetId: string, targetIsContainer: boolean) {
+    e.preventDefault()
+    e.stopPropagation()
+
+    if (!draggedNode || !dropTarget) {
+      setDraggedNode(null)
+      setDropTarget(null)
+      return
+    }
+
+    if (draggedNode.id === targetId) {
+      setDraggedNode(null)
+      setDropTarget(null)
+      return
+    }
+
+    const { position } = dropTarget
+
+    try {
+      if (position === 'inside' && targetIsContainer) {
+        // Move into container
+        const collection = draggedNode.nodeType === 'container' ? 'containers' : 'content'
+        const field = draggedNode.nodeType === 'container' ? 'parent_id' : 'container_id'
+
+        await sdk.entities.update(collection, draggedNode.id, {
+          [field]: targetId,
+          order: Date.now(), // place at end
+          updated_at: new Date().toISOString()
+        })
+
+        await loadTree()
+        setExpandedNodes(prev => new Set(prev).add(targetId))
+      } else {
+        // Reorder: insert before/after the target
+        await performReorder(draggedNode.id, draggedNode.nodeType, targetId, position as 'before' | 'after')
+      }
+    } catch (error) {
+      console.error('Failed to drop:', error)
+      alert('Failed to move item: ' + (error instanceof Error ? error.message : 'Unknown error'))
+    } finally {
+      setDraggedNode(null)
+      setDropTarget(null)
+    }
+  }
+
+  async function performReorder(
+    draggedId: string,
+    draggedType: 'container' | 'content',
+    targetId: string,
+    position: 'before' | 'after'
+  ) {
+    // Find target's parent
+    const targetParentId = nodeParentMap.current.get(targetId) ?? null
+    const draggedParentId = nodeParentMap.current.get(draggedId) ?? null
+    const sameParent = targetParentId === draggedParentId
+
+    // Get siblings at the target location
+    const siblings = findSiblings(targetParentId)
+    const siblingIds = siblings.map(s => s.id)
+
+    // Build new order: remove dragged, insert at position
+    const filtered = siblingIds.filter(id => id !== draggedId)
+    const targetIndex = filtered.indexOf(targetId)
+    const insertAt = position === 'before' ? targetIndex : targetIndex + 1
+    filtered.splice(insertAt, 0, draggedId)
+
+    // Persist: update parent if moving across containers, then update order for all siblings
+    const updates: Promise<any>[] = []
+
+    if (!sameParent) {
+      const collection = draggedType === 'container' ? 'containers' : 'content'
+      const field = draggedType === 'container' ? 'parent_id' : 'container_id'
+      updates.push(
+        sdk.entities.update(collection, draggedId, {
+          [field]: targetParentId,
+          updated_at: new Date().toISOString()
+        })
+      )
+    }
+
+    // Update order for all items at the target level
+    for (let i = 0; i < filtered.length; i++) {
+      const nodeId = filtered[i]!
+      // Look up the node to determine its collection
+      const node = findNodeById(nodeId)
+      if (!node) continue
+      const collection = node.nodeType === 'container' ? 'containers' : 'content'
+      updates.push(
+        sdk.entities.update(collection, nodeId, {
+          order: (i + 1) * 100,
+          updated_at: new Date().toISOString()
+        })
+      )
+    }
+
+    await Promise.all(updates)
+    await loadTree()
+
+    if (targetParentId) {
+      setExpandedNodes(prev => new Set(prev).add(targetParentId))
+    }
+  }
+
+  function findNodeById(nodeId: string): TreeNode | null {
+    const search = (nodes: TreeNode[]): TreeNode | null => {
+      for (const node of nodes) {
+        if (node.id === nodeId) return node
+        if (node.children) {
+          const found = search(node.children)
+          if (found) return found
+        }
+      }
+      return null
+    }
+    return search(tree)
   }
 
   function handleDropOnRoot(e: React.DragEvent) {
     e.preventDefault()
     e.stopPropagation()
-    
+
     if (!draggedNode) return
-    
-    if (draggedNode.nodeType === 'content') {
-      alert('Content must be placed inside a container')
-      setDraggedNode(null)
-      setDragOverNode(null)
-      return
-    }
-    
-    handleDrop(draggedNode.id, draggedNode.nodeType, null)
+
+    // Move any item to root level
+    const collection = draggedNode.nodeType === 'container' ? 'containers' : 'content'
+    const field = draggedNode.nodeType === 'container' ? 'parent_id' : 'container_id'
+    sdk.entities.update(collection, draggedNode.id, {
+      [field]: null,
+      order: Date.now(),
+      updated_at: new Date().toISOString()
+    }).then(() => loadTree()).catch(error => {
+      console.error('Failed to move to root:', error)
+    })
+
     setDraggedNode(null)
-    setDragOverNode(null)
+    setDropTarget(null)
+  }
+
+  function handleDragEnd() {
+    setDraggedNode(null)
+    setDropTarget(null)
   }
 
   function handleContextMenu(e: React.MouseEvent, nodeId: string, nodeType: 'container' | 'content') {
@@ -439,25 +609,37 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     const isSelected = selectedNodeId === node.id
     const isContainer = node.nodeType === 'container'
     const isEditing = editingNodeId === node.id
-    const isDragOver = dragOverNode === node.id && isContainer
     const isDragging = draggedNode?.id === node.id
+
+    const isDropBefore = dropTarget?.nodeId === node.id && dropTarget.position === 'before'
+    const isDropAfter = dropTarget?.nodeId === node.id && dropTarget.position === 'after'
+    const isDropInside = dropTarget?.nodeId === node.id && dropTarget.position === 'inside'
 
     const icon = node.icon || (isContainer ? '📁' : '📝')
 
     return (
       <div key={node.id}>
+        {/* Drop indicator line — before */}
+        {isDropBefore && (
+          <div
+            className="h-0.5 bg-blue-400 mx-2 rounded-full"
+            style={{ marginLeft: `${depth * 16 + 8}px` }}
+          />
+        )}
+
         <div
           draggable={!isEditing}
           onDragStart={(e) => handleDragStart(e, node.id, node.nodeType)}
-          onDragOver={(e) => handleDragOver(e, node.id, isContainer)}
-          onDragLeave={handleDragLeave}
+          onDragOver={(e) => handleDragOverNode(e, node.id, isContainer)}
+          onDragLeave={handleDragLeaveNode}
           onDrop={(e) => handleDropOnNode(e, node.id, isContainer)}
-          className={`pr-2 py-1 cursor-pointer hover:bg-gray-700 text-sm flex items-center gap-1.5 ${isSelected ? 'bg-gray-700' : ''} ${isDragOver ? 'bg-blue-600' : ''} ${isDragging ? 'opacity-50' : ''}`}
+          onDragEnd={handleDragEnd}
+          className={`pr-2 py-1 cursor-pointer hover:bg-gray-700 text-sm flex items-center gap-1.5 ${isSelected ? 'bg-gray-700' : ''} ${isDropInside ? 'bg-blue-600' : ''} ${isDragging ? 'opacity-40' : ''}`}
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
           onContextMenu={(e) => handleContextMenu(e, node.id, node.nodeType)}
         >
           {hasChildren && (
-            <span 
+            <span
               className="text-gray-400 text-xs w-3 flex-shrink-0 hover:text-gray-200"
               onClick={(e) => {
                 e.stopPropagation()
@@ -468,8 +650,8 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
             </span>
           )}
           {!hasChildren && <span className="w-3 flex-shrink-0"></span>}
-          
-          <span 
+
+          <span
             className="flex-shrink-0"
             onClick={(e) => {
               e.stopPropagation()
@@ -478,7 +660,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
           >
             {icon}
           </span>
-          
+
           {isEditing ? (
             <input
               type="text"
@@ -498,7 +680,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            <span 
+            <span
               className="flex-1 text-gray-200 truncate"
               onClick={(e) => {
                 e.stopPropagation()
@@ -510,9 +692,24 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
           )}
         </div>
 
+        {/* Drop indicator line — after (only when no expanded children) */}
+        {isDropAfter && (!hasChildren || !isExpanded) && (
+          <div
+            className="h-0.5 bg-blue-400 mx-2 rounded-full"
+            style={{ marginLeft: `${depth * 16 + 8}px` }}
+          />
+        )}
+
         {hasChildren && isExpanded && (
           <>
             {node.children!.map(child => renderNode(child, depth + 1))}
+            {/* Drop indicator after last child */}
+            {isDropAfter && (
+              <div
+                className="h-0.5 bg-blue-400 mx-2 rounded-full"
+                style={{ marginLeft: `${(depth + 1) * 16 + 8}px` }}
+              />
+            )}
           </>
         )}
       </div>
@@ -559,17 +756,15 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
                 >
                   📁 Create Container
                 </button>
-                {tree.length > 0 && tree[0] && (
-                  <button
-                    onClick={() => {
-                      createContent(tree[0]!.id)
-                      setShowDropdown(false)
-                    }}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-600 text-gray-100 border-t border-gray-600"
-                  >
-                    📝 Create Content
-                  </button>
-                )}
+                <button
+                  onClick={() => {
+                    createContent(null)
+                    setShowDropdown(false)
+                  }}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-600 text-gray-100 border-t border-gray-600"
+                >
+                  📝 Create Content
+                </button>
               </div>
             )}
           </div>
@@ -583,7 +778,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
         </button>
       </div>
 
-      <div 
+      <div
         className="flex-1 overflow-y-auto"
         onDragOver={(e) => {
           e.preventDefault()
@@ -610,7 +805,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
         const menuNodeId = contextMenu.nodeId
         const menuNodeType = contextMenu.nodeType
         const isContainer = menuNodeType === 'container'
-        
+
         return (
           <div
             className="fixed bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-lg z-50 min-w-[150px] context-menu"

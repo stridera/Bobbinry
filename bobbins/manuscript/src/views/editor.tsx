@@ -476,6 +476,20 @@ export default function EditorView({ sdk, projectId, entityType, entityId }: Edi
         .run()
       queueMicrotask(() => {
         suppressSaveRef.current = false
+
+        // If stored word count is 0 but the editor has text, recalculate
+        // and persist so the count is accurate without requiring an edit.
+        if (count === 0 && body && body !== '<p></p>') {
+          const actualCount = editor.storage.characterCount.words()
+          if (actualCount > 0) {
+            setWordCount(actualCount)
+            const currentEntityId = activeEntityRef.current
+            if (currentEntityId) {
+              saveDraft(currentEntityId, { html: body, title: titleVal, wordCount: actualCount, savedToServer: false })
+              serverSave(currentEntityId, body, actualCount)
+            }
+          }
+        }
       })
     }
   }

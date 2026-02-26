@@ -44,6 +44,8 @@ interface DashboardData {
     title: string
     order: number
     collectionName: string
+    commentCount: number
+    reactionCount: number
     publication: {
       publishStatus: string
       publishedAt: string | null
@@ -203,7 +205,12 @@ export default function ProjectDashboardPage() {
           }}
         />
 
-        <ChapterOverview chapters={data.chapters} />
+        <ChapterOverview
+          chapters={data.chapters}
+          readerBaseUrl={data.authorUsername && data.project.shortUrl
+            ? `/read/${data.authorUsername}/${data.project.shortUrl}`
+            : null}
+        />
 
         <ScheduledReleases releases={data.scheduledReleases} />
 
