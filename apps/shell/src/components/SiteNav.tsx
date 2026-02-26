@@ -10,7 +10,7 @@ const NAV_LINKS = [
   { href: '/dashboard', label: 'Write' },
   { href: '/publish', label: 'Publish' },
   { href: '/explore', label: 'Explore' },
-  { href: '/marketplace', label: 'Bobbins' },
+  { href: '/bobbins', label: 'Bobbins' },
   { href: '/library', label: 'Library' },
 ]
 
@@ -68,9 +68,9 @@ export function SiteNav() {
               Explore
             </Link>
             <Link
-              href="/marketplace"
+              href="/bobbins"
               className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                isActive('/marketplace')
+                isActive('/bobbins')
                   ? 'text-blue-700 dark:text-blue-400 bg-blue-50/60 dark:bg-blue-950/30'
                   : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
               }`}
@@ -147,7 +147,7 @@ export function SiteNav() {
                   Explore
                 </Link>
                 <Link
-                  href="/marketplace"
+                  href="/bobbins"
                   onClick={() => setMobileOpen(false)}
                   className="block px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 rounded-md"
                 >

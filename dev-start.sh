@@ -34,6 +34,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR"
 DB_CONTAINER_NAME="bobbins-postgres-1"
 MINIO_CONTAINER_NAME="bobbins-minio-1"
+SHELL_PORT=3100
+API_PORT=4100
 
 # Function to check Docker
 check_docker() {
@@ -135,6 +137,23 @@ main() {
         log_info "Installing dependencies..."
         bun install
     fi
+
+    # Kill orphaned dev processes from a previous run
+    for port in $SHELL_PORT $API_PORT; do
+        if fuser ${port}/tcp >/dev/null 2>&1; then
+            log_warning "Port $port still in use, killing orphaned process..."
+            fuser -k ${port}/tcp >/dev/null 2>&1 || true
+            sleep 1
+        fi
+    done
+
+    # Clean stale .next directories to prevent routes-manifest.json ENOENT on restart
+    for next_dir in "$PROJECT_ROOT"/apps/*/.next; do
+        if [ -d "$next_dir" ]; then
+            log_info "Cleaning stale $(basename "$(dirname "$next_dir")")/.next directory..."
+            rm -rf "$next_dir"
+        fi
+    done
 
     echo
     log_success "Infrastructure ready. Starting turbo dev..."

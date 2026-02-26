@@ -12,7 +12,7 @@ export default auth((req) => {
   const { pathname } = req.nextUrl
 
   // Public routes that don't require authentication
-  const publicRoutes = ['/login', '/signup', '/api', '/explore', '/marketplace']
+  const publicRoutes = ['/login', '/signup', '/api', '/explore', '/bobbins']
   const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route))
 
   // Public reader routes (e.g., /p/shorturl or /public/...)

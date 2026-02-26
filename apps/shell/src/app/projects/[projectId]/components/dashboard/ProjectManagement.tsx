@@ -107,14 +107,12 @@ export function ProjectManagement({ projectId, isArchived, bobbins, onArchiveCha
           <div>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Installed Bobbins</h3>
-              {bobbins.length > 0 && (
-                <a
-                  href={`/projects/${projectId}/marketplace`}
-                  className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
-                >
-                  Browse Marketplace
-                </a>
-              )}
+              <a
+                href={`/projects/${projectId}/bobbins`}
+                className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+              >
+                Browse Bobbins
+              </a>
             </div>
             {bobbins.length === 0 ? (
               <p className="text-sm text-gray-500 dark:text-gray-400 italic">No bobbins installed yet.</p>

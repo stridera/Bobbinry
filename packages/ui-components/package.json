@@ -2,14 +2,20 @@
   "name": "@bobbinry/ui-components",
   "version": "1.0.0",
   "description": "Theme-aware React UI components for Bobbinry bobbins",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch --preserveWatchOutput",
+    "dev": "tsc --noEmit --watch --preserveWatchOutput",
     "typecheck": "tsc --noEmit"
   },
-  "keywords": ["bobbinry", "react", "components", "ui", "theme"],
+  "keywords": [
+    "bobbinry",
+    "react",
+    "components",
+    "ui",
+    "theme"
+  ],
   "author": "",
   "license": "MIT",
   "peerDependencies": {

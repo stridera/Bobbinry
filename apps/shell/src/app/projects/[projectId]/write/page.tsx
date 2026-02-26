@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { BobbinrySDK } from '@bobbinry/sdk'
 import { ShellLayout } from '@/components/ShellLayout'
@@ -10,7 +10,6 @@ import { ViewRouter } from '@/components/ViewRouter'
 import { UserMenu } from '@/components/UserMenu'
 import { useManifestExtensions } from '@/components/ExtensionProvider'
 import { ProjectWelcome } from '../components/ProjectWelcome'
-import { BobbinMarketplace } from '../components/BobbinMarketplace'
 import { PublishPanel } from '@/components/PublishPanel'
 import { apiFetch } from '@/lib/api'
 import { extensionRegistry } from '@/lib/extensions'
@@ -37,6 +36,7 @@ interface InstalledBobbin {
 
 export default function ProjectWritePage() {
   const params = useParams()
+  const router = useRouter()
   const { data: session } = useSession()
   const projectId = params.projectId as string
   const [hasInitialNavigation, setHasInitialNavigation] = useState(false)
@@ -44,7 +44,6 @@ export default function ProjectWritePage() {
   const [sdk] = useState(() => new BobbinrySDK('shell'))
   const [installedBobbins, setInstalledBobbins] = useState<InstalledBobbin[]>([])
   const [loading, setLoading] = useState(true)
-  const [showMarketplace, setShowMarketplace] = useState(false)
   const [projectName, setProjectName] = useState<string | null>(null)
 
   // Fetch project name
@@ -151,24 +150,7 @@ export default function ProjectWritePage() {
     }
   }, [projectId, sdk, session?.apiToken])
 
-  const handleInstallComplete = () => {
-    // Reload bobbins after installation
-    const loadBobbins = async () => {
-      try {
-        const response = await sdk.api.getInstalledBobbins(projectId)
-        const newBobbins = response.bobbins || []
-        setInstalledBobbins(newBobbins)
-
-        // Register extensions for newly installed bobbins
-        newBobbins.forEach((bobbin: InstalledBobbin) => {
-          registerManifestExtensions(bobbin.id, bobbin.manifest)
-        })
-      } catch (error) {
-        console.error('Failed to reload bobbins:', error)
-      }
-    }
-    loadBobbins()
-  }
+  const navigateToBobbins = () => router.push(`/projects/${projectId}/bobbins`)
 
   if (loading) {
     return (
@@ -221,29 +203,20 @@ export default function ProjectWritePage() {
           </header>
           <ProjectWelcome
             projectId={projectId}
-            onInstallBobbins={() => setShowMarketplace(true)}
+            onInstallBobbins={navigateToBobbins}
           />
         </div>
       ) : (
         <ShellLayout
           currentView="project"
           context={shellContext}
-          onOpenMarketplace={() => setShowMarketplace(true)}
+          onOpenMarketplace={navigateToBobbins}
           projectId={projectId}
           projectName={projectName || undefined}
           user={session?.user}
         >
           <ViewRouter projectId={projectId} sdk={sdk} />
         </ShellLayout>
-      )}
-
-      {showMarketplace && (
-        <BobbinMarketplace
-          projectId={projectId}
-          installedBobbins={installedBobbins}
-          onInstallComplete={handleInstallComplete}
-          onClose={() => setShowMarketplace(false)}
-        />
       )}
     </>
   )

@@ -25,7 +25,7 @@ function validateUsername(username: string): string | null {
   if (username.length < 3 || username.length > 30) return 'Username must be between 3 and 30 characters'
   if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(username)) return 'Must start with a letter. Only letters, numbers, hyphens, and underscores allowed.'
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(username)) return 'Username cannot look like an ID'
-  const reserved = ['admin', 'api', 'read', 'explore', 'dashboard', 'settings', 'publish', 'login', 'signup', 'marketplace', 'library', 'u', 'auth']
+  const reserved = ['admin', 'api', 'read', 'explore', 'dashboard', 'settings', 'publish', 'login', 'signup', 'marketplace', 'bobbins', 'library', 'u', 'auth']
   if (reserved.includes(username.toLowerCase())) return 'This username is reserved'
   return null
 }

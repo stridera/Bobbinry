@@ -53,7 +53,7 @@ export function LandingPage() {
               Explore
             </Link>
             <Link
-              href="/marketplace"
+              href="/bobbins"
               className="text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors hidden sm:block"
             >
               Bobbins
@@ -165,10 +165,10 @@ export function LandingPage() {
                 Every workspace is different because every writer is different. Install only what you need.
               </p>
               <Link
-                href="/marketplace"
+                href="/bobbins"
                 className="inline-flex items-center gap-2 mt-6 text-sm font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
               >
-                Browse the Marketplace
+                Browse Bobbins
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
                 </svg>
@@ -232,7 +232,7 @@ export function LandingPage() {
           </span>
           <div className="flex items-center gap-6 text-sm text-gray-400 dark:text-gray-500">
             <Link href="/explore" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Explore</Link>
-            <Link href="/marketplace" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Marketplace</Link>
+            <Link href="/bobbins" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Bobbins</Link>
             <Link href="/login" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Sign In</Link>
           </div>
         </div>

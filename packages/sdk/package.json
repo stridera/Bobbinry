@@ -2,11 +2,11 @@
   "name": "@bobbinry/sdk",
   "version": "1.0.0",
   "description": "Client SDK for Bobbinry Shell and Views",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch --preserveWatchOutput",
+    "dev": "tsc --noEmit --watch --preserveWatchOutput",
     "typecheck": "tsc --noEmit",
     "test": "jest --passWithNoTests",
     "test:watch": "jest --watch"
