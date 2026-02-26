@@ -600,6 +600,129 @@ export class ReaderAPI {
   }
 }
 
+// Upload types and API
+export interface UploadOptions {
+  file: File
+  projectId?: string
+  context: 'cover' | 'entity' | 'editor' | 'avatar' | 'map'
+  entityId?: string
+  collection?: string
+  onProgress?: (percent: number) => void
+}
+
+export interface UploadResult {
+  id: string
+  url: string
+  key: string
+  contentType: string
+  size: number
+}
+
+export class UploadAPI {
+  private api: BobbinryAPI
+
+  constructor(api: BobbinryAPI) {
+    this.api = api
+  }
+
+  /**
+   * Upload a file using the presign → PUT → confirm flow.
+   * Binary data goes directly to S3/MinIO, bypassing the API server.
+   */
+  async upload(options: UploadOptions): Promise<UploadResult> {
+    const { file, projectId, context, entityId, collection, onProgress } = options
+
+    // Step 1: Get presigned URL from API
+    const presignResponse = await fetch(`${this.api.apiBaseUrl}/uploads/presign`, {
+      method: 'POST',
+      headers: this.api.getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        filename: file.name,
+        contentType: file.type,
+        size: file.size,
+        context,
+        projectId,
+        entityId,
+        collection,
+      }),
+    })
+
+    if (!presignResponse.ok) {
+      const err = await presignResponse.json().catch(() => ({ error: 'Presign failed' }))
+      throw new Error(err.error || `Upload presign failed: ${presignResponse.statusText}`)
+    }
+
+    const { uploadUrl, fileKey } = await presignResponse.json()
+
+    // Step 2: PUT file directly to S3/MinIO with progress tracking
+    await this.putFileWithProgress(uploadUrl, file, onProgress)
+
+    // Step 3: Confirm upload with API
+    const confirmResponse = await fetch(`${this.api.apiBaseUrl}/uploads/confirm`, {
+      method: 'POST',
+      headers: this.api.getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        fileKey,
+        filename: file.name,
+        contentType: file.type,
+        size: file.size,
+        context,
+        projectId,
+      }),
+    })
+
+    if (!confirmResponse.ok) {
+      const err = await confirmResponse.json().catch(() => ({ error: 'Confirm failed' }))
+      throw new Error(err.error || `Upload confirm failed: ${confirmResponse.statusText}`)
+    }
+
+    return confirmResponse.json()
+  }
+
+  private putFileWithProgress(url: string, file: File, onProgress?: (percent: number) => void): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('PUT', url, true)
+      xhr.setRequestHeader('Content-Type', file.type)
+
+      if (onProgress) {
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            onProgress(Math.round((event.loaded / event.total) * 100))
+          }
+        }
+      }
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve()
+        } else {
+          reject(new Error(`Upload failed with status ${xhr.status}`))
+        }
+      }
+
+      xhr.onerror = () => reject(new Error('Upload failed: network error'))
+      xhr.onabort = () => reject(new Error('Upload aborted'))
+
+      xhr.send(file)
+    })
+  }
+
+  /**
+   * Delete an uploaded file
+   */
+  async delete(uploadId: string): Promise<void> {
+    const response = await fetch(`${this.api.apiBaseUrl}/uploads/${uploadId}`, {
+      method: 'DELETE',
+      headers: this.api.getAuthHeaders(),
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: 'Delete failed' }))
+      throw new Error(err.error || `Delete failed: ${response.statusText}`)
+    }
+  }
+}
+
 // Main SDK class
 export class BobbinrySDK {
   public api: BobbinryAPI
@@ -608,6 +731,7 @@ export class BobbinrySDK {
   public shell: ShellAPI
   public publishing: PublishingAPI
   public reader: ReaderAPI
+  public uploads: UploadAPI
 
   constructor(componentId: string, apiBaseURL?: string) {
     this.api = new BobbinryAPI(apiBaseURL)
@@ -616,6 +740,7 @@ export class BobbinrySDK {
     this.shell = new ShellAPI()
     this.publishing = new PublishingAPI(this.api)
     this.reader = new ReaderAPI(this.api)
+    this.uploads = new UploadAPI(this.api)
   }
 
   setProject(projectId: string) {

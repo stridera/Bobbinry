@@ -15,6 +15,7 @@ import { useState, useEffect } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
 import type { EntityTypeDefinition } from '../types'
 import { LayoutRenderer } from '../components/LayoutRenderer'
+import { UploadProvider } from '../components/UploadContext'
 
 interface EntityEditorViewProps {
   projectId: string
@@ -388,13 +389,15 @@ export default function EntityEditorView({
 
       {/* Editor Content */}
       <div className="flex-1 overflow-auto p-6">
-        <LayoutRenderer
-          layout={typeConfig.editorLayout}
-          fields={typeConfig.customFields}
-          entity={entity}
-          onFieldChange={handleFieldChange}
-          readonly={false}
-        />
+        <UploadProvider sdk={sdk} projectId={projectId}>
+          <LayoutRenderer
+            layout={typeConfig.editorLayout}
+            fields={typeConfig.customFields}
+            entity={entity}
+            onFieldChange={handleFieldChange}
+            readonly={false}
+          />
+        </UploadProvider>
       </div>
     </div>
   )

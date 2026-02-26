@@ -15,6 +15,13 @@
       "when": 1759857172276,
       "tag": "0001_left_newton_destine",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1772073771663,
+      "tag": "0002_add_uploads_table",
+      "breakpoints": true
     }
   ]
 }

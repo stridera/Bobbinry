@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -265,24 +265,112 @@ export default function ProjectSettingsPage() {
             </div>
 
             <div>
-              <label htmlFor="coverImage" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                Cover Image URL
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                Cover Image
               </label>
-              <input
-                type="url"
-                id="coverImage"
-                value={coverImage}
-                onChange={(e) => setCoverImage(e.target.value)}
-                placeholder="https://example.com/image.jpg"
-                className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 bg-gray-50/50 dark:bg-gray-900/50 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 dark:focus:border-blue-400 transition-colors placeholder-gray-400 dark:placeholder-gray-500"
-              />
-              <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">Enter a URL for your project&apos;s cover image</p>
-              {coverImage && (
-                <div className="mt-3">
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Preview:</p>
-                  <img src={coverImage} alt="Cover preview" className="w-full max-w-md h-48 object-cover rounded-lg border border-gray-200 dark:border-gray-700" onError={(e) => { e.currentTarget.style.display = 'none' }} />
+              {coverImage ? (
+                <div className="relative inline-block">
+                  <img
+                    src={coverImage}
+                    alt="Cover preview"
+                    className="w-full max-w-md h-48 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
+                    onError={(e) => { e.currentTarget.style.display = 'none' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setCoverImage('')}
+                    className="absolute top-2 right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 cursor-pointer shadow"
+                    title="Remove cover image"
+                  >
+                    x
+                  </button>
+                </div>
+              ) : (
+                <div
+                  onClick={() => document.getElementById('coverImageInput')?.click()}
+                  onDrop={async (e) => {
+                    e.preventDefault()
+                    const file = e.dataTransfer.files[0]
+                    if (file && file.type.startsWith('image/') && session?.apiToken) {
+                      setUploading(true)
+                      try {
+                        const presignRes = await apiFetch('/api/uploads/presign', session.apiToken, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ filename: file.name, contentType: file.type, size: file.size, context: 'cover', projectId }),
+                        })
+                        if (!presignRes.ok) throw new Error('Presign failed')
+                        const { uploadUrl, fileKey } = await presignRes.json()
+                        await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file })
+                        const confirmRes = await apiFetch('/api/uploads/confirm', session.apiToken, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ fileKey, filename: file.name, contentType: file.type, size: file.size, context: 'cover', projectId }),
+                        })
+                        if (!confirmRes.ok) throw new Error('Confirm failed')
+                        const { url } = await confirmRes.json()
+                        setCoverImage(url)
+                      } catch (err) {
+                        console.error('Cover upload failed:', err)
+                        setError('Failed to upload cover image')
+                      } finally {
+                        setUploading(false)
+                      }
+                    }
+                  }}
+                  onDragOver={(e) => e.preventDefault()}
+                  className="w-full max-w-md h-48 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-gray-400 dark:hover:border-gray-500 transition-colors bg-gray-50/50 dark:bg-gray-900/50"
+                >
+                  {uploading ? (
+                    <span className="text-sm text-gray-500 dark:text-gray-400 animate-pulse">Uploading...</span>
+                  ) : (
+                    <>
+                      <svg className="w-10 h-10 text-gray-400 dark:text-gray-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <span className="text-sm text-gray-500 dark:text-gray-400">
+                        Drop image here or click to browse
+                      </span>
+                    </>
+                  )}
                 </div>
               )}
+              <input
+                id="coverImageInput"
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file || !session?.apiToken) return
+                  e.target.value = ''
+                  setUploading(true)
+                  try {
+                    const presignRes = await apiFetch('/api/uploads/presign', session.apiToken, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ filename: file.name, contentType: file.type, size: file.size, context: 'cover', projectId }),
+                    })
+                    if (!presignRes.ok) throw new Error('Presign failed')
+                    const { uploadUrl, fileKey } = await presignRes.json()
+                    await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file })
+                    const confirmRes = await apiFetch('/api/uploads/confirm', session.apiToken, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ fileKey, filename: file.name, contentType: file.type, size: file.size, context: 'cover', projectId }),
+                    })
+                    if (!confirmRes.ok) throw new Error('Confirm failed')
+                    const { url } = await confirmRes.json()
+                    setCoverImage(url)
+                  } catch (err) {
+                    console.error('Cover upload failed:', err)
+                    setError('Failed to upload cover image')
+                  } finally {
+                    setUploading(false)
+                  }
+                }}
+              />
+              <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">Upload a cover image for your project (max 10MB)</p>
             </div>
 
             <div className="flex justify-end">

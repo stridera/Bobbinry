@@ -520,6 +520,25 @@ export const entities = pgTable('entities', {
   projectEditedIdx: index('entities_project_edited_idx').on(table.projectId, table.lastEditedAt)
 }))
 
+// Uploads - audit trail for file uploads
+export const uploads = pgTable('uploads', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+  s3Key: text('s3_key').notNull(),
+  filename: text('filename'),
+  contentType: text('content_type').notNull(),
+  size: integer('size').notNull(),
+  context: text('context').notNull(), // 'cover' | 'entity' | 'editor' | 'avatar' | 'map'
+  status: text('status').default('active').notNull(), // 'active' | 'reported' | 'removed'
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull()
+}, (table) => ({
+  projectIdx: index('uploads_project_idx').on(table.projectId),
+  userIdx: index('uploads_user_idx').on(table.userId),
+  statusIdx: index('uploads_status_idx').on(table.status)
+}))
+
 // Provenance events - audit trail for security and compliance
 export const provenanceEvents = pgTable('provenance_events', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -815,6 +834,17 @@ export const projectCollectionMembershipsRelations = relations(projectCollection
   }),
   project: one(projects, {
     fields: [projectCollectionMemberships.projectId],
+    references: [projects.id]
+  })
+}))
+
+export const uploadsRelations = relations(uploads, ({ one }) => ({
+  user: one(users, {
+    fields: [uploads.userId],
+    references: [users.id]
+  }),
+  project: one(projects, {
+    fields: [uploads.projectId],
     references: [projects.id]
   })
 }))

@@ -5,6 +5,7 @@ import type { Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import CharacterCount from '@tiptap/extension-character-count'
+import { ImageUpload } from '../extensions/image-upload'
 
 interface EditorViewProps {
   projectId: string
@@ -93,7 +94,7 @@ function ToolbarDivider() {
   return <div className="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-1" />
 }
 
-function EditorToolbar({ editor, onFocusMode }: { editor: Editor | null; onFocusMode: () => void }) {
+function EditorToolbar({ editor, onFocusMode, onInsertImage }: { editor: Editor | null; onFocusMode: () => void; onInsertImage: () => void }) {
   const [, setForceUpdate] = useState(0)
   const rafRef = useRef(0)
 
@@ -233,6 +234,14 @@ function EditorToolbar({ editor, onFocusMode }: { editor: Editor | null; onFocus
       >
         ―
       </ToolbarButton>
+      <ToolbarButton
+        onClick={onInsertImage}
+        title="Insert image"
+      >
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+      </ToolbarButton>
 
       <div className="flex-1" />
 
@@ -278,7 +287,7 @@ function SaveIndicator({ status, focusMode }: { status: SaveStatus; focusMode: b
  * 4. On navigation back, local draft takes priority over server content
  *    if the draft is newer and hasn't been confirmed saved
  */
-export default function EditorView({ sdk, entityType, entityId }: EditorViewProps) {
+export default function EditorView({ sdk, projectId, entityType, entityId }: EditorViewProps) {
   const [title, setTitle] = useState('')
   const [loading, setLoading] = useState(true)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('clean')
@@ -311,13 +320,21 @@ export default function EditorView({ sdk, entityType, entityId }: EditorViewProp
     return () => window.removeEventListener('bobbinry:focus-mode-change', handleFocusMode)
   }, [])
 
+  const imageUploadFileRef = useRef<HTMLInputElement>(null)
+
   const editor = useEditor({
     extensions: [
       StarterKit,
       Placeholder.configure({
         placeholder: 'Start writing...'
       }),
-      CharacterCount
+      CharacterCount,
+      ImageUpload.configure({
+        sdk,
+        projectId,
+        inline: false,
+        allowBase64: false,
+      } as any),
     ],
     content: '',
     immediatelyRender: false,
@@ -635,10 +652,66 @@ export default function EditorView({ sdk, entityType, entityId }: EditorViewProp
     <div className="h-full flex flex-col relative bg-gray-50 dark:bg-gray-900">
       {/* Toolbar - hidden in focus mode */}
       <div className={`transition-all duration-200 overflow-hidden ${focusMode ? 'h-0 opacity-0' : ''}`}>
-        <EditorToolbar editor={editor} onFocusMode={() => {
-          window.dispatchEvent(new CustomEvent('bobbinry:request-focus-mode', { detail: { active: true } }))
-        }} />
+        <EditorToolbar
+          editor={editor}
+          onFocusMode={() => {
+            window.dispatchEvent(new CustomEvent('bobbinry:request-focus-mode', { detail: { active: true } }))
+          }}
+          onInsertImage={() => imageUploadFileRef.current?.click()}
+        />
       </div>
+
+      {/* Hidden file input for toolbar image button */}
+      <input
+        ref={imageUploadFileRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
+        className="hidden"
+        onChange={async (e) => {
+          const file = e.target.files?.[0]
+          if (!file || !editor) return
+          e.target.value = ''
+
+          const placeholderSrc = URL.createObjectURL(file)
+          editor.chain().focus().setImage({ src: placeholderSrc, alt: file.name, title: 'Uploading...' }).run()
+
+          try {
+            const result = await sdk.uploads.upload({
+              file,
+              projectId,
+              context: 'editor',
+            })
+
+            // Replace placeholder with final URL
+            const { doc, tr } = editor.state
+            doc.descendants((node, pos) => {
+              if (node.type.name === 'image' && node.attrs.src === placeholderSrc) {
+                const updateTr = tr.setNodeMarkup(pos, undefined, {
+                  ...node.attrs,
+                  src: result.url,
+                  title: null,
+                })
+                editor.view.dispatch(updateTr)
+                return false
+              }
+              return true
+            })
+          } catch (err) {
+            console.error('[EditorView] Image upload failed:', err)
+            // Remove placeholder on failure
+            const { doc, tr } = editor.state
+            doc.descendants((node, pos) => {
+              if (node.type.name === 'image' && node.attrs.src === placeholderSrc) {
+                editor.view.dispatch(tr.delete(pos, pos + node.nodeSize))
+                return false
+              }
+              return true
+            })
+          } finally {
+            URL.revokeObjectURL(placeholderSrc)
+          }
+        }}
+      />
 
       {/* Writing surface */}
       <div

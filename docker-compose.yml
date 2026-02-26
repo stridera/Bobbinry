@@ -20,6 +20,18 @@ services:
       - "9101:9001"
     volumes:
       - minio:/data
+  minio-init:
+    image: quay.io/minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 2;
+      mc alias set local http://minio:9000 admin adminadmin;
+      mc mb --ignore-existing local/bobbinry;
+      mc anonymous set download local/bobbinry;
+      exit 0;
+      "
 volumes:
   pgdata:
   minio:
