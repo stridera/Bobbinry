@@ -6,8 +6,10 @@
   "exports": {
     "./views/PublishManager": "./views/PublishManager.tsx"
   },
+  "dependencies": {
+    "@bobbinry/sdk": "workspace:*"
+  },
   "peerDependencies": {
-    "@bobbinry/sdk": "workspace:*",
     "react": "^18.2.0"
   },
   "devDependencies": {

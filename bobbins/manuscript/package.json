@@ -18,10 +18,10 @@
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "@bobbinry/sdk": "workspace:*",
     "react": "^18.2.0"
   },
   "dependencies": {
+    "@bobbinry/sdk": "workspace:*",
     "@bobbinry/types": "workspace:*",
     "@bobbinry/ui-components": "workspace:*",
     "@tiptap/extension-character-count": "^3.6.2",

@@ -8,8 +8,10 @@
     "./views/ReleaseConfig": "./views/ReleaseConfig.tsx",
     "./actions": "./actions/index.ts"
   },
+  "dependencies": {
+    "@bobbinry/sdk": "workspace:*"
+  },
   "peerDependencies": {
-    "@bobbinry/sdk": "workspace:*",
     "react": "^18.2.0"
   },
   "devDependencies": {

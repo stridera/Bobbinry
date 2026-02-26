@@ -114,6 +114,7 @@
       "name": "@bobbinry/entities",
       "version": "1.0.0",
       "dependencies": {
+        "@bobbinry/sdk": "workspace:*",
         "@bobbinry/types": "workspace:*",
         "@bobbinry/ui-components": "workspace:*",
         "@tiptap/extension-character-count": "^3.6.2",
@@ -134,7 +135,6 @@
         "typescript": "6.0.0-beta",
       },
       "peerDependencies": {
-        "@bobbinry/sdk": "workspace:*",
         "react": "^18.2.0",
       },
     },
@@ -142,6 +142,7 @@
       "name": "@bobbinry/manuscript",
       "version": "1.0.0",
       "dependencies": {
+        "@bobbinry/sdk": "workspace:*",
         "@bobbinry/types": "workspace:*",
         "@bobbinry/ui-components": "workspace:*",
         "@tiptap/extension-character-count": "^3.6.2",
@@ -163,29 +164,32 @@
         "typescript": "6.0.0-beta",
       },
       "peerDependencies": {
-        "@bobbinry/sdk": "workspace:*",
         "react": "^18.2.0",
       },
     },
     "bobbins/smart-publisher": {
       "name": "@bobbinry/smart-publisher",
       "version": "0.1.0",
+      "dependencies": {
+        "@bobbinry/sdk": "workspace:*",
+      },
       "devDependencies": {
         "@types/react": "^19",
       },
       "peerDependencies": {
-        "@bobbinry/sdk": "workspace:*",
         "react": "^18.2.0",
       },
     },
     "bobbins/web-publisher": {
       "name": "@bobbinry/web-publisher",
       "version": "0.1.0",
+      "dependencies": {
+        "@bobbinry/sdk": "workspace:*",
+      },
       "devDependencies": {
         "@types/react": "^19",
       },
       "peerDependencies": {
-        "@bobbinry/sdk": "workspace:*",
         "react": "^18.2.0",
       },
     },
