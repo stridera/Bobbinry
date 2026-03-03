@@ -6,14 +6,28 @@ description: >
   tier-based delays, and a release queue. Chapters are published
   automatically on schedule.
 
+tags: [publishing, automation, scheduling]
+author: Bobbins Core
+license: MIT
+
 requires:
   - manuscript
 
 capabilities:
   publishable: true
 
+extensions:
+  contributions:
+    - slot: shell.publishDashboard
+      type: panel
+      id: release-queue
+      title: "Release Queue"
+      entry: panels/release-queue
+      priority: 8
+
 execution:
   mode: native
+  signature: dev_mode_skip
 
 data:
   collections:

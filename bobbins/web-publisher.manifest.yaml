@@ -16,6 +16,23 @@ execution:
   mode: native
   signature: dev_mode_skip
 
+extensions:
+  contributions:
+    - slot: shell.rightPanel
+      type: panel
+      id: chapter-publish
+      title: "Publishing"
+      entry: panels/chapter-publish
+      priority: 5
+      when:
+        inView: project
+    - slot: shell.publishDashboard
+      type: panel
+      id: publish-manager
+      title: "Publish Manager"
+      entry: panels/publish-manager
+      priority: 10
+
 data:
   collections:
     - name: PublishedChapter

@@ -4,11 +4,22 @@
  * Generic cron runner that processes manifest-defined schedule triggers.
  * Reads bobbin manifests from installed bobbins, checks for schedule triggers,
  * and invokes the corresponding bobbin actions on their cron schedules.
+ *
+ * Also handles periodic backup sync for backup bobbins that declare sync.frequency.
  */
 
 import { db } from '../db/connection'
-import { bobbinsInstalled } from '../db/schema'
-import { eq } from 'drizzle-orm'
+import { bobbinsInstalled, entities, projectDestinations } from '../db/schema'
+import { eq, and, gt } from 'drizzle-orm'
+import { processEmbargoReleases, initTierDispatch } from './tier-dispatch'
+
+/** Sync frequency to milliseconds lookup for backup bobbins */
+const SYNC_FREQUENCY_MS: Record<string, number> = {
+  'on_edit': 0, // handled by event bus, not cron
+  'hourly': 60 * 60 * 1000,
+  'daily': 24 * 60 * 60 * 1000,
+  'weekly': 7 * 24 * 60 * 60 * 1000,
+}
 
 interface ScheduleTrigger {
   event: 'schedule'
@@ -149,16 +160,100 @@ export async function processScheduleTriggers(): Promise<void> {
   }
 }
 
+/**
+ * Process backup sync for bobbins with sync.frequency defined.
+ * Queries backup bobbins, checks sync frequency against last sync time,
+ * and emits events for bobbins that need to sync.
+ */
+export async function processBackupSync(): Promise<void> {
+  try {
+    const installed = await db
+      .select({
+        bobbinId: bobbinsInstalled.bobbinId,
+        projectId: bobbinsInstalled.projectId,
+        manifestJson: bobbinsInstalled.manifestJson,
+      })
+      .from(bobbinsInstalled)
+      .where(eq(bobbinsInstalled.enabled, true))
+
+    const now = new Date()
+
+    for (const bobbin of installed) {
+      const manifest = bobbin.manifestJson as any
+      const capabilities = manifest?.capabilities || {}
+      const sync = manifest?.sync || {}
+
+      // Only process backup bobbins with sync frequency
+      if (capabilities.publisherCategory !== 'backup' || !sync.frequency) continue
+
+      // Calculate if sync is due based on frequency
+      const interval = SYNC_FREQUENCY_MS[sync.frequency]
+      if (!interval || interval === 0) continue
+
+      // Check last sync for this bobbin's destinations
+      const [destination] = await db
+        .select({ lastSyncedAt: projectDestinations.lastSyncedAt })
+        .from(projectDestinations)
+        .where(and(
+          eq(projectDestinations.projectId, bobbin.projectId),
+          eq(projectDestinations.isActive, true),
+        ))
+        .limit(1)
+
+      const lastSync = destination?.lastSyncedAt
+      if (lastSync && (now.getTime() - lastSync.getTime()) < interval) continue
+
+      // Find entities edited since last sync
+      const sinceDate = lastSync || new Date(0)
+      const editedEntities = await db
+        .select({ id: entities.id })
+        .from(entities)
+        .where(and(
+          eq(entities.projectId, bobbin.projectId),
+          gt(entities.lastEditedAt!, sinceDate)
+        ))
+        .limit(1) // Just check if any exist
+
+      if (editedEntities.length === 0) continue
+
+      // Invoke the backup handler if registered
+      const handler = actionHandlers[bobbin.bobbinId]?.['sync']
+      if (handler) {
+        try {
+          await handler(bobbin.projectId)
+          console.log(`[trigger-scheduler] Backup sync completed: ${bobbin.bobbinId} for project ${bobbin.projectId}`)
+        } catch (err) {
+          console.error(`[trigger-scheduler] Backup sync failed: ${bobbin.bobbinId} for project ${bobbin.projectId}:`, err)
+        }
+      } else {
+        console.log(`[trigger-scheduler] No sync handler for backup bobbin ${bobbin.bobbinId}`)
+      }
+    }
+  } catch (err) {
+    console.error('[trigger-scheduler] Failed to process backup sync:', err)
+  }
+}
+
 let intervalId: ReturnType<typeof setInterval> | null = null
 
 /**
  * Start the trigger scheduler.
- * Runs every minute to check for matching cron triggers.
+ * Runs every minute to check for matching cron triggers and backup sync.
  */
 export function startTriggerScheduler(): void {
   if (intervalId) return
+
+  // Initialize tier dispatch (subscribes to content:available events)
+  initTierDispatch()
+
   console.log('[trigger-scheduler] Starting trigger scheduler (1-minute interval)')
-  intervalId = setInterval(processScheduleTriggers, 60 * 1000)
+  intervalId = setInterval(async () => {
+    await Promise.allSettled([
+      processScheduleTriggers(),
+      processBackupSync(),
+      processEmbargoReleases(),
+    ])
+  }, 60 * 1000)
   // Run once immediately
   processScheduleTriggers()
 }

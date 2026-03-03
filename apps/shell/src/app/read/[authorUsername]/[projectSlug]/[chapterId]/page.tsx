@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { config } from '@/lib/config'
 import { ReaderNav } from '@/components/ReaderNav'
+import { ExtensionSlot } from '@/components/ExtensionSlot'
 
 interface ChapterData {
   id: string
@@ -33,6 +34,7 @@ interface Comment {
   authorName: string
   likeCount: number
   createdAt: string
+  replies: Comment[]
 }
 
 type FontSize = 'small' | 'medium' | 'large' | 'xlarge'
@@ -65,6 +67,108 @@ const REACTION_EMOJIS: Record<string, string> = {
   sad: '\uD83D\uDE22',
   fire: '\uD83D\uDD25',
   clap: '\uD83D\uDC4F'
+}
+
+const MAX_REPLY_DEPTH = 3
+
+function CommentThread({
+  comment,
+  depth,
+  isDark,
+  isSepia,
+  mutedText,
+  borderColor,
+  isLoggedIn,
+  replyingTo,
+  replyContent,
+  onSetReplyingTo,
+  onSetReplyContent,
+  onPostReply
+}: {
+  comment: Comment
+  depth: number
+  isDark: boolean
+  isSepia: boolean
+  mutedText: string
+  borderColor: string
+  isLoggedIn: boolean
+  replyingTo: string | null
+  replyContent: string
+  onSetReplyingTo: (id: string | null) => void
+  onSetReplyContent: (s: string) => void
+  onPostReply: (parentId?: string) => void
+}) {
+  const contentColor = isDark ? 'text-gray-300' : isSepia ? 'text-amber-900' : 'text-gray-700'
+  const isReplying = replyingTo === comment.id
+
+  return (
+    <div className={depth > 0 ? `ml-6 pl-4 border-l-2 ${borderColor}` : ''}>
+      <div className="text-sm">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="font-medium">{comment.authorName || 'Anonymous'}</span>
+          <span className={`${mutedText} text-xs`}>
+            {new Date(comment.createdAt).toLocaleDateString()}
+          </span>
+        </div>
+        <p className={`${contentColor} whitespace-pre-line`}>{comment.content}</p>
+        {isLoggedIn && depth < MAX_REPLY_DEPTH && (
+          <button
+            onClick={() => onSetReplyingTo(isReplying ? null : comment.id)}
+            className={`${mutedText} text-xs mt-1 hover:underline`}
+          >
+            {isReplying ? 'Cancel' : 'Reply'}
+          </button>
+        )}
+        {isReplying && (
+          <div className="mt-2 mb-2">
+            <textarea
+              value={replyContent}
+              onChange={e => onSetReplyContent(e.target.value)}
+              placeholder="Write a reply..."
+              rows={2}
+              className={`w-full px-3 py-2 border ${borderColor} bg-transparent rounded-lg text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
+            />
+            <div className="flex justify-end mt-1 gap-2">
+              <button
+                onClick={() => onSetReplyingTo(null)}
+                className={`px-3 py-1 text-xs ${mutedText} hover:underline`}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => onPostReply(comment.id)}
+                disabled={!replyContent.trim()}
+                className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition-colors disabled:opacity-50"
+              >
+                Reply
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      {comment.replies && comment.replies.length > 0 && (
+        <div className="mt-3 space-y-3">
+          {comment.replies.map(reply => (
+            <CommentThread
+              key={reply.id}
+              comment={reply}
+              depth={depth + 1}
+              isDark={isDark}
+              isSepia={isSepia}
+              mutedText={mutedText}
+              borderColor={borderColor}
+              isLoggedIn={isLoggedIn}
+              replyingTo={replyingTo}
+              replyContent={replyContent}
+              onSetReplyingTo={onSetReplyingTo}
+              onSetReplyContent={onSetReplyContent}
+              onPostReply={onPostReply}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function ChapterReaderPage() {
@@ -111,6 +215,42 @@ export default function ChapterReaderPage() {
   // Progress tracking
   const contentRef = useRef<HTMLDivElement>(null)
   const [progress, setProgress] = useState(0)
+  const [isBookmarked, setIsBookmarked] = useState(false)
+
+  // Bookmark management
+  const bookmarkKey = `bobbinry-bookmark-${chapterId}`
+
+  const saveBookmark = useCallback(() => {
+    const scrollPercent = progress
+    localStorage.setItem(bookmarkKey, JSON.stringify({ progress: scrollPercent, savedAt: Date.now() }))
+    setIsBookmarked(true)
+  }, [bookmarkKey, progress])
+
+  const removeBookmark = useCallback(() => {
+    localStorage.removeItem(bookmarkKey)
+    setIsBookmarked(false)
+  }, [bookmarkKey])
+
+  const restoreBookmark = useCallback(() => {
+    try {
+      const saved = localStorage.getItem(bookmarkKey)
+      if (saved) {
+        const bookmark = JSON.parse(saved)
+        if (bookmark.progress && contentRef.current) {
+          const el = contentRef.current
+          const scrollHeight = el.scrollHeight - window.innerHeight
+          const targetScroll = el.offsetTop + (scrollHeight * bookmark.progress / 100)
+          window.scrollTo({ top: targetScroll, behavior: 'smooth' })
+        }
+      }
+    } catch {}
+  }, [bookmarkKey])
+
+  // Check for existing bookmark on mount
+  useEffect(() => {
+    const saved = localStorage.getItem(bookmarkKey)
+    setIsBookmarked(!!saved)
+  }, [bookmarkKey])
 
   useEffect(() => {
     loadChapter()
@@ -256,8 +396,12 @@ export default function ChapterReaderPage() {
     } catch {}
   }
 
-  const postComment = async () => {
-    if (!session?.apiToken || !newComment.trim()) return
+  const [replyingTo, setReplyingTo] = useState<string | null>(null)
+  const [replyContent, setReplyContent] = useState('')
+
+  const postComment = async (parentId?: string) => {
+    const content = parentId ? replyContent : newComment
+    if (!session?.apiToken || !content.trim()) return
     try {
       const res = await fetch(`${config.apiUrl}/api/public/chapters/${chapterId}/comments`, {
         method: 'POST',
@@ -265,10 +409,15 @@ export default function ChapterReaderPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.apiToken}`
         },
-        body: JSON.stringify({ content: newComment.trim() })
+        body: JSON.stringify({ content: content.trim(), parentId: parentId || undefined })
       })
       if (res.ok) {
-        setNewComment('')
+        if (parentId) {
+          setReplyContent('')
+          setReplyingTo(null)
+        } else {
+          setNewComment('')
+        }
         // Reload comments
         const cRes = await fetch(`${config.apiUrl}/api/public/chapters/${chapterId}/comments`)
         if (cRes.ok) {
@@ -358,18 +507,50 @@ export default function ChapterReaderPage() {
         themed={navTheme}
       />
 
-      {/* Reader settings bar */}
+      {/* Reader settings bar + reader toolbar extensions */}
       <div className={`border-b ${borderColor} bg-inherit`}>
-        <div className={`${WIDTHS[readerWidth]} mx-auto px-4 py-1.5 flex items-center justify-end`}>
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            className={`p-1.5 rounded ${hoverBg} transition-colors`}
-            title="Reading settings"
-          >
-            <svg className={`w-4 h-4 ${mutedText}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-            </svg>
-          </button>
+        <div className={`${WIDTHS[readerWidth]} mx-auto px-4 py-1.5 flex items-center justify-between`}>
+          {/* Reader bobbin toolbar actions */}
+          <ExtensionSlot
+            slotId="reader.toolbar"
+            context={{ chapterId, projectId, readerTheme }}
+            className="flex items-center gap-2"
+            fallback={<span />}
+          />
+          <div className="flex items-center gap-1">
+            {/* Bookmark button */}
+            <button
+              onClick={isBookmarked ? removeBookmark : saveBookmark}
+              className={`p-1.5 rounded ${hoverBg} transition-colors`}
+              title={isBookmarked ? 'Remove bookmark' : 'Bookmark this position'}
+            >
+              <svg className={`w-4 h-4 ${isBookmarked ? 'text-blue-500 fill-current' : mutedText}`} fill={isBookmarked ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+              </svg>
+            </button>
+            {/* Restore bookmark */}
+            {isBookmarked && (
+              <button
+                onClick={restoreBookmark}
+                className={`p-1.5 rounded ${hoverBg} transition-colors`}
+                title="Jump to bookmark"
+              >
+                <svg className={`w-4 h-4 ${mutedText}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+              </button>
+            )}
+            {/* Settings toggle */}
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              className={`p-1.5 rounded ${hoverBg} transition-colors`}
+              title="Reading settings"
+            >
+              <svg className={`w-4 h-4 ${mutedText}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Settings panel */}
@@ -469,6 +650,14 @@ export default function ChapterReaderPage() {
           </div>
         )}
 
+        {/* Reader bobbin after-chapter panels */}
+        <ExtensionSlot
+          slotId="reader.afterChapter"
+          context={{ chapterId, projectId, readerTheme }}
+          className={`mt-8 pt-6 border-t ${borderColor} space-y-4`}
+          fallback={null}
+        />
+
         {/* Navigation */}
         <div className="mt-8 flex justify-between">
           {nav.previous ? (
@@ -505,7 +694,7 @@ export default function ChapterReaderPage() {
               />
               <div className="flex justify-end mt-2">
                 <button
-                  onClick={postComment}
+                  onClick={() => postComment()}
                   disabled={!newComment.trim()}
                   className="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors disabled:opacity-50"
                 >
@@ -519,18 +708,24 @@ export default function ChapterReaderPage() {
             </p>
           )}
 
-          {/* Comment list */}
+          {/* Threaded comment list */}
           <div className="space-y-4">
             {commentsList.map(comment => (
-              <div key={comment.id} className="text-sm">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="font-medium">{comment.authorName || 'Anonymous'}</span>
-                  <span className={`${mutedText} text-xs`}>
-                    {new Date(comment.createdAt).toLocaleDateString()}
-                  </span>
-                </div>
-                <p className={`${isDark ? 'text-gray-300' : isSepia ? 'text-amber-900' : 'text-gray-700'} whitespace-pre-line`}>{comment.content}</p>
-              </div>
+              <CommentThread
+                key={comment.id}
+                comment={comment}
+                depth={0}
+                isDark={isDark}
+                isSepia={isSepia}
+                mutedText={mutedText}
+                borderColor={borderColor}
+                isLoggedIn={!!session?.user}
+                replyingTo={replyingTo}
+                replyContent={replyContent}
+                onSetReplyingTo={setReplyingTo}
+                onSetReplyContent={setReplyContent}
+                onPostReply={postComment}
+              />
             ))}
           </div>
         </div>

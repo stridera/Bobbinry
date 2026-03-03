@@ -1060,6 +1060,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
   })
 
   // Get reading progress - recent incomplete chapter views
+  // Uses JOINs to resolve chapter titles and project info in a single query
   fastify.get<{
     Params: { userId: string }
     Querystring: { limit?: string }
@@ -1072,76 +1073,72 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
 
       const limit = Math.min(parseInt(request.query.limit || '20', 10), 50)
 
-      // Get recent chapter views that are not completed
-      const allProgressItems = await db
+      // Use a single query with JOINs to get progress + chapter + project data
+      // Use DISTINCT ON to deduplicate by chapterId (keeping most recent view)
+      const progressItems = await db
         .select({
           viewId: chapterViews.id,
           chapterId: chapterViews.chapterId,
           lastPositionPercent: chapterViews.lastPositionPercent,
           readTimeSeconds: chapterViews.readTimeSeconds,
           startedAt: chapterViews.startedAt,
-          completedAt: chapterViews.completedAt
+          chapterTitle: sql<string>`COALESCE(${entities.entityData}->>'title', 'Untitled')`,
+          projectId: entities.projectId,
+          projectName: sql<string>`COALESCE(${projects.name}, 'Unknown Project')`,
+          projectShortUrl: projects.shortUrl,
+          authorId: projects.ownerId
         })
         .from(chapterViews)
+        .innerJoin(entities, eq(entities.id, chapterViews.chapterId))
+        .innerJoin(projects, eq(projects.id, entities.projectId))
         .where(and(
           eq(chapterViews.readerId, userId),
           isNull(chapterViews.completedAt)
         ))
         .orderBy(desc(chapterViews.startedAt))
 
-      // Deduplicate by chapterId, keeping the most recent view per chapter
+      // Deduplicate by chapterId in application, keeping most recent per chapter
       const seen = new Set<string>()
-      const progressItems = allProgressItems.filter(item => {
+      const deduplicated = progressItems.filter(item => {
         if (seen.has(item.chapterId)) return false
         seen.add(item.chapterId)
         return true
       }).slice(0, limit)
 
-      // Resolve chapter details and project info
-      const progressWithDetails = await Promise.all(
-        progressItems.map(async (item) => {
-          let chapterTitle = 'Untitled'
-          let projectId: string | null = null
-          let projectName = 'Unknown Project'
-          let projectShortUrl: string | null = null
+      // Batch-resolve author usernames for all unique author IDs
+      const authorIds = [...new Set(deduplicated.map(p => p.authorId).filter(Boolean))]
+      const authorMap: Record<string, string> = {}
 
-          try {
-            const [entity] = await db
-              .select({
-                entityData: entities.entityData,
-                projectId: entities.projectId
-              })
-              .from(entities)
-              .where(eq(entities.id, item.chapterId))
-              .limit(1)
+      if (authorIds.length > 0) {
+        const authorProfiles = await db
+          .select({
+            userId: userProfiles.userId,
+            username: userProfiles.username
+          })
+          .from(userProfiles)
+          .where(sql`${userProfiles.userId} IN ${authorIds}`)
 
-            if (entity) {
-              chapterTitle = (entity.entityData as any)?.title || 'Untitled'
-              projectId = entity.projectId
-
-              const [project] = await db
-                .select({ name: projects.name, shortUrl: projects.shortUrl })
-                .from(projects)
-                .where(eq(projects.id, entity.projectId))
-                .limit(1)
-              if (project) {
-                projectName = project.name
-                projectShortUrl = project.shortUrl
-              }
-            }
-          } catch {}
-
-          return {
-            ...item,
-            chapterTitle,
-            projectId,
-            projectName,
-            projectShortUrl
+        for (const profile of authorProfiles) {
+          if (profile.username) {
+            authorMap[profile.userId] = profile.username
           }
-        })
-      )
+        }
+      }
 
-      return reply.status(200).send({ progress: progressWithDetails })
+      const enriched = deduplicated.map(item => ({
+        viewId: item.viewId,
+        chapterId: item.chapterId,
+        lastPositionPercent: item.lastPositionPercent,
+        readTimeSeconds: item.readTimeSeconds,
+        startedAt: item.startedAt,
+        chapterTitle: item.chapterTitle,
+        projectId: item.projectId,
+        projectName: item.projectName,
+        projectShortUrl: item.projectShortUrl,
+        authorUsername: item.authorId ? (authorMap[item.authorId] || null) : null
+      }))
+
+      return reply.status(200).send({ progress: enriched })
     } catch (error) {
       fastify.log.error(error)
       return reply.status(500).send({ error: 'Failed to fetch reading progress' })

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
@@ -10,9 +10,7 @@ import { ViewRouter } from '@/components/ViewRouter'
 import { UserMenu } from '@/components/UserMenu'
 import { useManifestExtensions } from '@/components/ExtensionProvider'
 import { ProjectWelcome } from '../components/ProjectWelcome'
-import { PublishPanel } from '@/components/PublishPanel'
 import { apiFetch } from '@/lib/api'
-import { extensionRegistry } from '@/lib/extensions'
 
 interface InstalledBobbin {
   id: string
@@ -43,6 +41,7 @@ export default function ProjectWritePage() {
 
   const [sdk] = useState(() => new BobbinrySDK('shell'))
   const [installedBobbins, setInstalledBobbins] = useState<InstalledBobbin[]>([])
+  const previousBobbinIdsRef = useRef<string[]>([])
   const [loading, setLoading] = useState(true)
   const [projectName, setProjectName] = useState<string | null>(null)
 
@@ -97,15 +96,17 @@ export default function ProjectWritePage() {
         console.log('🚀 PROJECT PAGE: response.bobbins length:', response.bobbins?.length)
 
         const newBobbins = response.bobbins || []
-        const oldBobbinIds = installedBobbins.map(b => b.id)
         const newBobbinIds = newBobbins.map((b: InstalledBobbin) => b.id)
 
-        // Unregister extensions for bobbins that were removed
-        const removedBobbinIds = oldBobbinIds.filter(id => !newBobbinIds.includes(id))
+        // Unregister extensions for bobbins that were removed (using ref for previous state)
+        const removedBobbinIds = previousBobbinIdsRef.current.filter(id => !newBobbinIds.includes(id))
         removedBobbinIds.forEach(bobbinId => {
           console.log('🗑️ PROJECT PAGE: Unregistering extensions for removed bobbin:', bobbinId)
           unregisterManifestExtensions(bobbinId)
         })
+
+        // Update the ref with current bobbin IDs
+        previousBobbinIdsRef.current = newBobbinIds
 
         setInstalledBobbins(newBobbins)
 
@@ -116,19 +117,6 @@ export default function ProjectWritePage() {
             console.log('🚀 PROJECT PAGE: Registering extensions for bobbin:', bobbin.id, 'mode:', bobbin.manifest.execution?.mode)
             registerManifestExtensions(bobbin.id, bobbin.manifest)
           })
-        }
-
-        // Register native publish panel extension
-        const publishExtId = '__shell__.publish-panel'
-        if (!extensionRegistry.getExtension(publishExtId)) {
-          extensionRegistry.registerExtension('__shell__', {
-            id: 'publish-panel',
-            slot: 'shell.rightPanel',
-            type: 'panel',
-            title: 'Publishing',
-            when: { inView: '*' },
-          })
-          extensionRegistry.registerExtensionComponent(publishExtId, PublishPanel)
         }
 
         console.log('✅ PROJECT PAGE: Bobbins loaded and registered')

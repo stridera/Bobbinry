@@ -1,10 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { signIn } from 'next-auth/react'
 import { config } from '@/lib/config'
+import { GoogleOAuthButton } from '@/components/GoogleOAuthButton'
 
 export default function SignupPage() {
   const router = useRouter()
@@ -139,6 +140,8 @@ export default function SignupPage() {
                 Sign in
               </Link>
             </p>
+
+            <GoogleOAuthButton label="Sign up with Google" />
           </div>
         </div>
       </div>

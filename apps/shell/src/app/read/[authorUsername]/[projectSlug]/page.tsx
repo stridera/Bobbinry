@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { config } from '@/lib/config'
+import { apiFetch } from '@/lib/api'
 import { ReaderNav } from '@/components/ReaderNav'
 
 interface ProjectInfo {
@@ -53,6 +54,9 @@ export default function ProjectReadingPage() {
   const [tiers, setTiers] = useState<SubscriptionTier[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [subscribing, setSubscribing] = useState<string | null>(null)
+  const [subscribeError, setSubscribeError] = useState<string | null>(null)
+  const [subscribedTierId, setSubscribedTierId] = useState<string | null>(null)
 
   useEffect(() => {
     loadProject()
@@ -126,6 +130,35 @@ export default function ProjectReadingPage() {
         </div>
       </div>
     )
+  }
+
+  const handleSubscribe = async (tierId: string) => {
+    if (!session?.user?.id || !author?.userId) return
+    const apiToken = (session as any).apiToken as string
+    if (!apiToken) return
+    setSubscribing(tierId)
+    setSubscribeError(null)
+    try {
+      const res = await apiFetch(
+        `/api/users/${session.user.id}/subscribe`,
+        apiToken,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ authorId: author.userId, tierId })
+        }
+      )
+      if (res.ok) {
+        setSubscribedTierId(tierId)
+      } else {
+        const data = await res.json()
+        setSubscribeError(data.error || 'Failed to subscribe')
+      }
+    } catch {
+      setSubscribeError('Failed to subscribe. Please try again.')
+    } finally {
+      setSubscribing(null)
+    }
   }
 
   const authorName = author?.displayName || author?.userName || 'Unknown Author'
@@ -219,11 +252,18 @@ export default function ProjectReadingPage() {
           <h2 className="font-display text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">
             Support this Author
           </h2>
+          {subscribeError && (
+            <p className="text-sm text-red-600 dark:text-red-400 mb-3">{subscribeError}</p>
+          )}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {tiers.map(tier => (
               <div
                 key={tier.id}
-                className="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30"
+                className={`p-4 rounded-lg border bg-gray-50 dark:bg-gray-900/30 ${
+                  subscribedTierId === tier.id
+                    ? 'border-green-500 dark:border-green-400'
+                    : 'border-gray-200 dark:border-gray-700'
+                }`}
               >
                 <h3 className="font-medium text-gray-900 dark:text-gray-100">{tier.name}</h3>
                 <p className="text-lg font-bold text-gray-900 dark:text-gray-100 mt-1">
@@ -232,9 +272,26 @@ export default function ProjectReadingPage() {
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   {tier.chapterDelayDays === 0 ? 'Immediate access' : `${tier.chapterDelayDays}d early access`}
                 </p>
-                <button className="w-full mt-3 px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors">
-                  Subscribe
-                </button>
+                {subscribedTierId === tier.id ? (
+                  <div className="w-full mt-3 px-3 py-1.5 bg-green-600 text-white rounded text-sm text-center">
+                    Subscribed
+                  </div>
+                ) : session?.user ? (
+                  <button
+                    onClick={() => handleSubscribe(tier.id)}
+                    disabled={subscribing !== null}
+                    className="w-full mt-3 px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors disabled:opacity-50"
+                  >
+                    {subscribing === tier.id ? 'Subscribing...' : 'Subscribe'}
+                  </button>
+                ) : (
+                  <a
+                    href="/login"
+                    className="block w-full mt-3 px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors text-center"
+                  >
+                    Sign in to Subscribe
+                  </a>
+                )}
               </div>
             ))}
           </div>

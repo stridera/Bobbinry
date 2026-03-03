@@ -4,6 +4,22 @@ import { db } from '../db/connection'
 import { bobbinsInstalled, entities } from '../db/schema'
 import { eq, and, sql, or } from 'drizzle-orm'
 import { requireAuth, requireProjectOwnership } from '../middleware/auth'
+import { serverEventBus, contentEdited } from '../lib/event-bus'
+
+/** Format an entity row into the standard API response shape */
+function formatEntityResponse(row: typeof entities.$inferSelect) {
+  return {
+    id: row.id,
+    ...(row.entityData as object),
+    _meta: {
+      bobbinId: row.bobbinId,
+      collection: row.collectionName,
+      version: row.version,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt
+    }
+  }
+}
 
 // Input validation schemas
 const EntityQuerySchema = z.object({
@@ -28,6 +44,10 @@ const EntityCreateSchema = z.object({
     .regex(/^[a-zA-Z0-9_-]+$/, 'Collection name contains invalid characters'),
   projectId: z.string().uuid('Invalid project ID format'),
   data: z.record(z.string(), z.any())
+})
+
+const EntityUpdateSchema = EntityCreateSchema.extend({
+  expectedVersion: z.number().int().positive().optional()
 })
 
 const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
@@ -122,16 +142,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
         .offset(offset)
 
       // Transform results to match expected format
-      const entityList = result.map((row) => ({
-        id: row.id,
-        ...(row.entityData as object),
-        _meta: {
-          bobbinId: row.bobbinId,
-          collection: row.collectionName,
-          createdAt: row.createdAt,
-          updatedAt: row.updatedAt
-        }
-      }))
+      const entityList = result.map(formatEntityResponse)
 
       return { entities: entityList, total: entityList.length }
 
@@ -224,16 +235,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(500).send({ error: 'Failed to create entity - no result returned' })
       }
 
-      return {
-        id: created.id,
-        ...(created.entityData as object),
-        _meta: {
-          bobbinId: created.bobbinId,
-          collection: created.collectionName,
-          createdAt: created.createdAt,
-          updatedAt: created.updatedAt
-        }
-      }
+      return formatEntityResponse(created)
 
     } catch (error) {
       fastify.log.error(error)
@@ -263,6 +265,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       collection: string
       projectId: string
       data: Record<string, any>
+      expectedVersion?: number
     }
   }>('/entities/:entityId', {
     preHandler: requireAuth
@@ -271,8 +274,8 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       const { entityId } = request.params
 
       // Validate input with Zod
-      const body = EntityCreateSchema.parse(request.body)
-      const { collection, projectId, data } = body
+      const body = EntityUpdateSchema.parse(request.body)
+      const { collection, projectId, data, expectedVersion } = body
 
       // Check project ownership
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
@@ -293,41 +296,55 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(404).send({ error: 'Entity not found' })
       }
 
+      const currentEntity = current[0]!
+
+      // Optimistic locking: if client sends expectedVersion, check it matches
+      if (expectedVersion !== undefined && currentEntity.version !== expectedVersion) {
+        return reply.status(409).send({
+          error: 'Conflict: entity was modified by another session',
+          currentVersion: currentEntity.version,
+          expectedVersion
+        })
+      }
+
       // Merge the new data with existing entity_data to preserve unmodified fields
       const mergedData = {
-        ...(current[0]!.entityData as object),
+        ...(currentEntity.entityData as object),
         ...data
       }
+
+      const newVersion = currentEntity.version + 1
 
       const result = await db
         .update(entities)
         .set({
           entityData: mergedData,
+          version: newVersion,
           updatedAt: new Date()
         })
         .where(and(
           eq(entities.id, entityId),
           eq(entities.projectId, projectId),
-          eq(entities.collectionName, collection)
+          eq(entities.collectionName, collection),
+          // Double-check version at DB level to prevent TOCTOU race
+          eq(entities.version, currentEntity.version)
         ))
         .returning()
 
       if (result.length === 0) {
-        return reply.status(500).send({ error: 'Update failed' })
+        // Version changed between our read and write — concurrent edit
+        return reply.status(409).send({
+          error: 'Conflict: entity was modified by another session',
+          currentVersion: currentEntity.version + 1
+        })
       }
 
-      const updated = result[0]!  // Safe because we check result.length above
+      const updated = result[0]!
 
-      return {
-        id: updated.id,
-        ...(updated.entityData as object),
-        _meta: {
-          bobbinId: updated.bobbinId,
-          collection: updated.collectionName,
-          createdAt: updated.createdAt,
-          updatedAt: updated.updatedAt
-        }
-      }
+      // Emit content:edited event for backup bobbins and other listeners
+      serverEventBus.fire(contentEdited(projectId, entityId, request.user!.id, collection))
+
+      return formatEntityResponse(updated)
 
     } catch (error) {
       fastify.log.error(error)
@@ -642,16 +659,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
 
       const entity = result[0]!  // Safe because we check result.length above
 
-      return {
-        id: entity.id,
-        ...(entity.entityData as object),
-        _meta: {
-          bobbinId: entity.bobbinId,
-          collection: entity.collectionName,
-          createdAt: entity.createdAt,
-          updatedAt: entity.updatedAt
-        }
-      }
+      return formatEntityResponse(entity)
 
     } catch (error) {
       fastify.log.error(error)

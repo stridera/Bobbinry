@@ -22,7 +22,7 @@ import {
   comments,
   reactions
 } from '../db/schema'
-import { eq, and, desc, sql, isNull, or, count } from 'drizzle-orm'
+import { eq, and, desc, asc, sql, isNull, or, count } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { env } from '../lib/env'
 import { optionalAuth } from '../middleware/auth'
@@ -331,35 +331,97 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       const { chapterId } = request.params
       const { userId, sessionId, deviceType, referrer, readTime, position } = request.body
 
-      // Track view
-      const [view] = await db
-        .insert(chapterViews)
-        .values({
-          chapterId,
-          readerId: userId || null,
-          sessionId: sessionId || randomUUID(),
-          deviceType,
-          referrer,
-          readTimeSeconds: readTime ? Number(readTime) : 0,
-          lastPositionPercent: position ? Number(position) : 0
-        })
-        .returning()
+      let viewId: string
+      let isNewView = false
 
-      if (!view) {
-        return reply.status(500).send({ error: 'Failed to create view record', correlationId })
+      // For authenticated users, upsert on (readerId, chapterId) to prevent duplicate rows
+      if (userId) {
+        const [existing] = await db
+          .select({ id: chapterViews.id })
+          .from(chapterViews)
+          .where(and(
+            eq(chapterViews.readerId, userId),
+            eq(chapterViews.chapterId, chapterId)
+          ))
+          .limit(1)
+
+        if (existing) {
+          // Update existing view record
+          const updates: Record<string, any> = {}
+          if (position !== undefined) updates.lastPositionPercent = Number(position)
+          if (readTime !== undefined) updates.readTimeSeconds = sql`${chapterViews.readTimeSeconds} + ${Number(readTime)}`
+          if (deviceType) updates.deviceType = deviceType
+
+          // Mark as completed if position is >= 95%
+          if (position !== undefined && Number(position) >= 95) {
+            updates.completedAt = new Date()
+          }
+
+          if (Object.keys(updates).length > 0) {
+            await db
+              .update(chapterViews)
+              .set(updates)
+              .where(eq(chapterViews.id, existing.id))
+          }
+          viewId = existing.id
+        } else {
+          // Create new view record for this reader+chapter pair
+          const [view] = await db
+            .insert(chapterViews)
+            .values({
+              chapterId,
+              readerId: userId,
+              sessionId: sessionId || randomUUID(),
+              deviceType,
+              referrer,
+              readTimeSeconds: readTime ? Number(readTime) : 0,
+              lastPositionPercent: position ? Number(position) : 0
+            })
+            .returning()
+
+          if (!view) {
+            return reply.status(500).send({ error: 'Failed to create view record', correlationId })
+          }
+          viewId = view.id
+          isNewView = true
+        }
+      } else {
+        // Anonymous users: always create a new view (tracked by session)
+        const [view] = await db
+          .insert(chapterViews)
+          .values({
+            chapterId,
+            readerId: null,
+            sessionId: sessionId || randomUUID(),
+            deviceType,
+            referrer,
+            readTimeSeconds: readTime ? Number(readTime) : 0,
+            lastPositionPercent: position ? Number(position) : 0
+          })
+          .returning()
+
+        if (!view) {
+          return reply.status(500).send({ error: 'Failed to create view record', correlationId })
+        }
+        viewId = view.id
+        isNewView = true
       }
 
-      // Increment view count
-      await db
-        .update(chapterPublications)
-        .set({
-          viewCount: sql`CAST(${chapterPublications.viewCount} AS INTEGER) + 1`,
-          updatedAt: new Date()
-        })
-        .where(eq(chapterPublications.chapterId, chapterId))
+      // Only increment view count for new views
+
+      // Only increment view count for new views
+      if (isNewView) {
+        await db
+          .update(chapterPublications)
+          .set({
+            viewCount: sql`CAST(${chapterPublications.viewCount} AS INTEGER) + 1`,
+            updatedAt: new Date()
+          })
+          .where(eq(chapterPublications.chapterId, chapterId))
+      }
 
       return reply.status(201).send({
-        viewId: view.id,
+        viewId,
         correlationId
       })
     } catch (error) {
@@ -1021,7 +1083,8 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       const { chapterId } = request.params
       const { limit = 50, offset = 0 } = request.query
 
-      const chapterComments = await db
+      // Fetch all approved comments for this chapter (flat list)
+      const allComments = await db
         .select({
           id: comments.id,
           content: comments.content,
@@ -1037,20 +1100,40 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           eq(comments.chapterId, chapterId),
           eq(comments.moderationStatus, 'approved')
         ))
-        .orderBy(desc(comments.createdAt))
-        .limit(limit)
-        .offset(offset)
+        .orderBy(asc(comments.createdAt))
+
+      // Build tree: group replies under their parent
+      type CommentNode = typeof allComments[number] & { replies: CommentNode[] }
+      const commentMap = new Map<string, CommentNode>()
+      const roots: CommentNode[] = []
+
+      for (const c of allComments) {
+        const node: CommentNode = { ...c, replies: [] }
+        commentMap.set(c.id, node)
+      }
+
+      for (const node of commentMap.values()) {
+        if (node.parentId && commentMap.has(node.parentId)) {
+          commentMap.get(node.parentId)!.replies.push(node)
+        } else {
+          roots.push(node)
+        }
+      }
+
+      // Paginate top-level comments only
+      const paginatedRoots = roots.slice(offset, offset + limit)
 
       const [total] = await db
         .select({ count: count() })
         .from(comments)
         .where(and(
           eq(comments.chapterId, chapterId),
-          eq(comments.moderationStatus, 'approved')
+          eq(comments.moderationStatus, 'approved'),
+          isNull(comments.parentId)
         ))
 
       return reply.send({
-        comments: chapterComments,
+        comments: paginatedRoots,
         total: total?.count ?? 0,
         correlationId
       })

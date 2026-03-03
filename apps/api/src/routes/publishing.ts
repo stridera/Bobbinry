@@ -16,6 +16,7 @@ import {
 } from '../db/schema'
 import { eq, and, desc, sql } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
+import { serverEventBus, contentPublished, contentStatusChange } from '../lib/event-bus'
 
 // ============================================
 // ACCESS CONTROL HELPERS
@@ -237,6 +238,9 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       const now = new Date()
       const version = publishedVersion || '1.0'
 
+      let publication
+      let isNew = false
+
       if (existing) {
         // Update existing
         const [updated] = await db
@@ -251,11 +255,10 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
           })
           .where(eq(chapterPublications.id, existing.id))
           .returning()
-
-        return reply.send({ publication: updated, correlationId })
+        publication = updated
       } else {
         // Create new publication record
-        const [publication] = await db
+        const [created] = await db
           .insert(chapterPublications)
           .values({
             projectId,
@@ -268,6 +271,8 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
             lastPublishedAt: publishStatus === 'published' ? now : null
           })
           .returning()
+        publication = created
+        isNew = true
 
         // Create snapshot
         if (chapter.lastEditedBy) {
@@ -280,9 +285,16 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
             notes: 'Initial publication'
           })
         }
-
-        return reply.status(201).send({ publication, correlationId })
       }
+
+      // Emit content:published event
+      if (publishStatus === 'published') {
+        serverEventBus.fire(contentPublished(
+          projectId, chapterId, chapter.lastEditedBy || 'system', true
+        ))
+      }
+
+      return reply.status(isNew ? 201 : 200).send({ publication, correlationId })
     } catch (error) {
       fastify.log.error({ error, correlationId }, 'Failed to publish chapter')
       return reply.status(500).send({ error: 'Failed to publish chapter', correlationId })
@@ -312,10 +324,98 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(404).send({ error: 'Chapter publication not found', correlationId })
       }
 
+      // Emit content:published event (unpublished)
+      serverEventBus.fire(contentPublished(projectId, chapterId, 'system', false))
+
       return reply.send({ publication: updated, correlationId })
     } catch (error) {
       fastify.log.error({ error, correlationId }, 'Failed to unpublish chapter')
       return reply.status(500).send({ error: 'Failed to unpublish chapter', correlationId })
+    }
+  })
+
+  // Mark a chapter as complete (writing -> complete, gates audience publishing)
+  fastify.post<{
+    Params: { projectId: string; chapterId: string }
+  }>('/projects/:projectId/chapters/:chapterId/complete', async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const { projectId, chapterId } = request.params
+
+      // Check if chapter exists
+      const [chapter] = await db
+        .select()
+        .from(entities)
+        .where(and(eq(entities.id, chapterId), eq(entities.projectId, projectId)))
+        .limit(1)
+
+      if (!chapter) {
+        return reply.status(404).send({ error: 'Chapter not found', correlationId })
+      }
+
+      // Check/create publication record
+      const [existing] = await db
+        .select()
+        .from(chapterPublications)
+        .where(and(eq(chapterPublications.chapterId, chapterId), eq(chapterPublications.projectId, projectId)))
+        .limit(1)
+
+      const now = new Date()
+
+      let publication
+      let isNew = false
+
+      if (existing) {
+        const [updated] = await db
+          .update(chapterPublications)
+          .set({ publishStatus: 'complete', updatedAt: now })
+          .where(eq(chapterPublications.id, existing.id))
+          .returning()
+        publication = updated
+      } else {
+        const [created] = await db
+          .insert(chapterPublications)
+          .values({
+            projectId, chapterId,
+            publishStatus: 'complete',
+            isPublished: false
+          })
+          .returning()
+        publication = created
+        isNew = true
+      }
+
+      serverEventBus.fire(contentStatusChange(projectId, chapterId, chapter.lastEditedBy || 'system', 'complete'))
+      return reply.status(isNew ? 201 : 200).send({ publication, correlationId })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to mark chapter complete')
+      return reply.status(500).send({ error: 'Failed to mark chapter complete', correlationId })
+    }
+  })
+
+  // Revert a chapter to draft status (complete -> draft)
+  fastify.post<{
+    Params: { projectId: string; chapterId: string }
+  }>('/projects/:projectId/chapters/:chapterId/revert-to-draft', async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const { projectId, chapterId } = request.params
+
+      const [updated] = await db
+        .update(chapterPublications)
+        .set({ publishStatus: 'draft', updatedAt: new Date() })
+        .where(and(eq(chapterPublications.chapterId, chapterId), eq(chapterPublications.projectId, projectId)))
+        .returning()
+
+      if (!updated) {
+        return reply.status(404).send({ error: 'Chapter publication not found', correlationId })
+      }
+
+      serverEventBus.fire(contentStatusChange(projectId, chapterId, 'system', 'draft'))
+      return reply.send({ publication: updated, correlationId })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to revert chapter to draft')
+      return reply.status(500).send({ error: 'Failed to revert chapter to draft', correlationId })
     }
   })
 
@@ -983,6 +1083,72 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
     } catch (error) {
       fastify.log.error({ error, correlationId }, 'Failed to get project analytics')
       return reply.status(500).send({ error: 'Failed to get project analytics', correlationId })
+    }
+  })
+
+  // ============================================
+  // VERSION HISTORY ENDPOINT
+  // ============================================
+
+  // Get publish snapshots for a chapter (version history)
+  fastify.get<{
+    Params: { projectId: string; chapterId: string }
+    Querystring: { limit?: number; offset?: number }
+  }>('/projects/:projectId/chapters/:chapterId/snapshots', async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const { projectId, chapterId } = request.params
+      const { limit = 20, offset = 0 } = request.query
+
+      const snapshots = await db
+        .select({
+          id: publishSnapshots.id,
+          versionNumber: publishSnapshots.versionNumber,
+          publishedAt: publishSnapshots.publishedAt,
+          notes: publishSnapshots.notes,
+          publishedBy: publishSnapshots.publishedBy
+        })
+        .from(publishSnapshots)
+        .where(and(
+          eq(publishSnapshots.projectId, projectId),
+          eq(publishSnapshots.entityId, chapterId)
+        ))
+        .orderBy(desc(publishSnapshots.publishedAt))
+        .limit(limit)
+        .offset(offset)
+
+      return reply.send({ snapshots, correlationId })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to get snapshots')
+      return reply.status(500).send({ error: 'Failed to get snapshots', correlationId })
+    }
+  })
+
+  // Get a specific snapshot's content
+  fastify.get<{
+    Params: { projectId: string; snapshotId: string }
+  }>('/projects/:projectId/snapshots/:snapshotId', async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const { projectId, snapshotId } = request.params
+
+      const [snapshot] = await db
+        .select()
+        .from(publishSnapshots)
+        .where(and(
+          eq(publishSnapshots.id, snapshotId),
+          eq(publishSnapshots.projectId, projectId)
+        ))
+        .limit(1)
+
+      if (!snapshot) {
+        return reply.status(404).send({ error: 'Snapshot not found', correlationId })
+      }
+
+      return reply.send({ snapshot, correlationId })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to get snapshot')
+      return reply.status(500).send({ error: 'Failed to get snapshot', correlationId })
     }
   })
 

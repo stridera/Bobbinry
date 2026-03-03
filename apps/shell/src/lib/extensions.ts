@@ -61,13 +61,55 @@ export const BUILTIN_SLOTS: Record<string, SlotDefinition> = {
     description: 'Right-click context menu',
     supportedTypes: ['action', 'menu']
   },
-  'manuscript.editor.toolbar': {
-    id: 'manuscript.editor.toolbar',
-    name: 'Editor Toolbar',
-    description: 'Manuscript editor toolbar',
+  'shell.publishDashboard': {
+    id: 'shell.publishDashboard',
+    name: 'Publish Dashboard',
+    description: 'Project-scoped publishing panels contributed by publisher bobbins',
+    supportedTypes: ['panel'],
+    maxContributions: 10
+  },
+  'shell.editorFooter': {
+    id: 'shell.editorFooter',
+    name: 'Editor Footer',
+    description: 'Word count goals, session stats, writing sprints',
+    supportedTypes: ['view', 'action'],
+    maxContributions: 5
+  },
+  'shell.editorOverlay': {
+    id: 'shell.editorOverlay',
+    name: 'Editor Overlay',
+    description: 'Focus tools, ambient sound, distraction-free overlays',
+    supportedTypes: ['panel'],
+    maxContributions: 3
+  },
+  'shell.publishWorkflow': {
+    id: 'shell.publishWorkflow',
+    name: 'Publish Workflow',
+    description: 'Pre-publish checklists, approval steps',
+    supportedTypes: ['panel', 'action'],
+    maxContributions: 5
+  },
+  'reader.toolbar': {
+    id: 'reader.toolbar',
+    name: 'Reader Toolbar',
+    description: 'Translation toggle, TTS, bookmark actions',
     supportedTypes: ['action'],
-    maxContributions: 15
-  }
+    maxContributions: 8
+  },
+  'reader.afterChapter': {
+    id: 'reader.afterChapter',
+    name: 'After Chapter',
+    description: 'Post-chapter panels like Kindle send, recommendations',
+    supportedTypes: ['panel', 'action'],
+    maxContributions: 5
+  },
+  'reader.sidebar': {
+    id: 'reader.sidebar',
+    name: 'Reader Sidebar',
+    description: 'Annotations, highlights, notes panel',
+    supportedTypes: ['panel'],
+    maxContributions: 3
+  },
 }
 
 class ExtensionRegistry {

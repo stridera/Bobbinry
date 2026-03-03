@@ -508,6 +508,7 @@ export const entities = pgTable('entities', {
   bobbinId: varchar('bobbin_id', { length: 255 }).notNull(),
   collectionName: varchar('collection_name', { length: 255 }).notNull(),
   entityData: jsonb('entity_data').notNull(),
+  version: integer('version').default(1).notNull(),
   lastEditedAt: timestamp('last_edited_at').defaultNow(),
   lastEditedBy: uuid('last_edited_by').references(() => users.id),
   createdAt: timestamp('created_at').defaultNow().notNull(),

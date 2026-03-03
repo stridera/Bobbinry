@@ -301,6 +301,7 @@ export default function EntityEditorView({
 
       return () => clearTimeout(timer)
     }
+    return undefined
   }, [entity, saveStatus])
 
   if (loading) {

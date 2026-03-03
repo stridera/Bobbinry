@@ -32,24 +32,24 @@ log_error() {
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR"
-DB_CONTAINER_NAME="bobbins-postgres-1"
 MINIO_CONTAINER_NAME="bobbins-minio-1"
 SHELL_PORT=3100
 API_PORT=4100
 
-# Function to check Docker
+# Function to check Docker (only needed for MinIO)
 check_docker() {
     if ! command -v docker >/dev/null 2>&1; then
-        log_error "Docker is not installed or not in PATH"
-        exit 1
+        log_warning "Docker is not installed - MinIO will not be available"
+        return 1
     fi
 
     if ! docker info >/dev/null 2>&1; then
-        log_error "Docker is not running. Please start Docker and try again."
-        exit 1
+        log_warning "Docker is not running - MinIO will not be available"
+        return 1
     fi
 
     log_success "Docker is running"
+    return 0
 }
 
 # Function to check Node.js and bun
@@ -67,19 +67,21 @@ check_dependencies() {
     log_success "Node.js $(node --version) and bun $(bun --version) are available"
 }
 
-# Function to start database containers
-start_database() {
-    log_info "Starting database containers..."
+# Function to check local PostgreSQL
+check_postgres() {
+    log_info "Checking PostgreSQL..."
 
-    cd "$PROJECT_ROOT"
-
-    # Check if containers are already running
-    if docker ps --format "table {{.Names}}" | grep -q "$DB_CONTAINER_NAME"; then
-        log_info "Database container is already running"
+    if pg_isready -h localhost -p 5432 >/dev/null 2>&1; then
+        log_success "PostgreSQL is ready!"
     else
-        docker compose up -d postgres
-        sleep 5  # Wait for containers to initialize
+        log_error "PostgreSQL is not running. Start it with: sudo systemctl start postgresql"
+        exit 1
     fi
+}
+
+# Function to start MinIO (still Docker-based)
+start_minio() {
+    cd "$PROJECT_ROOT"
 
     if docker ps --format "table {{.Names}}" | grep -q "$MINIO_CONTAINER_NAME"; then
         log_info "MinIO container is already running"
@@ -88,25 +90,7 @@ start_database() {
         sleep 3
     fi
 
-    # Wait for database to be ready
-    log_info "Waiting for PostgreSQL to be ready..."
-    local attempt=1
-    while [ $attempt -le 15 ]; do
-        if docker exec "$DB_CONTAINER_NAME" pg_isready -U bobbinry >/dev/null 2>&1; then
-            log_success "PostgreSQL is ready!"
-            break
-        fi
-        echo -n "."
-        sleep 2
-        attempt=$((attempt + 1))
-    done
-
-    if [ $attempt -gt 15 ]; then
-        log_error "PostgreSQL failed to start"
-        exit 1
-    fi
-
-    log_success "Database containers are running"
+    log_success "MinIO is running"
 }
 
 # Function to ensure .env symlinks exist for Next.js / app-level env loading
@@ -124,12 +108,14 @@ main() {
     log_info "Starting Bobbins development environment..."
 
     # Pre-flight checks
-    check_docker
     check_dependencies
+    check_postgres
     ensure_env_symlinks
 
-    # Start infrastructure
-    start_database
+    # Start MinIO if Docker is available
+    if check_docker; then
+        start_minio
+    fi
 
     # Install dependencies if node_modules is missing
     cd "$PROJECT_ROOT"
@@ -159,9 +145,9 @@ main() {
     log_success "Infrastructure ready. Starting turbo dev..."
     echo
     echo "Services (once ready):"
-    echo "  Shell Application: http://localhost:3100"
-    echo "  API Server:        http://localhost:4100"
-    echo "  PostgreSQL:        localhost:5432 (docker)"
+    echo "  Shell Application: http://bobbins.dev.local  (localhost:3100)"
+    echo "  API Server:        http://bobbins-api.dev.local  (localhost:4100)"
+    echo "  PostgreSQL:        localhost:5432 (local)"
     echo "  MinIO:             http://localhost:9001 (docker)"
     echo
     echo "To stop: Ctrl+C (or ./dev-stop.sh for orphan cleanup)"

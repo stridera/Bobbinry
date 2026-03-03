@@ -1,0 +1,18 @@
+{
+  "name": "@bobbinry/google-drive-publisher",
+  "version": "0.1.0",
+  "description": "Google Drive Publisher bobbin - sync chapters to Google Drive folders",
+  "main": "panels/drive-sync.tsx",
+  "exports": {
+    "./panels/drive-sync": "./panels/drive-sync.tsx"
+  },
+  "dependencies": {
+    "@bobbinry/sdk": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19"
+  }
+}

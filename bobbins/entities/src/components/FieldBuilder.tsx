@@ -63,6 +63,7 @@ export function FieldBuilder({ fields, onChange }: FieldBuilderProps) {
 
     const newFields = [...fields]
     const draggedField = newFields[draggedIndex]
+    if (!draggedField) return
     newFields.splice(draggedIndex, 1)
     newFields.splice(index, 0, draggedField)
 
@@ -232,9 +233,11 @@ export function FieldBuilder({ fields, onChange }: FieldBuilderProps) {
                       <input
                         type="number"
                         value={field.min ?? ''}
-                        onChange={(e) => handleUpdateField(index, {
-                          min: e.target.value ? Number(e.target.value) : undefined
-                        })}
+                        onChange={(e) => {
+                          const update: Partial<FieldDefinition> = {}
+                          if (e.target.value) { update.min = Number(e.target.value) }
+                          handleUpdateField(index, update)
+                        }}
                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                       />
                     </div>
@@ -245,9 +248,11 @@ export function FieldBuilder({ fields, onChange }: FieldBuilderProps) {
                       <input
                         type="number"
                         value={field.max ?? ''}
-                        onChange={(e) => handleUpdateField(index, {
-                          max: e.target.value ? Number(e.target.value) : undefined
-                        })}
+                        onChange={(e) => {
+                          const update: Partial<FieldDefinition> = {}
+                          if (e.target.value) { update.max = Number(e.target.value) }
+                          handleUpdateField(index, update)
+                        }}
                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                       />
                     </div>

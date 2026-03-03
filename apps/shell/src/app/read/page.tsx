@@ -18,6 +18,7 @@ interface ProgressItem {
   projectId: string | null
   projectName: string
   projectShortUrl: string | null
+  authorUsername: string | null
 }
 
 interface FeedItem {
@@ -43,7 +44,6 @@ export default function ReadIndexPage() {
   const [feed, setFeed] = useState<FeedItem[]>([])
   const [loading, setLoading] = useState(true)
   const [authorUsernames, setAuthorUsernames] = useState<Record<string, string>>({})
-  const [projectAuthors, setProjectAuthors] = useState<Record<string, string>>({})
 
   const userId = session?.user?.id
   const apiToken = (session as any)?.apiToken
@@ -64,47 +64,30 @@ export default function ReadIndexPage() {
       setProgress(progressItems)
       setFeed(feedItems)
 
-      // Resolve author usernames for feed items
+      // Batch-resolve author usernames for feed items
+      // Collect unique author IDs that aren't already resolved via progress items
       const authorIds = new Set<string>()
       for (const item of feedItems) {
         if (item.authorId) authorIds.add(item.authorId)
       }
 
-      const usernames: Record<string, string> = {}
-      for (const authorId of authorIds) {
-        try {
-          const res = await fetch(`${config.apiUrl}/api/users/${authorId}/profile`)
-          if (res.ok) {
-            const data = await res.json()
-            if (data.profile?.username) {
-              usernames[authorId] = data.profile.username
-            }
-          }
-        } catch {}
-      }
-      setAuthorUsernames(usernames)
+      if (authorIds.size > 0) {
+        // Fetch all profiles in parallel (limited batch)
+        const ids = [...authorIds]
+        const profileResults = await Promise.allSettled(
+          ids.map(id =>
+            fetch(`${config.apiUrl}/api/users/${id}/profile`).then(r => r.ok ? r.json() : null)
+          )
+        )
 
-      // Resolve author usernames for progress items (via project lookup)
-      const projectIds = new Set<string>()
-      for (const item of progressItems) {
-        if (item.projectId) projectIds.add(item.projectId)
-      }
-
-      const projAuthors: Record<string, string> = {}
-      for (const projId of projectIds) {
-        try {
-          const res = await fetch(`${config.apiUrl}/api/public/projects/by-slug/${encodeURIComponent(
-            progressItems.find((p: ProgressItem) => p.projectId === projId)?.projectShortUrl || projId
-          )}`)
-          if (res.ok) {
-            const data = await res.json()
-            if (data.author?.username) {
-              projAuthors[projId] = data.author.username
-            }
+        const usernames: Record<string, string> = {}
+        profileResults.forEach((result, i) => {
+          if (result.status === 'fulfilled' && result.value?.profile?.username) {
+            usernames[ids[i]!] = result.value.profile.username
           }
-        } catch {}
+        })
+        setAuthorUsernames(usernames)
       }
-      setProjectAuthors(projAuthors)
     } catch (err) {
       console.error('Failed to load reading data:', err)
     } finally {
@@ -177,7 +160,7 @@ export default function ReadIndexPage() {
             </h2>
             <div className="space-y-3">
               {progress.map(item => {
-                const authorSlug = (item.projectId ? projectAuthors[item.projectId] : undefined) || item.projectId || undefined
+                const authorSlug = item.authorUsername || item.projectId || undefined
                 return (
                   <Link
                     key={item.viewId}

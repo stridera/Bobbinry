@@ -16,6 +16,10 @@ export const NATIVE_VIEW_MAP: Record<string, () => Promise<any>> = {
   'entities.entity-editor': () => import('@bobbinry/entities/views/entity-editor'),
   'entities.views/navigation': () => import('@bobbinry/entities/views/navigation'),
   'web-publisher.publish-manager': () => import('@bobbinry/web-publisher/views/PublishManager'),
+  'web-publisher.panels/chapter-publish': () => import('@bobbinry/web-publisher/panels/chapter-publish'),
+  'web-publisher.panels/publish-manager': () => import('@bobbinry/web-publisher/panels/publish-manager'),
   'smart-publisher.release-manager': () => import('@bobbinry/smart-publisher/views/ReleaseManager'),
   'smart-publisher.release-config': () => import('@bobbinry/smart-publisher/views/ReleaseConfig'),
+  'smart-publisher.panels/release-queue': () => import('@bobbinry/smart-publisher/panels/release-queue'),
+  'google-drive-publisher.panels/drive-sync': () => import('@bobbinry/google-drive-publisher/panels/drive-sync'),
 }

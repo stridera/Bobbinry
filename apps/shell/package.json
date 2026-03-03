@@ -19,6 +19,7 @@
     "@bobbinry/manuscript": "workspace:*",
     "@bobbinry/web-publisher": "workspace:*",
     "@bobbinry/smart-publisher": "workspace:*",
+    "@bobbinry/google-drive-publisher": "workspace:*",
     "@bobbinry/sdk": "workspace:*",
     "@bobbinry/types": "workspace:*",
     "@dnd-kit/core": "^6.3.1",

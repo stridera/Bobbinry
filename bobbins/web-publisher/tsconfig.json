@@ -10,6 +10,6 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["views/**/*", "actions/**/*"],
+  "include": ["views/**/*", "panels/**/*", "actions/**/*"],
   "exclude": ["node_modules"]
 }

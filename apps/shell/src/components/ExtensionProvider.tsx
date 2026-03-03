@@ -184,6 +184,21 @@ export function useManifestExtensions() {
         }
       }
 
+      // Register custom slots declared by this bobbin
+      if (manifest.extensions?.slots) {
+        for (const slot of manifest.extensions.slots) {
+          const slotId = `${bobbinId}.${slot.id}`
+          console.log(`[ExtensionProvider] Registering custom slot: ${slotId}`)
+          extensionRegistry.registerSlot({
+            id: slotId,
+            name: slot.name,
+            description: slot.description || '',
+            supportedTypes: slot.supportedTypes,
+            maxContributions: slot.maxContributions,
+          })
+        }
+      }
+
       // Register extension contributions directly on the singleton registry
       if (manifest.extensions?.contributions) {
         console.log('[ExtensionProvider] Registering extension contributions for', bobbinId, ':', manifest.extensions.contributions.length, 'contributions')

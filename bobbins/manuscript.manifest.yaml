@@ -13,6 +13,12 @@ capabilities:
 execution:
   mode: native
   signature: dev_mode_skip
+extensions:
+  slots:
+    - id: editor.toolbar
+      name: "Editor Toolbar"
+      supportedTypes: [action]
+      maxContributions: 15
 data:
   collections:
     - name: Book

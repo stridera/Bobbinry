@@ -14,6 +14,8 @@ export interface Manifest {
     external?: boolean
     ai?: boolean
     customViews?: boolean
+    publisherCategory?: 'backup' | 'audience' | 'distribution'
+    readerBobbinType?: 'automation' | 'reader'
   }
 
   // Data definitions - collections, fields, relationships
@@ -58,6 +60,7 @@ export interface Manifest {
       version: string
     }
     contributions?: ExtensionContribution[]
+    slots?: ExtensionSlotDefinition[]
   }
 
   // v0.2: Augmentations - add fields to existing collections
@@ -90,6 +93,10 @@ export interface Manifest {
     fieldPolicies?: Record<string, 'text_delta' | 'field_merge' | 'last_write_wins'>
     syncInterval?: number // Sync interval in milliseconds
     optimisticUpdates?: boolean // Enable optimistic UI updates
+    // Backup bobbin sync configuration
+    frequency?: 'on_edit' | 'hourly' | 'daily' | 'weekly'
+    scope?: 'chapter' | 'project'
+    paidOnly?: boolean // Gate resource-intensive operations to paid users
   }
 
   // v0.2: Execution mode - native vs sandboxed
@@ -332,6 +339,14 @@ export interface Migration {
 }
 
 // v0.2: Extension system interfaces
+export interface ExtensionSlotDefinition {
+  id: string
+  name: string
+  description?: string
+  supportedTypes: string[]
+  maxContributions?: number
+}
+
 export interface ExtensionContribution {
   slot: string
   type: 'panel' | 'view' | 'action' | 'menu'

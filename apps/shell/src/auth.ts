@@ -2,14 +2,13 @@
  * NextAuth v5 Configuration
  *
  * Handles authentication for the Bobbinry platform.
- * Supports credentials (email/password) and OAuth (Google, GitHub).
+ * Supports credentials (email/password) and OAuth (Google).
  * OAuth users are auto-provisioned in the API database on first login.
  */
 
 import NextAuth from 'next-auth'
 import Credentials from 'next-auth/providers/credentials'
 import Google from 'next-auth/providers/google'
-import GitHub from 'next-auth/providers/github'
 import { SignJWT } from 'jose'
 import type { User } from 'next-auth'
 import { config } from '@/lib/config'
@@ -115,14 +114,6 @@ if (process.env.GOOGLE_ID && process.env.GOOGLE_SECRET) {
   )
 }
 
-if (process.env.GITHUB_ID && process.env.GITHUB_SECRET) {
-  providers.push(
-    GitHub({
-      clientId: process.env.GITHUB_ID,
-      clientSecret: process.env.GITHUB_SECRET,
-    })
-  )
-}
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   trustHost: true,

@@ -10,11 +10,20 @@ capabilities:
   publishable: true
   external: true  # Requires Google Drive API access
   ai: false
-  customViews: false
+  customViews: true
 
 execution:
-  mode: sandboxed
+  mode: native
   signature: dev_mode_skip
+
+extensions:
+  contributions:
+    - slot: shell.publishDashboard
+      type: panel
+      id: drive-sync
+      title: "Google Drive Sync"
+      entry: panels/drive-sync
+      priority: 6
 
 data:
   collections:

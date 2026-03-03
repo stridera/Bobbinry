@@ -70,7 +70,7 @@ function loadDraft(entityId: string): DraftEntry | null {
 }
 
 // --- Save state ---
-type SaveStatus = 'clean' | 'dirty' | 'saving' | 'saved' | 'error'
+type SaveStatus = 'clean' | 'dirty' | 'saving' | 'saved' | 'error' | 'offline'
 
 function ToolbarButton({ onClick, isActive, disabled, title, children }: ToolbarButtonProps) {
   return (
@@ -272,6 +272,12 @@ function SaveIndicator({ status, focusMode }: { status: SaveStatus; focusMode: b
       {status === 'error' && (
         <span className="w-1.5 h-1.5 rounded-full bg-red-400" title="Save failed — will retry" />
       )}
+      {status === 'offline' && (
+        <span className="flex items-center gap-1" title="Offline — changes saved locally">
+          <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
+          <span className="text-[10px] text-orange-400 font-medium">Offline</span>
+        </span>
+      )}
     </div>
   )
 }
@@ -309,6 +315,36 @@ export default function EditorView({ sdk, projectId, entityType, entityId }: Edi
   // Debounce timer for selection events
   const selectionTimeoutRef = useRef<number | null>(null)
   const lastSelectionRef = useRef<string>('')
+
+  // Offline detection
+  useEffect(() => {
+    const goOnline = () => {
+      setSaveStatus(prev => {
+        if (prev === 'offline') {
+          // Retry save from local draft when reconnecting
+          const eid = activeEntityRef.current
+          if (eid) {
+            const draft = loadDraft(eid)
+            if (draft && !draft.savedToServer) {
+              setTimeout(() => serverSave(eid, draft.html, draft.wordCount), 500)
+              return 'saving'
+            }
+          }
+          return 'dirty'
+        }
+        return prev
+      })
+    }
+    const goOffline = () => {
+      setSaveStatus(prev => (prev === 'dirty' || prev === 'error') ? 'offline' : prev)
+    }
+    window.addEventListener('online', goOnline)
+    window.addEventListener('offline', goOffline)
+    return () => {
+      window.removeEventListener('online', goOnline)
+      window.removeEventListener('offline', goOffline)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listen for focus mode changes from shell
   useEffect(() => {
@@ -349,6 +385,10 @@ export default function EditorView({ sdk, projectId, entityType, entityId }: Edi
 
       const count = editor.storage.characterCount.words()
       setWordCount(count)
+      // Broadcast word count for shell.editorFooter session stats
+      window.dispatchEvent(new CustomEvent('bobbinry:view-context-change', {
+        detail: { wordCount: count, currentView: 'project' }
+      }))
       const html = editor.getHTML()
       const currentEntityId = activeEntityRef.current
 
@@ -578,6 +618,13 @@ export default function EditorView({ sdk, projectId, entityType, entityId }: Edi
   async function serverSave(targetEntityId: string, html: string, count: number) {
     if (!targetEntityId || savingRef.current) return
 
+    // Don't attempt server save when offline — stay in offline/dirty state
+    if (!navigator.onLine) {
+      setSaveStatus('offline')
+      saveDraft(targetEntityId, { html, wordCount: count, savedToServer: false })
+      return
+    }
+
     try {
       savingRef.current = true
       setSaveStatus('saving')
@@ -598,7 +645,9 @@ export default function EditorView({ sdk, projectId, entityType, entityId }: Edi
       }, 2000)
     } catch (error) {
       console.error('[EditorView] Auto-save failed:', error)
-      setSaveStatus('error')
+      // Detect network errors and set offline status
+      const isNetworkError = error instanceof TypeError && error.message.includes('fetch')
+      setSaveStatus(isNetworkError || !navigator.onLine ? 'offline' : 'error')
       // Keep the draft marked as unsaved so it will retry
       saveDraft(targetEntityId, { html, wordCount: count, savedToServer: false })
     } finally {

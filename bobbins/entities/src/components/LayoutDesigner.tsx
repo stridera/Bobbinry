@@ -88,6 +88,7 @@ export function LayoutDesigner({ fields, editorLayout, listLayout, onChange }: L
 
   function toggleSectionField(sectionIndex: number, field: string) {
     const section = editorLayout.sections[sectionIndex]
+    if (!section) return
     const updated = section.fields.includes(field)
       ? section.fields.filter(f => f !== field)
       : [...section.fields, field]

@@ -222,7 +222,23 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
 
         {/* Main Content */}
         <main className="flex-1 flex flex-col overflow-hidden">
-          {children}
+          <div className="flex-1 overflow-auto relative">
+            {children}
+            {/* Editor overlay slot (focus tools, ambient sound) */}
+            <ExtensionSlot
+              slotId="shell.editorOverlay"
+              context={shellContext}
+              className="absolute inset-0 pointer-events-none [&>*]:pointer-events-auto"
+              fallback={null}
+            />
+          </div>
+          {/* Editor footer slot (word count, session stats) */}
+          <ExtensionSlot
+            slotId="shell.editorFooter"
+            context={shellContext}
+            className="flex items-center border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 h-7 text-xs text-gray-500 dark:text-gray-400 gap-4"
+            fallback={null}
+          />
         </main>
 
         {/* Right Panel */}

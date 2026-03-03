@@ -47,6 +47,7 @@
     "node_modules",
     ".next",
     "out",
+    "public/bobbins",
     "**/*.test.ts",
     "**/*.test.tsx",
     "**/*.spec.ts",

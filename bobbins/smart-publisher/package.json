@@ -6,6 +6,7 @@
   "exports": {
     "./views/ReleaseManager": "./views/ReleaseManager.tsx",
     "./views/ReleaseConfig": "./views/ReleaseConfig.tsx",
+    "./panels/release-queue": "./panels/release-queue.tsx",
     "./actions": "./actions/index.ts"
   },
   "dependencies": {

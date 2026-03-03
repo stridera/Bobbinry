@@ -603,7 +603,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     setContextMenu({ x: e.clientX, y: e.clientY, nodeId, nodeType })
   }
 
-  function renderNode(node: TreeNode, depth: number = 0): JSX.Element {
+  function renderNode(node: TreeNode, depth: number = 0): React.JSX.Element {
     const isExpanded = expandedNodes.has(node.id)
     const hasChildren = node.children && node.children.length > 0
     const isSelected = selectedNodeId === node.id

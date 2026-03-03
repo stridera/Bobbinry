@@ -30,6 +30,15 @@ extensions:
       when:
         inView: project
 
+    - slot: shell.editorFooter
+      type: view
+      id: session-stats
+      title: "Session Stats"
+      entry: panels/session-stats
+      priority: 5
+      when:
+        inView: project
+
 data:
   collections:
     - name: containers

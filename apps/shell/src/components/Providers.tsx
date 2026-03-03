@@ -4,6 +4,7 @@ import { ReactNode } from 'react'
 import { SessionProvider } from 'next-auth/react'
 import { ExtensionProvider } from './ExtensionProvider'
 import { OfflineProvider } from './OfflineProvider'
+import { SessionValidator } from './SessionValidator'
 import { ThemeProvider } from '@/contexts/ThemeContext'
 
 interface ProvidersProps {
@@ -13,6 +14,7 @@ interface ProvidersProps {
 export function Providers({ children }: ProvidersProps) {
   return (
     <SessionProvider>
+      <SessionValidator />
       <ThemeProvider>
         <ExtensionProvider>
           <OfflineProvider>
