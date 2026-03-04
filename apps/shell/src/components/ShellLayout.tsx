@@ -9,7 +9,7 @@ interface ShellLayoutProps {
   children: ReactNode
   currentView?: string
   context?: any
-  onOpenMarketplace?: () => void
+  onOpenMarketplace?: (slot?: string) => void
   projectId?: string | undefined
   projectName?: string | undefined
   user?: { id: string; email: string; name?: string | null } | undefined
@@ -213,7 +213,7 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
                   }
                   title="No navigation yet"
                   description="Install a bobbin to add project navigation here."
-                  onAction={onOpenMarketplace}
+                  onAction={onOpenMarketplace ? () => onOpenMarketplace('shell.leftPanel') : undefined}
                 />
               }
             />
@@ -232,12 +232,13 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
               fallback={null}
             />
           </div>
-          {/* Editor footer slot (word count, session stats) */}
+          {/* Editor footer slot (session stats, progress bars) */}
           <ExtensionSlot
             slotId="shell.editorFooter"
             context={shellContext}
-            className="flex items-center border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 h-7 text-xs text-gray-500 dark:text-gray-400 gap-4"
+            className="flex items-center justify-end border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 h-7 text-xs text-gray-500 dark:text-gray-400 gap-4"
             fallback={null}
+            layout="inline"
           />
         </main>
 
@@ -261,7 +262,7 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
                   }
                   title="No panels yet"
                   description="Install a bobbin that provides contextual panels for this view."
-                  onAction={onOpenMarketplace}
+                  onAction={onOpenMarketplace ? () => onOpenMarketplace('shell.rightPanel') : undefined}
                 />
               }
             />
@@ -269,19 +270,14 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
         </aside>
       </div>
 
-      {/* Status Bar */}
-      <footer className={`bg-gray-100 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex items-center px-4 transition-all duration-300 overflow-hidden ${focusMode ? 'h-0 border-t-0 opacity-0' : 'h-6'}`}>
-        <ExtensionSlot
-          slotId="shell.statusBar"
-          context={shellContext}
-          className="flex items-center space-x-4 w-full"
-          fallback={
-            <div className="text-xs text-gray-400 dark:text-gray-500">
-              Ready
-            </div>
-          }
-        />
-      </footer>
+      {/* Status Bar — hidden when no extensions and in focus mode */}
+      <ExtensionSlot
+        slotId="shell.statusBar"
+        context={shellContext}
+        className={`bg-gray-100 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex items-center px-4 space-x-4 transition-all duration-300 overflow-hidden ${focusMode ? 'h-0 border-t-0 opacity-0' : 'h-6'}`}
+        fallback={null}
+        layout="inline"
+      />
       {/* Focus mode exit hint */}
       {showFocusHint && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full bg-gray-800/80 dark:bg-gray-200/80 text-xs text-gray-200 dark:text-gray-800 pointer-events-none z-50 animate-fade-in select-none">

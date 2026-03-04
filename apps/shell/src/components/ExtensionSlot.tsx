@@ -15,6 +15,7 @@ interface ExtensionSlotProps {
   context?: any
   className?: string
   fallback?: ReactNode
+  layout?: 'stacked' | 'inline'
 }
 
 // Memoized component for panel content to prevent unnecessary iframe reloads
@@ -91,7 +92,8 @@ export function ExtensionSlot({
   slotId,
   context,
   className,
-  fallback
+  fallback,
+  layout = 'stacked'
 }: ExtensionSlotProps) {
   const { theme } = useTheme()
   const extensionContext = useExtensions()
@@ -218,6 +220,7 @@ export function ExtensionSlot({
 
   // Show skeleton while hydrating
   if (!isHydrated) {
+    if (fallback === null) return null
     return (
       <div className={className}>
         {fallback !== undefined ? fallback : (
@@ -232,6 +235,24 @@ export function ExtensionSlot({
   // Show fallback if no extensions
   if (extensions.length === 0) {
     return <>{fallback !== undefined ? fallback : <div className="text-xs text-gray-400">No extensions for {slotId}</div>}</>
+  }
+
+  // Inline layout: render all extensions as direct flex children
+  if (layout === 'inline') {
+    return (
+      <div className={className}>
+        {extensions.map(extension => (
+          <PanelContent
+            key={extension.id}
+            extension={extension}
+            context={context}
+            theme={theme}
+            iframeRefs={iframeRefs}
+            buildShellConfig={buildShellConfig}
+          />
+        ))}
+      </div>
+    )
   }
 
   // Use ResizablePanelStack for multiple extensions
