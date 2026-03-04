@@ -43,7 +43,16 @@ async function main() {
   const bobbinDirs = await readdir(BOBBINS_DIR)
 
   for (const dir of bobbinDirs) {
-    const manifestPath = join(BOBBINS_DIR, dir, 'manifest.yaml')
+    // Skip non-directories and root-level manifest files
+    const dirPath = join(BOBBINS_DIR, dir)
+    const stat = await import('fs/promises').then(fs => fs.stat(dirPath)).catch(() => null)
+    if (!stat?.isDirectory()) continue
+
+    // Check for manifest.yaml inside the directory, or <dir>.manifest.yaml at root level
+    let manifestPath = join(BOBBINS_DIR, dir, 'manifest.yaml')
+    if (!await fileExists(manifestPath)) {
+      manifestPath = join(BOBBINS_DIR, `${dir}.manifest.yaml`)
+    }
     const pkgJsonPath = join(BOBBINS_DIR, dir, 'package.json')
 
     // Must have both a manifest and a package.json (workspace package)
@@ -65,6 +74,33 @@ async function main() {
 
     console.log(`  ${bobbinId} (${pkgName})`)
 
+    const bobbinDir = join(BOBBINS_DIR, dir)
+    const bobbinSrcDir = join(bobbinDir, 'src')
+
+    // Convert kebab-case to PascalCase for alternative file lookup
+    function toPascalCase(str: string): string {
+      return str.split('-').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join('')
+    }
+
+    // Check for a .tsx file in either src/ or the bobbin root, also trying PascalCase
+    async function findSource(relativePath: string): Promise<string | null> {
+      // Try exact match first
+      if (await fileExists(join(bobbinSrcDir, `${relativePath}.tsx`)) ||
+          await fileExists(join(bobbinDir, `${relativePath}.tsx`))) {
+        return relativePath
+      }
+      // Try PascalCase variant (e.g., views/release-manager → views/ReleaseManager)
+      const parts = relativePath.split('/')
+      const fileName = parts.pop()!
+      const pascalName = toPascalCase(fileName)
+      const pascalPath = [...parts, pascalName].join('/')
+      if (await fileExists(join(bobbinSrcDir, `${pascalPath}.tsx`)) ||
+          await fileExists(join(bobbinDir, `${pascalPath}.tsx`))) {
+        return pascalPath
+      }
+      return null
+    }
+
     // Collect views from ui.views[]
     // Key uses view.id (NOT view.source — source may be a data collection name).
     // Import path is always views/<view.id> since that's where component files live.
@@ -73,27 +109,40 @@ async function main() {
         if (!view.id) continue
 
         const viewId = view.id as string
+        // Check that the source file actually exists
+        const resolvedView = await findSource(`views/${viewId}`)
+        if (!resolvedView) {
+          console.log(`    view: ${viewId} (SKIPPED — source not found)`)
+          continue
+        }
         entries.push({
           key: `${bobbinId}.${viewId}`,
-          importPath: `${pkgName}/views/${viewId}`,
+          importPath: `${pkgName}/${resolvedView}`,
         })
         console.log(`    view: ${viewId}`)
       }
     }
 
-    // Collect panels from extensions.contributions[]
+    // Collect panels/views from extensions.contributions[]
     // Key and import both use contribution.entry (already a file path like "panels/navigation").
     if (manifest.extensions?.contributions) {
       for (const contrib of manifest.extensions.contributions) {
-        if (contrib.entry && contrib.type === 'panel') {
+        if (contrib.entry && (contrib.type === 'panel' || contrib.type === 'view')) {
           const entry = contrib.entry as string
           const key = `${bobbinId}.${entry}`
+
+          // Check that the source file actually exists
+          const resolvedEntry = await findSource(entry)
+          if (!resolvedEntry) {
+            console.log(`    panel: ${entry} (SKIPPED — source not found)`)
+            continue
+          }
 
           // Avoid duplicates (a view might be listed in both places)
           if (!entries.some(e => e.key === key)) {
             entries.push({
               key,
-              importPath: `${pkgName}/${entry}`,
+              importPath: `${pkgName}/${resolvedEntry}`,
             })
             console.log(`    panel: ${entry}`)
           }

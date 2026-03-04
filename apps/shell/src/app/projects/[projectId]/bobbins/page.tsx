@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { BobbinrySDK } from '@bobbinry/sdk'
 import { ClientWrapper } from '@/components/ClientWrapper'
@@ -16,8 +16,10 @@ import type { BobbinMetadata, InstalledBobbin } from '@/components/bobbins'
 function BobbinsContent() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { data: session } = useSession()
   const projectId = params.projectId as string
+  const slotFilter = searchParams.get('slot') || undefined
   const [sdk] = useState(() => new BobbinrySDK('shell'))
   const [availableBobbins, setAvailableBobbins] = useState<BobbinMetadata[]>([])
   const [installedBobbins, setInstalledBobbins] = useState<InstalledBobbin[]>([])
@@ -142,6 +144,7 @@ function BobbinsContent() {
     selectedCategory,
     filterMode,
     filterExecution,
+    filterSlot: slotFilter,
     sortBy,
   })
 
@@ -185,6 +188,21 @@ function BobbinsContent() {
           </div>
         )}
       </div>
+
+      {/* Slot filter banner */}
+      {slotFilter && (
+        <div className="bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800 px-6 py-2 flex items-center justify-between">
+          <span className="text-sm text-blue-800 dark:text-blue-200">
+            Showing bobbins for: <strong>{slotFilter === 'shell.rightPanel' ? 'Right Panel' : slotFilter === 'shell.leftPanel' ? 'Left Panel' : slotFilter}</strong>
+          </span>
+          <button
+            onClick={() => router.replace(`/projects/${projectId}/bobbins`)}
+            className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
+          >
+            Show all
+          </button>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">

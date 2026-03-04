@@ -208,8 +208,8 @@ export function useManifestExtensions() {
           console.log('[ExtensionProvider] Registering extension:', contribution.id, 'slot:', contribution.slot)
           extensionRegistry.registerExtension(bobbinId, contribution)
 
-          // For native panels, load and attach the component
-          if (manifest.execution?.mode === 'native' && contribution.type === 'panel' && contribution.entry) {
+          // For native panels/views, load and attach the component
+          if (manifest.execution?.mode === 'native' && (contribution.type === 'panel' || contribution.type === 'view') && contribution.entry) {
             console.log(`[ExtensionProvider] Loading native panel component: ${bobbinId}.${contribution.entry}`)
 
             loadNativeView(bobbinId, contribution.entry).then((component: any) => {

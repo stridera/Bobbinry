@@ -16,6 +16,7 @@ export interface BobbinMetadata {
     mode: 'native' | 'sandboxed'
     signature?: string
   }
+  slots?: string[]
   manifestContent: string
   isInstalled: boolean
   installedVersion?: string

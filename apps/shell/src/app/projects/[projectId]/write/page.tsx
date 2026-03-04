@@ -138,7 +138,10 @@ export default function ProjectWritePage() {
     }
   }, [projectId, sdk, session?.apiToken])
 
-  const navigateToBobbins = () => router.push(`/projects/${projectId}/bobbins`)
+  const navigateToBobbins = (slot?: string) => {
+    const url = `/projects/${projectId}/bobbins${slot ? `?slot=${encodeURIComponent(slot)}` : ''}`
+    router.push(url)
+  }
 
   if (loading) {
     return (

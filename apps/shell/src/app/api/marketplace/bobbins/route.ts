@@ -40,6 +40,16 @@ export async function GET() {
           }
           seenIds.add(manifest.id)
 
+          // Extract extension slots from manifest
+          const slots: string[] = []
+          if (manifest.extensions?.contributions) {
+            for (const contrib of manifest.extensions.contributions) {
+              if (contrib.slot && !slots.includes(contrib.slot)) {
+                slots.push(contrib.slot)
+              }
+            }
+          }
+
           // Create metadata object with full manifest content
           const bobbinMeta = {
             id: manifest.id,
@@ -51,6 +61,7 @@ export async function GET() {
             license: manifest.license,
             capabilities: manifest.capabilities || {},
             execution: manifest.execution,
+            slots,
             manifestContent: content // Include the full YAML content
           }
 

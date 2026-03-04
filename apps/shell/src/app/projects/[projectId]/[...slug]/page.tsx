@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { BobbinrySDK } from '@bobbinry/sdk'
 import { ShellLayout } from '@/components/ShellLayout'
@@ -32,6 +32,7 @@ interface InstalledBobbin {
 
 export default function ProjectDeepLinkPage() {
   const params = useParams()
+  const router = useRouter()
   const { data: session } = useSession()
   const projectId = params.projectId as string
   const slug = params.slug as string[]
@@ -116,8 +117,13 @@ export default function ProjectDeepLinkPage() {
   }, [projectId, sdk, session?.apiToken])
 
   // Parse the slug and trigger navigation once loaded
+  const slugKey = slug?.join('/') || ''
+  const navigatedSlugRef = useRef<string | null>(null)
+
   useEffect(() => {
     if (loading || !slug || slug.length < 3) return
+    if (navigatedSlugRef.current === slugKey) return
+    navigatedSlugRef.current = slugKey
 
     // Expected format: [bobbinId, entityType, entityId]
     const [bobbinId, entityType, entityId] = slug
@@ -136,7 +142,7 @@ export default function ProjectDeepLinkPage() {
         })
       )
     }
-  }, [slug, loading])
+  }, [slugKey, loading])
   
   if (loading) {
     return (
@@ -164,10 +170,16 @@ export default function ProjectDeepLinkPage() {
     )
   }
 
+  const navigateToBobbins = (slot?: string) => {
+    const url = `/projects/${projectId}/bobbins${slot ? `?slot=${encodeURIComponent(slot)}` : ''}`
+    router.push(url)
+  }
+
   return (
     <ShellLayout
       currentView="project"
       context={shellContext}
+      onOpenMarketplace={navigateToBobbins}
       projectId={projectId}
       projectName={projectName || undefined}
       user={session?.user}

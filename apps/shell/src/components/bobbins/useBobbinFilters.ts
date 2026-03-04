@@ -6,14 +6,19 @@ interface FilterOptions {
   selectedCategory: string
   filterMode: 'all' | 'installed' | 'available'
   filterExecution: 'all' | 'native' | 'sandboxed'
+  filterSlot?: string | undefined
   sortBy: 'name' | 'author' | 'recent'
 }
 
 export function useBobbinFilters(bobbins: BobbinMetadata[], options: FilterOptions) {
-  const { searchQuery, selectedCategory, filterMode, filterExecution, sortBy } = options
+  const { searchQuery, selectedCategory, filterMode, filterExecution, filterSlot, sortBy } = options
 
   return useMemo(() => {
     let filtered = bobbins
+
+    if (filterSlot) {
+      filtered = filtered.filter(b => b.slots?.includes(filterSlot))
+    }
 
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
@@ -50,5 +55,5 @@ export function useBobbinFilters(bobbins: BobbinMetadata[], options: FilterOptio
     })
 
     return filtered
-  }, [bobbins, searchQuery, selectedCategory, filterMode, filterExecution, sortBy])
+  }, [bobbins, searchQuery, selectedCategory, filterMode, filterExecution, filterSlot, sortBy])
 }
