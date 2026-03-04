@@ -19,6 +19,7 @@ import { db } from '../db/connection'
 import { uploads } from '../db/schema'
 import { requireAuth, requireProjectOwnership } from '../middleware/auth'
 import { generatePresignedPutUrl, headObject, deleteObject, getPublicUrl, getObject } from '../lib/s3'
+import { generateVariants, variantKey } from '../lib/image-variants'
 
 // --- Constants ---
 
@@ -194,12 +195,27 @@ async function uploadsPlugin(fastify: FastifyInstance) {
 
     const url = getPublicUrl(fileKey)
 
+    // Generate image variants for cover and avatar contexts
+    let variants: { thumb: string; medium: string } | undefined
+    if (context === 'cover' || context === 'avatar') {
+      try {
+        await generateVariants(fileKey)
+        variants = {
+          thumb: getPublicUrl(variantKey(fileKey, 'thumb')),
+          medium: getPublicUrl(variantKey(fileKey, 'medium')),
+        }
+      } catch (err) {
+        fastify.log.warn({ err, key: fileKey }, 'Failed to generate image variants')
+      }
+    }
+
     return {
       id: upload.id,
       url,
       key: fileKey,
       contentType: upload.contentType,
       size: upload.size,
+      ...(variants && { variants }),
     }
   })
 
@@ -257,12 +273,20 @@ async function uploadsPlugin(fastify: FastifyInstance) {
       return reply.status(403).send({ error: 'You can only delete your own uploads' })
     }
 
-    // Delete from S3
+    // Delete from S3 (original + variants)
     try {
       await deleteObject(upload.s3Key)
     } catch (err) {
       fastify.log.error({ err, key: upload.s3Key }, 'Failed to delete S3 object')
       // Continue with soft delete even if S3 delete fails
+    }
+
+    // Best-effort cleanup of image variants
+    if (upload.context === 'cover' || upload.context === 'avatar') {
+      await Promise.allSettled([
+        deleteObject(variantKey(upload.s3Key, 'thumb')),
+        deleteObject(variantKey(upload.s3Key, 'medium')),
+      ])
     }
 
     // Soft delete — keep audit trail

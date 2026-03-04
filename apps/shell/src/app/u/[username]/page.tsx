@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { config } from '@/lib/config'
 import { apiFetch } from '@/lib/api'
 import { SiteNav } from '@/components/SiteNav'
+import { OptimizedImage } from '@/components/OptimizedImage'
 
 interface UserProfile {
   userId: string
@@ -220,8 +221,9 @@ export default function PublicProfilePage() {
             {/* Avatar */}
             <div className="flex-shrink-0">
               {profile.avatarUrl ? (
-                <img
+                <OptimizedImage
                   src={profile.avatarUrl}
+                  variant="thumb"
                   alt={displayName}
                   className="w-20 h-20 rounded-full object-cover"
                 />
@@ -339,8 +341,9 @@ export default function PublicProfilePage() {
                 >
                   <div className="flex gap-3">
                     {project.coverImage && (
-                      <img
+                      <OptimizedImage
                         src={project.coverImage}
+                        variant="thumb"
                         alt={project.name}
                         className="w-16 h-20 rounded object-cover flex-shrink-0"
                       />

@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { config } from '@/lib/config'
 import { apiFetch } from '@/lib/api'
 import { ReaderNav } from '@/components/ReaderNav'
+import { OptimizedImage } from '@/components/OptimizedImage'
 
 interface AuthorInfo {
   userId: string
@@ -187,8 +188,9 @@ export default function AuthorReadPage() {
         {/* Author header */}
         <div className="flex items-center gap-4 mb-8">
           {author.avatarUrl ? (
-            <img
+            <OptimizedImage
               src={author.avatarUrl}
+              variant="thumb"
               alt={displayName}
               className="w-16 h-16 rounded-full object-cover"
             />
@@ -233,8 +235,9 @@ export default function AuthorReadPage() {
                 <Link href={`/read/${author.username}/${project.shortUrl}`}>
                   <div className="aspect-[16/9] bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 relative overflow-hidden">
                     {project.coverImage ? (
-                      <img
+                      <OptimizedImage
                         src={project.coverImage}
+                        variant="thumb"
                         alt={project.name}
                         className="w-full h-full object-cover"
                       />

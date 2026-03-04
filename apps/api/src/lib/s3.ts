@@ -114,6 +114,16 @@ export async function headObject(key: string): Promise<{ contentType: string | u
   }
 }
 
+export async function putObject(key: string, body: Buffer, contentType: string): Promise<void> {
+  const client = getS3Client()
+  await client.send(new PutObjectCommand({
+    Bucket: env.S3_BUCKET,
+    Key: key,
+    Body: body,
+    ContentType: contentType,
+  }))
+}
+
 export async function deleteObject(key: string): Promise<void> {
   const client = getS3Client()
   await client.send(new DeleteObjectCommand({

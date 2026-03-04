@@ -7,6 +7,7 @@
 
 import Link from 'next/link'
 import { formatDistanceToNow } from 'date-fns'
+import { OptimizedImage } from '@/components/OptimizedImage'
 
 interface Project {
   id: string
@@ -26,11 +27,11 @@ export function ProjectCard({ project }: { project: Project }) {
         {/* Cover thumbnail or accent bar */}
         {project.coverImage ? (
           <div className="w-20 flex-shrink-0 relative overflow-hidden">
-            <img
+            <OptimizedImage
               src={project.coverImage}
+              variant="thumb"
               alt=""
               className="absolute inset-0 w-full h-full object-cover"
-              onError={(e) => { e.currentTarget.style.display = 'none' }}
             />
           </div>
         ) : (

@@ -8,6 +8,7 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import Link from 'next/link'
 import { formatDistanceToNow } from 'date-fns'
+import { OptimizedImage } from '@/components/OptimizedImage'
 
 interface Project {
   id: string
@@ -77,11 +78,11 @@ export function SortableProjectCard({ project, isDragging }: SortableProjectCard
         {/* Cover thumbnail */}
         {project.coverImage && (
           <div className="w-12 h-12 flex-shrink-0 rounded-md overflow-hidden">
-            <img
+            <OptimizedImage
               src={project.coverImage}
+              variant="thumb"
               alt=""
               className="w-full h-full object-cover"
-              onError={(e) => { e.currentTarget.parentElement!.style.display = 'none' }}
             />
           </div>
         )}

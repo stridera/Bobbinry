@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { config } from '@/lib/config'
 import { apiFetch } from '@/lib/api'
 import { ReaderNav } from '@/components/ReaderNav'
+import { OptimizedImage } from '@/components/OptimizedImage'
 
 interface ProjectInfo {
   id: string
@@ -234,8 +235,9 @@ export default function ProjectReadingPage() {
       {/* Project header */}
       <div className="flex gap-6 mb-8">
         {project.coverImage && (
-          <img
+          <OptimizedImage
             src={project.coverImage}
+            variant="thumb"
             alt={project.name}
             className="w-32 h-44 rounded-lg object-cover shadow-md flex-shrink-0"
           />

@@ -8,6 +8,7 @@ import { apiFetch } from '@/lib/api'
 import { SiteNav } from '@/components/SiteNav'
 import { SkeletonGrid } from '@/components/LoadingState'
 import { EmptyState } from '@/components/EmptyState'
+import { OptimizedImage } from '@/components/OptimizedImage'
 
 interface DiscoverProject {
   id: string
@@ -390,8 +391,9 @@ export default function ExplorePage() {
                       {/* Cover image or placeholder */}
                       <div className="aspect-[16/9] bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 relative overflow-hidden">
                         {project.coverImage ? (
-                          <img
+                          <OptimizedImage
                             src={project.coverImage}
+                            variant="thumb"
                             alt={project.name}
                             className="w-full h-full object-cover"
                           />
@@ -504,8 +506,9 @@ export default function ExplorePage() {
                         {/* Avatar */}
                         <Link href={`/u/${author.username || author.userId}`} className="flex-shrink-0">
                           {author.avatarUrl ? (
-                            <img
+                            <OptimizedImage
                               src={author.avatarUrl}
+                              variant="thumb"
                               alt={author.displayName}
                               className="w-14 h-14 rounded-full object-cover"
                             />

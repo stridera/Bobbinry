@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
+import { OptimizedImage } from '@/components/OptimizedImage'
 
 interface DashboardHeroProps {
   projectId: string
@@ -125,11 +126,11 @@ export function DashboardHero({ projectId, name, description, coverImage, reader
       >
         {coverImage ? (
           <>
-            <img
+            <OptimizedImage
               src={coverImage}
+              variant="medium"
               alt="Project cover"
               className="w-full h-full object-cover"
-              onError={(e) => { e.currentTarget.style.display = 'none' }}
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
           </>
