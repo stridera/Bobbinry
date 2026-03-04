@@ -67,7 +67,9 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
       bio?: string
       avatarUrl?: string
       websiteUrl?: string
-      twitterHandle?: string
+      blueskyHandle?: string
+      threadsHandle?: string
+      instagramHandle?: string
       discordHandle?: string
       otherSocials?: Record<string, any>
     }
@@ -1190,7 +1192,9 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
           bio: userProfiles.bio,
           avatarUrl: userProfiles.avatarUrl,
           websiteUrl: userProfiles.websiteUrl,
-          twitterHandle: userProfiles.twitterHandle,
+          blueskyHandle: userProfiles.blueskyHandle,
+          threadsHandle: userProfiles.threadsHandle,
+          instagramHandle: userProfiles.instagramHandle,
           discordHandle: userProfiles.discordHandle,
           otherSocials: userProfiles.otherSocials,
           createdAt: userProfiles.createdAt,

@@ -19,7 +19,9 @@ export const userProfiles = pgTable('user_profiles', {
   bio: text('bio'),
   avatarUrl: text('avatar_url'),
   websiteUrl: text('website_url'),
-  twitterHandle: varchar('twitter_handle', { length: 50 }),
+  blueskyHandle: varchar('bluesky_handle', { length: 100 }),
+  threadsHandle: varchar('threads_handle', { length: 50 }),
+  instagramHandle: varchar('instagram_handle', { length: 50 }),
   discordHandle: varchar('discord_handle', { length: 100 }),
   otherSocials: jsonb('other_socials'), // Flexible JSON for additional social links
   createdAt: timestamp('created_at').defaultNow().notNull(),

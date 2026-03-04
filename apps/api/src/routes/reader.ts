@@ -527,7 +527,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           title: projectData.title || 'Untitled Project',
           description: projectData.description || '',
           image: projectData.coverImage || `${baseUrl}/default-cover.jpg`,
-          creator: projectData.twitterHandle || ''
+          creator: ''
         },
 
         // Structured Data (JSON-LD)
