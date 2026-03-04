@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { config } from '@/lib/config'
+import { apiFetch } from '@/lib/api'
 import { ReaderNav } from '@/components/ReaderNav'
 
 interface AuthorInfo {
@@ -34,10 +35,24 @@ export default function AuthorReadPage() {
   const [projects, setProjects] = useState<PublishedProject[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [followedProjects, setFollowedProjects] = useState<Set<string>>(new Set())
+  const [isSubscribed, setIsSubscribed] = useState(false)
+  const [hasPaidTiers, setHasPaidTiers] = useState(false)
+
+  const apiToken = (session as any)?.apiToken as string | undefined
+  const userId = session?.user?.id
 
   useEffect(() => {
     loadAuthor()
   }, [authorUsername])
+
+  // Check follow status and subscription when data is ready
+  useEffect(() => {
+    if (!author || projects.length === 0) return
+    checkFollowStatuses()
+    checkSubscription()
+    checkTiers()
+  }, [author, projects, session])
 
   const loadAuthor = async () => {
     setLoading(true)
@@ -58,6 +73,78 @@ export default function AuthorReadPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const checkFollowStatuses = async () => {
+    if (!apiToken || projects.length === 0) return
+    const headers: Record<string, string> = { 'Authorization': `Bearer ${apiToken}` }
+    const results = await Promise.all(
+      projects.map(async (p) => {
+        try {
+          const res = await fetch(
+            `${config.apiUrl}/api/projects/${p.id}/follow-status`,
+            { headers }
+          )
+          if (res.ok) {
+            const data = await res.json()
+            return data.isFollowing ? p.id : null
+          }
+        } catch {}
+        return null
+      })
+    )
+    setFollowedProjects(new Set(results.filter(Boolean) as string[]))
+  }
+
+  const checkSubscription = async () => {
+    if (!userId || !author) return
+    try {
+      const res = await fetch(
+        `${config.apiUrl}/api/users/${userId}/subscriptions?status=active`
+      )
+      if (res.ok) {
+        const data = await res.json()
+        const subs = data.subscriptions || []
+        setIsSubscribed(subs.some((s: any) => s.subscription?.authorId === author.userId))
+      }
+    } catch {}
+  }
+
+  const checkTiers = async () => {
+    if (!author) return
+    try {
+      const res = await fetch(
+        `${config.apiUrl}/api/users/${author.userId}/subscription-tiers`
+      )
+      if (res.ok) {
+        const data = await res.json()
+        const paidTiers = (data.tiers || []).filter((t: any) => t.tierLevel > 0)
+        setHasPaidTiers(paidTiers.length > 0)
+      }
+    } catch {}
+  }
+
+  const handleFollowProject = async (projectId: string) => {
+    if (!apiToken) return
+    const isCurrentlyFollowing = followedProjects.has(projectId)
+
+    try {
+      if (isCurrentlyFollowing) {
+        const res = await apiFetch(`/api/projects/${projectId}/follow`, apiToken, { method: 'DELETE' })
+        if (res.ok) {
+          setFollowedProjects(prev => {
+            const next = new Set(prev)
+            next.delete(projectId)
+            return next
+          })
+        }
+      } else {
+        const res = await apiFetch(`/api/projects/${projectId}/follow`, apiToken, { method: 'POST' })
+        if (res.ok) {
+          setFollowedProjects(prev => new Set(prev).add(projectId))
+        }
+      }
+    } catch {}
   }
 
   if (loading) {
@@ -90,6 +177,7 @@ export default function AuthorReadPage() {
   }
 
   const displayName = author.displayName || author.userName || author.username
+  const isOwnPage = userId === author.userId
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
@@ -137,38 +225,82 @@ export default function AuthorReadPage() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
             {projects.map(project => (
-              <Link
+              <div
                 key={project.id}
-                href={`/read/${author.username}/${project.shortUrl}`}
                 className="group bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-md transition-all overflow-hidden"
               >
-                {/* Cover or placeholder */}
-                <div className="aspect-[16/9] bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 relative overflow-hidden">
-                  {project.coverImage ? (
-                    <img
-                      src={project.coverImage}
-                      alt={project.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <span className="text-4xl font-bold text-blue-300 dark:text-blue-700 opacity-50">
-                        {project.name.charAt(0).toUpperCase()}
-                      </span>
-                    </div>
-                  )}
-                </div>
+                {/* Cover or placeholder — clickable */}
+                <Link href={`/read/${author.username}/${project.shortUrl}`}>
+                  <div className="aspect-[16/9] bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 relative overflow-hidden">
+                    {project.coverImage ? (
+                      <img
+                        src={project.coverImage}
+                        alt={project.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <span className="text-4xl font-bold text-blue-300 dark:text-blue-700 opacity-50">
+                          {project.name.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </Link>
                 <div className="p-4">
-                  <h3 className="font-semibold text-gray-900 dark:text-gray-100 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                    {project.name}
-                  </h3>
+                  <Link href={`/read/${author.username}/${project.shortUrl}`}>
+                    <h3 className="font-semibold text-gray-900 dark:text-gray-100 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                      {project.name}
+                    </h3>
+                  </Link>
                   {project.description && (
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
                       {project.description}
                     </p>
                   )}
+
+                  {/* Follow / Subscribe buttons */}
+                  {!isOwnPage && (
+                    <div className="flex items-center gap-2 mt-3">
+                      {isSubscribed ? (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                          Subscribed
+                        </span>
+                      ) : (
+                        <>
+                          {userId ? (
+                            <button
+                              onClick={() => handleFollowProject(project.id)}
+                              className={`text-xs px-2.5 py-1 rounded-full transition-colors ${
+                                followedProjects.has(project.id)
+                                  ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400'
+                                  : 'bg-blue-600 text-white hover:bg-blue-700'
+                              }`}
+                            >
+                              {followedProjects.has(project.id) ? 'Following' : 'Follow'}
+                            </button>
+                          ) : (
+                            <Link
+                              href="/login"
+                              className="text-xs px-2.5 py-1 rounded-full bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                            >
+                              Follow
+                            </Link>
+                          )}
+                          {hasPaidTiers && (
+                            <Link
+                              href={`/read/${author.username}/${project.shortUrl}#support`}
+                              className="text-xs px-2.5 py-1 rounded-full bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+                            >
+                              Subscribe
+                            </Link>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
         )}

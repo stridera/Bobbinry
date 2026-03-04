@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, jsonb, boolean, varchar, integer, bigint, decimal, index } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, text, timestamp, jsonb, boolean, varchar, integer, bigint, decimal, index, uniqueIndex } from 'drizzle-orm/pg-core'
 import { relations, sql } from 'drizzle-orm'
 
 // Users table - authentication and user management
@@ -65,6 +65,17 @@ export const userFollowers = pgTable('user_followers', {
 }, (table) => ({
   followerIdx: index('user_followers_follower_idx').on(table.followerId),
   followingIdx: index('user_followers_following_idx').on(table.followingId)
+}))
+
+// Project followers - following relationships for projects
+export const projectFollows = pgTable('project_follows', {
+  followerId: uuid('follower_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull()
+}, (table) => ({
+  followerIdx: index('project_follows_follower_idx').on(table.followerId),
+  projectIdx: index('project_follows_project_idx').on(table.projectId),
+  uniqueFollowerProject: uniqueIndex('project_follows_follower_project_idx').on(table.followerId, table.projectId)
 }))
 
 // User notification preferences
@@ -554,7 +565,8 @@ export const provenanceEvents = pgTable('provenance_events', {
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   projects: many(projects),
-  memberships: many(memberships)
+  memberships: many(memberships),
+  projectFollows: many(projectFollows)
 }))
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({
@@ -567,7 +579,8 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   entities: many(entities),
   publishTargets: many(publishTargets),
   provenanceEvents: many(provenanceEvents),
-  collectionMemberships: many(projectCollectionMemberships)
+  collectionMemberships: many(projectCollectionMemberships),
+  projectFollows: many(projectFollows)
 }))
 
 export const membershipsRelations = relations(memberships, ({ one }) => ({
@@ -642,6 +655,17 @@ export const userFollowersRelations = relations(userFollowers, ({ one }) => ({
   following: one(users, {
     fields: [userFollowers.followingId],
     references: [users.id]
+  })
+}))
+
+export const projectFollowsRelations = relations(projectFollows, ({ one }) => ({
+  follower: one(users, {
+    fields: [projectFollows.followerId],
+    references: [users.id]
+  }),
+  project: one(projects, {
+    fields: [projectFollows.projectId],
+    references: [projects.id]
   })
 }))
 

@@ -29,6 +29,13 @@
       "when": 1772516814658,
       "tag": "0003_right_mister_sinister",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1772654686924,
+      "tag": "0004_clammy_leopardon",
+      "breakpoints": true
     }
   ]
 }

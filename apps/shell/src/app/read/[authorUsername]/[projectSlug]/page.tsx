@@ -57,10 +57,39 @@ export default function ProjectReadingPage() {
   const [subscribing, setSubscribing] = useState<string | null>(null)
   const [subscribeError, setSubscribeError] = useState<string | null>(null)
   const [subscribedTierId, setSubscribedTierId] = useState<string | null>(null)
+  const [isFollowingProject, setIsFollowingProject] = useState(false)
+  const [followLoading, setFollowLoading] = useState(false)
+  const [followerCount, setFollowerCount] = useState(0)
+
+  const apiToken = (session as any)?.apiToken as string | undefined
+  const userId = session?.user?.id
+  const isOwnProject = !!(userId && author?.userId === userId)
 
   useEffect(() => {
     loadProject()
   }, [authorUsername, projectSlug])
+
+  // Load follow status when project and session are ready
+  useEffect(() => {
+    if (!project?.id) return
+    loadFollowStatus(project.id)
+  }, [project?.id, session])
+
+  const loadFollowStatus = async (projectId: string) => {
+    try {
+      const headers: Record<string, string> = {}
+      if (apiToken) headers['Authorization'] = `Bearer ${apiToken}`
+      const res = await fetch(
+        `${config.apiUrl}/api/projects/${projectId}/follow-status`,
+        { headers }
+      )
+      if (res.ok) {
+        const data = await res.json()
+        setIsFollowingProject(data.isFollowing)
+        setFollowerCount(data.followerCount)
+      }
+    } catch {}
+  }
 
   const loadProject = async () => {
     setLoading(true)
@@ -78,8 +107,8 @@ export default function ProjectReadingPage() {
       setAuthor(data.author)
 
       // Load TOC and tiers in parallel
-      const userId = session?.user?.id
-      const tocUrl = `${config.apiUrl}/api/public/projects/${data.project.id}/toc${userId ? `?userId=${userId}` : ''}`
+      const uid = session?.user?.id
+      const tocUrl = `${config.apiUrl}/api/public/projects/${data.project.id}/toc${uid ? `?userId=${uid}` : ''}`
       const [tocRes, tiersRes] = await Promise.all([
         fetch(tocUrl),
         data.project.ownerId
@@ -101,6 +130,30 @@ export default function ProjectReadingPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleFollowProject = async () => {
+    if (!project?.id || !apiToken) return
+    setFollowLoading(true)
+    try {
+      if (isFollowingProject) {
+        const res = await apiFetch(`/api/projects/${project.id}/follow`, apiToken, { method: 'DELETE' })
+        if (res.ok) {
+          setIsFollowingProject(false)
+          setFollowerCount(c => Math.max(0, c - 1))
+        } else {
+          const data = await res.json()
+          setSubscribeError(data.error || 'Failed to unfollow')
+        }
+      } else {
+        const res = await apiFetch(`/api/projects/${project.id}/follow`, apiToken, { method: 'POST' })
+        if (res.ok) {
+          setIsFollowingProject(true)
+          setFollowerCount(c => c + 1)
+        }
+      }
+    } catch {}
+    setFollowLoading(false)
   }
 
   if (loading) {
@@ -133,14 +186,12 @@ export default function ProjectReadingPage() {
   }
 
   const handleSubscribe = async (tierId: string) => {
-    if (!session?.user?.id || !author?.userId) return
-    const apiToken = (session as any).apiToken as string
-    if (!apiToken) return
+    if (!userId || !author?.userId || !apiToken) return
     setSubscribing(tierId)
     setSubscribeError(null)
     try {
       const res = await apiFetch(
-        `/api/users/${session.user.id}/subscribe`,
+        `/api/users/${userId}/subscribe`,
         apiToken,
         {
           method: 'POST',
@@ -150,6 +201,14 @@ export default function ProjectReadingPage() {
       )
       if (res.ok) {
         setSubscribedTierId(tierId)
+        // Auto-follow the project on subscribe
+        if (!isFollowingProject && project?.id) {
+          try {
+            await apiFetch(`/api/projects/${project.id}/follow`, apiToken, { method: 'POST' })
+            setIsFollowingProject(true)
+            setFollowerCount(c => c + 1)
+          } catch {}
+        }
       } else {
         const data = await res.json()
         setSubscribeError(data.error || 'Failed to subscribe')
@@ -193,6 +252,52 @@ export default function ProjectReadingPage() {
               by {authorName}
             </Link>
           )}
+
+          {/* Follow + Subscribe buttons */}
+          <div className="flex items-center gap-2 mt-3">
+            {subscribedTierId ? (
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                Subscribed
+              </span>
+            ) : !isOwnProject && (
+              <>
+                {userId ? (
+                  <button
+                    onClick={handleFollowProject}
+                    disabled={followLoading}
+                    className={`text-xs px-3 py-1.5 rounded-full transition-colors disabled:opacity-50 ${
+                      isFollowingProject
+                        ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400'
+                        : 'bg-blue-600 text-white hover:bg-blue-700'
+                    }`}
+                  >
+                    {isFollowingProject ? 'Following' : 'Follow'}
+                  </button>
+                ) : (
+                  <Link
+                    href="/login"
+                    className="text-xs px-3 py-1.5 rounded-full bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                  >
+                    Follow
+                  </Link>
+                )}
+                {tiers.length > 0 && (
+                  <a
+                    href="#support"
+                    className="text-xs px-3 py-1.5 rounded-full bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+                  >
+                    Subscribe
+                  </a>
+                )}
+              </>
+            )}
+            {followerCount > 0 && (
+              <span className="text-xs text-gray-400 dark:text-gray-500">
+                {followerCount} follower{followerCount !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+
           {project.description && (
             <p className="text-gray-600 dark:text-gray-300 mt-3 whitespace-pre-line">
               {project.description}
@@ -248,7 +353,7 @@ export default function ProjectReadingPage() {
 
       {/* Subscribe / Follow section */}
       {tiers.length > 0 && (
-        <div className="border-t border-gray-200 dark:border-gray-800 pt-8">
+        <div id="support" className="border-t border-gray-200 dark:border-gray-800 pt-8">
           <h2 className="font-display text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">
             Support this Author
           </h2>

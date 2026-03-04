@@ -51,10 +51,12 @@ export function ReaderNav({ crumbs = [], themed }: ReaderNavProps) {
             Bobbinry
           </Link>
 
-          {crumbs.length > 0 && (
+          {(() => {
+            const allCrumbs = session ? [{ label: 'Library', href: '/library' }, ...crumbs] : crumbs
+            return allCrumbs.length > 0 && (
             <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
-              {crumbs.map((crumb, i) => {
-                const isLast = i === crumbs.length - 1
+              {allCrumbs.map((crumb, i) => {
+                const isLast = i === allCrumbs.length - 1
                 return (
                   <div key={i} className="flex items-center gap-1.5 min-w-0">
                     <span className={`${muted} text-xs flex-shrink-0`}>/</span>
@@ -74,7 +76,7 @@ export function ReaderNav({ crumbs = [], themed }: ReaderNavProps) {
                 )
               })}
             </div>
-          )}
+          )})()}
         </div>
 
         {/* Right: Explore link + user */}

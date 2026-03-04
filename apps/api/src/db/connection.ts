@@ -27,7 +27,8 @@ const client = postgres(connectionString, {
   // Error handling
   connection: {
     application_name: 'bobbinry-api',
-    statement_timeout: 30000,     // 30 seconds in milliseconds  
+    timezone: 'UTC',                                // Ensure timestamps are stored/read as UTC
+    statement_timeout: 30000,     // 30 seconds in milliseconds
     idle_in_transaction_session_timeout: 60000  // 60 seconds in milliseconds
   }
 })

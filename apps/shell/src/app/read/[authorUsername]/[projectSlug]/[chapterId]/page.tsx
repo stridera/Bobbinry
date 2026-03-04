@@ -215,6 +215,7 @@ export default function ChapterReaderPage() {
   // Progress tracking
   const contentRef = useRef<HTMLDivElement>(null)
   const [progress, setProgress] = useState(0)
+  const progressRef = useRef(0)
   const [isBookmarked, setIsBookmarked] = useState(false)
 
   // Bookmark management
@@ -277,23 +278,34 @@ export default function ChapterReaderPage() {
 
   // Track scroll progress
   useEffect(() => {
+    if (loading || !chapter) return
+
     const handleScroll = () => {
       if (!contentRef.current) return
       const el = contentRef.current
       const scrollTop = window.scrollY - el.offsetTop
       const scrollHeight = el.scrollHeight - window.innerHeight
-      if (scrollHeight > 0) {
+      if (scrollHeight <= 0) {
+        // Content fits on screen — reader can see everything
+        setProgress(100)
+      } else {
         setProgress(Math.min(100, Math.max(0, Math.round((scrollTop / scrollHeight) * 100))))
       }
     }
     window.addEventListener('scroll', handleScroll, { passive: true })
+    // Wait a frame for layout to settle, then check for short chapters
+    requestAnimationFrame(() => handleScroll())
     return () => window.removeEventListener('scroll', handleScroll)
-  }, [])
+  }, [loading, chapter])
 
-  // Save progress periodically
+  // Keep ref in sync for sendBeacon on unmount
+  useEffect(() => { progressRef.current = progress }, [progress])
+
+  // Save progress periodically (debounced) and on page leave
   useEffect(() => {
     if (!projectId || !session?.user?.id || progress === 0) return
-    const timer = setTimeout(() => {
+
+    const saveProgress = () => {
       fetch(`${config.apiUrl}/api/public/projects/${projectId}/chapters/${chapterId}/view`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -303,9 +315,35 @@ export default function ChapterReaderPage() {
           deviceType: window.innerWidth < 768 ? 'mobile' : window.innerWidth < 1024 ? 'tablet' : 'desktop'
         })
       }).catch(() => {})
-    }, 5000)
+    }
+
+    const timer = setTimeout(saveProgress, 3000)
     return () => clearTimeout(timer)
   }, [progress, projectId, chapterId, session?.user?.id])
+
+  // Save progress when leaving the page (back button, link click, tab close)
+  useEffect(() => {
+    if (!projectId || !session?.user?.id) return
+
+    const saveOnLeave = () => {
+      if (progressRef.current === 0) return
+      const data = JSON.stringify({
+        userId: session.user.id,
+        position: progressRef.current,
+        deviceType: window.innerWidth < 768 ? 'mobile' : window.innerWidth < 1024 ? 'tablet' : 'desktop'
+      })
+      navigator.sendBeacon(
+        `${config.apiUrl}/api/public/projects/${projectId}/chapters/${chapterId}/view`,
+        new Blob([data], { type: 'application/json' })
+      )
+    }
+
+    window.addEventListener('beforeunload', saveOnLeave)
+    return () => {
+      window.removeEventListener('beforeunload', saveOnLeave)
+      saveOnLeave()  // Also fire on component unmount (SPA navigation)
+    }
+  }, [projectId, chapterId, session?.user?.id])
 
   const loadChapter = async () => {
     setLoading(true)

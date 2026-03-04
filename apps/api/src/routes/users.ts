@@ -4,6 +4,7 @@ import {
   userProfiles,
   subscriptionTiers,
   userFollowers,
+  projectFollows,
   userNotificationPreferences,
   userReadingPreferences,
   betaReaders,
@@ -987,13 +988,34 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
         .from(userFollowers)
         .where(eq(userFollowers.followerId, userId))
 
-      if (following.length === 0) {
+      const followingIds = following.map(f => f.followingId)
+
+      // Get IDs of projects this user follows
+      const followedProjects = await db
+        .select({ projectId: projectFollows.projectId })
+        .from(projectFollows)
+        .where(eq(projectFollows.followerId, userId))
+
+      const followedProjectIds = followedProjects.map(f => f.projectId)
+
+      if (followingIds.length === 0 && followedProjectIds.length === 0) {
         return reply.status(200).send({ feed: [], total: 0 })
       }
 
-      const followingIds = following.map(f => f.followingId)
+      // Build WHERE conditions: chapters from followed authors OR followed projects
+      const followConditions = []
+      if (followingIds.length > 0) {
+        followConditions.push(
+          sql`${projects.ownerId} IN (${sql.join(followingIds.map(id => sql`${id}`), sql`, `)})`
+        )
+      }
+      if (followedProjectIds.length > 0) {
+        followConditions.push(
+          sql`${projects.id} IN (${sql.join(followedProjectIds.map(id => sql`${id}`), sql`, `)})`
+        )
+      }
 
-      // Get recent published chapters from followed authors
+      // Get recent published chapters from followed authors/projects
       const feedItems = await db
         .select({
           publicationId: chapterPublications.id,
@@ -1008,7 +1030,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
         .from(chapterPublications)
         .innerJoin(projects, eq(projects.id, chapterPublications.projectId))
         .where(and(
-          sql`${projects.ownerId} IN (${sql.join(followingIds.map(id => sql`${id}`), sql`, `)})`,
+          or(...followConditions),
           eq(chapterPublications.isPublished, true),
           isNotNull(chapterPublications.publishedAt)
         ))
