@@ -11,8 +11,10 @@ interface EnvConfig {
   NODE_ENV: string
   LOG_LEVEL: string
   WEB_ORIGIN: string
+  API_ORIGIN: string
   API_JWT_SECRET: string | undefined
   S3_ENDPOINT: string
+  S3_PUBLIC_ENDPOINT: string
   S3_REGION: string
   S3_BUCKET: string
   S3_ACCESS_KEY: string
@@ -50,8 +52,10 @@ export function validateEnv(): EnvConfig {
     NODE_ENV: nodeEnv,
     LOG_LEVEL: process.env.LOG_LEVEL || 'info',
     WEB_ORIGIN: process.env.WEB_ORIGIN || 'http://localhost:3100',
+    API_ORIGIN: process.env.API_ORIGIN || `http://localhost:${parseInt(process.env.PORT || '4100', 10)}`,
     API_JWT_SECRET: process.env.API_JWT_SECRET,
     S3_ENDPOINT: process.env.S3_ENDPOINT || 'http://127.0.0.1:9100',
+    S3_PUBLIC_ENDPOINT: process.env.S3_PUBLIC_ENDPOINT || process.env.S3_ENDPOINT || 'http://127.0.0.1:9100',
     S3_REGION: process.env.S3_REGION || 'auto',
     S3_BUCKET: process.env.S3_BUCKET || 'bobbinry',
     S3_ACCESS_KEY: process.env.S3_ACCESS_KEY || 'admin',

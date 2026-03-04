@@ -42,6 +42,11 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   const [draggedNode, setDraggedNode] = useState<{ id: string; nodeType: 'container' | 'content' } | null>(null)
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
 
+  // Track auto-selection: only auto-navigate to first item once per mount
+  const hasAutoSelectedRef = useRef(false)
+  const selectedNodeIdRef = useRef<string | null>(null)
+  const autoSelectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   // Map nodeId → parentId for quick lookup during drag operations
   const nodeParentMap = useRef(new Map<string, string | null>())
 
@@ -111,6 +116,18 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
 
     window.addEventListener('bobbinry:entity-updated', handleEntityUpdated)
     return () => window.removeEventListener('bobbinry:entity-updated', handleEntityUpdated)
+  }, [])
+
+  // Keep selectedNodeId ref in sync for auto-selection logic
+  useEffect(() => {
+    selectedNodeIdRef.current = selectedNodeId
+  }, [selectedNodeId])
+
+  // Clean up auto-select timer on unmount
+  useEffect(() => {
+    return () => {
+      if (autoSelectTimerRef.current) clearTimeout(autoSelectTimerRef.current)
+    }
   }, [])
 
   // Sync sidebar highlight with the actual view the router navigated to.
@@ -231,6 +248,31 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
 
       nodeParentMap.current = parentMap
       setTree(treeData)
+
+      // Auto-select first content item on initial load if nothing is selected
+      if (!hasAutoSelectedRef.current && treeData.length > 0) {
+        hasAutoSelectedRef.current = true
+        const findFirstContent = (nodes: TreeNode[]): TreeNode | null => {
+          for (const node of nodes) {
+            if (node.nodeType === 'content') return node
+            if (node.children) {
+              const found = findFirstContent(node.children)
+              if (found) return found
+            }
+          }
+          return null
+        }
+        const firstItem = findFirstContent(treeData)
+        if (firstItem) {
+          // Small delay to let ViewRouter restore from history state first
+          autoSelectTimerRef.current = setTimeout(() => {
+            autoSelectTimerRef.current = null
+            if (!selectedNodeIdRef.current) {
+              handleNodeClick(firstItem)
+            }
+          }, 150)
+        }
+      }
 
       const allNodeIds = new Set<string>()
       const collectIds = (nodes: TreeNode[]) => {

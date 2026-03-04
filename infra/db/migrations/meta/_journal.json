@@ -22,6 +22,13 @@
       "when": 1772073771663,
       "tag": "0002_add_uploads_table",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1772516814658,
+      "tag": "0003_right_mister_sinister",
+      "breakpoints": true
     }
   ]
 }

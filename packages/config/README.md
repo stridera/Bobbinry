@@ -20,7 +20,7 @@ This package handles configuration management across the Bobbinry platform, prov
 
 ```bash
 # Install dependencies
-pnpm install
+bun install
 
 # No build step required (configuration files)
 ```
@@ -61,9 +61,9 @@ module.exports = {
     ssl: false
   },
   api: {
-    port: 4000,
+    port: 4100,
     cors: {
-      origin: 'http://localhost:3000'
+      origin: 'http://localhost:3100'
     }
   },
   debug: true

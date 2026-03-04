@@ -36,22 +36,22 @@ The compiler is the core transformation engine of Bobbinry. It takes bobbin mani
 
 ```bash
 # Install dependencies
-pnpm install
+bun install
 
 # Build the package
-pnpm build
+bun build
 
 # Run type checking
-pnpm typecheck
+bun typecheck
 
 # Run tests
-pnpm test
+bun test
 
 # Watch mode for tests
-pnpm test:watch
+bun test:watch
 
 # Generate coverage report
-pnpm test:coverage
+bun test:coverage
 ```
 
 ### Project Structure

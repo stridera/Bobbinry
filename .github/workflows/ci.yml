@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NEXTAUTH_SECRET: ci-build-placeholder
-      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_URL: http://localhost:3100
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2

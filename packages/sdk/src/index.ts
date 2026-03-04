@@ -3,7 +3,7 @@ export class BobbinryAPI {
   private baseURL: string
   private authToken: string | null = null
 
-  constructor(baseURL: string = 'http://localhost:4100/api') {
+  constructor(baseURL: string = (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}/api` : 'http://localhost:4100/api')) {
     this.baseURL = baseURL
   }
 

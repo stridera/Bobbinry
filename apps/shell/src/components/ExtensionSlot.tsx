@@ -220,7 +220,7 @@ export function ExtensionSlot({
   if (!isHydrated) {
     return (
       <div className={className}>
-        {fallback || (
+        {fallback !== undefined ? fallback : (
           <div className="text-xs text-gray-400 animate-pulse">
             Loading {slotId}...
           </div>
@@ -231,7 +231,7 @@ export function ExtensionSlot({
 
   // Show fallback if no extensions
   if (extensions.length === 0) {
-    return <>{fallback || <div className="text-xs text-gray-400">No extensions for {slotId}</div>}</>
+    return <>{fallback !== undefined ? fallback : <div className="text-xs text-gray-400">No extensions for {slotId}</div>}</>
   }
 
   // Use ResizablePanelStack for multiple extensions

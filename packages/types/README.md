@@ -65,5 +65,5 @@ See `bobbins/manuscript/src/__tests__/types.test.ts` for examples of how to test
 
 Run tests with:
 ```bash
-pnpm --filter @bobbinry/manuscript test
+bun --filter @bobbinry/manuscript test
 ```

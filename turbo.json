@@ -27,6 +27,9 @@
         "^lint"
       ]
     },
+    "db:check-drift": {
+      "cache": false
+    },
     "dev": {
       "cache": false,
       "persistent": true

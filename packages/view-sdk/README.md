@@ -20,16 +20,16 @@ The View SDK provides a secure communication bridge between the Bobbinry shell a
 
 ```bash
 # Install dependencies
-pnpm install
+bun install
 
 # Build the package
-pnpm build
+bun build
 
 # Run type checking
-pnpm typecheck
+bun typecheck
 
 # Run tests
-pnpm test
+bun test
 ```
 
 ### Project Structure
@@ -149,7 +149,7 @@ const bridge = new ViewBridge({
   allowedOrigins: [
     'https://app.bobbinry.com',
     'https://*.bobbinry.com',
-    process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : null
+    process.env.NODE_ENV === 'development' ? 'http://localhost:3100' : null
   ].filter(Boolean)
 });
 ```

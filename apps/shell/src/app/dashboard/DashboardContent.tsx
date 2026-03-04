@@ -26,6 +26,7 @@ interface Project {
   id: string
   name: string
   description: string | null
+  coverImage: string | null
   shortUrl: string | null
   isArchived: boolean
   createdAt: string

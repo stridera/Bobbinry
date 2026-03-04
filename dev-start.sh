@@ -145,10 +145,10 @@ main() {
     log_success "Infrastructure ready. Starting turbo dev..."
     echo
     echo "Services (once ready):"
-    echo "  Shell Application: http://bobbins.dev.local  (localhost:3100)"
-    echo "  API Server:        http://bobbins-api.dev.local  (localhost:4100)"
-    echo "  PostgreSQL:        localhost:5432 (local)"
-    echo "  MinIO:             http://localhost:9001 (docker)"
+    echo "  Shell Application: http://localhost:3100"
+    echo "  API Server:        http://localhost:4100"
+    echo "  PostgreSQL:        localhost:5432 (native)"
+    echo "  MinIO:             http://localhost:9101 (docker, optional)"
     echo
     echo "To stop: Ctrl+C (or ./dev-stop.sh for orphan cleanup)"
     echo

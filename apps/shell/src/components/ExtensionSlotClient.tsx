@@ -33,7 +33,7 @@ export function ExtensionSlotClient({
   }, [slotId, context])
 
   if (extensions.length === 0) {
-    return <>{fallback || <div className="text-xs text-gray-400">No extensions for {slotId}</div>}</>
+    return <>{fallback !== undefined ? fallback : <div className="text-xs text-gray-400">No extensions for {slotId}</div>}</>
   }
 
   return (

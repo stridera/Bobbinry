@@ -7,8 +7,8 @@ A modular, open-source platform for writers and worldbuilders. Create projects, 
 ### Prerequisites
 - Node.js 20+
 - Bun 1.0+
-- PostgreSQL 14+
-- Docker & Docker Compose (optional, for local infrastructure)
+- PostgreSQL 14+ (native, via systemctl)
+- Docker & Docker Compose (optional, for MinIO object storage)
 
 ### Installation
 
@@ -27,17 +27,20 @@ A modular, open-source platform for writers and worldbuilders. Create projects, 
    Edit `.env` and configure:
    - `DATABASE_URL` - PostgreSQL connection string
    - `NEXTAUTH_SECRET` - Random secret for session signing (generate with `openssl rand -base64 32`)
-   - `NEXTAUTH_URL` - `http://localhost:3000` for local development
-   - `NEXT_PUBLIC_API_URL` - `http://localhost:4000` for local development
+   - `NEXTAUTH_URL` - `http://localhost:3100` for local development
+   - `NEXT_PUBLIC_API_URL` - `http://localhost:4100` for local development
 
-3. **Start infrastructure** (optional - uses Docker)
+3. **Start PostgreSQL** (native)
    ```bash
-   docker compose up -d  # Starts PostgreSQL + MinIO
+   sudo systemctl start postgresql
    ```
 
-   Or use your own PostgreSQL instance and update `DATABASE_URL` accordingly.
+4. **Start MinIO** (optional - uses Docker for object storage)
+   ```bash
+   docker compose up -d  # Starts MinIO
+   ```
 
-4. **Database migrations**
+5. **Database migrations**
 
    Migrations run automatically when the API server starts. If you need to generate new migrations after schema changes:
 
@@ -65,20 +68,20 @@ A modular, open-source platform for writers and worldbuilders. Create projects, 
    - `alice@bobbinry.dev` / `password123`
    - `bob@bobbinry.dev` / `password123`
 
-5. **Start development servers**
+6. **Start development servers**
    ```bash
    # From project root
    bun run dev
    ```
 
    This starts:
-   - Shell (Next.js frontend): http://localhost:3000
-   - API (Fastify backend): http://localhost:4000
+   - Shell (Next.js frontend): http://localhost:3100
+   - API (Fastify backend): http://localhost:4100
 
 ### First Time Setup
 
 1. **Create an account**
-   - Navigate to http://localhost:3000
+   - Navigate to http://localhost:3100
    - Click "Sign up" and create your account
    - You'll be automatically logged in
 
@@ -218,7 +221,7 @@ Bobbinry uses NextAuth v5 for authentication with a credentials provider by defa
 
    **GitHub OAuth**:
    - Create a GitHub OAuth app at https://github.com/settings/developers
-   - Set callback URL to `http://localhost:3000/api/auth/callback/github`
+   - Set callback URL to `http://localhost:3100/api/auth/callback/github`
    - Add to `.env`:
      ```
      GITHUB_ID=your_client_id
@@ -227,7 +230,7 @@ Bobbinry uses NextAuth v5 for authentication with a credentials provider by defa
 
    **Google OAuth**:
    - Create credentials at https://console.cloud.google.com/apis/credentials
-   - Set authorized redirect URI to `http://localhost:3000/api/auth/callback/google`
+   - Set authorized redirect URI to `http://localhost:3100/api/auth/callback/google`
    - Add to `.env`:
      ```
      GOOGLE_ID=your_client_id
@@ -275,11 +278,11 @@ See **[Compiler Spec](docs/bobbinry_compiler_spec_tiered_storage.md)** for detai
 DATABASE_URL=postgresql://user:password@localhost:5432/bobbinry
 
 # NextAuth (Shell)
-NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_URL=http://localhost:3100
 NEXTAUTH_SECRET=<generate-with-openssl-rand-base64-32>
 
 # API URLs
-NEXT_PUBLIC_API_URL=http://localhost:4000
+NEXT_PUBLIC_API_URL=http://localhost:4100
 
 # JWT (API)
 API_JWT_SECRET=<generate-with-openssl-rand-base64-32>
@@ -295,15 +298,15 @@ GOOGLE_ID=
 GOOGLE_SECRET=
 
 # Object Storage (S3/MinIO/R2)
-S3_ENDPOINT=http://127.0.0.1:9000
+S3_ENDPOINT=http://127.0.0.1:9100
 S3_REGION=auto
 S3_BUCKET=bobbinry
 S3_ACCESS_KEY=admin
 S3_SECRET_KEY=adminadmin
 
 # CORS / Origins
-WEB_ORIGIN=http://localhost:3000
-API_ORIGIN=http://localhost:4000
+WEB_ORIGIN=http://localhost:3100
+API_ORIGIN=http://localhost:4100
 
 # Security
 CSP_ENABLE_STRICT=true
@@ -326,10 +329,10 @@ CSP_ENABLE_STRICT=true
 
 ### Infrastructure Requirements
 
-- PostgreSQL 14+ database
+- PostgreSQL 14+ (native, via systemctl)
 - Node.js 20+ / Bun 1.0+ runtime
 - 512MB+ RAM recommended
-- Optional: S3-compatible object storage for file uploads
+- Optional: S3-compatible object storage for file uploads (MinIO via Docker)
 - Optional: Redis for session store (future enhancement)
 
 ## 🧪 Testing

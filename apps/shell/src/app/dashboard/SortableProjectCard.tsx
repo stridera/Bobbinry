@@ -13,6 +13,7 @@ interface Project {
   id: string
   name: string
   description: string | null
+  coverImage: string | null
   shortUrl: string | null
   isArchived: boolean
   createdAt: string
@@ -73,7 +74,19 @@ export function SortableProjectCard({ project, isDragging }: SortableProjectCard
           </svg>
         </button>
 
-        {/* Project content - same as ProjectCard */}
+        {/* Cover thumbnail */}
+        {project.coverImage && (
+          <div className="w-12 h-12 flex-shrink-0 rounded-md overflow-hidden">
+            <img
+              src={project.coverImage}
+              alt=""
+              className="w-full h-full object-cover"
+              onError={(e) => { e.currentTarget.parentElement!.style.display = 'none' }}
+            />
+          </div>
+        )}
+
+        {/* Project content */}
         <Link href={projectUrl} className="flex-1 min-w-0 group">
           <div className="flex items-start justify-between">
             <div className="flex-1 min-w-0">

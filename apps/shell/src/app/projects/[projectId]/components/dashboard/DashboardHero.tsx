@@ -68,7 +68,10 @@ export function DashboardHero({ projectId, name, description, coverImage, reader
         throw new Error(errBody.error || `Presign failed (${presignRes.status})`)
       }
       const { uploadUrl, fileKey } = await presignRes.json()
-      await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file })
+      const putRes = await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file })
+      if (!putRes.ok) {
+        throw new Error(`Upload to storage failed (${putRes.status})`)
+      }
       const confirmRes = await apiFetch('/api/uploads/confirm', session.apiToken, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

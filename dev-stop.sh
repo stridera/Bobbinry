@@ -34,7 +34,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR"
 API_PORT=4100
 SHELL_PORT=3100
-DB_CONTAINER_NAME="bobbins-postgres-1"
 MINIO_CONTAINER_NAME="bobbins-minio-1"
 
 # Function to kill processes by port using fuser
@@ -76,18 +75,12 @@ stop_docker_containers() {
 
         cd "$PROJECT_ROOT"
 
-        # Stop containers if they're running
-        if docker ps --format "table {{.Names}}" | grep -q "$DB_CONTAINER_NAME"; then
-            log_info "Stopping PostgreSQL container..."
-            docker stop "$DB_CONTAINER_NAME" >/dev/null 2>&1 || true
-        fi
-
+        # Stop MinIO container if running
         if docker ps --format "table {{.Names}}" | grep -q "$MINIO_CONTAINER_NAME"; then
             log_info "Stopping MinIO container..."
             docker stop "$MINIO_CONTAINER_NAME" >/dev/null 2>&1 || true
         fi
 
-        # Alternative: stop all via docker-compose
         docker compose down >/dev/null 2>&1 || true
 
         log_success "Docker containers stopped"
@@ -114,15 +107,16 @@ show_status() {
         echo "  API (port $API_PORT): STOPPED"
     fi
 
-    # Check Docker containers
-    if docker ps --format "table {{.Names}}" 2>/dev/null | grep -q "$DB_CONTAINER_NAME"; then
-        echo "  PostgreSQL: RUNNING"
+    # Check PostgreSQL (native)
+    if pg_isready -h localhost -p 5432 >/dev/null 2>&1; then
+        echo "  PostgreSQL: RUNNING (native)"
     else
         echo "  PostgreSQL: STOPPED"
     fi
 
+    # Check Docker containers
     if docker ps --format "table {{.Names}}" 2>/dev/null | grep -q "$MINIO_CONTAINER_NAME"; then
-        echo "  MinIO: RUNNING"
+        echo "  MinIO: RUNNING (docker)"
     else
         echo "  MinIO: STOPPED"
     fi
@@ -135,7 +129,7 @@ show_usage() {
     echo "Usage: $0 [OPTIONS]"
     echo
     echo "Options:"
-    echo "  --containers    Also stop Docker containers (PostgreSQL, MinIO)"
+    echo "  --containers    Also stop Docker containers (MinIO)"
     echo "  --status        Show current service status"
     echo "  --help          Show this help message"
     echo

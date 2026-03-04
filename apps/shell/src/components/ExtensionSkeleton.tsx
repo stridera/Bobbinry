@@ -9,7 +9,7 @@ interface ExtensionSkeletonProps {
 export function ExtensionSkeleton({ slotId, className, fallback }: ExtensionSkeletonProps) {
   return (
     <div className={className}>
-      {fallback || (
+      {fallback !== undefined ? fallback : (
         <div className="text-xs text-gray-400 animate-pulse">
           Loading {slotId}...
         </div>

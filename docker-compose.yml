@@ -1,14 +1,4 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: bobbinry
-      POSTGRES_PASSWORD: bobbinry
-      POSTGRES_DB: bobbinry
-    ports:
-      - "5433:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
   minio:
     image: quay.io/minio/minio
     command: server /data --console-address ":9001"
@@ -33,5 +23,4 @@ services:
       exit 0;
       "
 volumes:
-  pgdata:
   minio:

@@ -13,7 +13,7 @@ Theme-aware React UI components for building Bobbinry bobbins.
 ## Installation
 
 ```bash
-pnpm add @bobbinry/ui-components
+bun add @bobbinry/ui-components
 ```
 
 ## Components

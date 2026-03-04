@@ -20,19 +20,19 @@ The SDK provides the core communication layer between the Bobbinry shell applica
 
 ```bash
 # Install dependencies
-pnpm install
+bun install
 
 # Build the package
-pnpm build
+bun build
 
 # Run type checking
-pnpm typecheck
+bun typecheck
 
 # Run tests
-pnpm test
+bun test
 
 # Watch mode for tests
-pnpm test:watch
+bun test:watch
 ```
 
 ### Project Structure

@@ -20,12 +20,27 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const siteDescription = "A modular platform for writers and worldbuilders. Write with powerful tools, publish on your terms, and find your audience.";
+
 export const metadata: Metadata = {
   title: "Bobbinry",
-  description: "A modular platform for writers and worldbuilders",
+  description: siteDescription,
   manifest: "/manifest.json",
   icons: {
     apple: "/apple-touch-icon.png",
+  },
+  openGraph: {
+    title: "Bobbinry",
+    description: siteDescription,
+    siteName: "Bobbinry",
+    type: "website",
+    locale: "en_US",
+    url: "https://bobbinry.utaboshi.com",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Bobbinry",
+    description: siteDescription,
   },
 };
 

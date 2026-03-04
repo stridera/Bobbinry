@@ -37,43 +37,40 @@ The API server is the backend foundation of Bobbinry, providing:
 
 ### Prerequisites
 
-- Node.js 18+
-- pnpm 8+
-- PostgreSQL 15+ (via Docker Compose recommended)
+- Node.js 20+
+- Bun 1.0+
+- PostgreSQL 15+ (native, via systemctl)
 
 ### Setup
 
 ```bash
-# Install dependencies
-pnpm install
+# Install dependencies (from project root)
+bun install
 
-# Set up environment variables
-cp .env.example .env
-
-# Start PostgreSQL (if using Docker)
-docker compose up -d postgres
+# Ensure PostgreSQL is running
+sudo systemctl start postgresql
 
 # Run database migrations
-pnpm db:migrate
+bun run db:migrate
 
 # Start development server
-pnpm dev
+bun run dev
 
-# The API will be available at http://localhost:4000
+# The API will be available at http://localhost:4100
 ```
 
 ### Environment Variables
 
 ```bash
 # Database
-DATABASE_URL=postgresql://postgres:password@localhost:5432/bobbinry
+DATABASE_URL=postgres://user@localhost:5432/bobbins_dev
 
 # Authentication
 API_JWT_SECRET=your-jwt-secret-key
 AUTH_TRUST_HOST=true
 
 # CORS
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
+WEB_ORIGIN=http://localhost:3100
 
 # Optional: Rate limiting
 RATE_LIMIT_MAX=100
@@ -87,21 +84,20 @@ LOG_LEVEL=info
 
 ```bash
 # Development
-pnpm dev          # Start development server with hot reload on port 4000
+bun run dev          # Start development server with hot reload on port 4100
 
 # Building
-pnpm build        # Compile TypeScript to JavaScript
-pnpm start        # Start production server
+bun run build        # Compile TypeScript to JavaScript
+bun run start        # Start production server
 
 # Database
-pnpm db:generate  # Generate database schema from models
-pnpm db:migrate   # Run pending database migrations
-pnpm db:reset     # Reset database (destructive)
+bun run db:generate  # Generate database schema from models
+bun run db:migrate   # Run pending database migrations
+bun run db:reset     # Reset database (destructive)
 
 # Quality Assurance
-pnpm typecheck    # Run TypeScript compiler check
-pnpm test         # Run Jest tests
-pnpm test:watch   # Run tests in watch mode
+bun run typecheck    # Run TypeScript compiler check
+bun run test         # Run Jest tests
 ```
 
 ## Project Structure
@@ -447,13 +443,10 @@ fastify.post('/projects', {
 
 ```bash
 # Run all tests
-pnpm test
+bun run test
 
 # Run specific test file
-pnpm test services/entity-service.test.ts
-
-# Run tests in watch mode
-pnpm test:watch
+bun run test services/entity-service.test.ts
 ```
 
 ### API Testing
@@ -529,32 +522,23 @@ fastify.setErrorHandler((error, request, reply) => {
 
 ```bash
 # Build for production
-pnpm build
+bun run build
 
 # Start production server
-pnpm start
+bun run start
 ```
 
-### Docker
+### Production
 
-```dockerfile
-FROM node:18-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN pnpm install --frozen-lockfile --prod
-COPY . .
-RUN pnpm build
-EXPOSE 4000
-CMD ["pnpm", "start"]
-```
+Use a process manager like PM2 or systemd to run the API in production.
 
 ### Environment Configuration
 
 ```bash
 # Production environment variables
 NODE_ENV=production
-PORT=4000
-DATABASE_URL=postgresql://user:pass@prod-db:5432/bobbinry
+PORT=4100
+DATABASE_URL=postgres://user@localhost:5432/bobbins_dev
 API_JWT_SECRET=production-jwt-secret
 LOG_LEVEL=warn
 RATE_LIMIT_MAX=1000

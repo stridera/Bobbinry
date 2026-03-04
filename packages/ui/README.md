@@ -20,7 +20,7 @@ This package contains reusable UI components, design tokens, and styling utiliti
 
 ```bash
 # Install dependencies
-pnpm install
+bun install
 
 # Currently no build step required
 # Will be updated when component library is implemented

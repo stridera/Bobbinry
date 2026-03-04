@@ -19,16 +19,16 @@ This package provides a secure runtime environment for executing user-defined ac
 
 ```bash
 # Install dependencies
-pnpm install
+bun install
 
 # Build the package
-pnpm build
+bun build
 
 # Run type checking
-pnpm typecheck
+bun typecheck
 
 # Run tests
-pnpm test
+bun test
 ```
 
 ### Project Structure

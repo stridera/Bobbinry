@@ -10,6 +10,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { env } from './env'
 
 let _client: S3Client | null = null
+let _presignClient: S3Client | null = null
 
 export function getS3Client(): S3Client {
   if (!_client) {
@@ -24,6 +25,23 @@ export function getS3Client(): S3Client {
     })
   }
   return _client
+}
+
+/** Client for generating presigned URLs — uses the public endpoint so signatures match the browser's Host header */
+function getPresignClient(): S3Client {
+  if (env.S3_PUBLIC_ENDPOINT === env.S3_ENDPOINT) return getS3Client()
+  if (!_presignClient) {
+    _presignClient = new S3Client({
+      endpoint: env.S3_PUBLIC_ENDPOINT,
+      region: env.S3_REGION,
+      credentials: {
+        accessKeyId: env.S3_ACCESS_KEY,
+        secretAccessKey: env.S3_SECRET_KEY,
+      },
+      forcePathStyle: true,
+    })
+  }
+  return _presignClient
 }
 
 export async function ensureBucketExists(): Promise<void> {
@@ -64,7 +82,7 @@ export async function generatePresignedPutUrl(
   contentType: string,
   maxSize: number
 ): Promise<{ url: string; expiresAt: string }> {
-  const client = getS3Client()
+  const client = getPresignClient()
 
   const command = new PutObjectCommand({
     Bucket: env.S3_BUCKET,
@@ -109,10 +127,7 @@ export async function deleteObject(key: string): Promise<void> {
  * Routes through the API image proxy so bucket access policy doesn't matter.
  */
 export function getPublicUrl(key: string): string {
-  const host = env.NODE_ENV === 'production'
-    ? '' // Relative URL in production (same-origin or CDN)
-    : `http://localhost:${env.PORT}`
-  return `${host}/api/images/${encodeURIComponent(key)}`
+  return `${env.API_ORIGIN}/api/images/${encodeURIComponent(key)}`
 }
 
 /**

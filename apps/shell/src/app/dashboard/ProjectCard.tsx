@@ -12,6 +12,7 @@ interface Project {
   id: string
   name: string
   description: string | null
+  coverImage: string | null
   shortUrl: string | null
   isArchived: boolean
   createdAt: string
@@ -22,8 +23,19 @@ export function ProjectCard({ project }: { project: Project }) {
   return (
     <div className="group border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg overflow-hidden hover:shadow-md hover:border-blue-300/50 dark:hover:border-blue-700/50 transition-all">
       <div className="flex">
-        {/* Accent bar */}
-        <div className="w-1 bg-blue-500/40 group-hover:bg-blue-500 dark:bg-blue-400/30 dark:group-hover:bg-blue-400 transition-colors" />
+        {/* Cover thumbnail or accent bar */}
+        {project.coverImage ? (
+          <div className="w-20 flex-shrink-0 relative overflow-hidden">
+            <img
+              src={project.coverImage}
+              alt=""
+              className="absolute inset-0 w-full h-full object-cover"
+              onError={(e) => { e.currentTarget.style.display = 'none' }}
+            />
+          </div>
+        ) : (
+          <div className="w-1 bg-blue-500/40 group-hover:bg-blue-500 dark:bg-blue-400/30 dark:group-hover:bg-blue-400 transition-colors" />
+        )}
 
         <div className="flex-1 p-4">
           <div className="flex items-start justify-between">

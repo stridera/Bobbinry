@@ -34,32 +34,29 @@ The shell is the central hub of the Bobbinry experience. It provides:
 
 ### Prerequisites
 
-- Node.js 18+
-- pnpm 8+
-- PostgreSQL (via Docker Compose)
+- Node.js 20+
+- Bun 1.0+
+- PostgreSQL 14+ (native)
 
 ### Setup
 
 ```bash
-# Install dependencies
-pnpm install
-
-# Set up environment variables
-cp .env.example .env.local
+# Install dependencies (from project root)
+bun install
 
 # Start development server
-pnpm dev
+bun run dev
 
-# The shell will be available at http://localhost:3000
+# The shell will be available at http://localhost:3100
 ```
 
 ### Environment Variables
 
 ```bash
 # Required
-NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_URL=http://localhost:3100
 NEXTAUTH_SECRET=your-nextauth-secret
-API_URL=http://localhost:4000
+API_URL=http://localhost:4100
 
 # OAuth Providers (optional)
 GOOGLE_CLIENT_ID=your-google-client-id
@@ -72,17 +69,16 @@ GITHUB_CLIENT_SECRET=your-github-client-secret
 
 ```bash
 # Development
-pnpm dev          # Start development server on port 3000
+bun run dev          # Start development server on port 3100
 
 # Building
-pnpm build        # Build for production
-pnpm start        # Start production server
+bun run build        # Build for production
+bun run start        # Start production server
 
 # Quality Assurance
-pnpm typecheck    # Run TypeScript compiler check
-pnpm lint         # Run ESLint
-pnpm test         # Run Jest tests
-pnpm test:watch   # Run tests in watch mode
+bun run typecheck    # Run TypeScript compiler check
+bun run lint         # Run ESLint
+bun run test         # Run Jest tests
 ```
 
 ## Project Structure
@@ -320,13 +316,10 @@ export function registerServiceWorker() {
 
 ```bash
 # Run all tests
-pnpm test
+bun run test
 
 # Run specific test file
-pnpm test components/ShellLayout.test.tsx
-
-# Run tests in watch mode
-pnpm test:watch
+bun run test components/ShellLayout.test.tsx
 ```
 
 ### Component Testing
@@ -356,24 +349,15 @@ describe('ShellLayout', () => {
 
 ```bash
 # Build for production
-pnpm build
+bun run build
 
 # Start production server
-pnpm start
+bun run start
 ```
 
-### Docker
+### Production
 
-```dockerfile
-FROM node:18-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN pnpm install --frozen-lockfile
-COPY . .
-RUN pnpm build
-EXPOSE 3000
-CMD ["pnpm", "start"]
-```
+Use a process manager like PM2 or systemd to run the shell in production.
 
 ## Integration with API
 
@@ -407,5 +391,5 @@ export async function getProjects() {
 
 - **Code Splitting**: Components are automatically code-split by Next.js
 - **Image Optimization**: Use Next.js `Image` component for optimized images
-- **Bundle Analysis**: Run `pnpm build` to see bundle size analysis
+- **Bundle Analysis**: Run `bun run build` to see bundle size analysis
 - **Service Worker**: Implements caching strategies for offline support
