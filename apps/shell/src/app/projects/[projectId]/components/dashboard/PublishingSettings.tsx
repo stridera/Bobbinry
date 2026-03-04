@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { apiFetch } from '@/lib/api'
+import { OptimizedImage } from '@/components/OptimizedImage'
 
 function HelpTip({ text }: { text: string }) {
   return (
@@ -43,6 +44,41 @@ export function PublishingSettings({ projectId, config, onUpdate }: PublishingSe
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(config)
   const [saving, setSaving] = useState(false)
+  const [uploadingOg, setUploadingOg] = useState(false)
+
+  const handleOgUpload = useCallback(async (file: File) => {
+    if (!file.type.startsWith('image/') || !session?.apiToken) return
+    setUploadingOg(true)
+    try {
+      const presignRes = await apiFetch('/api/uploads/presign', session.apiToken, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: file.name, contentType: file.type, size: file.size, context: 'cover', projectId })
+      })
+      if (!presignRes.ok) {
+        const errBody = await presignRes.json().catch(() => ({}))
+        throw new Error(errBody.error || `Presign failed (${presignRes.status})`)
+      }
+      const { uploadUrl, fileKey } = await presignRes.json()
+      const putRes = await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file })
+      if (!putRes.ok) throw new Error(`Upload failed (${putRes.status})`)
+      const confirmRes = await apiFetch('/api/uploads/confirm', session.apiToken, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileKey, filename: file.name, contentType: file.type, size: file.size, context: 'cover', projectId })
+      })
+      if (!confirmRes.ok) {
+        const errBody = await confirmRes.json().catch(() => ({}))
+        throw new Error(errBody.error || `Confirm failed (${confirmRes.status})`)
+      }
+      const { url } = await confirmRes.json()
+      setDraft(d => ({ ...d, ogImageUrl: url }))
+    } catch (err) {
+      console.error('OG image upload failed:', err)
+    } finally {
+      setUploadingOg(false)
+    }
+  }, [session?.apiToken, projectId])
 
   const handleSave = async () => {
     if (!session?.apiToken) return
@@ -164,14 +200,64 @@ export function PublishingSettings({ projectId, config, onUpdate }: PublishingSe
               </div>
 
               <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">OG Image URL<HelpTip text="The preview image shown when your project is shared on social media (Facebook, Twitter, Discord, etc.)." /></label>
-                <input
-                  type="text"
-                  value={draft.ogImageUrl || ''}
-                  onChange={(e) => setDraft({ ...draft, ogImageUrl: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/40 outline-none"
-                  placeholder="https://..."
-                />
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">OG Image<HelpTip text="The preview image shown when your project is shared on social media (Facebook, Twitter, Discord, etc.)." /></label>
+                {draft.ogImageUrl ? (
+                  <div className="space-y-2">
+                    <div className="relative w-full max-w-sm h-32 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-600 bg-gray-100 dark:bg-gray-700">
+                      <OptimizedImage
+                        src={draft.ogImageUrl}
+                        variant="medium"
+                        alt="OG preview"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="flex gap-3">
+                      <label className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors cursor-pointer">
+                        {uploadingOg ? 'Uploading...' : 'Change Image'}
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,image/gif"
+                          className="hidden"
+                          disabled={uploadingOg}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) handleOgUpload(file)
+                            e.target.value = ''
+                          }}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setDraft({ ...draft, ogImageUrl: '' })}
+                        className="text-xs text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 transition-colors cursor-pointer"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="flex items-center justify-center w-full max-w-sm h-24 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg hover:border-gray-400 dark:hover:border-gray-500 transition-colors cursor-pointer bg-gray-50 dark:bg-gray-900/50">
+                    <div className="text-center">
+                      <svg className="w-6 h-6 mx-auto text-gray-400 dark:text-gray-500 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        {uploadingOg ? 'Uploading...' : 'Upload OG Image'}
+                      </span>
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      className="hidden"
+                      disabled={uploadingOg}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) handleOgUpload(file)
+                        e.target.value = ''
+                      }}
+                    />
+                  </label>
+                )}
               </div>
 
               <div className="flex gap-6">
