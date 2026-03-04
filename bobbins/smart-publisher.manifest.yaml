@@ -10,8 +10,9 @@ tags: [publishing, automation, scheduling]
 author: Bobbins Core
 license: MIT
 
-requires:
-  - manuscript
+compatibility:
+  requiredBobbins:
+    - manuscript
 
 capabilities:
   publishable: true
@@ -53,23 +54,22 @@ data:
 interactions:
   actions:
     - id: authorize_chapter
+      name: Authorize Chapter
       type: update
       target: ReleaseQueue
-      description: Authorize a queued chapter for release on next schedule
     - id: hold_chapter
+      name: Hold Chapter
       type: update
       target: ReleaseQueue
-      description: Hold a chapter from being released
     - id: process_releases
+      name: Process Releases
       type: custom
-      description: Process the release queue and publish authorized chapters
 
   triggers:
-    - event: schedule
-      action: process_releases
-      config:
-        cron: "*/15 * * * *"
-      description: Check the release queue every 15 minutes
+    - id: release_check
+      event: schedule
+      actions:
+        - process_releases
 
 ui:
   views:

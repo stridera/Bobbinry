@@ -1,9 +1,12 @@
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const _envApiUrl: string | undefined = (globalThis as any).process?.env?.NEXT_PUBLIC_API_URL
+
 // API client for communicating with the Bobbinry API
 export class BobbinryAPI {
   private baseURL: string
   private authToken: string | null = null
 
-  constructor(baseURL: string = (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}/api` : 'http://localhost:4100/api')) {
+  constructor(baseURL: string = (_envApiUrl ? `${_envApiUrl}/api` : 'http://localhost:4100/api')) {
     this.baseURL = baseURL
   }
 

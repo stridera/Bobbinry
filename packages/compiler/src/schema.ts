@@ -42,6 +42,11 @@ export const manifestSchema = {
     "license": {
       "type": "string"
     },
+    "requires": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "List of bobbin IDs that must be installed first"
+    },
     "capabilities": {
       "type": "object",
       "properties": {

@@ -8,8 +8,12 @@ module.exports = {
     '**/?(*.)+(spec|test).{ts,tsx}'
   ],
   transform: {
-    '^.+\\.ts$': 'ts-jest'
+    '^.+\\.ts$': 'ts-jest',
+    '^.+\\.js$': ['ts-jest', { tsconfig: { allowJs: true } }]
   },
+  transformIgnorePatterns: [
+    'node_modules/(?!\\.bun/jose|jose/)'
+  ],
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',
     '!src/**/*.d.ts',

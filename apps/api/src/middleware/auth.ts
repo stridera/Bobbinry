@@ -29,7 +29,7 @@ declare module 'fastify' {
  * Get the JWT secret for token verification.
  * Uses NEXTAUTH_SECRET (same as shell) or API_JWT_SECRET as fallback.
  */
-function getJwtSecret(): Uint8Array {
+export function getJwtSecret(): Uint8Array {
   const secret = process.env.NEXTAUTH_SECRET || process.env.API_JWT_SECRET
 
   if (!secret && process.env.NODE_ENV === 'production') {
