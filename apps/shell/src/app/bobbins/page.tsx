@@ -78,6 +78,13 @@ function BobbinsContent() {
               <h1 className="font-display text-2xl font-bold text-gray-900 dark:text-gray-100">Bobbins</h1>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                 {availableBobbins.length} bobbins available
+                <span className="mx-1.5">·</span>
+                <Link
+                  href="/docs"
+                  className="text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  Want to build your own? Developer Guide →
+                </Link>
               </p>
             </div>
             {!session && (
