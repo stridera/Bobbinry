@@ -77,10 +77,10 @@ export default function LibraryPage() {
   const [activeTab, setActiveTab] = useState<Tab>('reading')
   const [progress, setProgress] = useState<ProgressItem[]>([])
   const [feed, setFeed] = useState<FeedItem[]>([])
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
+  const [, setSubscriptions] = useState<Subscription[]>([])
   const [readerBobbins, setReaderBobbins] = useState<ReaderBobbin[]>([])
   const [authorProfiles, setAuthorProfiles] = useState<Record<string, { displayName: string; username: string }>>({})
-  const [tierNames, setTierNames] = useState<Record<string, string>>({})
+  const [, setTierNames] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
 
   const userId = session?.user?.id

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { config } from '@/lib/config'
@@ -173,7 +173,6 @@ function CommentThread({
 
 export default function ChapterReaderPage() {
   const params = useParams()
-  const router = useRouter()
   const { data: session } = useSession()
   const authorUsername = params.authorUsername as string
   const projectSlug = params.projectSlug as string
@@ -255,6 +254,7 @@ export default function ChapterReaderPage() {
 
   useEffect(() => {
     loadChapter()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorUsername, projectSlug, chapterId])
 
   useEffect(() => {
@@ -407,7 +407,7 @@ export default function ChapterReaderPage() {
           referrer: document.referrer || undefined
         })
       }).catch(() => {})
-    } catch (err) {
+    } catch {
       setError('Failed to load chapter')
     } finally {
       setLoading(false)

@@ -61,12 +61,14 @@ export default function PublicProfilePage() {
 
   useEffect(() => {
     loadProfile()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [username])
 
   useEffect(() => {
     if (profile?.userId && session?.user?.id && !isOwnProfile) {
       checkFollowStatus()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.userId, session?.user?.id])
 
   const loadProfile = async () => {
@@ -127,7 +129,7 @@ export default function PublicProfilePage() {
         const tiersData = await tiersRes.json()
         setTiers((tiersData.tiers || []).filter((t: SubscriptionTier) => t.tierLevel > 0))
       }
-    } catch (err) {
+    } catch {
       setError('Failed to load profile')
     } finally {
       setLoading(false)

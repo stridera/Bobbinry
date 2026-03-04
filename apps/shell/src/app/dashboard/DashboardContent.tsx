@@ -69,6 +69,7 @@ export function DashboardContent({ user }: { user: User }) {
 
   useEffect(() => {
     loadDashboard()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id])
 
   const loadDashboard = async () => {

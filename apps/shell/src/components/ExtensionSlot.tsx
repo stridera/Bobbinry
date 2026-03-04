@@ -19,13 +19,14 @@ interface ExtensionSlotProps {
 }
 
 // Memoized component for panel content to prevent unnecessary iframe reloads
-const PanelContent = memo(function PanelContent({ 
-  extension, 
-  context, 
-  theme,
+const PanelContent = memo(function PanelContent({
+  extension,
+  context,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  theme: _theme,
   iframeRefs,
-  buildShellConfig 
-}: { 
+  buildShellConfig
+}: {
   extension: RegisteredExtension
   context: any
   theme: string
@@ -211,6 +212,7 @@ export function ExtensionSlot({
         />
       )
     }))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [extensions, context, theme])
 
   // Show skeleton while hydrating

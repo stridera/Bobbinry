@@ -23,8 +23,6 @@ export function DashboardHero({ projectId, name, description, coverImage, reader
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  const hasChanges = editName !== name || editDescription !== (description || '')
-
   const handleSave = async () => {
     if (!editName.trim() || !session?.apiToken) return
     setSaving(true)

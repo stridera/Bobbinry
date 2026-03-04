@@ -37,8 +37,6 @@ export default function ProjectWritePage() {
   const router = useRouter()
   const { data: session } = useSession()
   const projectId = params.projectId as string
-  const [hasInitialNavigation, setHasInitialNavigation] = useState(false)
-
   const [sdk] = useState(() => new BobbinrySDK('shell'))
   const [installedBobbins, setInstalledBobbins] = useState<InstalledBobbin[]>([])
   const previousBobbinIdsRef = useRef<string[]>([])
@@ -136,6 +134,7 @@ export default function ProjectWritePage() {
     if (projectId) {
       loadProject()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, sdk, session?.apiToken])
 
   const navigateToBobbins = (slot?: string) => {
@@ -193,7 +192,6 @@ export default function ProjectWritePage() {
             {session?.user && <UserMenu user={session.user} />}
           </header>
           <ProjectWelcome
-            projectId={projectId}
             onInstallBobbins={navigateToBobbins}
           />
         </div>

@@ -5,7 +5,6 @@ import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { useTheme } from '@/contexts/ThemeContext'
-import { config } from '@/lib/config'
 import { apiFetch } from '@/lib/api'
 import { SiteNav } from '@/components/SiteNav'
 import { SkeletonPanel } from '@/components/LoadingState'
@@ -51,6 +50,7 @@ export default function SettingsPage() {
     if (session?.user?.id && session?.apiToken) {
       loadProfile()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id, session?.apiToken])
 
   const loadProfile = async () => {
@@ -105,7 +105,7 @@ export default function SettingsPage() {
         const data = await res.json().catch(() => ({}))
         setProfileError(data.error || 'Failed to save profile')
       }
-    } catch (err) {
+    } catch {
       setProfileError('Failed to save profile')
     } finally {
       setSaving(false)

@@ -75,6 +75,7 @@ export default function MonetizationPage() {
     if (session?.user?.id && session?.apiToken) {
       loadData()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id, session?.apiToken])
 
   const loadData = async () => {
@@ -153,7 +154,7 @@ export default function MonetizationPage() {
         const data = await res.json().catch(() => ({}))
         setError(data.error || 'Failed to save tier')
       }
-    } catch (err) {
+    } catch {
       setError('Failed to save tier')
     } finally {
       setSaving(false)
@@ -170,7 +171,7 @@ export default function MonetizationPage() {
         { method: 'DELETE' }
       )
       await loadData()
-    } catch (err) {
+    } catch {
       setError('Failed to delete tier')
     }
   }
@@ -222,7 +223,7 @@ export default function MonetizationPage() {
         const data = await res.json().catch(() => ({}))
         setError(data.error || 'Failed to create discount code')
       }
-    } catch (err) {
+    } catch {
       setError('Failed to create discount code')
     } finally {
       setSaving(false)
@@ -250,7 +251,7 @@ export default function MonetizationPage() {
           window.location.href = data.oauthUrl
         }
       }
-    } catch (err) {
+    } catch {
       setError('Failed to start Stripe onboarding')
     }
   }

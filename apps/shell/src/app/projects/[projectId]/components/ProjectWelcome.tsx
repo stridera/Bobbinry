@@ -1,11 +1,10 @@
 'use client'
 
 interface ProjectWelcomeProps {
-  projectId: string
   onInstallBobbins?: () => void
 }
 
-export function ProjectWelcome({ projectId, onInstallBobbins }: ProjectWelcomeProps) {
+export function ProjectWelcome({ onInstallBobbins }: ProjectWelcomeProps) {
   return (
     <div className="flex-1 flex items-center justify-center p-8">
       <div className="max-w-2xl w-full text-center animate-fade-in">

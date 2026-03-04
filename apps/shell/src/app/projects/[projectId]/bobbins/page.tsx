@@ -87,6 +87,7 @@ function BobbinsContent() {
     if (typeof window !== 'undefined') {
       loadAllData()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, session?.apiToken])
 
   const installBobbin = async (bobbin: BobbinMetadata) => {

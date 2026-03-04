@@ -98,7 +98,7 @@ const providers: any[] = [
           email: user.email,
           name: user.name || user.email
         }
-      } catch (error) {
+      } catch {
         return null
       }
     }

@@ -1,6 +1,6 @@
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
-import { pgTable, uuid, text, timestamp, jsonb, varchar, index } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, timestamp, jsonb, varchar, index } from 'drizzle-orm/pg-core'
 
 // Database schema - entities table for Tier 1 JSONB storage
 export const entities = pgTable('entities', {

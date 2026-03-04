@@ -98,12 +98,14 @@ export function ResizablePanelStack({ panels, slotId }: ResizablePanelStackProps
     .filter((p): p is PanelConfig => p != null)
 
   // Sync order when panels change
+  const panelIds = panels.map(p => p.id).join(',')
   useEffect(() => {
     const newOrder = reconcileOrder(panelState.order, panels)
     if (JSON.stringify(newOrder) !== JSON.stringify(panelState.order)) {
       setPanelState(prev => ({ ...prev, order: newOrder }))
     }
-  }, [panels.map(p => p.id).join(',')])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panelIds])
 
   // Measure container height
   useEffect(() => {

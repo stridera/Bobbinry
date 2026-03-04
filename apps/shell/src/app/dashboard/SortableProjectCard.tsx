@@ -26,7 +26,7 @@ interface SortableProjectCardProps {
   isDragging: boolean
 }
 
-export function SortableProjectCard({ project, isDragging }: SortableProjectCardProps) {
+export function SortableProjectCard({ project }: SortableProjectCardProps) {
   const {
     attributes,
     listeners,

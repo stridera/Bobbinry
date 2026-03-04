@@ -68,12 +68,14 @@ export default function ProjectReadingPage() {
 
   useEffect(() => {
     loadProject()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorUsername, projectSlug])
 
   // Load follow status when project and session are ready
   useEffect(() => {
     if (!project?.id) return
     loadFollowStatus(project.id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project?.id, session])
 
   const loadFollowStatus = async (projectId: string) => {
@@ -126,7 +128,7 @@ export default function ProjectReadingPage() {
         const tiersData = await tiersRes.json()
         setTiers((tiersData.tiers || []).filter((t: SubscriptionTier) => t.tierLevel > 0))
       }
-    } catch (err) {
+    } catch {
       setError('Failed to load project')
     } finally {
       setLoading(false)

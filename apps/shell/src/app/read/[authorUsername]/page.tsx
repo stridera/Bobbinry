@@ -45,6 +45,7 @@ export default function AuthorReadPage() {
 
   useEffect(() => {
     loadAuthor()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorUsername])
 
   // Check follow status and subscription when data is ready
@@ -53,6 +54,7 @@ export default function AuthorReadPage() {
     checkFollowStatuses()
     checkSubscription()
     checkTiers()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [author, projects, session])
 
   const loadAuthor = async () => {
@@ -69,7 +71,7 @@ export default function AuthorReadPage() {
       const data = await res.json()
       setAuthor(data.author)
       setProjects(data.projects || [])
-    } catch (err) {
+    } catch {
       setError('Failed to load author')
     } finally {
       setLoading(false)

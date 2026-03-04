@@ -152,6 +152,7 @@ export default function ExplorePage() {
     if (activeTab === 'stories') {
       loadProjects(false)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedQuery, selectedGenre, storySort, activeTab])
 
   // Fetch authors on filter change
@@ -159,6 +160,7 @@ export default function ExplorePage() {
     if (activeTab === 'authors') {
       loadAuthors(false)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedQuery, authorSort, activeTab])
 
   // Check follow status for displayed authors

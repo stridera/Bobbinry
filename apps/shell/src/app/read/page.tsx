@@ -33,10 +33,6 @@ interface FeedItem {
   authorName: string
 }
 
-interface AuthorInfo {
-  username: string | null
-}
-
 export default function ReadIndexPage() {
   const { data: session, status } = useSession()
   const router = useRouter()

@@ -59,7 +59,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
   // Always have an author identifier for URLs — username if set, otherwise user ID
   const authorId = username || user.id
 
-  const { registerManifestExtensions, unregisterManifestExtensions } = useManifestExtensions()
+  const { registerManifestExtensions } = useManifestExtensions()
 
   const loadProjects = useCallback(async () => {
     try {
@@ -313,7 +313,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
         text: `Published ${successCount} of ${projectChapters.length} chapters!`,
       })
       await loadChapters(projectId)
-    } catch (err) {
+    } catch {
       setMessage({ type: 'error', text: 'Failed to publish chapters' })
     } finally {
       setActionInProgress(null)

@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { BobbinrySDK } from '@bobbinry/sdk'
 import { BobbinBridge } from '../services/BobbinBridge'
-import { Theme } from '../types/bobbin-messages'
 import { config } from '@/lib/config'
 
 interface SandboxedViewRendererProps {
@@ -31,8 +30,6 @@ export function SandboxedViewRenderer({
   const [viewReady, setViewReady] = useState(false)
 
   // Use hardcoded API URL for testing - memoize to prevent re-calculation
-  const apiBaseUrl = config.apiUrl
-
   // Memoize viewSrc to prevent unnecessary re-renders
   const viewSrc = useMemo(() => {
     // FORCE absolute URL to fix port issue
@@ -104,17 +101,6 @@ export function SandboxedViewRenderer({
       }
     }
   }, [projectId, bobbinId, viewId, viewSrc, sdk])
-
-  // Public methods for external control
-  const updateTheme = async (theme: Theme) => {
-    if (bridgeRef.current) {
-      try {
-        await bridgeRef.current.updateTheme(theme)
-      } catch (error) {
-        console.error('Failed to update theme:', error)
-      }
-    }
-  }
 
   const retryConnection = () => {
     setError(null)

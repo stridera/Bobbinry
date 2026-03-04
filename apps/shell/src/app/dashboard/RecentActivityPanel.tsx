@@ -29,6 +29,7 @@ export function RecentActivityPanel({ userId }: { userId: string }) {
 
   useEffect(() => {
     loadActivity()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId])
 
   const loadActivity = async () => {

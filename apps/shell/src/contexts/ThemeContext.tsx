@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { MessageBuilder, messageRouter } from '@/lib/message-router'
+import { MessageBuilder } from '@/lib/message-router'
 
 type Theme = 'light' | 'dark'
 

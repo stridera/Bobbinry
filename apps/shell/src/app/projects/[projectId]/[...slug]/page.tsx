@@ -114,6 +114,7 @@ export default function ProjectDeepLinkPage() {
     if (projectId) {
       loadProject()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, sdk, session?.apiToken])
 
   // Parse the slug and trigger navigation once loaded
@@ -142,6 +143,7 @@ export default function ProjectDeepLinkPage() {
         })
       )
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slugKey, loading])
   
   if (loading) {

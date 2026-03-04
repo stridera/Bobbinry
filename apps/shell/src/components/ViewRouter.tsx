@@ -109,6 +109,7 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
         updateNav(state)
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Listen for navigation events
@@ -148,6 +149,7 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
         window.removeEventListener('popstate', handlePopState)
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
 
   // Resolve compatible views and load the component when navigation changes.

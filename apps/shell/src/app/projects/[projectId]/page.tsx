@@ -98,6 +98,7 @@ export default function ProjectDashboardPage() {
     if (session?.apiToken) {
       loadDashboard()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, session?.apiToken])
 
   const loadDashboard = async () => {
