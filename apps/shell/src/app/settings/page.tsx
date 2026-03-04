@@ -31,7 +31,7 @@ function validateUsername(username: string): string | null {
 }
 
 export default function SettingsPage() {
-  const { data: session, status } = useSession()
+  const { data: session, status, update: updateSession } = useSession()
   const { theme, setTheme } = useTheme()
   const [saving, setSaving] = useState(false)
   const [success, setSuccess] = useState<string | null>(null)
@@ -95,6 +95,10 @@ export default function SettingsPage() {
         body: JSON.stringify(profile)
       })
       if (res.ok) {
+        // Update session so the display name is reflected everywhere
+        if (profile.displayName) {
+          await updateSession({ name: profile.displayName })
+        }
         setSuccess('Profile saved successfully!')
         setTimeout(() => setSuccess(null), 3000)
       } else {

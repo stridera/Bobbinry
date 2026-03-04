@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
+import { SiteNav } from '@/components/SiteNav'
 import { apiFetch } from '@/lib/api'
 import { DashboardHero } from './components/dashboard/DashboardHero'
 import { StatsCards } from './components/dashboard/StatsCards'
@@ -121,6 +122,7 @@ export default function ProjectDashboardPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+        <SiteNav />
         <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
             <div className="animate-pulse">
@@ -143,15 +145,18 @@ export default function ProjectDashboardPage() {
 
   if (error || !data) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-600 dark:text-red-400 mb-4">{error || 'Something went wrong'}</p>
-          <button
-            onClick={() => { setError(null); setLoading(true); loadDashboard() }}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors cursor-pointer"
-          >
-            Retry
-          </button>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+        <SiteNav />
+        <div className="flex items-center justify-center py-32">
+          <div className="text-center">
+            <p className="text-red-600 dark:text-red-400 mb-4">{error || 'Something went wrong'}</p>
+            <button
+              onClick={() => { setError(null); setLoading(true); loadDashboard() }}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors cursor-pointer"
+            >
+              Retry
+            </button>
+          </div>
         </div>
       </div>
     )
@@ -159,6 +164,7 @@ export default function ProjectDashboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      <SiteNav />
       {/* Header */}
       <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">

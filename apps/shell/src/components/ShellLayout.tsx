@@ -61,7 +61,6 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
   useEffect(() => {
     const handleViewContextChange = (event: Event) => {
       const customEvent = event as CustomEvent<Record<string, any>>
-      console.log('[ShellLayout] View context changed:', customEvent.detail)
       setDynamicContext(customEvent.detail)
     }
 

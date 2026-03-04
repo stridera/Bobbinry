@@ -6,7 +6,7 @@
 
 import { FastifyPluginAsync } from 'fastify'
 import { db } from '../db/connection'
-import { users } from '../db/schema'
+import { users, userProfiles } from '../db/schema'
 import { eq } from 'drizzle-orm'
 import { randomBytes, scryptSync, timingSafeEqual } from 'crypto'
 import { requireAuth } from '../middleware/auth'
@@ -117,6 +117,12 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(500).send({ error: 'Failed to create user' })
       }
 
+      // Auto-create a user profile
+      await db.insert(userProfiles).values({
+        userId: newUser.id,
+        displayName: newUser.name || null,
+      }).onConflictDoNothing()
+
       return reply.status(201).send({
         id: newUser.id,
         email: newUser.email,
@@ -176,6 +182,12 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
       if (!newUser) {
         return reply.status(500).send({ error: 'Failed to create user' })
       }
+
+      // Auto-create a user profile
+      await db.insert(userProfiles).values({
+        userId: newUser.id,
+        displayName: newUser.name || null,
+      }).onConflictDoNothing()
 
       return reply.status(201).send({
         id: newUser.id,

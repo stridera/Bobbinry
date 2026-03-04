@@ -207,7 +207,7 @@ export default function PublicProfilePage() {
     )
   }
 
-  const displayName = profile.displayName || profile.userName || profile.username
+  const displayName = profile.displayName || profile.userName || profile.username || 'User'
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">

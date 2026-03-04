@@ -57,7 +57,6 @@ const PanelContent = memo(function PanelContent({
             const config = buildShellConfig()
             const initMessage = MessageBuilder.shellInit(config, extension.bobbinId, extension.id)
             sendToIframe(iframe, initMessage)
-            console.log(`[ExtensionSlot] Sent init config to iframe ${extension.id}`)
           }, 50)
         }}
         src={`/bobbins/${extension.bobbinId}/${extension.contribution.entry}`}
@@ -174,7 +173,6 @@ export function ExtensionSlot({
     if (!isHydrated) return
 
     const currentExtensions = extensionRegistry.getExtensionsForSlot(slotId, context)
-    console.log(`[ExtensionSlot] ${slotId} - Extensions updated:`, currentExtensions.length, 'extensions (registered:', registeredCount, ')')
     setExtensions(currentExtensions)
   }, [context, slotId, isHydrated, registeredCount])
 
@@ -185,16 +183,13 @@ export function ExtensionSlot({
     // Get initial extensions
     const updateExtensions = () => {
       const currentExtensions = extensionRegistry.getExtensionsForSlot(slotId, contextRef.current)
-      console.log(`[ExtensionSlot] ${slotId} - Extensions updated:`, currentExtensions.length, 'extensions')
       setExtensions(currentExtensions)
     }
 
     updateExtensions()
-    console.log(`[ExtensionSlot] ${slotId} - All extensions in registry:`, extensionRegistry.getAllExtensions())
 
     // Listen for changes to this slot - use ref to get current context
     const unsubscribe = extensionRegistry.onSlotChange(slotId, () => {
-      console.log(`[ExtensionSlot] ${slotId} - Slot change notification received`)
       updateExtensions()
     })
 

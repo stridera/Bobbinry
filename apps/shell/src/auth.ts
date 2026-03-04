@@ -137,10 +137,24 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
       return true
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session: updateData }) {
       if (user) {
         token.id = user.id
         token.apiToken = await signApiToken(user.id)
+        // Use profile displayName as the canonical display name
+        try {
+          const profileRes = await fetch(`${config.apiUrl}/api/users/${user.id}/profile`)
+          if (profileRes.ok) {
+            const { profile } = await profileRes.json()
+            if (profile?.displayName) {
+              token.name = profile.displayName
+            }
+          }
+        } catch {}
+      }
+      // Handle session updates (e.g. after profile displayName change)
+      if (trigger === 'update' && updateData?.name) {
+        token.name = updateData.name
       }
       return token
     },

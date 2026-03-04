@@ -4,6 +4,17 @@ import { useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { apiFetch } from '@/lib/api'
 
+function HelpTip({ text }: { text: string }) {
+  return (
+    <span className="relative group inline-flex ml-1 align-middle">
+      <span className="w-3.5 h-3.5 inline-flex items-center justify-center rounded-full border border-gray-300 dark:border-gray-500 text-gray-400 dark:text-gray-500 text-[9px] font-bold cursor-help leading-none">?</span>
+      <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-52 px-2.5 py-1.5 rounded-md bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-xs leading-snug opacity-0 group-hover:opacity-100 transition-opacity z-10 text-center shadow-lg">
+        {text}
+      </span>
+    </span>
+  )
+}
+
 interface PublishConfig {
   projectId: string
   publishingMode: string
@@ -83,11 +94,11 @@ export function PublishingSettings({ projectId, config, onUpdate }: PublishingSe
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <p className="text-gray-500 dark:text-gray-400">Publishing Mode</p>
+                  <p className="text-gray-500 dark:text-gray-400">Publishing Mode<HelpTip text="Whether your project is listed on the platform. Draft = only you can see it, Scheduled = goes live on a date, Live = published and discoverable." /></p>
                   <p className="text-gray-900 dark:text-gray-100 font-medium capitalize">{config.publishingMode}</p>
                 </div>
                 <div>
-                  <p className="text-gray-500 dark:text-gray-400">Default Visibility</p>
+                  <p className="text-gray-500 dark:text-gray-400">Default Visibility<HelpTip text="Who can read new chapters by default. Public = everyone, Subscribers Only = paying supporters, Private = only you." /></p>
                   <p className="text-gray-900 dark:text-gray-100 font-medium capitalize">{config.defaultVisibility.replace('_', ' ')}</p>
                 </div>
                 <div>
@@ -100,7 +111,7 @@ export function PublishingSettings({ projectId, config, onUpdate }: PublishingSe
                 </div>
                 {config.seoDescription && (
                   <div className="col-span-2">
-                    <p className="text-gray-500 dark:text-gray-400">SEO Description</p>
+                    <p className="text-gray-500 dark:text-gray-400">SEO Description<HelpTip text="A short summary shown in search engine results like Google. Helps readers find your work." /></p>
                     <p className="text-gray-900 dark:text-gray-100 text-sm">{config.seoDescription}</p>
                   </div>
                 )}
@@ -116,7 +127,7 @@ export function PublishingSettings({ projectId, config, onUpdate }: PublishingSe
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Publishing Mode</label>
+                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Publishing Mode<HelpTip text="Whether your project is listed on the platform. Draft = only you can see it, Scheduled = goes live on a date, Live = published and discoverable." /></label>
                   <select
                     value={draft.publishingMode}
                     onChange={(e) => setDraft({ ...draft, publishingMode: e.target.value })}
@@ -128,7 +139,7 @@ export function PublishingSettings({ projectId, config, onUpdate }: PublishingSe
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Default Visibility</label>
+                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Default Visibility<HelpTip text="Who can read new chapters by default. Public = everyone, Subscribers Only = paying supporters, Private = only you." /></label>
                   <select
                     value={draft.defaultVisibility}
                     onChange={(e) => setDraft({ ...draft, defaultVisibility: e.target.value })}
@@ -142,7 +153,7 @@ export function PublishingSettings({ projectId, config, onUpdate }: PublishingSe
               </div>
 
               <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">SEO Description</label>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">SEO Description<HelpTip text="A short summary shown in search engine results like Google. Helps readers find your work." /></label>
                 <textarea
                   value={draft.seoDescription || ''}
                   onChange={(e) => setDraft({ ...draft, seoDescription: e.target.value })}
@@ -153,7 +164,7 @@ export function PublishingSettings({ projectId, config, onUpdate }: PublishingSe
               </div>
 
               <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">OG Image URL</label>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">OG Image URL<HelpTip text="The preview image shown when your project is shared on social media (Facebook, Twitter, Discord, etc.)." /></label>
                 <input
                   type="text"
                   value={draft.ogImageUrl || ''}
