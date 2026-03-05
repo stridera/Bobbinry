@@ -378,19 +378,16 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
           },
           quantity: 1
         }],
-        payment_intent_data: {
-          application_fee_amount: Math.round(price * PLATFORM_FEE_PERCENT / 100),
-          transfer_data: {
-            destination: authorConfig.stripeAccountId
-          }
-        } as any,
         subscription_data: {
           metadata: {
             bobbinry_subscriber_id: subscriberId,
             bobbinry_author_id: authorId,
             bobbinry_tier_id: tierId
           },
-          application_fee_percent: PLATFORM_FEE_PERCENT
+          application_fee_percent: PLATFORM_FEE_PERCENT,
+          transfer_data: {
+            destination: authorConfig.stripeAccountId
+          }
         },
         metadata: {
           bobbinry_subscriber_id: subscriberId,
