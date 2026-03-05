@@ -234,7 +234,7 @@ export default function MonetizationPage() {
     setError(null)
     try {
       const res = await apiFetch(
-        `/api/users/${session.user.id}/discount-codes`,
+        `/api/authors/${session.user.id}/discount-codes`,
         session.apiToken,
         {
           method: 'POST',
