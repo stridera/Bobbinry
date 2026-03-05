@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
+import { useSearchParams } from 'next/navigation'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { config } from '@/lib/config'
@@ -49,6 +50,7 @@ const emptyTier = {
 
 export default function MonetizationPage() {
   const { data: session, status } = useSession()
+  const searchParams = useSearchParams()
   const [tiers, setTiers] = useState<SubscriptionTier[]>([])
   const [discountCodes, setDiscountCodes] = useState<DiscountCode[]>([])
   const [paymentConfig, setPaymentConfig] = useState<PaymentConfig | null>(null)
@@ -73,10 +75,36 @@ export default function MonetizationPage() {
 
   useEffect(() => {
     if (session?.user?.id && session?.apiToken) {
-      loadData()
+      loadData().then(() => {
+        // After returning from Stripe onboarding, verify the account status
+        if (searchParams.get('stripe') === 'complete') {
+          verifyOnboarding()
+        }
+      })
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id, session?.apiToken])
+
+  const verifyOnboarding = async () => {
+    if (!session?.apiToken || !session?.user?.id) return
+    try {
+      const res = await apiFetch(
+        `/api/users/${session.user.id}/stripe/verify-onboarding`,
+        session.apiToken,
+        { method: 'POST' }
+      )
+      if (res.ok) {
+        const data = await res.json()
+        if (data.onboardingComplete) {
+          setSuccess('Stripe account connected successfully!')
+          setTimeout(() => setSuccess(null), 5000)
+          await loadData() // Reload to reflect updated payment config
+        }
+      }
+    } catch {
+      // Silently fail - user can manually retry
+    }
+  }
 
   const loadData = async () => {
     if (!session?.apiToken || !session?.user?.id) return
@@ -85,7 +113,7 @@ export default function MonetizationPage() {
       const [tiersRes, configRes, codesRes] = await Promise.all([
         fetch(`${config.apiUrl}/api/users/${session.user.id}/subscription-tiers`),
         fetch(`${config.apiUrl}/api/users/${session.user.id}/payment-config`),
-        apiFetch(`/api/users/${session.user.id}/discount-codes`, session.apiToken)
+        apiFetch(`/api/authors/${session.user.id}/discount-codes`, session.apiToken)
       ])
 
       if (tiersRes.ok) {

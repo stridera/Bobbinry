@@ -255,6 +255,45 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
+  /**
+   * Verify Stripe Connect onboarding status.
+   * Called after user returns from Stripe onboarding to check if account is ready.
+   */
+  fastify.post<{
+    Params: { userId: string }
+  }>('/users/:userId/stripe/verify-onboarding', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    try {
+      const { userId } = request.params
+      if (!isValidUUID(userId)) return reply.status(400).send({ error: 'Invalid user ID format' })
+      if (!requireSelf(request, reply, userId)) return
+
+      const stripe = getStripe()
+      if (!stripe) return reply.status(503).send({ error: 'Stripe not configured' })
+
+      const [config] = await db.select().from(userPaymentConfig).where(eq(userPaymentConfig.userId, userId)).limit(1)
+      if (!config?.stripeAccountId) {
+        return reply.status(200).send({ onboardingComplete: false })
+      }
+
+      const account = await stripe.accounts.retrieve(config.stripeAccountId)
+      const isComplete = !!(account.charges_enabled && account.details_submitted)
+
+      if (isComplete && !config.stripeOnboardingComplete) {
+        await db.update(userPaymentConfig).set({
+          stripeOnboardingComplete: true,
+          updatedAt: new Date()
+        }).where(eq(userPaymentConfig.userId, userId))
+      }
+
+      return reply.status(200).send({ onboardingComplete: isComplete })
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.status(500).send({ error: 'Failed to verify onboarding status' })
+    }
+  })
+
   // ============================================================================
   // CHECKOUT FLOW
   // ============================================================================
