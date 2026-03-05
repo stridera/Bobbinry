@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { BobbinrySDK } from '@bobbinry/sdk'
@@ -289,8 +289,17 @@ function BobbinsContent() {
 
 export default function ProjectBobbinsPage() {
   return (
-    <ClientWrapper>
-      <BobbinsContent />
-    </ClientWrapper>
+    <Suspense fallback={
+      <div className="h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
+        <div className="animate-pulse space-y-4 text-center">
+          <div className="h-12 w-12 bg-gray-200 dark:bg-gray-800 rounded-full mx-auto" />
+          <div className="h-4 bg-gray-200 dark:bg-gray-800 rounded w-32 mx-auto" />
+        </div>
+      </div>
+    }>
+      <ClientWrapper>
+        <BobbinsContent />
+      </ClientWrapper>
+    </Suspense>
   )
 }

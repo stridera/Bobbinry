@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -48,6 +48,24 @@ interface SubscriptionTier {
 }
 
 export default function ProjectReadingPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+        <div className="max-w-3xl mx-auto px-4 py-8">
+          <div className="animate-pulse space-y-6">
+            <div className="h-8 bg-gray-200 dark:bg-gray-800 rounded w-64" />
+            <div className="h-44 bg-gray-200 dark:bg-gray-800 rounded-lg w-32" />
+            <div className="h-64 bg-gray-200 dark:bg-gray-800 rounded-xl" />
+          </div>
+        </div>
+      </div>
+    }>
+      <ProjectReadingContent />
+    </Suspense>
+  )
+}
+
+function ProjectReadingContent() {
   const params = useParams()
   const searchParams = useSearchParams()
   const authorUsername = params.authorUsername as string

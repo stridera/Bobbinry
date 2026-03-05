@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSession } from 'next-auth/react'
 import { useSearchParams, redirect } from 'next/navigation'
 import { apiFetch } from '@/lib/api'
@@ -19,6 +19,24 @@ interface MembershipData {
 }
 
 export default function MembershipPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+        <SiteNav />
+        <div className="max-w-4xl mx-auto px-4 py-12">
+          <div className="animate-pulse space-y-6">
+            <div className="h-8 bg-gray-200 dark:bg-gray-800 rounded w-48" />
+            <div className="h-64 bg-gray-200 dark:bg-gray-800 rounded-xl" />
+          </div>
+        </div>
+      </div>
+    }>
+      <MembershipContent />
+    </Suspense>
+  )
+}
+
+function MembershipContent() {
   const { data: session, status, update: updateSession } = useSession()
   const searchParams = useSearchParams()
   const [membershipData, setMembershipData] = useState<MembershipData | null>(null)

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSession } from 'next-auth/react'
 import { useSearchParams } from 'next/navigation'
 import { redirect } from 'next/navigation'
@@ -36,6 +36,25 @@ interface SubscriptionData {
 }
 
 export default function SubscriptionsPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+        <SiteNav />
+        <div className="max-w-4xl mx-auto px-4 py-8">
+          <div className="animate-pulse space-y-4">
+            <div className="h-7 bg-gray-200 dark:bg-gray-800 rounded w-48" />
+            <div className="h-32 bg-gray-200 dark:bg-gray-800 rounded-xl" />
+            <div className="h-32 bg-gray-200 dark:bg-gray-800 rounded-xl" />
+          </div>
+        </div>
+      </div>
+    }>
+      <SubscriptionsContent />
+    </Suspense>
+  )
+}
+
+function SubscriptionsContent() {
   const { data: session, status } = useSession()
   const searchParams = useSearchParams()
   const [subscriptions, setSubscriptions] = useState<SubscriptionData[]>([])

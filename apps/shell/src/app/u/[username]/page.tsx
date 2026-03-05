@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -90,6 +90,26 @@ function DiscordIcon({ className }: { className?: string }) {
 }
 
 export default function PublicProfilePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+        <SiteNav />
+        <div className="max-w-4xl mx-auto px-4 py-8">
+          <div className="animate-pulse space-y-6">
+            <div className="h-24 bg-gray-200 dark:bg-gray-800 rounded-t-xl" />
+            <div className="h-24 w-24 bg-gray-200 dark:bg-gray-800 rounded-full" />
+            <div className="h-6 bg-gray-200 dark:bg-gray-800 rounded w-48" />
+            <div className="h-48 bg-gray-200 dark:bg-gray-800 rounded-xl" />
+          </div>
+        </div>
+      </div>
+    }>
+      <PublicProfileContent />
+    </Suspense>
+  )
+}
+
+function PublicProfileContent() {
   const params = useParams()
   const router = useRouter()
   const searchParams = useSearchParams()
