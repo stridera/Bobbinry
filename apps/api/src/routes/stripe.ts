@@ -60,10 +60,30 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
         })
       }
 
+      // Auto-check Stripe status if account exists but onboarding not marked complete
+      const cfg = config[0]!
+      if (cfg.stripeAccountId && !cfg.stripeOnboardingComplete) {
+        const stripe = getStripe()
+        if (stripe) {
+          try {
+            const account = await stripe.accounts.retrieve(cfg.stripeAccountId)
+            if (account.charges_enabled && account.details_submitted) {
+              await db.update(userPaymentConfig).set({
+                stripeOnboardingComplete: true,
+                updatedAt: new Date()
+              }).where(eq(userPaymentConfig.userId, userId))
+              cfg.stripeOnboardingComplete = true
+            }
+          } catch {
+            // Stripe check failed, return stale data
+          }
+        }
+      }
+
       const sanitized = {
-        ...config[0],
-        patreonAccessToken: config[0]!.patreonAccessToken ? '***REDACTED***' : null,
-        patreonRefreshToken: config[0]!.patreonRefreshToken ? '***REDACTED***' : null
+        ...cfg,
+        patreonAccessToken: cfg.patreonAccessToken ? '***REDACTED***' : null,
+        patreonRefreshToken: cfg.patreonRefreshToken ? '***REDACTED***' : null
       }
 
       return reply.status(200).send({ paymentConfig: sanitized })
