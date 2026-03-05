@@ -492,6 +492,64 @@ export default function SettingsPage() {
           )}
         </div>
 
+        {/* Membership */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100">Membership</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                {session.user.membershipTier === 'supporter'
+                  ? 'You are a Supporter! Enjoy higher limits and explore boost.'
+                  : 'Free plan. Upgrade to Supporter for more projects and higher upload limits.'}
+              </p>
+              {session.user.badges && session.user.badges.length > 0 && (
+                <div className="flex gap-1 mt-2">
+                  {session.user.badges.map((badge: string) => {
+                    const colors: Record<string, string> = {
+                      owner: 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300',
+                      supporter: 'bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300',
+                      moderator: 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300',
+                      crowdfunder: 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300',
+                    }
+                    return (
+                      <span
+                        key={badge}
+                        className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${colors[badge] || 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'}`}
+                      >
+                        {badge.charAt(0).toUpperCase() + badge.slice(1)}
+                      </span>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+            <Link
+              href="/membership"
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+            >
+              {session.user.membershipTier === 'supporter' ? 'Manage' : 'Upgrade'} &rarr;
+            </Link>
+          </div>
+        </div>
+
+        {/* Subscriptions */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100">Subscriptions</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Manage your author subscriptions and billing.
+              </p>
+            </div>
+            <Link
+              href="/settings/subscriptions"
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+            >
+              Manage &rarr;
+            </Link>
+          </div>
+        </div>
+
         {/* Monetization link */}
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
           <div className="flex items-center justify-between">

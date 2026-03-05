@@ -6,9 +6,11 @@ import {
   subscriptionPayments,
   subscriptionTiers,
   userPaymentConfig,
-  users
+  users,
+  siteMemberships,
+  userBadges,
 } from '../db/schema'
-import { eq } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 import { requireAuth, requireSelf } from '../middleware/auth'
 
 function isValidUUID(uuid: string): boolean {
@@ -267,12 +269,13 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
       authorId: string
       tierId: string
       billingPeriod?: 'monthly' | 'yearly'
+      returnUrl?: string
     }
   }>('/subscribe/checkout', {
     preHandler: requireAuth
   }, async (request, reply) => {
     try {
-      const { subscriberId, authorId, tierId, billingPeriod = 'monthly' } = request.body
+      const { subscriberId, authorId, tierId, billingPeriod = 'monthly', returnUrl } = request.body
       if (!requireSelf(request, reply, subscriberId)) return
 
       const stripe = getStripe()
@@ -335,8 +338,8 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
           bobbinry_author_id: authorId,
           bobbinry_tier_id: tierId
         },
-        success_url: `${baseUrl}/u/{CHECKOUT_SESSION_ID}?subscribed=true`,
-        cancel_url: `${baseUrl}/u/{CHECKOUT_SESSION_ID}?subscribed=false`
+        success_url: returnUrl ? `${returnUrl}${returnUrl.includes('?') ? '&' : '?'}subscribed=true` : `${baseUrl}/settings/subscriptions?subscribed=true`,
+        cancel_url: returnUrl || `${baseUrl}/explore`
       })
 
       return reply.status(200).send({ checkoutUrl: session.url, sessionId: session.id })
@@ -350,12 +353,12 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
    * Create a Stripe Customer Portal session for managing billing.
    */
   fastify.post<{
-    Body: { userId: string }
+    Body: { userId: string; returnUrl?: string }
   }>('/subscribe/portal-session', {
     preHandler: requireAuth
   }, async (request, reply) => {
     try {
-      const { userId } = request.body
+      const { userId, returnUrl } = request.body
       if (!requireSelf(request, reply, userId)) return
 
       const stripe = getStripe()
@@ -374,7 +377,7 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
       const baseUrl = process.env.WEB_ORIGIN || 'http://localhost:3100'
       const portalSession = await stripe.billingPortal.sessions.create({
         customer: customerId,
-        return_url: `${baseUrl}/library`
+        return_url: returnUrl || `${baseUrl}/settings/subscriptions`
       })
 
       return reply.status(200).send({ url: portalSession.url })
@@ -413,21 +416,48 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
 
       fastify.log.info({ eventType: event.type }, 'Stripe webhook received')
 
+      // Detect platform (site_membership) vs author subscription events
+      const eventObj = event.data.object as any
+      const isSiteMembership = eventObj?.metadata?.bobbinry_type === 'site_membership'
+
       switch (event.type) {
+        case 'checkout.session.completed':
+          if (isSiteMembership) {
+            await handleSiteMembershipCheckout(event.data.object as Stripe.Checkout.Session, stripe, fastify)
+          }
+          break
         case 'customer.subscription.created':
-          await handleSubscriptionCreated(event.data.object as Stripe.Subscription, fastify)
+          if (!isSiteMembership) {
+            await handleSubscriptionCreated(event.data.object as Stripe.Subscription, fastify)
+          }
           break
         case 'customer.subscription.updated':
-          await handleSubscriptionUpdated(event.data.object as Stripe.Subscription, fastify)
+          if (isSiteMembership) {
+            await handleSiteMembershipUpdated(event.data.object as Stripe.Subscription, fastify)
+          } else {
+            await handleSubscriptionUpdated(event.data.object as Stripe.Subscription, fastify)
+          }
           break
         case 'customer.subscription.deleted':
-          await handleSubscriptionDeleted(event.data.object as Stripe.Subscription, fastify)
+          if (isSiteMembership) {
+            await handleSiteMembershipDeleted(event.data.object as Stripe.Subscription, fastify)
+          } else {
+            await handleSubscriptionDeleted(event.data.object as Stripe.Subscription, fastify)
+          }
           break
         case 'invoice.payment_succeeded':
-          await handlePaymentSucceeded(event.data.object as Stripe.Invoice, fastify)
+          if (isSiteMembership) {
+            await handleSiteMembershipPaymentSucceeded(event.data.object as Stripe.Invoice, fastify)
+          } else {
+            await handlePaymentSucceeded(event.data.object as Stripe.Invoice, fastify)
+          }
           break
         case 'invoice.payment_failed':
-          await handlePaymentFailed(event.data.object as Stripe.Invoice, fastify)
+          if (isSiteMembership) {
+            await handleSiteMembershipPaymentFailed(event.data.object as Stripe.Invoice, fastify)
+          } else {
+            await handlePaymentFailed(event.data.object as Stripe.Invoice, fastify)
+          }
           break
         case 'charge.refunded':
           await handleChargeRefunded(event.data.object as Stripe.Charge, fastify)
@@ -635,6 +665,203 @@ async function handleAccountUpdated(account: Stripe.Account, fastify: FastifyIns
     }
   } catch (error) {
     fastify.log.error(error, 'Failed to handle account updated')
+  }
+}
+
+// ============================================================================
+// SITE MEMBERSHIP (PLATFORM SUBSCRIPTION) WEBHOOK HANDLERS
+// ============================================================================
+
+async function handleSiteMembershipCheckout(
+  session: Stripe.Checkout.Session,
+  stripe: Stripe,
+  fastify: FastifyInstance
+) {
+  try {
+    const userId = session.metadata?.bobbinry_user_id
+    if (!userId) {
+      fastify.log.warn({ sessionId: session.id }, 'Missing bobbinry_user_id in checkout metadata')
+      return
+    }
+
+    const stripeSubscriptionId = typeof session.subscription === 'string'
+      ? session.subscription
+      : (session.subscription as any)?.id
+
+    if (!stripeSubscriptionId) {
+      fastify.log.warn({ sessionId: session.id }, 'No subscription ID in checkout session')
+      return
+    }
+
+    // Fetch the subscription for period details
+    const sub = await stripe.subscriptions.retrieve(stripeSubscriptionId)
+    const subData = sub as any
+
+    // Upsert site membership
+    await db
+      .insert(siteMemberships)
+      .values({
+        userId,
+        tier: 'supporter',
+        status: 'active',
+        stripeSubscriptionId,
+        stripePriceId: sub.items.data[0]?.price?.id || null,
+        currentPeriodStart: new Date((subData.current_period_start ?? 0) * 1000),
+        currentPeriodEnd: new Date((subData.current_period_end ?? 0) * 1000),
+        cancelAtPeriodEnd: sub.cancel_at_period_end,
+      })
+      .onConflictDoUpdate({
+        target: siteMemberships.userId,
+        set: {
+          tier: 'supporter',
+          status: 'active',
+          stripeSubscriptionId,
+          stripePriceId: sub.items.data[0]?.price?.id || null,
+          currentPeriodStart: new Date((subData.current_period_start ?? 0) * 1000),
+          currentPeriodEnd: new Date((subData.current_period_end ?? 0) * 1000),
+          cancelAtPeriodEnd: sub.cancel_at_period_end,
+          updatedAt: new Date(),
+        },
+      })
+
+    // Upsert supporter badge
+    await db
+      .insert(userBadges)
+      .values({
+        userId,
+        badge: 'supporter',
+        label: 'Supporter',
+        isActive: true,
+      })
+      .onConflictDoUpdate({
+        target: [userBadges.userId, userBadges.badge],
+        set: { isActive: true },
+      })
+
+    // Save Stripe customer ID on user if not already set
+    const customerId = typeof session.customer === 'string'
+      ? session.customer
+      : (session.customer as any)?.id
+
+    if (customerId) {
+      await db
+        .update(users)
+        .set({ stripeCustomerId: customerId, updatedAt: new Date() })
+        .where(eq(users.id, userId))
+    }
+
+    fastify.log.info({ userId }, 'Site membership activated via checkout')
+  } catch (error) {
+    fastify.log.error(error, 'Failed to handle site membership checkout')
+    throw error
+  }
+}
+
+async function handleSiteMembershipUpdated(subscription: Stripe.Subscription, fastify: FastifyInstance) {
+  try {
+    const userId = subscription.metadata?.bobbinry_user_id
+    if (!userId) return
+
+    const subData = subscription as any
+    await db
+      .update(siteMemberships)
+      .set({
+        status: subscription.status === 'active' ? 'active' : subscription.status as string,
+        currentPeriodStart: new Date((subData.current_period_start ?? 0) * 1000),
+        currentPeriodEnd: new Date((subData.current_period_end ?? 0) * 1000),
+        cancelAtPeriodEnd: subscription.cancel_at_period_end,
+        updatedAt: new Date(),
+      })
+      .where(eq(siteMemberships.userId, userId))
+
+    fastify.log.info({ userId, status: subscription.status }, 'Site membership updated')
+  } catch (error) {
+    fastify.log.error(error, 'Failed to handle site membership updated')
+    throw error
+  }
+}
+
+async function handleSiteMembershipDeleted(subscription: Stripe.Subscription, fastify: FastifyInstance) {
+  try {
+    const userId = subscription.metadata?.bobbinry_user_id
+    if (!userId) return
+
+    // Set membership to expired
+    await db
+      .update(siteMemberships)
+      .set({ tier: 'free', status: 'expired', updatedAt: new Date() })
+      .where(eq(siteMemberships.userId, userId))
+
+    // Deactivate supporter badge (only supporter, not others like owner)
+    await db
+      .update(userBadges)
+      .set({ isActive: false })
+      .where(
+        and(
+          eq(userBadges.userId, userId),
+          eq(userBadges.badge, 'supporter')
+        )
+      )
+
+    fastify.log.info({ userId }, 'Site membership canceled, supporter badge deactivated')
+  } catch (error) {
+    fastify.log.error(error, 'Failed to handle site membership deleted')
+    throw error
+  }
+}
+
+async function handleSiteMembershipPaymentSucceeded(invoice: Stripe.Invoice, fastify: FastifyInstance) {
+  try {
+    const inv = invoice as any
+    const subId = typeof inv.subscription === 'string' ? inv.subscription : inv.subscription?.id
+    if (!subId) return
+
+    const [membership] = await db
+      .select({ userId: siteMemberships.userId })
+      .from(siteMemberships)
+      .where(eq(siteMemberships.stripeSubscriptionId, subId))
+      .limit(1)
+
+    if (!membership) return
+
+    // Ensure status is active and supporter badge is active
+    await db
+      .update(siteMemberships)
+      .set({ status: 'active', updatedAt: new Date() })
+      .where(eq(siteMemberships.userId, membership.userId))
+
+    await db
+      .update(userBadges)
+      .set({ isActive: true })
+      .where(
+        and(
+          eq(userBadges.userId, membership.userId),
+          eq(userBadges.badge, 'supporter')
+        )
+      )
+
+    fastify.log.info({ userId: membership.userId }, 'Site membership payment succeeded')
+  } catch (error) {
+    fastify.log.error(error, 'Failed to handle site membership payment succeeded')
+    throw error
+  }
+}
+
+async function handleSiteMembershipPaymentFailed(invoice: Stripe.Invoice, fastify: FastifyInstance) {
+  try {
+    const inv = invoice as any
+    const subId = typeof inv.subscription === 'string' ? inv.subscription : inv.subscription?.id
+    if (!subId) return
+
+    await db
+      .update(siteMemberships)
+      .set({ status: 'past_due', updatedAt: new Date() })
+      .where(eq(siteMemberships.stripeSubscriptionId, subId))
+
+    fastify.log.info({ stripeSubId: subId }, 'Site membership payment failed')
+  } catch (error) {
+    fastify.log.error(error, 'Failed to handle site membership payment failed')
+    throw error
   }
 }
 

@@ -134,6 +134,12 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(404).send({ error: 'Subscription tier not found' })
       }
 
+      // Guard: paid tiers must use Stripe checkout
+      const tierPrice = parseFloat(tier[0]!.priceMonthly || '0')
+      if (tierPrice > 0) {
+        return reply.status(400).send({ error: 'Use Stripe checkout for paid tiers', useCheckout: true })
+      }
+
       // Check for existing active subscription
       const existing = await db
         .select()

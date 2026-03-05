@@ -146,10 +146,17 @@ export default function MonetizationPage() {
       }
 
       if (res.ok) {
+        const data = await res.json()
         setEditingTier(null)
         setSuccess('Tier saved!')
         setTimeout(() => setSuccess(null), 3000)
         await loadData()
+
+        // If the API auto-created a Stripe Express account, redirect to onboarding
+        if (data.onboardingUrl) {
+          window.location.href = data.onboardingUrl
+          return
+        }
       } else {
         const data = await res.json().catch(() => ({}))
         setError(data.error || 'Failed to save tier')
@@ -247,8 +254,8 @@ export default function MonetizationPage() {
       )
       if (res.ok) {
         const data = await res.json()
-        if (data.oauthUrl) {
-          window.location.href = data.oauthUrl
+        if (data.url) {
+          window.location.href = data.url
         }
       }
     } catch {

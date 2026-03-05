@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { config } from '@/lib/config'
@@ -15,6 +15,7 @@ interface ProjectInfo {
   description: string | null
   coverImage: string | null
   shortUrl: string | null
+  ownerId?: string
 }
 
 interface AuthorInfo {
@@ -38,13 +39,17 @@ interface TocChapter {
 interface SubscriptionTier {
   id: string
   name: string
+  description: string | null
   priceMonthly: string | null
+  priceYearly: string | null
+  benefits: string[] | null
   chapterDelayDays: number
   tierLevel: number
 }
 
 export default function ProjectReadingPage() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const authorUsername = params.authorUsername as string
   const projectSlug = params.projectSlug as string
   const { data: session } = useSession()
@@ -53,6 +58,7 @@ export default function ProjectReadingPage() {
   const [author, setAuthor] = useState<AuthorInfo | null>(null)
   const [toc, setToc] = useState<TocChapter[]>([])
   const [tiers, setTiers] = useState<SubscriptionTier[]>([])
+  const [acceptsPayments, setAcceptsPayments] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [subscribing, setSubscribing] = useState<string | null>(null)
@@ -61,10 +67,19 @@ export default function ProjectReadingPage() {
   const [isFollowingProject, setIsFollowingProject] = useState(false)
   const [followLoading, setFollowLoading] = useState(false)
   const [followerCount, setFollowerCount] = useState(0)
+  const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly')
+  const [justSubscribed, setJustSubscribed] = useState(false)
 
   const apiToken = (session as any)?.apiToken as string | undefined
   const userId = session?.user?.id
   const isOwnProject = !!(userId && author?.userId === userId)
+
+  // Handle ?subscribed=true return from Stripe
+  useEffect(() => {
+    if (searchParams.get('subscribed') === 'true') {
+      setJustSubscribed(true)
+    }
+  }, [searchParams])
 
   useEffect(() => {
     loadProject()
@@ -77,6 +92,29 @@ export default function ProjectReadingPage() {
     loadFollowStatus(project.id)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project?.id, session])
+
+  // Load subscription state when author and session are ready
+  useEffect(() => {
+    if (!author?.userId || !userId || !apiToken) return
+    loadSubscriptionState()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [author?.userId, userId, apiToken])
+
+  const loadSubscriptionState = async () => {
+    if (!userId || !apiToken || !author?.userId) return
+    try {
+      const res = await apiFetch(`/api/users/${userId}/subscriptions?status=active`, apiToken)
+      if (res.ok) {
+        const data = await res.json()
+        const match = data.subscriptions?.find(
+          (s: any) => s.subscription?.authorId === author.userId
+        )
+        if (match) {
+          setSubscribedTierId(match.subscription.tierId)
+        }
+      }
+    } catch {}
+  }
 
   const loadFollowStatus = async (projectId: string) => {
     try {
@@ -112,10 +150,11 @@ export default function ProjectReadingPage() {
       // Load TOC and tiers in parallel
       const uid = session?.user?.id
       const tocUrl = `${config.apiUrl}/api/public/projects/${data.project.id}/toc${uid ? `?userId=${uid}` : ''}`
+      const ownerId = data.project.ownerId || data.author?.userId
       const [tocRes, tiersRes] = await Promise.all([
         fetch(tocUrl),
-        data.project.ownerId
-          ? fetch(`${config.apiUrl}/api/users/${data.project.ownerId}/subscription-tiers`)
+        ownerId
+          ? fetch(`${config.apiUrl}/api/users/${ownerId}/subscription-tiers`)
           : Promise.resolve(null)
       ])
 
@@ -127,6 +166,7 @@ export default function ProjectReadingPage() {
       if (tiersRes?.ok) {
         const tiersData = await tiersRes.json()
         setTiers((tiersData.tiers || []).filter((t: SubscriptionTier) => t.tierLevel > 0))
+        setAcceptsPayments(tiersData.acceptsPayments ?? false)
       }
     } catch {
       setError('Failed to load project')
@@ -193,28 +233,58 @@ export default function ProjectReadingPage() {
     setSubscribing(tierId)
     setSubscribeError(null)
     try {
-      const res = await apiFetch(
-        `/api/users/${userId}/subscribe`,
-        apiToken,
-        {
+      // Use Stripe Checkout for paid tiers
+      const tier = tiers.find(t => t.id === tierId)
+      const price = parseFloat(tier?.priceMonthly || '0')
+
+      if (price > 0) {
+        const returnUrl = `${window.location.origin}/read/${authorUsername}/${projectSlug}`
+        const res = await apiFetch('/api/subscribe/checkout', apiToken, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ authorId: author.userId, tierId })
-        }
-      )
-      if (res.ok) {
-        setSubscribedTierId(tierId)
-        // Auto-follow the project on subscribe
-        if (!isFollowingProject && project?.id) {
-          try {
-            await apiFetch(`/api/projects/${project.id}/follow`, apiToken, { method: 'POST' })
-            setIsFollowingProject(true)
-            setFollowerCount(c => c + 1)
-          } catch {}
+          body: JSON.stringify({
+            subscriberId: userId,
+            authorId: author.userId,
+            tierId,
+            billingPeriod,
+            returnUrl
+          })
+        })
+        if (res.ok) {
+          const data = await res.json()
+          if (data.checkoutUrl) {
+            window.location.href = data.checkoutUrl
+            return
+          }
+        } else {
+          const data = await res.json()
+          setSubscribeError(data.error || 'Failed to start checkout')
         }
       } else {
-        const data = await res.json()
-        setSubscribeError(data.error || 'Failed to subscribe')
+        // Free tier - use placeholder endpoint
+        const res = await apiFetch(
+          `/api/users/${userId}/subscribe`,
+          apiToken,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ authorId: author.userId, tierId })
+          }
+        )
+        if (res.ok) {
+          setSubscribedTierId(tierId)
+          // Auto-follow the project on subscribe
+          if (!isFollowingProject && project?.id) {
+            try {
+              await apiFetch(`/api/projects/${project.id}/follow`, apiToken, { method: 'POST' })
+              setIsFollowingProject(true)
+              setFollowerCount(c => c + 1)
+            } catch {}
+          }
+        } else {
+          const data = await res.json()
+          setSubscribeError(data.error || 'Failed to subscribe')
+        }
       }
     } catch {
       setSubscribeError('Failed to subscribe. Please try again.')
@@ -225,6 +295,13 @@ export default function ProjectReadingPage() {
 
   const authorName = author?.displayName || author?.userName || 'Unknown Author'
 
+  const getDisplayPrice = (tier: SubscriptionTier) => {
+    if (billingPeriod === 'yearly' && tier.priceYearly) {
+      return { price: tier.priceYearly, label: '/yr' }
+    }
+    return { price: tier.priceMonthly || '0', label: '/mo' }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       <ReaderNav crumbs={[
@@ -233,6 +310,15 @@ export default function ProjectReadingPage() {
       ]} />
 
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+      {/* Success banner */}
+      {(justSubscribed || searchParams.get('subscribed') === 'true') && (
+        <div className="mb-6 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+          <p className="text-sm text-green-700 dark:text-green-300 font-medium">
+            Subscription activated! You now have access to subscriber content.
+          </p>
+        </div>
+      )}
 
       {/* Project header */}
       <div className="flex gap-6 mb-8">
@@ -361,48 +447,100 @@ export default function ProjectReadingPage() {
           <h2 className="font-display text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">
             Support this Author
           </h2>
+
+          {/* Billing period toggle */}
+          {tiers.some(t => t.priceYearly) && (
+            <div className="flex items-center gap-2 mb-4">
+              <button
+                onClick={() => setBillingPeriod('monthly')}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  billingPeriod === 'monthly'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
+              >
+                Monthly
+              </button>
+              <button
+                onClick={() => setBillingPeriod('yearly')}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  billingPeriod === 'yearly'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
+              >
+                Yearly
+              </button>
+            </div>
+          )}
+
           {subscribeError && (
             <p className="text-sm text-red-600 dark:text-red-400 mb-3">{subscribeError}</p>
           )}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {tiers.map(tier => (
-              <div
-                key={tier.id}
-                className={`p-4 rounded-lg border bg-gray-50 dark:bg-gray-900/30 ${
-                  subscribedTierId === tier.id
-                    ? 'border-green-500 dark:border-green-400'
-                    : 'border-gray-200 dark:border-gray-700'
-                }`}
-              >
-                <h3 className="font-medium text-gray-900 dark:text-gray-100">{tier.name}</h3>
-                <p className="text-lg font-bold text-gray-900 dark:text-gray-100 mt-1">
-                  ${tier.priceMonthly || '0'}<span className="text-sm font-normal text-gray-500">/mo</span>
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  {tier.chapterDelayDays === 0 ? 'Immediate access' : `${tier.chapterDelayDays}d early access`}
-                </p>
-                {subscribedTierId === tier.id ? (
-                  <div className="w-full mt-3 px-3 py-1.5 bg-green-600 text-white rounded text-sm text-center">
-                    Subscribed
-                  </div>
-                ) : session?.user ? (
-                  <button
-                    onClick={() => handleSubscribe(tier.id)}
-                    disabled={subscribing !== null}
-                    className="w-full mt-3 px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors disabled:opacity-50"
-                  >
-                    {subscribing === tier.id ? 'Subscribing...' : 'Subscribe'}
-                  </button>
-                ) : (
-                  <a
-                    href="/login"
-                    className="block w-full mt-3 px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors text-center"
-                  >
-                    Sign in to Subscribe
-                  </a>
-                )}
-              </div>
-            ))}
+            {tiers.map(tier => {
+              const { price, label } = getDisplayPrice(tier)
+              const isPaid = parseFloat(tier.priceMonthly || '0') > 0
+              const canSubscribe = !isPaid || acceptsPayments
+
+              return (
+                <div
+                  key={tier.id}
+                  className={`p-4 rounded-lg border bg-gray-50 dark:bg-gray-900/30 ${
+                    subscribedTierId === tier.id
+                      ? 'border-green-500 dark:border-green-400'
+                      : 'border-gray-200 dark:border-gray-700'
+                  }`}
+                >
+                  <h3 className="font-medium text-gray-900 dark:text-gray-100">{tier.name}</h3>
+                  <p className="text-lg font-bold text-gray-900 dark:text-gray-100 mt-1">
+                    ${price}<span className="text-sm font-normal text-gray-500">{label}</span>
+                  </p>
+                  {tier.description && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{tier.description}</p>
+                  )}
+                  {tier.benefits && (tier.benefits as string[]).length > 0 && (
+                    <ul className="space-y-1 mt-2 mb-2">
+                      {(tier.benefits as string[]).map((benefit, i) => (
+                        <li key={i} className="flex items-start gap-1.5 text-xs text-gray-600 dark:text-gray-400">
+                          <svg className="w-3.5 h-3.5 text-green-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          {benefit}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {tier.chapterDelayDays === 0 ? 'Immediate access' : `${tier.chapterDelayDays}d early access`}
+                  </p>
+                  {subscribedTierId === tier.id ? (
+                    <div className="w-full mt-3 px-3 py-1.5 bg-green-600 text-white rounded text-sm text-center">
+                      Subscribed
+                    </div>
+                  ) : !canSubscribe ? (
+                    <div className="w-full mt-3 px-3 py-1.5 bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded text-sm text-center">
+                      Author hasn&apos;t enabled payments yet
+                    </div>
+                  ) : session?.user ? (
+                    <button
+                      onClick={() => handleSubscribe(tier.id)}
+                      disabled={subscribing !== null}
+                      className="w-full mt-3 px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors disabled:opacity-50"
+                    >
+                      {subscribing === tier.id ? 'Subscribing...' : 'Subscribe'}
+                    </button>
+                  ) : (
+                    <a
+                      href="/login"
+                      className="block w-full mt-3 px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors text-center"
+                    >
+                      Sign in to Subscribe
+                    </a>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </div>
       )}

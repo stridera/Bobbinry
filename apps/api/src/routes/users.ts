@@ -14,10 +14,18 @@ import {
   userBobbinsInstalled,
   chapterViews,
   chapterPublications,
-  entities
+  entities,
+  userPaymentConfig
 } from '../db/schema'
 import { eq, and, or, desc, isNull, sql, count, isNotNull } from 'drizzle-orm'
 import { requireAuth, requireSelf } from '../middleware/auth'
+import Stripe from 'stripe'
+
+function getStripe(): Stripe | null {
+  const key = process.env.STRIPE_SECRET_KEY
+  if (!key) return null
+  return new Stripe(key, { apiVersion: '2025-01-27.acacia' as any })
+}
 
 // Helper to validate UUID
 function isValidUUID(uuid: string): boolean {
@@ -166,13 +174,23 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Invalid user ID format' })
       }
 
-      const tiers = await db
-        .select()
-        .from(subscriptionTiers)
-        .where(eq(subscriptionTiers.authorId, userId))
-        .orderBy(subscriptionTiers.tierLevel)
+      const [tiers, paymentConfigResult] = await Promise.all([
+        db
+          .select()
+          .from(subscriptionTiers)
+          .where(eq(subscriptionTiers.authorId, userId))
+          .orderBy(subscriptionTiers.tierLevel),
+        db
+          .select()
+          .from(userPaymentConfig)
+          .where(eq(userPaymentConfig.userId, userId))
+          .limit(1)
+      ])
 
-      return reply.status(200).send({ tiers })
+      const config = paymentConfigResult[0]
+      const acceptsPayments = !!(config?.stripeAccountId && config?.stripeOnboardingComplete)
+
+      return reply.status(200).send({ tiers, acceptsPayments })
     } catch (error) {
       fastify.log.error(error)
       return reply.status(500).send({ error: 'Failed to fetch subscription tiers' })
@@ -220,7 +238,45 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
         })
         .returning()
 
-      return reply.status(201).send({ tier })
+      // Auto-create Stripe Express account if this is a paid tier and author has no payment config
+      let onboardingUrl: string | undefined
+      const hasPaidPrice = parseFloat(tierData.priceMonthly || '0') > 0 || parseFloat(tierData.priceYearly || '0') > 0
+      if (hasPaidPrice) {
+        const [existingConfig] = await db.select().from(userPaymentConfig).where(eq(userPaymentConfig.userId, userId)).limit(1)
+        if (!existingConfig?.stripeAccountId) {
+          const stripe = getStripe()
+          if (stripe) {
+            const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1)
+            const account = await stripe.accounts.create({
+              type: 'express',
+              ...(user?.email ? { email: user.email } : {}),
+              metadata: { bobbinry_user_id: userId },
+              capabilities: { transfers: { requested: true } }
+            } as Stripe.AccountCreateParams)
+
+            await db.insert(userPaymentConfig).values({
+              userId,
+              stripeAccountId: account.id,
+              stripeOnboardingComplete: false,
+              paymentProvider: 'stripe'
+            }).onConflictDoUpdate({
+              target: userPaymentConfig.userId,
+              set: { stripeAccountId: account.id, updatedAt: new Date() }
+            })
+
+            const baseUrl = process.env.WEB_ORIGIN || 'http://localhost:3100'
+            const accountLink = await stripe.accountLinks.create({
+              account: account.id,
+              return_url: `${baseUrl}/settings/monetization?stripe=complete`,
+              refresh_url: `${baseUrl}/settings/monetization?stripe=refresh`,
+              type: 'account_onboarding'
+            })
+            onboardingUrl = accountLink.url
+          }
+        }
+      }
+
+      return reply.status(201).send({ tier, ...(onboardingUrl ? { onboardingUrl } : {}) })
     } catch (error) {
       fastify.log.error(error)
       return reply.status(500).send({ error: 'Failed to create subscription tier' })
