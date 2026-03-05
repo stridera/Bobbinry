@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, Suspense } from 'react'
-import { useParams, useSearchParams } from 'next/navigation'
+import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { config } from '@/lib/config'
@@ -68,6 +68,7 @@ export default function ProjectReadingPage() {
 function ProjectReadingContent() {
   const params = useParams()
   const searchParams = useSearchParams()
+  const router = useRouter()
   const authorUsername = params.authorUsername as string
   const projectSlug = params.projectSlug as string
   const { data: session } = useSession()
@@ -96,7 +97,10 @@ function ProjectReadingContent() {
   useEffect(() => {
     if (searchParams.get('subscribed') === 'true') {
       setJustSubscribed(true)
+      // Clear the query param to prevent re-triggering on re-renders
+      router.replace(`/read/${authorUsername}/${projectSlug}`, { scroll: false })
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
 
   // Retry loading subscription state after Stripe redirect (webhook may be delayed)
@@ -135,7 +139,7 @@ function ProjectReadingContent() {
     if (!project?.id) return
     loadFollowStatus(project.id)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project?.id, session])
+  }, [project?.id, apiToken])
 
   // Load subscription state when author and session are ready
   useEffect(() => {
