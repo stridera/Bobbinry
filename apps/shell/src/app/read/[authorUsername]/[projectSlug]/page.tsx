@@ -81,6 +81,32 @@ export default function ProjectReadingPage() {
     }
   }, [searchParams])
 
+  // Retry loading subscription state after Stripe redirect (webhook may be delayed)
+  useEffect(() => {
+    if (!justSubscribed || subscribedTierId || !author?.userId || !userId || !apiToken) return
+    let attempts = 0
+    const maxAttempts = 5
+    const interval = setInterval(async () => {
+      attempts++
+      try {
+        const res = await apiFetch(`/api/users/${userId}/subscriptions?status=active`, apiToken)
+        if (res.ok) {
+          const data = await res.json()
+          const match = data.subscriptions?.find(
+            (s: any) => s.subscription?.authorId === author.userId
+          )
+          if (match) {
+            setSubscribedTierId(match.subscription.tierId)
+            clearInterval(interval)
+          }
+        }
+      } catch {}
+      if (attempts >= maxAttempts) clearInterval(interval)
+    }, 2000)
+    return () => clearInterval(interval)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [justSubscribed, subscribedTierId, author?.userId, userId, apiToken])
+
   useEffect(() => {
     loadProject()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -515,9 +541,19 @@ export default function ProjectReadingPage() {
                     {tier.chapterDelayDays === 0 ? 'Immediate access' : `${tier.chapterDelayDays}d early access`}
                   </p>
                   {subscribedTierId === tier.id ? (
-                    <div className="w-full mt-3 px-3 py-1.5 bg-green-600 text-white rounded text-sm text-center">
+                    <Link
+                      href="/settings/subscriptions"
+                      className="block w-full mt-3 px-3 py-1.5 bg-green-600 text-white rounded text-sm text-center hover:bg-green-700 transition-colors"
+                    >
                       Subscribed
-                    </div>
+                    </Link>
+                  ) : subscribedTierId ? (
+                    <Link
+                      href="/settings/subscriptions"
+                      className="block w-full mt-3 px-3 py-1.5 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 rounded text-sm text-center hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                    >
+                      Manage Subscription
+                    </Link>
                   ) : !canSubscribe ? (
                     <div className="w-full mt-3 px-3 py-1.5 bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded text-sm text-center">
                       Author hasn&apos;t enabled payments yet
@@ -531,12 +567,12 @@ export default function ProjectReadingPage() {
                       {subscribing === tier.id ? 'Subscribing...' : 'Subscribe'}
                     </button>
                   ) : (
-                    <a
+                    <Link
                       href="/login"
                       className="block w-full mt-3 px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors text-center"
                     >
                       Sign in to Subscribe
-                    </a>
+                    </Link>
                   )}
                 </div>
               )

@@ -121,6 +121,32 @@ export default function PublicProfilePage() {
     }
   }, [searchParams])
 
+  // Retry loading subscription state after Stripe redirect (webhook may be delayed)
+  useEffect(() => {
+    if (!justSubscribed || subscribedTierId || !profile?.userId || !session?.user?.id || !apiToken) return
+    let attempts = 0
+    const maxAttempts = 5
+    const interval = setInterval(async () => {
+      attempts++
+      try {
+        const res = await apiFetch(`/api/users/${session.user.id}/subscriptions?status=active`, apiToken)
+        if (res.ok) {
+          const data = await res.json()
+          const match = data.subscriptions?.find(
+            (s: any) => s.subscription?.authorId === profile.userId
+          )
+          if (match) {
+            setSubscribedTierId(match.subscription.tierId)
+            clearInterval(interval)
+          }
+        }
+      } catch {}
+      if (attempts >= maxAttempts) clearInterval(interval)
+    }, 2000)
+    return () => clearInterval(interval)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [justSubscribed, subscribedTierId, profile?.userId, session?.user?.id, apiToken])
+
   useEffect(() => {
     loadProfile()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -657,9 +683,19 @@ export default function PublicProfilePage() {
                         </p>
                       )}
                       {subscribedTierId === tier.id ? (
-                        <div className="w-full px-4 py-2 bg-green-600 text-white rounded-lg text-sm text-center font-medium">
+                        <Link
+                          href="/settings/subscriptions"
+                          className="block w-full px-4 py-2 bg-green-600 text-white rounded-lg text-sm text-center font-medium hover:bg-green-700 transition-colors"
+                        >
                           Subscribed
-                        </div>
+                        </Link>
+                      ) : subscribedTierId ? (
+                        <Link
+                          href="/settings/subscriptions"
+                          className="block w-full px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 rounded-lg text-sm text-center font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                        >
+                          Manage Subscription
+                        </Link>
                       ) : !canSubscribe ? (
                         <div className="w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded-lg text-sm text-center">
                           Author hasn&apos;t enabled payments yet
