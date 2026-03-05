@@ -10,6 +10,8 @@ declare module 'next-auth' {
   interface Session {
     user: {
       id: string
+      membershipTier: 'free' | 'supporter'
+      badges: string[]
     } & DefaultSession['user']
     apiToken: string
   }
@@ -25,5 +27,7 @@ declare module 'next-auth/jwt' {
   interface JWT {
     id: string
     apiToken: string
+    membershipTier: 'free' | 'supporter'
+    badges: string[]
   }
 }

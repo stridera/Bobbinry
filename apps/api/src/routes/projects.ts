@@ -4,9 +4,10 @@ import * as path from 'path'
 import * as fs from 'fs/promises'
 import { db } from '../db/connection'
 import { projects, bobbinsInstalled } from '../db/schema'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, count } from 'drizzle-orm'
 import { ManifestCompiler } from '@bobbinry/compiler'
 import { requireAuth, requireProjectOwnership } from '../middleware/auth'
+import { getUserMembershipTier, getProjectLimit } from '../lib/membership'
 
 const projectsPlugin: FastifyPluginAsync = async (fastify) => {
   // Create a new project (requires authentication)
@@ -25,6 +26,27 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
       // Validate input
       if (!name || name.trim().length === 0) {
         return reply.status(400).send({ error: 'Project name is required' })
+      }
+
+      // Check project limit based on membership tier
+      const tier = await getUserMembershipTier(user.id)
+      const limit = getProjectLimit(tier)
+
+      const [projectCount] = await db
+        .select({ count: count() })
+        .from(projects)
+        .where(and(
+          eq(projects.ownerId, user.id),
+          eq(projects.isArchived, false)
+        ))
+
+      if ((projectCount?.count ?? 0) >= limit) {
+        return reply.status(403).send({
+          error: `Project limit reached. ${tier === 'free' ? 'Free' : 'Supporter'} accounts can create up to ${limit} projects.`,
+          limit,
+          tier,
+          upgradeUrl: '/membership',
+        })
       }
 
       // Create project with authenticated user as owner

@@ -6,7 +6,9 @@ import {
   userProfiles,
   userFollowers,
   contentTags,
-  chapterPublications
+  chapterPublications,
+  siteMemberships,
+  userBadges,
 } from '../db/schema'
 import { eq, and, or, ilike, sql, desc, asc, count, countDistinct } from 'drizzle-orm'
 
@@ -111,8 +113,9 @@ const discoverPlugin: FastifyPluginAsync = async (fastify) => {
             .as('views_sq'),
             sql`${sql.raw('views_sq.project_id')} = ${projects.id}`
           )
+          .leftJoin(siteMemberships, eq(siteMemberships.userId, projects.ownerId))
           .where(whereConditions)
-          .orderBy(sql`COALESCE(${sql.raw('views_sq.total_views')}, 0) DESC`)
+          .orderBy(sql`COALESCE(${sql.raw('views_sq.total_views')}, 0) + CASE WHEN ${siteMemberships.tier} = 'supporter' AND ${siteMemberships.status} = 'active' THEN 50 ELSE 0 END DESC`)
           .limit(limit)
           .offset(offset)
 
@@ -153,8 +156,9 @@ const discoverPlugin: FastifyPluginAsync = async (fastify) => {
             .as('trending_sq'),
             sql`${sql.raw('trending_sq.project_id')} = ${projects.id}`
           )
+          .leftJoin(siteMemberships, eq(siteMemberships.userId, projects.ownerId))
           .where(whereConditions)
-          .orderBy(sql`COALESCE(${sql.raw('trending_sq.total_views')}, 0) DESC`)
+          .orderBy(sql`COALESCE(${sql.raw('trending_sq.total_views')}, 0) + CASE WHEN ${siteMemberships.tier} = 'supporter' AND ${siteMemberships.status} = 'active' THEN 50 ELSE 0 END DESC`)
           .limit(limit)
           .offset(offset)
 
@@ -311,6 +315,28 @@ const discoverPlugin: FastifyPluginAsync = async (fastify) => {
         .limit(limit)
         .offset(offset)
 
+      // Batch-load badges for all authors
+      const authorIds = rows.map(r => r.userId)
+      const authorBadgesRows = authorIds.length > 0
+        ? await db
+            .select({ userId: userBadges.userId, badge: userBadges.badge })
+            .from(userBadges)
+            .where(
+              and(
+                sql`${userBadges.userId} IN (${sql.join(authorIds.map(id => sql`${id}`), sql`, `)})`,
+                eq(userBadges.isActive, true),
+                sql`(${userBadges.expiresAt} IS NULL OR ${userBadges.expiresAt} > NOW())`
+              )
+            )
+        : []
+
+      const authorBadgesMap = new Map<string, string[]>()
+      for (const b of authorBadgesRows) {
+        const existing = authorBadgesMap.get(b.userId) || []
+        existing.push(b.badge)
+        authorBadgesMap.set(b.userId, existing)
+      }
+
       const authors = rows.map(row => ({
         userId: row.userId,
         username: row.username,
@@ -318,7 +344,8 @@ const discoverPlugin: FastifyPluginAsync = async (fastify) => {
         bio: row.bio,
         avatarUrl: row.avatarUrl,
         followerCount: Number(row.followerCount),
-        publishedProjectCount: Number(row.publishedProjectCount)
+        publishedProjectCount: Number(row.publishedProjectCount),
+        badges: authorBadgesMap.get(row.userId) || [],
       }))
 
       return reply.send({ authors, total, hasMore: offset + limit < total })
@@ -434,6 +461,31 @@ async function enrichProjects(rows: Array<{
     })
   }
 
+  // Batch-load badges for all project owners
+  const ownerIds = [...new Set(rows.map(r => r.ownerId))]
+  const allBadges = ownerIds.length > 0
+    ? await db
+        .select({
+          userId: userBadges.userId,
+          badge: userBadges.badge,
+        })
+        .from(userBadges)
+        .where(
+          and(
+            sql`${userBadges.userId} IN (${sql.join(ownerIds.map(id => sql`${id}`), sql`, `)})`,
+            eq(userBadges.isActive, true),
+            sql`(${userBadges.expiresAt} IS NULL OR ${userBadges.expiresAt} > NOW())`
+          )
+        )
+    : []
+
+  const badgesByUser = new Map<string, string[]>()
+  for (const b of allBadges) {
+    const existing = badgesByUser.get(b.userId) || []
+    existing.push(b.badge)
+    badgesByUser.set(b.userId, existing)
+  }
+
   return rows.map(row => {
     const tags = tagsByProject.get(row.id) || []
     const stats = statsByProject.get(row.id) || { chapterCount: 0, totalViews: 0 }
@@ -452,7 +504,8 @@ async function enrichProjects(rows: Array<{
       tags: tags.map(t => t.name),
       tagDetails: tags,
       chapterCount: stats.chapterCount,
-      totalViews: stats.totalViews
+      totalViews: stats.totalViews,
+      authorBadges: badgesByUser.get(row.ownerId) || [],
     }
   })
 }

@@ -151,16 +151,40 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             }
           }
         } catch {}
+        // Fetch membership tier and badges
+        try {
+          const membershipRes = await fetch(`${config.apiUrl}/api/membership`, {
+            headers: { Authorization: `Bearer ${token.apiToken}` },
+          })
+          if (membershipRes.ok) {
+            const data = await membershipRes.json()
+            token.membershipTier = data.tier || 'free'
+            token.badges = data.badges || []
+          } else {
+            token.membershipTier = 'free'
+            token.badges = []
+          }
+        } catch {
+          token.membershipTier = 'free'
+          token.badges = []
+        }
       }
       // Handle session updates (e.g. after profile displayName change)
       if (trigger === 'update' && updateData?.name) {
         token.name = updateData.name
+      }
+      // Handle membership refresh
+      if (trigger === 'update' && updateData?.membershipTier !== undefined) {
+        token.membershipTier = updateData.membershipTier
+        token.badges = updateData.badges ?? token.badges
       }
       return token
     },
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string
+        session.user.membershipTier = (token.membershipTier as 'free' | 'supporter') || 'free'
+        session.user.badges = (token.badges as string[]) || []
       }
       session.apiToken = token.apiToken as string
       return session

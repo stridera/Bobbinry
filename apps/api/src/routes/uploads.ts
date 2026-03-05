@@ -20,6 +20,7 @@ import { uploads } from '../db/schema'
 import { requireAuth, requireProjectOwnership } from '../middleware/auth'
 import { generatePresignedPutUrl, headObject, deleteObject, getPublicUrl, getObject } from '../lib/s3'
 import { generateVariants, variantKey } from '../lib/image-variants'
+import { getUserMembershipTier, getSizeLimits } from '../lib/membership'
 
 // --- Constants ---
 
@@ -33,14 +34,7 @@ const ALLOWED_IMAGE_TYPES = new Set([
 
 const UPLOAD_CONTEXTS = new Set(['cover', 'entity', 'editor', 'avatar', 'map'])
 
-/** Max file sizes in bytes */
-const SIZE_LIMITS: Record<string, number> = {
-  cover: 10 * 1024 * 1024,   // 10 MB
-  entity: 10 * 1024 * 1024,  // 10 MB
-  editor: 10 * 1024 * 1024,  // 10 MB
-  avatar: 5 * 1024 * 1024,   // 5 MB
-  map: 50 * 1024 * 1024,     // 50 MB
-}
+/** Size limits are now managed by getSizeLimits() in lib/membership.ts */
 
 function extFromMime(mime: string): string {
   const map: Record<string, string> = {
@@ -112,10 +106,14 @@ async function uploadsPlugin(fastify: FastifyInstance) {
       return reply.status(400).send({ error: `Unsupported content type. Allowed: ${[...ALLOWED_IMAGE_TYPES].join(', ')}` })
     }
 
-    // Validate file size
-    const maxSize = SIZE_LIMITS[context] ?? SIZE_LIMITS.entity!
+    // Validate file size (tier-aware)
+    const tier = await getUserMembershipTier(user.id)
+    const tierLimits = getSizeLimits(tier)
+    const maxSize = tierLimits[context] ?? tierLimits.entity!
     if (!size || size <= 0 || size > maxSize) {
-      return reply.status(400).send({ error: `File size must be between 1 byte and ${Math.round(maxSize / (1024 * 1024))}MB` })
+      const limitMB = Math.round(maxSize / (1024 * 1024))
+      const hint = tier === 'free' ? ' Upgrade to Supporter for 2x upload limits.' : ''
+      return reply.status(400).send({ error: `File size must be between 1 byte and ${limitMB}MB.${hint}` })
     }
 
     // Project ownership check (not needed for avatars)

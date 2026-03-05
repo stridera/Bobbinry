@@ -61,6 +61,22 @@ export default function NewProjectPage() {
   const [selectedTemplate, setSelectedTemplate] = useState<string>('blank')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [atLimit, setAtLimit] = useState(false)
+
+  const tier = (session?.user as any)?.membershipTier || 'free'
+  const limit = tier === 'supporter' ? 25 : 3
+
+  // Check current project count
+  React.useEffect(() => {
+    if (!session?.apiToken) return
+    apiFetch('/api/projects', session.apiToken)
+      .then(res => res.json())
+      .then(data => {
+        const nonArchived = (data as any[]).filter((p: any) => !p.isArchived)
+        setAtLimit(nonArchived.length >= limit)
+      })
+      .catch(() => {})
+  }, [session?.apiToken, limit])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -145,6 +161,27 @@ export default function NewProjectPage() {
 
       {/* Main content */}
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
+        {/* Project limit gate */}
+        {atLimit && (
+          <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-6 mb-6">
+            <h2 className="font-display text-lg font-semibold text-amber-900 dark:text-amber-100 mb-2">
+              Project Limit Reached
+            </h2>
+            <p className="text-sm text-amber-700 dark:text-amber-300 mb-4">
+              You&apos;ve reached the {tier === 'free' ? 'free' : 'supporter'} limit of {limit} projects.
+              {tier === 'free' && ' Upgrade to Supporter to create up to 25 projects.'}
+            </p>
+            {tier === 'free' && (
+              <Link
+                href="/membership"
+                className="inline-flex items-center px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors"
+              >
+                Upgrade to Supporter
+              </Link>
+            )}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-8">
           {/* Project Details */}
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 space-y-5">

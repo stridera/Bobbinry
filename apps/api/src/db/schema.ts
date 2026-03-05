@@ -8,8 +8,39 @@ export const users = pgTable('users', {
   passwordHash: text('password_hash'),
   name: text('name'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull()
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  stripeCustomerId: varchar('stripe_customer_id', { length: 255 }),
 })
+
+// Site memberships - platform-level paid tiers (separate from author subscriptions)
+export const siteMemberships = pgTable('site_memberships', {
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).primaryKey(),
+  tier: varchar('tier', { length: 50 }).default('free').notNull(), // 'free' | 'supporter'
+  status: varchar('status', { length: 50 }).default('active').notNull(), // 'active' | 'past_due' | 'canceled' | 'expired'
+  stripeSubscriptionId: varchar('stripe_subscription_id', { length: 255 }),
+  stripePriceId: varchar('stripe_price_id', { length: 255 }),
+  currentPeriodStart: timestamp('current_period_start'),
+  currentPeriodEnd: timestamp('current_period_end'),
+  cancelAtPeriodEnd: boolean('cancel_at_period_end').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// User badges - extensible badge system (multiple badges per user)
+// Known badge types: 'owner', 'supporter', 'moderator', 'crowdfunder', 'beta_tester', 'contributor'
+export const userBadges = pgTable('user_badges', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  badge: varchar('badge', { length: 50 }).notNull(),
+  label: varchar('label', { length: 100 }), // optional custom display text
+  grantedAt: timestamp('granted_at').defaultNow().notNull(),
+  grantedBy: uuid('granted_by').references(() => users.id), // null = system-assigned
+  expiresAt: timestamp('expires_at'), // null = permanent
+  isActive: boolean('is_active').default(true).notNull(),
+}, (table) => ({
+  userBadgeIdx: index('user_badges_user_idx').on(table.userId),
+  uniqueUserBadge: uniqueIndex('user_badges_unique').on(table.userId, table.badge),
+}))
 
 // User profiles - extended user information
 export const userProfiles = pgTable('user_profiles', {
@@ -565,10 +596,15 @@ export const provenanceEvents = pgTable('provenance_events', {
 })
 
 // Relations
-export const usersRelations = relations(users, ({ many }) => ({
+export const usersRelations = relations(users, ({ many, one }) => ({
   projects: many(projects),
   memberships: many(memberships),
-  projectFollows: many(projectFollows)
+  projectFollows: many(projectFollows),
+  siteMembership: one(siteMemberships, {
+    fields: [users.id],
+    references: [siteMemberships.userId]
+  }),
+  badges: many(userBadges),
 }))
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({
@@ -630,6 +666,24 @@ export const provenanceEventsRelations = relations(provenanceEvents, ({ one }) =
 export const userProfilesRelations = relations(userProfiles, ({ one }) => ({
   user: one(users, {
     fields: [userProfiles.userId],
+    references: [users.id]
+  })
+}))
+
+export const siteMembershipsRelations = relations(siteMemberships, ({ one }) => ({
+  user: one(users, {
+    fields: [siteMemberships.userId],
+    references: [users.id]
+  })
+}))
+
+export const userBadgesRelations = relations(userBadges, ({ one }) => ({
+  user: one(users, {
+    fields: [userBadges.userId],
+    references: [users.id]
+  }),
+  grantor: one(users, {
+    fields: [userBadges.grantedBy],
     references: [users.id]
   })
 }))

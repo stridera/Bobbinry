@@ -9,6 +9,7 @@ import { SiteNav } from '@/components/SiteNav'
 import { SkeletonGrid } from '@/components/LoadingState'
 import { EmptyState } from '@/components/EmptyState'
 import { OptimizedImage } from '@/components/OptimizedImage'
+import { UserBadges } from '@/components/UserBadges'
 
 interface DiscoverProject {
   id: string
@@ -25,6 +26,7 @@ interface DiscoverProject {
   tagDetails: Array<{ name: string; category: string }>
   chapterCount: number
   totalViews: number
+  authorBadges?: string[]
 }
 
 interface DiscoverAuthor {
@@ -35,6 +37,7 @@ interface DiscoverAuthor {
   avatarUrl: string | null
   followerCount: number
   publishedProjectCount: number
+  badges?: string[]
 }
 
 interface Tag {
@@ -415,8 +418,11 @@ export default function ExplorePage() {
                         </h3>
 
                         {/* Author */}
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                          by {project.authorDisplayName}
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1.5">
+                          <span>by {project.authorDisplayName}</span>
+                          {project.authorBadges && project.authorBadges.length > 0 && (
+                            <UserBadges badges={project.authorBadges} />
+                          )}
                         </p>
 
                         {/* Description */}
@@ -530,6 +536,9 @@ export default function ExplorePage() {
                           </Link>
                           {author.username && (
                             <p className="text-sm text-gray-500 dark:text-gray-400">@{author.username}</p>
+                          )}
+                          {author.badges && author.badges.length > 0 && (
+                            <UserBadges badges={author.badges} className="mt-0.5" />
                           )}
                         </div>
                       </div>
