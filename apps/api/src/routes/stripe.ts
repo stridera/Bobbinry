@@ -547,6 +547,18 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
 // WEBHOOK EVENT HANDLERS
 // ============================================================================
 
+/** Extract period dates from a Stripe subscription (handles both legacy and items-based APIs) */
+function getSubscriptionPeriod(sub: any): { start: Date; end: Date } {
+  const periodStart = sub.current_period_start
+    ?? sub.items?.data?.[0]?.current_period_start
+  const periodEnd = sub.current_period_end
+    ?? sub.items?.data?.[0]?.current_period_end
+  return {
+    start: periodStart ? new Date(periodStart * 1000) : new Date(),
+    end: periodEnd ? new Date(periodEnd * 1000) : new Date(),
+  }
+}
+
 /**
  * Fallback handler for author subscription checkout completion.
  * If the subscription was created as 'incomplete', this activates it
@@ -574,12 +586,13 @@ async function handleAuthorCheckoutCompleted(session: Stripe.Checkout.Session, s
     const [existing] = await db.select().from(subscriptions)
       .where(eq(subscriptions.stripeSubscriptionId, stripeSubId)).limit(1)
 
+    const period = getSubscriptionPeriod(stripeSub)
+
     if (existing) {
-      const subData = stripeSub as any
       await db.update(subscriptions).set({
         status: stripeSub.status as string,
-        currentPeriodStart: new Date((subData.current_period_start ?? 0) * 1000),
-        currentPeriodEnd: new Date((subData.current_period_end ?? 0) * 1000),
+        currentPeriodStart: period.start,
+        currentPeriodEnd: period.end,
         cancelAtPeriodEnd: stripeSub.cancel_at_period_end,
         updatedAt: new Date()
       }).where(eq(subscriptions.id, existing.id))
@@ -587,14 +600,13 @@ async function handleAuthorCheckoutCompleted(session: Stripe.Checkout.Session, s
       fastify.log.info({ subscriptionId: existing.id, status: stripeSub.status }, 'Author subscription activated via checkout.session.completed')
     } else {
       // Subscription record doesn't exist yet — create it
-      const subData = stripeSub as any
       await db.insert(subscriptions).values({
         subscriberId,
         authorId,
         tierId,
         status: stripeSub.status as string,
-        currentPeriodStart: new Date((subData.current_period_start ?? 0) * 1000),
-        currentPeriodEnd: new Date((subData.current_period_end ?? 0) * 1000),
+        currentPeriodStart: period.start,
+        currentPeriodEnd: period.end,
         cancelAtPeriodEnd: stripeSub.cancel_at_period_end,
         stripeSubscriptionId: stripeSubId
       })
@@ -629,14 +641,14 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription, fast
       return
     }
 
-    const sub = subscription as any
+    const period = getSubscriptionPeriod(subscription)
     await db.insert(subscriptions).values({
       subscriberId,
       authorId,
       tierId,
       status: subscription.status as string,
-      currentPeriodStart: new Date((sub.current_period_start ?? 0) * 1000),
-      currentPeriodEnd: new Date((sub.current_period_end ?? 0) * 1000),
+      currentPeriodStart: period.start,
+      currentPeriodEnd: period.end,
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
       stripeSubscriptionId: subscription.id
     })
@@ -658,10 +670,10 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription, fast
       return
     }
 
-    const subData = subscription as any
+    const period = getSubscriptionPeriod(subscription)
     await db.update(subscriptions).set({
       status: subscription.status as string,
-      currentPeriodEnd: new Date((subData.current_period_end ?? 0) * 1000),
+      currentPeriodEnd: period.end,
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
       updatedAt: new Date()
     }).where(eq(subscriptions.id, sub.id))
@@ -820,7 +832,7 @@ async function handleSiteMembershipCheckout(
 
     // Fetch the subscription for period details
     const sub = await stripe.subscriptions.retrieve(stripeSubscriptionId)
-    const subData = sub as any
+    const period = getSubscriptionPeriod(sub)
 
     // Upsert site membership
     await db
@@ -831,8 +843,8 @@ async function handleSiteMembershipCheckout(
         status: 'active',
         stripeSubscriptionId,
         stripePriceId: sub.items.data[0]?.price?.id || null,
-        currentPeriodStart: new Date((subData.current_period_start ?? 0) * 1000),
-        currentPeriodEnd: new Date((subData.current_period_end ?? 0) * 1000),
+        currentPeriodStart: period.start,
+        currentPeriodEnd: period.end,
         cancelAtPeriodEnd: sub.cancel_at_period_end,
       })
       .onConflictDoUpdate({
@@ -842,8 +854,8 @@ async function handleSiteMembershipCheckout(
           status: 'active',
           stripeSubscriptionId,
           stripePriceId: sub.items.data[0]?.price?.id || null,
-          currentPeriodStart: new Date((subData.current_period_start ?? 0) * 1000),
-          currentPeriodEnd: new Date((subData.current_period_end ?? 0) * 1000),
+          currentPeriodStart: period.start,
+          currentPeriodEnd: period.end,
           cancelAtPeriodEnd: sub.cancel_at_period_end,
           updatedAt: new Date(),
         },
@@ -887,13 +899,13 @@ async function handleSiteMembershipUpdated(subscription: Stripe.Subscription, fa
     const userId = subscription.metadata?.bobbinry_user_id
     if (!userId) return
 
-    const subData = subscription as any
+    const period = getSubscriptionPeriod(subscription)
     await db
       .update(siteMemberships)
       .set({
         status: subscription.status === 'active' ? 'active' : subscription.status as string,
-        currentPeriodStart: new Date((subData.current_period_start ?? 0) * 1000),
-        currentPeriodEnd: new Date((subData.current_period_end ?? 0) * 1000),
+        currentPeriodStart: period.start,
+        currentPeriodEnd: period.end,
         cancelAtPeriodEnd: subscription.cancel_at_period_end,
         updatedAt: new Date(),
       })
