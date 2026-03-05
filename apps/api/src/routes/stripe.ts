@@ -480,6 +480,8 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
         case 'checkout.session.completed':
           if (isSiteMembership) {
             await handleSiteMembershipCheckout(event.data.object as Stripe.Checkout.Session, stripe, fastify)
+          } else {
+            await handleAuthorCheckoutCompleted(event.data.object as Stripe.Checkout.Session, stripe, fastify)
           }
           break
         case 'customer.subscription.created':
@@ -536,6 +538,65 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
 // ============================================================================
 // WEBHOOK EVENT HANDLERS
 // ============================================================================
+
+/**
+ * Fallback handler for author subscription checkout completion.
+ * If the subscription was created as 'incomplete', this activates it
+ * once checkout succeeds (in case subscription.updated webhook is delayed).
+ */
+async function handleAuthorCheckoutCompleted(session: Stripe.Checkout.Session, stripe: Stripe, fastify: FastifyInstance) {
+  try {
+    const metadata = session.metadata || {}
+    const subscriberId = metadata.bobbinry_subscriber_id
+    const authorId = metadata.bobbinry_author_id
+    const tierId = metadata.bobbinry_tier_id
+
+    if (!subscriberId || !authorId || !tierId) return
+
+    const stripeSubId = typeof session.subscription === 'string'
+      ? session.subscription
+      : (session.subscription as any)?.id
+
+    if (!stripeSubId) return
+
+    // Retrieve the subscription to get current status and period
+    const stripeSub = await stripe.subscriptions.retrieve(stripeSubId)
+
+    // Find and update the existing subscription record
+    const [existing] = await db.select().from(subscriptions)
+      .where(eq(subscriptions.stripeSubscriptionId, stripeSubId)).limit(1)
+
+    if (existing) {
+      const subData = stripeSub as any
+      await db.update(subscriptions).set({
+        status: stripeSub.status as string,
+        currentPeriodStart: new Date((subData.current_period_start ?? 0) * 1000),
+        currentPeriodEnd: new Date((subData.current_period_end ?? 0) * 1000),
+        cancelAtPeriodEnd: stripeSub.cancel_at_period_end,
+        updatedAt: new Date()
+      }).where(eq(subscriptions.id, existing.id))
+
+      fastify.log.info({ subscriptionId: existing.id, status: stripeSub.status }, 'Author subscription activated via checkout.session.completed')
+    } else {
+      // Subscription record doesn't exist yet — create it
+      const subData = stripeSub as any
+      await db.insert(subscriptions).values({
+        subscriberId,
+        authorId,
+        tierId,
+        status: stripeSub.status as string,
+        currentPeriodStart: new Date((subData.current_period_start ?? 0) * 1000),
+        currentPeriodEnd: new Date((subData.current_period_end ?? 0) * 1000),
+        cancelAtPeriodEnd: stripeSub.cancel_at_period_end,
+        stripeSubscriptionId: stripeSubId
+      })
+
+      fastify.log.info({ subscriberId, authorId, tierId }, 'Author subscription created via checkout.session.completed')
+    }
+  } catch (error) {
+    fastify.log.error(error, 'Failed to handle author checkout completed')
+  }
+}
 
 async function handleSubscriptionCreated(subscription: Stripe.Subscription, fastify: FastifyInstance) {
   try {

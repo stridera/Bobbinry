@@ -151,7 +151,20 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             }
           }
         } catch {}
-        // Fetch membership tier and badges
+      }
+      // Handle session updates (e.g. after profile displayName change)
+      if (trigger === 'update' && updateData?.name) {
+        token.name = updateData.name
+      }
+      // Handle membership refresh via explicit update trigger
+      if (trigger === 'update' && updateData?.membershipTier !== undefined) {
+        token.membershipTier = updateData.membershipTier
+        token.badges = updateData.badges ?? token.badges
+        token.membershipFetchedAt = Date.now()
+      }
+      // Refresh membership periodically (every 5 minutes) or on first load
+      const membershipAge = Date.now() - ((token.membershipFetchedAt as number) || 0)
+      if (token.apiToken && (!token.membershipFetchedAt || membershipAge > 5 * 60 * 1000)) {
         try {
           const membershipRes = await fetch(`${config.apiUrl}/api/membership`, {
             headers: { Authorization: `Bearer ${token.apiToken}` },
@@ -160,24 +173,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             const data = await membershipRes.json()
             token.membershipTier = data.tier || 'free'
             token.badges = data.badges || []
-          } else {
-            token.membershipTier = 'free'
-            token.badges = []
           }
-        } catch {
-          token.membershipTier = 'free'
-          token.badges = []
-        }
+        } catch {}
+        token.membershipFetchedAt = Date.now()
       }
-      // Handle session updates (e.g. after profile displayName change)
-      if (trigger === 'update' && updateData?.name) {
-        token.name = updateData.name
-      }
-      // Handle membership refresh
-      if (trigger === 'update' && updateData?.membershipTier !== undefined) {
-        token.membershipTier = updateData.membershipTier
-        token.badges = updateData.badges ?? token.badges
-      }
+      // Default values if never fetched
+      if (!token.membershipTier) token.membershipTier = 'free'
+      if (!token.badges) token.badges = []
       return token
     },
     async session({ session, token }) {
