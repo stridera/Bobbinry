@@ -94,7 +94,7 @@ function SubscriptionsContent() {
     }
   }
 
-  const handleManageBilling = async () => {
+  const handleManageBilling = async (subscriptionId: string) => {
     if (!session?.user?.id || !apiToken) return
     setPortalLoading(true)
     setError(null)
@@ -104,6 +104,7 @@ function SubscriptionsContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: session.user.id,
+          subscriptionId,
           returnUrl: `${window.location.origin}/settings/subscriptions`
         })
       })
@@ -267,7 +268,7 @@ function SubscriptionsContent() {
                         </p>
                         {subscription.stripeSubscriptionId && (
                           <button
-                            onClick={handleManageBilling}
+                            onClick={() => handleManageBilling(subscription.id)}
                             disabled={portalLoading}
                             className="text-sm text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
                           >

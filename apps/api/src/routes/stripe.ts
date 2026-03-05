@@ -10,7 +10,7 @@ import {
   siteMemberships,
   userBadges,
 } from '../db/schema'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, sql } from 'drizzle-orm'
 import { requireAuth, requireSelf } from '../middleware/auth'
 
 function isValidUUID(uuid: string): boolean {
@@ -409,19 +409,27 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
    * Create a Stripe Customer Portal session for managing billing.
    */
   fastify.post<{
-    Body: { userId: string; returnUrl?: string }
+    Body: { userId: string; subscriptionId?: string; returnUrl?: string }
   }>('/subscribe/portal-session', {
     preHandler: requireAuth
   }, async (request, reply) => {
     try {
-      const { userId, returnUrl } = request.body
+      const { userId, subscriptionId, returnUrl } = request.body
       if (!requireSelf(request, reply, userId)) return
 
       const stripe = getStripe()
       if (!stripe) return reply.status(503).send({ error: 'Stripe not configured' })
 
-      // Find user's Stripe customer ID from their subscription
-      const [sub] = await db.select().from(subscriptions).where(eq(subscriptions.subscriberId, userId)).limit(1)
+      // Find the specific subscription or the first one with a Stripe ID
+      const query = subscriptionId
+        ? db.select().from(subscriptions).where(
+            and(eq(subscriptions.id, subscriptionId), eq(subscriptions.subscriberId, userId))
+          ).limit(1)
+        : db.select().from(subscriptions).where(
+            and(eq(subscriptions.subscriberId, userId), sql`${subscriptions.stripeSubscriptionId} IS NOT NULL`)
+          ).limit(1)
+
+      const [sub] = await query
       if (!sub?.stripeSubscriptionId) {
         return reply.status(400).send({ error: 'No active subscription found' })
       }

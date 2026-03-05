@@ -163,8 +163,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.membershipFetchedAt = Date.now()
       }
       // Refresh membership periodically (every 5 minutes) or on first load
-      const membershipAge = Date.now() - ((token.membershipFetchedAt as number) || 0)
-      if (token.apiToken && (!token.membershipFetchedAt || membershipAge > 5 * 60 * 1000)) {
+      const MEMBERSHIP_TTL = 5 * 60 * 1000
+      const lastFetched = (token.membershipFetchedAt as number) || 0
+      const now = Date.now()
+      if (token.apiToken && (now - lastFetched > MEMBERSHIP_TTL)) {
         try {
           const membershipRes = await fetch(`${config.apiUrl}/api/membership`, {
             headers: { Authorization: `Bearer ${token.apiToken}` },
@@ -175,7 +177,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             token.badges = data.badges || []
           }
         } catch {}
-        token.membershipFetchedAt = Date.now()
+        // Round to nearest TTL window to avoid constant token churn
+        token.membershipFetchedAt = Math.floor(now / MEMBERSHIP_TTL) * MEMBERSHIP_TTL
       }
       // Default values if never fetched
       if (!token.membershipTier) token.membershipTier = 'free'
