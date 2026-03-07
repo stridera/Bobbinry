@@ -10,6 +10,7 @@ module.exports = {
   testPathIgnorePatterns: [
     '/node_modules/',
     '\\.unit\\.test\\.ts$',
-    '/__tests__/unit/'
+    '/__tests__/unit/',
+    'test-helpers\\.ts$'
   ]
 }

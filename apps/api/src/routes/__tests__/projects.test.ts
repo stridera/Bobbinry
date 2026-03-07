@@ -1,24 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from '@jest/globals'
-import * as jose from 'jose'
-import { build } from '../../server'
 import { db } from '../../db/connection'
-import { users, projects, bobbinsInstalled, entities } from '../../db/schema'
-import { getJwtSecret } from '../../middleware/auth'
-import { sql } from 'drizzle-orm'
-
-async function createTestToken(userId: string): Promise<string> {
-  return new jose.SignJWT({ id: userId })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setExpirationTime('1h')
-    .sign(getJwtSecret())
-}
+import { projects } from '../../db/schema'
+import { createTestApp, createTestToken, createTestUser, createTestProject, cleanupAllTestData } from '../../__tests__/test-helpers'
 
 describe('Projects API', () => {
   let app: any
 
   beforeAll(async () => {
-    app = build({ logger: false })
-    await app.ready()
+    app = await createTestApp()
   })
 
   afterAll(async () => {
@@ -26,21 +15,13 @@ describe('Projects API', () => {
   })
 
   afterEach(async () => {
-    // Clean up test data after each test
-    await db.delete(entities).where(sql`true`)
-    await db.delete(bobbinsInstalled).where(sql`true`)
-    await db.delete(projects).where(sql`true`)
-    await db.delete(users).where(sql`true`)
+    await cleanupAllTestData()
   })
 
   describe('POST /api/projects', () => {
     it('should create a new project', async () => {
-      const [user] = await db.insert(users).values({
-        email: 'test@example.com',
-        name: 'Test User'
-      }).returning()
-
-      const token = await createTestToken(user!.id)
+      const user = await createTestUser()
+      const token = await createTestToken(user.id)
 
       const response = await app.inject({
         method: 'POST',
@@ -56,16 +37,12 @@ describe('Projects API', () => {
       const project = JSON.parse(response.payload)
       expect(project.name).toBe('Test Project')
       expect(project.description).toBe('A test project')
-      expect(project.ownerId).toBe(user!.id)
+      expect(project.ownerId).toBe(user.id)
     })
 
     it('should return 400 for invalid project data', async () => {
-      const [user] = await db.insert(users).values({
-        email: 'test-invalid@example.com',
-        name: 'Test User'
-      }).returning()
-
-      const token = await createTestToken(user!.id)
+      const user = await createTestUser()
+      const token = await createTestToken(user.id)
 
       const response = await app.inject({
         method: 'POST',
@@ -94,18 +71,15 @@ describe('Projects API', () => {
 
   describe('GET /api/projects', () => {
     it('should return projects for authenticated user', async () => {
-      const [user] = await db.insert(users).values({
-        email: 'test2@example.com',
-        name: 'Test User 2'
-      }).returning()
+      const user = await createTestUser()
 
       await db.insert(projects).values({
         name: 'Test Project',
         description: 'Test Description',
-        ownerId: user!.id
+        ownerId: user.id
       })
 
-      const token = await createTestToken(user!.id)
+      const token = await createTestToken(user.id)
 
       const response = await app.inject({
         method: 'GET',
@@ -127,19 +101,8 @@ describe('Projects API', () => {
     let authToken: string
 
     beforeEach(async () => {
-      const [user] = await db.insert(users).values({
-        email: 'test-install@example.com',
-        name: 'Test Install User'
-      }).returning()
-      testUser = user!
-
-      const [project] = await db.insert(projects).values({
-        name: 'Test Install Project',
-        description: 'Test Description',
-        ownerId: testUser.id
-      }).returning()
-      testProject = project!
-
+      testUser = await createTestUser()
+      testProject = await createTestProject(testUser.id, { name: 'Test Install Project' })
       authToken = await createTestToken(testUser.id)
     })
 

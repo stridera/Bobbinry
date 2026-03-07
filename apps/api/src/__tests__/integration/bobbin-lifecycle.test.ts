@@ -1,54 +1,37 @@
 /**
  * Bobbin Lifecycle Integration Tests
- * 
+ *
  * Tests the complete lifecycle of bobbin installation, configuration,
  * and data operations including security boundaries.
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from '@jest/globals'
-import { build, FastifyInstance } from 'fastify'
 import { db } from '../../db/connection'
-import { projects, users, bobbinsInstalled, entities } from '../../db/schema'
+import { bobbinsInstalled, entities, projects } from '../../db/schema'
 import { eq } from 'drizzle-orm'
+import { createTestUser, createTestProject, cleanupAllTestData } from '../test-helpers'
 
 describe('Bobbin Lifecycle Integration Tests', () => {
-  let app: FastifyInstance
   let testUserId: string
   let testProjectId: string
 
   beforeAll(async () => {
-    // Initialize Fastify app with all routes
-    // app = await build()
-    
-    // Create test user
-    const [user] = await db.insert(users).values({
-      email: 'test@bobbins.test',
-      name: 'Test User'
-    }).returning()
-    testUserId = user!.id
+    const user = await createTestUser()
+    testUserId = user.id
 
-    // Create test project
-    const [project] = await db.insert(projects).values({
-      ownerId: testUserId,
+    const project = await createTestProject(testUserId, {
       name: 'Test Project',
       description: 'Integration test project'
-    }).returning()
-    testProjectId = project!.id
+    })
+    testProjectId = project.id
   })
 
   afterAll(async () => {
-    // Cleanup test data
-    await db.delete(entities).where(eq(entities.projectId, testProjectId))
-    await db.delete(bobbinsInstalled).where(eq(bobbinsInstalled.projectId, testProjectId))
-    await db.delete(projects).where(eq(projects.id, testProjectId))
-    await db.delete(users).where(eq(users.id, testUserId))
-    
-    // await app.close()
+    await cleanupAllTestData()
   })
 
   describe('Bobbin Installation', () => {
     it('should install a first-party bobbin with native execution', async () => {
-      // Install manuscript bobbin
       const manifest = {
         id: 'manuscript',
         name: 'Manuscript',
@@ -76,7 +59,7 @@ describe('Bobbin Lifecycle Integration Tests', () => {
       expect(installation!.executionMode).toBe('native')
       expect(installation!.trustLevel).toBe('first-party')
       expect(installation!.storageTier).toBe('tier2')
-      
+
       // Cleanup
       await db.delete(bobbinsInstalled).where(eq(bobbinsInstalled.id, installation!.id))
     })
@@ -103,7 +86,7 @@ describe('Bobbin Lifecycle Integration Tests', () => {
       expect(installation!.executionMode).toBe('sandboxed') // Default
       expect(installation!.trustLevel).toBe('community') // Default
       expect(installation!.storageTier).toBe('tier1') // Default
-      
+
       // Cleanup
       await db.delete(bobbinsInstalled).where(eq(bobbinsInstalled.id, installation!.id))
     })
@@ -125,7 +108,7 @@ describe('Bobbin Lifecycle Integration Tests', () => {
 
       expect(installation).toBeDefined()
       expect(installation!.bobbinId).toBe('invalid')
-      
+
       // Cleanup
       await db.delete(bobbinsInstalled).where(eq(bobbinsInstalled.id, installation!.id))
     })

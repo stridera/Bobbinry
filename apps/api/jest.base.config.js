@@ -2,6 +2,7 @@ module.exports = {
   displayName: 'API',
   preset: 'ts-jest',
   testEnvironment: 'node',
+  globalSetup: '<rootDir>/src/jest-global-setup.ts',
   roots: ['<rootDir>/src'],
   transform: {
     '^.+\\.ts$': 'ts-jest',

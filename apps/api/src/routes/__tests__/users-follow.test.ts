@@ -1,24 +1,14 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/globals'
-import * as jose from 'jose'
-import { sql, and, eq } from 'drizzle-orm'
-import { build } from '../../server'
+import { and, eq } from 'drizzle-orm'
 import { db } from '../../db/connection'
-import { users, userFollowers } from '../../db/schema'
-import { getJwtSecret } from '../../middleware/auth'
-
-async function createTestToken(userId: string): Promise<string> {
-  return new jose.SignJWT({ id: userId })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setExpirationTime('1h')
-    .sign(getJwtSecret())
-}
+import { userFollowers } from '../../db/schema'
+import { createTestApp, createTestToken, createTestUser, cleanupAllTestData } from '../../__tests__/test-helpers'
 
 describe('Users Follow API', () => {
   let app: any
 
   beforeAll(async () => {
-    app = build({ logger: false })
-    await app.ready()
+    app = await createTestApp()
   })
 
   afterAll(async () => {
@@ -26,35 +16,27 @@ describe('Users Follow API', () => {
   })
 
   afterEach(async () => {
-    await db.delete(userFollowers).where(sql`true`)
-    await db.delete(users).where(sql`true`)
+    await cleanupAllTestData()
   })
 
   it('prevents duplicate follow relationships', async () => {
-    const [follower] = await db.insert(users).values({
-      email: 'follower@example.com',
-      name: 'Follower'
-    }).returning()
+    const follower = await createTestUser({ name: 'Follower' })
+    const following = await createTestUser({ name: 'Following' })
 
-    const [following] = await db.insert(users).values({
-      email: 'following@example.com',
-      name: 'Following'
-    }).returning()
-
-    const token = await createTestToken(follower!.id)
+    const token = await createTestToken(follower.id)
 
     const first = await app.inject({
       method: 'POST',
-      url: `/api/users/${follower!.id}/follow`,
+      url: `/api/users/${follower.id}/follow`,
       headers: { authorization: `Bearer ${token}` },
-      payload: { followingId: following!.id }
+      payload: { followingId: following.id }
     })
 
     const second = await app.inject({
       method: 'POST',
-      url: `/api/users/${follower!.id}/follow`,
+      url: `/api/users/${follower.id}/follow`,
       headers: { authorization: `Bearer ${token}` },
-      payload: { followingId: following!.id }
+      payload: { followingId: following.id }
     })
 
     expect(first.statusCode).toBe(201)
@@ -64,11 +46,10 @@ describe('Users Follow API', () => {
       .select()
       .from(userFollowers)
       .where(and(
-        eq(userFollowers.followerId, follower!.id),
-        eq(userFollowers.followingId, following!.id)
+        eq(userFollowers.followerId, follower.id),
+        eq(userFollowers.followingId, following.id)
       ))
 
     expect(rows.length).toBe(1)
   })
 })
-

@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "jest -c jest.unit.config.js --passWithNoTests",
     "test:watch": "jest -c jest.unit.config.js --watch --passWithNoTests",
-    "test:integration": "jest -c jest.integration.config.js",
+    "test:integration": "jest -c jest.integration.config.js --runInBand",
     "test:all": "bun run test && bun run test:integration",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",

@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from '@jest/globals'
 import { createHash, createHmac } from 'crypto'
-import { build } from '../../server'
 import { db } from '../../db/connection'
 import { users } from '../../db/schema'
-import { sql } from 'drizzle-orm'
+import { createTestApp, cleanupAllTestData } from '../../__tests__/test-helpers'
 
 function internalHeaders(
   method: string,
@@ -27,8 +26,7 @@ describe('Internal Auth Routes', () => {
 
   beforeAll(async () => {
     process.env.INTERNAL_API_AUTH_TOKEN = 'test-internal-secret'
-    app = build({ logger: false })
-    await app.ready()
+    app = await createTestApp()
   })
 
   afterAll(async () => {
@@ -40,7 +38,7 @@ describe('Internal Auth Routes', () => {
   })
 
   afterEach(async () => {
-    await db.delete(users).where(sql`true`)
+    await cleanupAllTestData()
   })
 
   it('rejects user lookup without internal auth headers', async () => {
@@ -65,4 +63,3 @@ describe('Internal Auth Routes', () => {
     expect(payload.email).toBe('internal-auth@example.com')
   })
 })
-

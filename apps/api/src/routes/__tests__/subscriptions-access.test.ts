@@ -1,24 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/globals'
-import * as jose from 'jose'
-import { sql } from 'drizzle-orm'
-import { build } from '../../server'
 import { db } from '../../db/connection'
-import { users, subscriptionTiers, subscriptions } from '../../db/schema'
-import { getJwtSecret } from '../../middleware/auth'
-
-async function createTestToken(userId: string): Promise<string> {
-  return new jose.SignJWT({ id: userId })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setExpirationTime('1h')
-    .sign(getJwtSecret())
-}
+import { subscriptionTiers, subscriptions } from '../../db/schema'
+import { createTestApp, createTestToken, createTestUser, cleanupAllTestData } from '../../__tests__/test-helpers'
 
 describe('Subscriptions Access Control', () => {
   let app: any
 
   beforeAll(async () => {
-    app = build({ logger: false })
-    await app.ready()
+    app = await createTestApp()
   })
 
   afterAll(async () => {
@@ -26,48 +15,35 @@ describe('Subscriptions Access Control', () => {
   })
 
   afterEach(async () => {
-    await db.delete(subscriptions).where(sql`true`)
-    await db.delete(subscriptionTiers).where(sql`true`)
-    await db.delete(users).where(sql`true`)
+    await cleanupAllTestData()
   })
 
   it('blocks users from reading another user subscriptions', async () => {
-    const [subscriber] = await db.insert(users).values({
-      email: 'subscriber@example.com',
-      name: 'Subscriber'
-    }).returning()
-
-    const [otherUser] = await db.insert(users).values({
-      email: 'other-user@example.com',
-      name: 'Other User'
-    }).returning()
-
-    const [author] = await db.insert(users).values({
-      email: 'author@example.com',
-      name: 'Author'
-    }).returning()
+    const subscriber = await createTestUser({ name: 'Subscriber' })
+    const otherUser = await createTestUser({ name: 'Other User' })
+    const author = await createTestUser({ name: 'Author' })
 
     const [tier] = await db.insert(subscriptionTiers).values({
-      authorId: author!.id,
+      authorId: author.id,
       name: 'Supporter',
       tierLevel: 1,
       chapterDelayDays: 0
     }).returning()
 
     await db.insert(subscriptions).values({
-      subscriberId: subscriber!.id,
-      authorId: author!.id,
+      subscriberId: subscriber.id,
+      authorId: author.id,
       tierId: tier!.id,
       status: 'active',
       currentPeriodStart: new Date(),
       currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
     })
 
-    const token = await createTestToken(otherUser!.id)
+    const token = await createTestToken(otherUser.id)
 
     const response = await app.inject({
       method: 'GET',
-      url: `/api/users/${subscriber!.id}/subscriptions`,
+      url: `/api/users/${subscriber.id}/subscriptions`,
       headers: { authorization: `Bearer ${token}` }
     })
 
@@ -75,36 +51,29 @@ describe('Subscriptions Access Control', () => {
   })
 
   it('returns active subscriptions for the authenticated subscriber', async () => {
-    const [subscriber] = await db.insert(users).values({
-      email: 'subscriber2@example.com',
-      name: 'Subscriber 2'
-    }).returning()
-
-    const [author] = await db.insert(users).values({
-      email: 'author2@example.com',
-      name: 'Author 2'
-    }).returning()
+    const subscriber = await createTestUser({ name: 'Subscriber 2' })
+    const author = await createTestUser({ name: 'Author 2' })
 
     const [tier] = await db.insert(subscriptionTiers).values({
-      authorId: author!.id,
+      authorId: author.id,
       name: 'Premium',
       tierLevel: 2,
       chapterDelayDays: 0
     }).returning()
 
     await db.insert(subscriptions).values({
-      subscriberId: subscriber!.id,
-      authorId: author!.id,
+      subscriberId: subscriber.id,
+      authorId: author.id,
       tierId: tier!.id,
       status: 'active',
       currentPeriodStart: new Date(),
       currentPeriodEnd: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
     })
 
-    const token = await createTestToken(subscriber!.id)
+    const token = await createTestToken(subscriber.id)
     const response = await app.inject({
       method: 'GET',
-      url: `/api/users/${subscriber!.id}/subscriptions?status=active`,
+      url: `/api/users/${subscriber.id}/subscriptions?status=active`,
       headers: { authorization: `Bearer ${token}` }
     })
 
@@ -114,6 +83,6 @@ describe('Subscriptions Access Control', () => {
     expect(payload.subscriptions.length).toBe(1)
     expect(payload.subscriptions[0].subscription.status).toBe('active')
     expect(payload.subscriptions[0].tier.name).toBe('Premium')
-    expect(payload.subscriptions[0].author.id).toBe(author!.id)
+    expect(payload.subscriptions[0].author.id).toBe(author.id)
   })
 })
