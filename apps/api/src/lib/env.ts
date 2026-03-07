@@ -13,6 +13,8 @@ interface EnvConfig {
   WEB_ORIGIN: string
   API_ORIGIN: string
   API_JWT_SECRET: string | undefined
+  INTERNAL_API_AUTH_TOKEN: string | undefined
+  INTERNAL_API_AUTH_TOKEN_PREVIOUS: string | undefined
   S3_ENDPOINT: string
   S3_PUBLIC_ENDPOINT: string
   S3_REGION: string
@@ -22,7 +24,7 @@ interface EnvConfig {
 }
 
 const requiredEnvVars = {
-  production: ['DATABASE_URL', 'WEB_ORIGIN'],
+  production: ['DATABASE_URL', 'WEB_ORIGIN', 'INTERNAL_API_AUTH_TOKEN'],
   development: [] as string[],
   test: ['DATABASE_URL'] as string[]
 } as const
@@ -47,13 +49,15 @@ export function validateEnv(): EnvConfig {
   }
 
   return {
-    DATABASE_URL: process.env.DATABASE_URL || 'postgres://bobbinry:bobbinry@localhost:5433/bobbinry',
+    DATABASE_URL: process.env.DATABASE_URL || 'postgres://bobbinry:bobbinry@localhost:5432/bobbinry',
     PORT: parseInt(process.env.PORT || '4100', 10),
     NODE_ENV: nodeEnv,
     LOG_LEVEL: process.env.LOG_LEVEL || 'info',
     WEB_ORIGIN: process.env.WEB_ORIGIN || 'http://localhost:3100',
     API_ORIGIN: process.env.API_ORIGIN || `http://localhost:${parseInt(process.env.PORT || '4100', 10)}`,
     API_JWT_SECRET: process.env.API_JWT_SECRET,
+    INTERNAL_API_AUTH_TOKEN: process.env.INTERNAL_API_AUTH_TOKEN,
+    INTERNAL_API_AUTH_TOKEN_PREVIOUS: process.env.INTERNAL_API_AUTH_TOKEN_PREVIOUS,
     S3_ENDPOINT: process.env.S3_ENDPOINT || 'http://127.0.0.1:9100',
     S3_PUBLIC_ENDPOINT: process.env.S3_PUBLIC_ENDPOINT || process.env.S3_ENDPOINT || 'http://127.0.0.1:9100',
     S3_REGION: process.env.S3_REGION || 'auto',

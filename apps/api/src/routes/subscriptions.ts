@@ -9,6 +9,7 @@ import {
   users
 } from '../db/schema'
 import { eq, and, or, desc, sql } from 'drizzle-orm'
+import { requireAuth, requireSelf } from '../middleware/auth'
 
 // Helper to validate UUID
 function isValidUUID(uuid: string): boolean {
@@ -25,10 +26,14 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { userId: string }
     Querystring: { status?: string }
-  }>('/users/:userId/subscriptions', async (request, reply) => {
+  }>('/users/:userId/subscriptions', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { userId } = request.params
       const { status } = request.query
+
+      if (!requireSelf(request, reply, userId)) return
 
       if (!isValidUUID(userId)) {
         return reply.status(400).send({ error: 'Invalid user ID format' })

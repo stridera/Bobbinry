@@ -63,7 +63,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
 
   const loadProjects = useCallback(async () => {
     try {
-      const res = await fetch(`${config.apiUrl}/api/users/me/projects/grouped?userId=${user.id}`)
+      const res = await apiFetch('/api/users/me/projects/grouped', apiToken)
       if (res.ok) {
         const data = await res.json()
         const allProjects: Project[] = [
@@ -783,7 +783,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-blue-500 mt-0.5">3.</span>
-                  <span><strong>Exclude chapters</strong> like brainstorm notes by clicking "Do Not Publish" on any chapter.</span>
+                  <span><strong>Exclude chapters</strong> like brainstorm notes by leaving them as draft or unpublishing them later.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-blue-500 mt-0.5">4.</span>

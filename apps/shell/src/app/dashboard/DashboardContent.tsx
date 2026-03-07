@@ -14,6 +14,7 @@ import { SortableCollection } from './SortableCollection'
 import { DashboardLoadingState } from '@/components/LoadingState'
 import { EmptyState } from '@/components/EmptyState'
 import { SiteNav } from '@/components/SiteNav'
+import { apiFetch } from '@/lib/api'
 import { config } from '@/lib/config'
 
 interface User {
@@ -60,7 +61,7 @@ function getGreeting(): string {
   return 'Good evening'
 }
 
-export function DashboardContent({ user }: { user: User }) {
+export function DashboardContent({ user, apiToken }: { user: User; apiToken: string }) {
   const [data, setData] = useState<DashboardData | null>(null)
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -70,13 +71,13 @@ export function DashboardContent({ user }: { user: User }) {
   useEffect(() => {
     loadDashboard()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user.id])
+  }, [user.id, apiToken])
 
   const loadDashboard = async () => {
     try {
       const [projectsRes, statsRes] = await Promise.all([
-        fetch(`${config.apiUrl}/api/users/me/projects/grouped?userId=${user.id}`),
-        fetch(`${config.apiUrl}/api/dashboard/stats?userId=${user.id}`)
+        apiFetch('/api/users/me/projects/grouped', apiToken),
+        apiFetch('/api/dashboard/stats', apiToken)
       ])
 
       if (projectsRes.ok && statsRes.ok) {
@@ -244,7 +245,7 @@ export function DashboardContent({ user }: { user: User }) {
 
           {/* Recent activity panel */}
           <div className="lg:col-span-1 animate-fade-in" style={{ animationDelay: '0.1s' }}>
-            <RecentActivityPanel userId={user.id} />
+            <RecentActivityPanel userId={user.id} apiToken={apiToken} />
           </div>
         </div>
       </div>

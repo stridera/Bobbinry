@@ -4,12 +4,71 @@
  * Handles user authentication (login, signup, session validation)
  */
 
-import { FastifyPluginAsync } from 'fastify'
+import { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { db } from '../db/connection'
 import { users, userProfiles } from '../db/schema'
 import { eq } from 'drizzle-orm'
-import { randomBytes, scryptSync, timingSafeEqual } from 'crypto'
+import { randomBytes, scrypt, timingSafeEqual } from 'crypto'
+import { promisify } from 'util'
 import { requireAuth } from '../middleware/auth'
+import { incrementCounter } from '../lib/metrics'
+import { verifyInternalRequest } from '../lib/internal-auth'
+
+const scryptAsync = promisify(scrypt)
+const LOGIN_WINDOW_MS = 15 * 60 * 1000
+const MAX_LOGIN_ATTEMPTS = 8
+const lockoutState = new Map<string, { failures: number; firstFailureAt: number; lockedUntil?: number }>()
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase()
+}
+
+function shouldThrottleLogin(key: string): number | null {
+  const state = lockoutState.get(key)
+  if (!state?.lockedUntil) return null
+  if (Date.now() < state.lockedUntil) {
+    return state.lockedUntil
+  }
+  lockoutState.delete(key)
+  return null
+}
+
+function requireInternalRouteAuth(request: FastifyRequest, reply: FastifyReply): boolean {
+  const verification = verifyInternalRequest(request)
+  if (verification.ok) {
+    return true
+  }
+
+  incrementCounter('internal_auth.denied', { reason: verification.reason })
+  request.log.warn({ reason: verification.reason, path: request.url }, 'Denied internal API auth')
+  const status = verification.reason === 'missing_secret' ? 503 : 403
+  reply.status(status).send({ error: status === 503 ? 'Internal auth not configured' : 'Forbidden' })
+  return false
+}
+
+function loginKey(request: FastifyRequest, email: string): string {
+  return `${request.ip}:${email}`
+}
+
+function recordLoginFailure(key: string): void {
+  const now = Date.now()
+  const current = lockoutState.get(key)
+  if (!current || now - current.firstFailureAt > LOGIN_WINDOW_MS) {
+    lockoutState.set(key, { failures: 1, firstFailureAt: now })
+    return
+  }
+
+  current.failures += 1
+  if (current.failures >= MAX_LOGIN_ATTEMPTS) {
+    const backoffMs = Math.min(60 * 60 * 1000, 30_000 * 2 ** (current.failures - MAX_LOGIN_ATTEMPTS))
+    current.lockedUntil = now + backoffMs
+  }
+  lockoutState.set(key, current)
+}
+
+function clearLoginFailures(key: string): void {
+  lockoutState.delete(key)
+}
 
 const authPlugin: FastifyPluginAsync = async (fastify) => {
   /**
@@ -21,7 +80,14 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
       email: string
       password: string
     }
-  }>('/auth/login', async (request, reply) => {
+  }>('/auth/login', {
+    config: {
+      rateLimit: {
+        max: 20,
+        timeWindow: '1 minute'
+      }
+    }
+  }, async (request, reply) => {
     try {
       const { email, password } = request.body
 
@@ -29,15 +95,28 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Email and password are required' })
       }
 
+      const normalizedEmail = normalizeEmail(email)
+      const authKey = loginKey(request, normalizedEmail)
+      const lockedUntil = shouldThrottleLogin(authKey)
+      if (lockedUntil) {
+        incrementCounter('auth.login.blocked')
+        return reply.status(429).send({
+          error: 'Too many login attempts',
+          retryAt: new Date(lockedUntil).toISOString()
+        })
+      }
+
       // Find user by email
       const [user] = await db
         .select()
         .from(users)
-        .where(eq(users.email, email))
+        .where(eq(users.email, normalizedEmail))
         .limit(1)
 
       if (!user || !user.passwordHash) {
         // For security, don't reveal whether user exists
+        incrementCounter('auth.login.failed', { reason: 'invalid_credentials' })
+        recordLoginFailure(authKey)
         return reply.status(401).send({ error: 'Invalid credentials' })
       }
 
@@ -47,17 +126,30 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(500).send({ error: 'Invalid password hash format' })
       }
       const [salt, storedHash] = hashParts
-      const hash = scryptSync(password, salt, 64).toString('hex')
+      const hashBuffer = await scryptAsync(password, salt, 64) as Buffer
+      const hash = hashBuffer.toString('hex')
+      const storedHashBuffer = Buffer.from(storedHash, 'hex')
+      const computedHashBuffer = Buffer.from(hash, 'hex')
 
-      const isValid = timingSafeEqual(
-        Buffer.from(storedHash, 'hex'),
-        Buffer.from(hash, 'hex')
-      )
-
-      if (!isValid) {
+      if (storedHashBuffer.length !== computedHashBuffer.length) {
+        incrementCounter('auth.login.failed', { reason: 'invalid_credentials' })
+        recordLoginFailure(authKey)
         return reply.status(401).send({ error: 'Invalid credentials' })
       }
 
+      const isValid = timingSafeEqual(
+        storedHashBuffer,
+        computedHashBuffer
+      )
+
+      if (!isValid) {
+        incrementCounter('auth.login.failed', { reason: 'invalid_credentials' })
+        recordLoginFailure(authKey)
+        return reply.status(401).send({ error: 'Invalid credentials' })
+      }
+
+      clearLoginFailures(authKey)
+      incrementCounter('auth.login.success')
       return reply.send({
         id: user.id,
         email: user.email,
@@ -79,7 +171,14 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
       password: string
       name?: string
     }
-  }>('/auth/signup', async (request, reply) => {
+  }>('/auth/signup', {
+    config: {
+      rateLimit: {
+        max: 10,
+        timeWindow: '1 minute'
+      }
+    }
+  }, async (request, reply) => {
     try {
       const { email, password, name } = request.body
 
@@ -87,27 +186,31 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Email and password are required' })
       }
 
+      const normalizedEmail = normalizeEmail(email)
+
       // Check if user already exists
       const [existing] = await db
         .select()
         .from(users)
-        .where(eq(users.email, email))
+        .where(eq(users.email, normalizedEmail))
         .limit(1)
 
       if (existing) {
+        incrementCounter('auth.signup.failed', { reason: 'duplicate_email' })
         return reply.status(409).send({ error: 'User already exists' })
       }
 
       // Hash password with scrypt
       const salt = randomBytes(16).toString('hex')
-      const hash = scryptSync(password, salt, 64).toString('hex')
+      const hashBuffer = await scryptAsync(password, salt, 64) as Buffer
+      const hash = hashBuffer.toString('hex')
       const passwordHash = `${salt}:${hash}`
 
       // Create user
       const [newUser] = await db
         .insert(users)
         .values({
-          email,
+          email: normalizedEmail,
           name: name || null,
           passwordHash
         })
@@ -123,6 +226,7 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
         displayName: newUser.name || null,
       }).onConflictDoNothing()
 
+      incrementCounter('auth.signup.success')
       return reply.status(201).send({
         id: newUser.id,
         email: newUser.email,
@@ -146,19 +250,30 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
       email: string
       name?: string
     }
-  }>('/auth/oauth-provision', async (request, reply) => {
+  }>('/auth/oauth-provision', {
+    config: {
+      rateLimit: {
+        max: 30,
+        timeWindow: '1 minute'
+      }
+    }
+  }, async (request, reply) => {
     try {
+      if (!requireInternalRouteAuth(request, reply)) return
+
       const { email, name } = request.body
 
       if (!email) {
         return reply.status(400).send({ error: 'Email is required' })
       }
 
+      const normalizedEmail = normalizeEmail(email)
+
       // Check if user already exists
       const [existing] = await db
         .select()
         .from(users)
-        .where(eq(users.email, email))
+        .where(eq(users.email, normalizedEmail))
         .limit(1)
 
       if (existing) {
@@ -173,7 +288,7 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
       const [newUser] = await db
         .insert(users)
         .values({
-          email,
+          email: normalizedEmail,
           name: name || null,
           passwordHash: null
         })
@@ -208,18 +323,29 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{
     Querystring: { email: string }
-  }>('/users/by-email', async (request, reply) => {
+  }>('/users/by-email', {
+    config: {
+      rateLimit: {
+        max: 60,
+        timeWindow: '1 minute'
+      }
+    }
+  }, async (request, reply) => {
     try {
+      if (!requireInternalRouteAuth(request, reply)) return
+
       const { email } = request.query
 
       if (!email) {
         return reply.status(400).send({ error: 'Email query parameter is required' })
       }
 
+      const normalizedEmail = normalizeEmail(email)
+
       const [user] = await db
         .select()
         .from(users)
-        .where(eq(users.email, email))
+        .where(eq(users.email, normalizedEmail))
         .limit(1)
 
       if (!user) {

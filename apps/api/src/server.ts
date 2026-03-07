@@ -3,6 +3,7 @@ import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
 import rateLimit from '@fastify/rate-limit'
 import { randomUUID } from 'crypto'
+import { performance } from 'perf_hooks'
 import projectsPlugin from './routes/projects'
 import viewsPlugin from './routes/views'
 import entitiesPlugin from './routes/entities'
@@ -23,6 +24,8 @@ import membershipPlugin from './routes/membership'
 import { checkDatabaseHealth } from './db/connection'
 import { env } from './lib/env'
 import { startTriggerScheduler, stopTriggerScheduler } from './jobs/trigger-scheduler'
+import { getMetricsSnapshot, incrementCounter, observeTimingMs } from './lib/metrics'
+import { verifyInternalRequest } from './lib/internal-auth'
 
 export function build(opts = {}): FastifyInstance {
   const server = Fastify({
@@ -59,6 +62,18 @@ export function build(opts = {}): FastifyInstance {
   // Add correlation ID to all requests
   server.addHook('onRequest', async (request) => {
     request.headers['x-correlation-id'] = request.headers['x-correlation-id'] || request.id
+    ;(request as any).__startedAt = performance.now()
+    incrementCounter('http.requests.total', { method: request.method })
+  })
+
+  server.addHook('onResponse', async (request, reply) => {
+    const startedAt = (request as any).__startedAt as number | undefined
+    if (typeof startedAt === 'number') {
+      observeTimingMs('http.requests.duration', performance.now() - startedAt, {
+        method: request.method,
+        status: reply.statusCode
+      })
+    }
   })
 
   // Global error handler
@@ -165,6 +180,16 @@ export function build(opts = {}): FastifyInstance {
         error: 'Health check failed'
       })
     }
+  })
+
+  server.get('/internal/metrics', async (request, reply) => {
+    const verification = verifyInternalRequest(request)
+    if (!verification.ok) {
+      incrementCounter('internal_auth.denied', { reason: verification.reason })
+      return reply.status(403).send({ error: 'Forbidden' })
+    }
+
+    return reply.send(getMetricsSnapshot())
   })
 
   // Register route plugins

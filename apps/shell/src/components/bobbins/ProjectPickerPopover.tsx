@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
-import { config } from '@/lib/config'
 import { apiFetch } from '@/lib/api'
 import { BobbinMetadata } from './types'
 
@@ -31,7 +30,7 @@ export function ProjectPickerPopover({ bobbin, onClose }: ProjectPickerModalProp
     if (!userId || !apiToken) return
     const loadProjects = async () => {
       try {
-        const res = await fetch(`${config.apiUrl}/api/users/me/projects/grouped?userId=${userId}`)
+        const res = await apiFetch('/api/users/me/projects/grouped', apiToken)
         if (!res.ok) return
 
         const data = await res.json()

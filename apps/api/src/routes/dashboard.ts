@@ -14,6 +14,7 @@ import {
 } from '../db/schema'
 import { eq, and, desc, sql, inArray } from 'drizzle-orm'
 import { randomBytes } from 'crypto'
+import { requireAuth, requireProjectOwnership } from '../middleware/auth'
 
 const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
   /**
@@ -22,16 +23,14 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{
     Querystring: {
-      userId: string
       includeArchived?: string
     }
-  }>('/users/me/projects', async (request, reply) => {
+  }>('/users/me/projects', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
-      const { userId, includeArchived = 'false' } = request.query
-
-      if (!userId) {
-        return reply.status(400).send({ error: 'userId query parameter required' })
-      }
+      const userId = request.user!.id
+      const { includeArchived = 'false' } = request.query
 
       let projectsQuery = db
         .select({
@@ -70,16 +69,12 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
    * GET /users/me/projects/grouped
    */
   fastify.get<{
-    Querystring: {
-      userId: string
-    }
-  }>('/users/me/projects/grouped', async (request, reply) => {
+    Querystring: Record<string, never>
+  }>('/users/me/projects/grouped', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
-      const { userId } = request.query
-
-      if (!userId) {
-        return reply.status(400).send({ error: 'userId query parameter required' })
-      }
+      const userId = request.user!.id
 
       // Get all user's collections
       const collections = await db
@@ -136,16 +131,14 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{
     Querystring: {
-      userId: string
       limit?: string
     }
-  }>('/users/me/recent-activity', async (request, reply) => {
+  }>('/users/me/recent-activity', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
-      const { userId, limit = '50' } = request.query
-
-      if (!userId) {
-        return reply.status(400).send({ error: 'userId query parameter required' })
-      }
+      const userId = request.user!.id
+      const { limit = '50' } = request.query
 
       // Get user's project IDs
       const userProjects = await db
@@ -184,16 +177,12 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
    * GET /dashboard/stats
    */
   fastify.get<{
-    Querystring: {
-      userId: string
-    }
-  }>('/dashboard/stats', async (request, reply) => {
+    Querystring: Record<string, never>
+  }>('/dashboard/stats', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
-      const { userId } = request.query
-
-      if (!userId) {
-        return reply.status(400).send({ error: 'userId query parameter required' })
-      }
+      const userId = request.user!.id
 
       // Get project count
       const [projectStats] = await db
@@ -264,9 +253,13 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
     Params: {
       projectId: string
     }
-  }>('/projects/:projectId/archive', async (request, reply) => {
+  }>('/projects/:projectId/archive', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { projectId } = request.params
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       const [project] = await db
         .update(projects)
@@ -297,9 +290,13 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
     Params: {
       projectId: string
     }
-  }>('/projects/:projectId/unarchive', async (request, reply) => {
+  }>('/projects/:projectId/unarchive', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { projectId } = request.params
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       const [project] = await db
         .update(projects)
@@ -333,10 +330,14 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
     Body: {
       customUrl?: string
     }
-  }>('/projects/:projectId/short-url', async (request, reply) => {
+  }>('/projects/:projectId/short-url', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { projectId } = request.params
       const { customUrl } = request.body || {}
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       // Reserved words
       const reservedWords = [
@@ -399,9 +400,13 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
     Params: {
       projectId: string
     }
-  }>('/projects/:projectId/short-url', async (request, reply) => {
+  }>('/projects/:projectId/short-url', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { projectId } = request.params
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       await db
         .update(projects)

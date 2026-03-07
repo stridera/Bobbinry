@@ -12,6 +12,7 @@ import Google from 'next-auth/providers/google'
 import { SignJWT } from 'jose'
 import type { User } from 'next-auth'
 import { config } from '@/lib/config'
+import { createHash, createHmac } from 'crypto'
 
 /** Shared secret used by both NextAuth and the API for JWT verification */
 const jwtSecret = new TextEncoder().encode(
@@ -24,6 +25,26 @@ async function signApiToken(userId: string): Promise<string> {
     .setProtectedHeader({ alg: 'HS256' })
     .setExpirationTime('30d')
     .sign(jwtSecret)
+}
+
+function buildInternalSignedHeaders(method: string, urlString: string, body?: unknown): Record<string, string> {
+  const signingSecret = process.env.INTERNAL_API_AUTH_TOKEN
+  if (!signingSecret) {
+    return {}
+  }
+
+  const url = new URL(urlString)
+  const path = `${url.pathname}${url.search}`
+  const timestamp = Date.now().toString()
+  const bodySerialized = body ? JSON.stringify(body) : ''
+  const bodyDigest = createHash('sha256').update(bodySerialized).digest('hex')
+  const payload = `${method.toUpperCase()}\n${path}\n${timestamp}\n${bodyDigest}`
+  const signature = createHmac('sha256', signingSecret).update(payload).digest('hex')
+
+  return {
+    'x-internal-auth-ts': timestamp,
+    'x-internal-auth-signature': signature
+  }
 }
 
 // Type for our user from the API
@@ -39,17 +60,24 @@ interface BobbinryUser {
  */
 async function findOrCreateOAuthUser(email: string, name: string | null): Promise<BobbinryUser | null> {
   try {
+    const lookupUrl = `${config.apiUrl}/api/users/by-email?email=${encodeURIComponent(email)}`
+    const lookupHeaders = buildInternalSignedHeaders('GET', lookupUrl)
     // Try to log in first (user may already exist from a previous OAuth or credentials signup)
-    const lookupRes = await fetch(`${config.apiUrl}/api/users/by-email?email=${encodeURIComponent(email)}`)
+    const lookupRes = await fetch(lookupUrl, {
+      headers: lookupHeaders
+    })
     if (lookupRes.ok) {
       return await lookupRes.json()
     }
 
     // User doesn't exist — create without a password
+    const createBody = { email, name }
+    const createUrl = `${config.apiUrl}/api/auth/oauth-provision`
+    const signedHeaders = buildInternalSignedHeaders('POST', createUrl, createBody)
     const createRes = await fetch(`${config.apiUrl}/api/auth/oauth-provision`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, name })
+      headers: { 'Content-Type': 'application/json', ...signedHeaders },
+      body: JSON.stringify(createBody)
     })
 
     if (createRes.ok) {

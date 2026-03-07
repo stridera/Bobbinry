@@ -18,5 +18,5 @@ export default async function DashboardPage() {
     redirect('/login')
   }
 
-  return <DashboardContent user={session.user} />
+  return <DashboardContent user={session.user} apiToken={(session as any).apiToken} />
 }

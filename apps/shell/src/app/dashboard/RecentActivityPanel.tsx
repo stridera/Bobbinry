@@ -9,7 +9,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { formatDistanceToNow } from 'date-fns'
-import { config } from '@/lib/config'
+import { apiFetch } from '@/lib/api'
 
 interface Activity {
   entity: {
@@ -23,20 +23,18 @@ interface Activity {
   projectId: string
 }
 
-export function RecentActivityPanel({ userId }: { userId: string }) {
+export function RecentActivityPanel({ userId, apiToken }: { userId: string; apiToken: string }) {
   const [activity, setActivity] = useState<Activity[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     loadActivity()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId])
+  }, [userId, apiToken])
 
   const loadActivity = async () => {
     try {
-      const response = await fetch(
-        `${config.apiUrl}/api/users/me/recent-activity?userId=${userId}&limit=20`
-      )
+      const response = await apiFetch('/api/users/me/recent-activity?limit=20', apiToken)
 
       if (response.ok) {
         const data = await response.json()

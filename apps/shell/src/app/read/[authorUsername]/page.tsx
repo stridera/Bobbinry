@@ -100,11 +100,9 @@ export default function AuthorReadPage() {
   }
 
   const checkSubscription = async () => {
-    if (!userId || !author) return
+    if (!userId || !author || !apiToken) return
     try {
-      const res = await fetch(
-        `${config.apiUrl}/api/users/${userId}/subscriptions?status=active`
-      )
+      const res = await apiFetch(`/api/users/${userId}/subscriptions?status=active`, apiToken)
       if (res.ok) {
         const data = await res.json()
         const subs = data.subscriptions || []
