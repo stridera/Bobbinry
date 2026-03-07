@@ -149,25 +149,42 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
         const fullPath = path.resolve(projectRoot, manifestPath)
 
         // Security check: Ensure the resolved path is within allowed directories
-        const normalizedPath = path.normalize(fullPath)
-        const isInBobbins = normalizedPath.startsWith(bobbinsDir + path.sep)
-
-        if (!isInBobbins) {
+        if (!fullPath.startsWith(bobbinsDir + path.sep)) {
           return reply.status(403).send({
             error: 'Access denied',
             message: 'Manifest path must be within the bobbins directory'
           })
         }
 
+        // Try the given path, falling back to alternative manifest location
+        // Supports both: bobbins/foo.manifest.yaml and bobbins/foo/manifest.yaml
         try {
           content = await fs.readFile(fullPath, 'utf-8')
-          type = manifestPath.endsWith('.yaml') || manifestPath.endsWith('.yml') ? 'yaml' : 'json'
-        } catch (error) {
-          return reply.status(400).send({
-            error: 'Failed to read manifest file',
-            details: error instanceof Error ? error.message : 'Unknown error'
-          })
+        } catch (err: any) {
+          if (err?.code !== 'ENOENT') {
+            return reply.status(400).send({
+              error: 'Failed to read manifest file',
+              details: err.message ?? 'Unknown error'
+            })
+          }
+          // Try subdirectory format: bobbins/foo/manifest.yaml
+          let altContent: string | undefined
+          const match = manifestPath.match(/^bobbins\/(.+)\.manifest\.yaml$/)
+          if (match) {
+            const altPath = path.resolve(projectRoot, `bobbins/${match[1]}/manifest.yaml`)
+            if (altPath.startsWith(bobbinsDir + path.sep)) {
+              altContent = await fs.readFile(altPath, 'utf-8').catch(() => undefined)
+            }
+          }
+          if (!altContent) {
+            return reply.status(400).send({
+              error: 'Failed to read manifest file',
+              details: err.message
+            })
+          }
+          content = altContent
         }
+        type = manifestPath.endsWith('.yaml') || manifestPath.endsWith('.yml') ? 'yaml' : 'json'
       } else if (manifestContent) {
         content = manifestContent
         type = manifestType || 'json'

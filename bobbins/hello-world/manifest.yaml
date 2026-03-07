@@ -1,0 +1,13 @@
+id: hello-world
+name: Hello World
+version: 1.0.0
+author: "Bobbins Samples"
+description: "Tutorial bobbin demonstrating SDK hooks, entity management, and theme-aware styling."
+tags: [tutorial, example]
+license: MIT
+capabilities: { publishable: false, external: false, ai: false, customViews: true }
+execution:
+  mode: native
+  signature: dev_mode_skip
+data:
+  collections: []

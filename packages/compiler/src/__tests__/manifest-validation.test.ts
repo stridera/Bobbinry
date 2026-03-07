@@ -142,28 +142,67 @@ describe('Manifest Validation', () => {
         return
       }
 
-      const manifestFiles = fs.readdirSync(manifestsDir)
-        .filter(file => file.endsWith('.manifest.yaml') || file.endsWith('.manifest.json'))
+      // Collect all manifests: root-level .manifest.yaml and subdirectory manifest.yaml
+      const entries = fs.readdirSync(manifestsDir, { withFileTypes: true })
+      const manifestPaths: { label: string; filePath: string }[] = []
 
-      expect(manifestFiles.length).toBeGreaterThan(0)
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          const subManifest = path.join(manifestsDir, entry.name, 'manifest.yaml')
+          if (fs.existsSync(subManifest)) {
+            manifestPaths.push({ label: `${entry.name}/manifest.yaml`, filePath: subManifest })
+          }
+        } else if (entry.name.endsWith('.manifest.yaml') || entry.name.endsWith('.manifest.json')) {
+          manifestPaths.push({ label: entry.name, filePath: path.join(manifestsDir, entry.name) })
+        }
+      }
 
-      manifestFiles.forEach(file => {
-        const manifestPath = path.join(manifestsDir, file)
-        const manifestContent = fs.readFileSync(manifestPath, 'utf-8')
-        
+      expect(manifestPaths.length).toBeGreaterThan(0)
+
+      manifestPaths.forEach(({ label, filePath }) => {
+        const manifestContent = fs.readFileSync(filePath, 'utf-8')
+
         let manifest
-        if (file.endsWith('.yaml')) {
+        if (filePath.endsWith('.yaml')) {
           manifest = parseYAML(manifestContent)
         } else {
           manifest = JSON.parse(manifestContent)
         }
-        
+
         const result = compiler.validateManifestWithDetails(manifest)
         if (!result.valid) {
-          console.error(`${file} validation errors:`, result.errors)
+          console.error(`${label} validation errors:`, result.errors)
         }
         expect(result.valid).toBe(true)
       })
+    })
+
+    it('should ensure every bobbin directory has a discoverable manifest', () => {
+      if (!fs.existsSync(manifestsDir)) {
+        console.warn('Bobbins directory not found, skipping test')
+        return
+      }
+
+      const entries = fs.readdirSync(manifestsDir, { withFileTypes: true })
+      const bobbinDirs = entries.filter(e => e.isDirectory() && !e.name.startsWith('.'))
+      const missing: string[] = []
+
+      for (const dir of bobbinDirs) {
+        const subManifest = path.join(manifestsDir, dir.name, 'manifest.yaml')
+        const rootManifest = path.join(manifestsDir, `${dir.name}.manifest.yaml`)
+
+        if (!fs.existsSync(subManifest) && !fs.existsSync(rootManifest)) {
+          missing.push(dir.name)
+        }
+      }
+
+      if (missing.length > 0) {
+        console.error(
+          `Bobbin directories without manifest files: ${missing.join(', ')}. ` +
+          `Each bobbin must have either bobbins/<name>.manifest.yaml or bobbins/<name>/manifest.yaml`
+        )
+      }
+      expect(missing).toEqual([])
     })
   })
 
