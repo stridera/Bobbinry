@@ -20,6 +20,7 @@ function BobbinsContent() {
   const { data: session } = useSession()
   const projectId = params.projectId as string
   const slotFilter = searchParams.get('slot') || undefined
+  const setupStatus = searchParams.get('setup')
   const [sdk] = useState(() => new BobbinrySDK('shell'))
   const [availableBobbins, setAvailableBobbins] = useState<BobbinMetadata[]>([])
   const [installedBobbins, setInstalledBobbins] = useState<InstalledBobbin[]>([])
@@ -89,6 +90,15 @@ function BobbinsContent() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, session?.apiToken])
+
+  useEffect(() => {
+    if (setupStatus === 'template-failed') {
+      setActionMessage({
+        type: 'error',
+        text: 'Project created, but template bobbins did not fully install. Install missing bobbins below.'
+      })
+    }
+  }, [setupStatus])
 
   const installBobbin = async (bobbin: BobbinMetadata) => {
     setActionInProgress(bobbin.id)

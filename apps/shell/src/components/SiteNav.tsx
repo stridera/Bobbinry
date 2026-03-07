@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { UserMenu } from './UserMenu'
 
 const NAV_LINKS = [
+  { href: '/read', label: 'Read' },
   { href: '/dashboard', label: 'Write' },
   { href: '/publish', label: 'Publish' },
   { href: '/explore', label: 'Explore' },

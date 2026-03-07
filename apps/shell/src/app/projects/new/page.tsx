@@ -91,6 +91,11 @@ export default function NewProjectPage() {
       return
     }
 
+    if (atLimit) {
+      setError(`Project limit reached. ${tier === 'free' ? 'Upgrade to Supporter to create more projects.' : 'Archive a project to create a new one.'}`)
+      return
+    }
+
     setLoading(true)
     setError(null)
 
@@ -114,10 +119,11 @@ export default function NewProjectPage() {
       const projectId = project.id
 
       const template = templates.find(t => t.id === selectedTemplate)
+      const failedInstalls: string[] = []
       if (template && template.bobbins.length > 0) {
         for (const bobbinId of template.bobbins) {
           try {
-            await apiFetch(
+            const installRes = await apiFetch(
               `/api/projects/${projectId}/bobbins/install`,
               session.apiToken,
               {
@@ -128,10 +134,19 @@ export default function NewProjectPage() {
                 })
               }
             )
+            if (!installRes.ok) {
+              failedInstalls.push(bobbinId)
+            }
           } catch (bobbinError) {
             console.error(`Failed to install bobbin ${bobbinId}:`, bobbinError)
+            failedInstalls.push(bobbinId)
           }
         }
+      }
+
+      if (failedInstalls.length > 0) {
+        router.push(`/projects/${projectId}/bobbins?setup=template-failed`)
+        return
       }
 
       router.push(`/projects/${projectId}`)
@@ -293,7 +308,7 @@ export default function NewProjectPage() {
             </Link>
             <button
               type="submit"
-              disabled={loading || !name.trim()}
+              disabled={loading || !name.trim() || atLimit}
               className="inline-flex items-center px-6 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors"
             >
               {loading ? (

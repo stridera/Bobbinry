@@ -389,6 +389,10 @@ export default function EditorView({ sdk, projectId, entityType, entityId }: Edi
       window.dispatchEvent(new CustomEvent('bobbinry:view-context-change', {
         detail: { wordCount: count, currentView: 'project' }
       }))
+      // Broadcast text content for bobbins that need to detect typed words
+      window.dispatchEvent(new CustomEvent('bobbinry:editor-content-update', {
+        detail: { text: editor.state.doc.textContent }
+      }))
       const html = editor.getHTML()
       const currentEntityId = activeEntityRef.current
 

@@ -47,7 +47,7 @@ function EmptySlotFallback({
 
 export function ShellLayout({ children, currentView = 'default', context = {}, onOpenMarketplace, projectId, projectName, user }: ShellLayoutProps) {
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
-  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(true)
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false)
   const [isHydrated, setIsHydrated] = useState(false)
   const [dynamicContext, setDynamicContext] = useState<Record<string, any>>({})
   const [focusMode, setFocusMode] = useState(false)
