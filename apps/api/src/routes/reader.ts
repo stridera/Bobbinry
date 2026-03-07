@@ -22,7 +22,7 @@ import {
   comments,
   reactions
 } from '../db/schema'
-import { eq, and, desc, asc, sql, isNull, or, count } from 'drizzle-orm'
+import { eq, and, desc, asc, sql, isNull, or, count, inArray } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { env } from '../lib/env'
 import { optionalAuth } from '../middleware/auth'
@@ -891,6 +891,61 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
     } catch (error) {
       fastify.log.error({ error, correlationId }, 'Failed to resolve project slug')
       return reply.status(500).send({ error: 'Failed to resolve project slug', correlationId })
+    }
+  })
+
+  /**
+   * Resolve many projects by short slug in one call (public).
+   * POST /public/projects/by-slugs
+   */
+  fastify.post<{
+    Body: { slugs?: string[] }
+  }>('/public/projects/by-slugs', async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const inputSlugs = request.body?.slugs || []
+      const slugs = [...new Set(inputSlugs.map((slug) => slug.trim()).filter(Boolean))]
+
+      if (slugs.length === 0) {
+        return reply.send({ projects: [], correlationId })
+      }
+      if (slugs.length > 100) {
+        return reply.status(400).send({ error: 'Maximum 100 slugs allowed', correlationId })
+      }
+
+      const projectRows = await db
+        .select({
+          shortUrl: projects.shortUrl,
+          projectId: projects.id,
+          ownerId: projects.ownerId,
+          authorUsername: userProfiles.username,
+          authorDisplayName: userProfiles.displayName,
+          authorName: users.name
+        })
+        .from(projects)
+        .leftJoin(userProfiles, eq(userProfiles.userId, projects.ownerId))
+        .leftJoin(users, eq(users.id, projects.ownerId))
+        .where(inArray(projects.shortUrl, slugs))
+
+      const results = projectRows
+        .filter((row) => Boolean(row.shortUrl))
+        .map((row) => ({
+          slug: row.shortUrl!,
+          project: {
+            id: row.projectId,
+            ownerId: row.ownerId
+          },
+          author: {
+            userId: row.ownerId,
+            username: row.authorUsername || null,
+            displayName: row.authorDisplayName || row.authorName || null
+          }
+        }))
+
+      return reply.send({ projects: results, correlationId })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to resolve projects by slugs')
+      return reply.status(500).send({ error: 'Failed to resolve project slugs', correlationId })
     }
   })
 

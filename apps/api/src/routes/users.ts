@@ -17,9 +17,10 @@ import {
   entities,
   userPaymentConfig
 } from '../db/schema'
-import { eq, and, or, desc, isNull, sql, count, isNotNull } from 'drizzle-orm'
+import { eq, and, or, desc, isNull, sql, count, isNotNull, inArray } from 'drizzle-orm'
 import { requireAuth, requireSelf } from '../middleware/auth'
 import Stripe from 'stripe'
+import { incrementCounter } from '../lib/metrics'
 
 function getStripe(): Stripe | null {
   const key = process.env.STRIPE_SECRET_KEY
@@ -63,6 +64,45 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
     } catch (error) {
       fastify.log.error(error)
       return reply.status(500).send({ error: 'Failed to fetch profile' })
+    }
+  })
+
+  // Resolve multiple profiles in one request
+  fastify.get<{
+    Querystring: { userIds?: string }
+  }>('/users/profiles/batch', async (request, reply) => {
+    try {
+      const raw = request.query.userIds || ''
+      const userIds = [...new Set(raw.split(',').map((id) => id.trim()).filter(Boolean))]
+
+      if (userIds.length === 0) {
+        return reply.status(200).send({ profiles: [] })
+      }
+      if (userIds.length > 100) {
+        return reply.status(400).send({ error: 'Maximum 100 userIds allowed' })
+      }
+
+      const invalid = userIds.find((id) => !isValidUUID(id))
+      if (invalid) {
+        return reply.status(400).send({ error: 'Invalid user ID format in userIds list' })
+      }
+
+      const profiles = await db
+        .select({
+          userId: userProfiles.userId,
+          username: userProfiles.username,
+          displayName: userProfiles.displayName,
+          avatarUrl: userProfiles.avatarUrl,
+          userName: users.name
+        })
+        .from(userProfiles)
+        .innerJoin(users, eq(users.id, userProfiles.userId))
+        .where(inArray(userProfiles.userId, userIds))
+
+      return reply.status(200).send({ profiles })
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.status(500).send({ error: 'Failed to fetch profiles' })
     }
   })
 
@@ -445,12 +485,19 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Already following this user' })
       }
 
-      await db
+      const inserted = await db
         .insert(userFollowers)
         .values({
           followerId: userId,
           followingId
         })
+        .onConflictDoNothing()
+        .returning({ followerId: userFollowers.followerId })
+
+      if (inserted.length === 0) {
+        incrementCounter('users.follow.conflict')
+        return reply.status(400).send({ error: 'Already following this user' })
+      }
 
       return reply.status(201).send({ success: true })
     } catch (error) {

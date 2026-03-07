@@ -97,7 +97,8 @@ export const userFollowers = pgTable('user_followers', {
   createdAt: timestamp('created_at').defaultNow().notNull()
 }, (table) => ({
   followerIdx: index('user_followers_follower_idx').on(table.followerId),
-  followingIdx: index('user_followers_following_idx').on(table.followingId)
+  followingIdx: index('user_followers_following_idx').on(table.followingId),
+  uniqueFollowerFollowing: uniqueIndex('user_followers_follower_following_idx').on(table.followerId, table.followingId)
 }))
 
 // Project followers - following relationships for projects

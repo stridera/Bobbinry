@@ -36,6 +36,13 @@
       "when": 1772654686924,
       "tag": "0004_clammy_leopardon",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1772812800000,
+      "tag": "0005_unique_user_followers_pair",
+      "breakpoints": true
     }
   ]
 }

@@ -43,9 +43,15 @@ interface Subscription {
   cancelAtPeriodEnd: boolean
 }
 
-interface FollowedAuthor {
-  followingId: string
-  createdAt: string
+interface SubscriptionTier {
+  id: string
+  name: string
+}
+
+interface SubscriptionRow {
+  subscription: Subscription
+  tier: SubscriptionTier | null
+  author: { id: string; name: string | null } | null
 }
 
 interface FeedItem {
@@ -77,10 +83,10 @@ export default function LibraryPage() {
   const [activeTab, setActiveTab] = useState<Tab>('reading')
   const [progress, setProgress] = useState<ProgressItem[]>([])
   const [feed, setFeed] = useState<FeedItem[]>([])
-  const [, setSubscriptions] = useState<Subscription[]>([])
+  const [subscriptions, setSubscriptions] = useState<SubscriptionRow[]>([])
   const [readerBobbins, setReaderBobbins] = useState<ReaderBobbin[]>([])
   const [authorProfiles, setAuthorProfiles] = useState<Record<string, { displayName: string; username: string }>>({})
-  const [, setTierNames] = useState<Record<string, string>>({})
+  const [tierNames, setTierNames] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
 
   const userId = session?.user?.id
@@ -94,83 +100,102 @@ export default function LibraryPage() {
       const results = await Promise.allSettled([
         apiFetch(`/api/users/${userId}/reading-progress?limit=10`, apiToken).then(r => r.json()),
         apiFetch(`/api/users/${userId}/feed?limit=20`, apiToken).then(r => r.json()),
-        fetch(`${config.apiUrl}/api/users/${userId}/followers?type=following`).then(r => r.json()),
-        apiFetch(`/api/users/${userId}/reader-bobbins`, apiToken).then(r => r.json())
+        apiFetch(`/api/users/${userId}/reader-bobbins`, apiToken).then(r => r.json()),
+        apiFetch(`/api/users/${userId}/subscriptions?status=active`, apiToken).then(r => r.json())
       ])
 
       const progressItems: ProgressItem[] = results[0].status === 'fulfilled' ? (results[0].value.progress || []) : []
       const feedItems: FeedItem[] = results[1].status === 'fulfilled' ? (results[1].value.feed || []) : []
+      const subscriptionItems: SubscriptionRow[] = results[3].status === 'fulfilled'
+        ? (results[3].value.subscriptions || [])
+        : []
 
-      // Resolve author usernames for feed items
       const authorIds = new Set<string>()
       for (const item of feedItems) {
         if (item.authorId) authorIds.add(item.authorId)
       }
-      for (const authorId of authorIds) {
+      for (const row of subscriptionItems) {
+        if (row.subscription?.authorId) authorIds.add(row.subscription.authorId)
+      }
+
+      const authorProfilesMap: Record<string, { displayName: string; username: string }> = {}
+      if (authorIds.size > 0) {
         try {
-          const res = await fetch(`${config.apiUrl}/api/users/${authorId}/profile`)
+          const res = await fetch(
+            `${config.apiUrl}/api/users/profiles/batch?userIds=${encodeURIComponent([...authorIds].join(','))}`
+          )
           if (res.ok) {
             const data = await res.json()
-            if (data.profile?.username) {
-              feedItems.forEach(item => {
-                if (item.authorId === authorId) item.authorUsername = data.profile.username
-              })
-            }
-          }
-        } catch {}
-      }
-
-      // Resolve author usernames for progress items via project slug lookup
-      const slugsToResolve = new Set<string>()
-      for (const item of progressItems) {
-        if (item.projectShortUrl) slugsToResolve.add(item.projectShortUrl)
-      }
-      for (const slug of slugsToResolve) {
-        try {
-          const res = await fetch(`${config.apiUrl}/api/public/projects/by-slug/${encodeURIComponent(slug)}`)
-          if (res.ok) {
-            const data = await res.json()
-            if (data.author?.username) {
-              progressItems.forEach(item => {
-                if (item.projectShortUrl === slug) item.authorUsername = data.author.username
-              })
-            }
-          }
-        } catch {}
-      }
-
-      setProgress(progressItems)
-      setFeed(feedItems)
-      if (results[3].status === 'fulfilled') {
-        setReaderBobbins(results[3].value.bobbins || [])
-      }
-
-      // Load subscriptions
-      try {
-        const followRes = results[2].status === 'fulfilled' ? results[2].value : { followers: [] }
-        const authors: FollowedAuthor[] = followRes.followers || []
-
-        // For each followed author, check if there's an active subscription
-        const subs: Subscription[] = []
-        const profiles: Record<string, { displayName: string; username: string }> = {}
-        const tiers: Record<string, string> = {}
-
-        for (const author of authors) {
-          try {
-            const profileRes = await fetch(`${config.apiUrl}/api/users/${author.followingId}/profile`)
-            if (profileRes.ok) {
-              const { profile } = await profileRes.json()
-              profiles[author.followingId] = {
-                displayName: profile.displayName || profile.username || 'Unknown',
+            for (const profile of data.profiles || []) {
+              authorProfilesMap[profile.userId] = {
+                displayName: profile.displayName || profile.username || profile.userName || 'Unknown',
                 username: profile.username || ''
               }
             }
-          } catch {}
+          }
+        } catch {}
+      }
+      for (const authorId of authorIds) {
+        if (!authorProfilesMap[authorId]) {
+          authorProfilesMap[authorId] = { displayName: 'Unknown', username: '' }
         }
-        setAuthorProfiles(profiles)
-        setSubscriptions(subs)
-        setTierNames(tiers)
-      } catch {}
+      }
+
+      feedItems.forEach((item) => {
+        const profile = authorProfilesMap[item.authorId]
+        if (profile?.username) {
+          item.authorUsername = profile.username
+        }
+      })
+
+      const slugsToResolve = [...new Set(progressItems
+        .map((item) => item.projectShortUrl)
+        .filter((slug): slug is string => Boolean(slug)))]
+
+      const authorBySlug = new Map<string, string>()
+      if (slugsToResolve.length > 0) {
+        try {
+          const res = await fetch(`${config.apiUrl}/api/public/projects/by-slugs`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ slugs: slugsToResolve })
+          })
+          if (res.ok) {
+            const data = await res.json()
+            for (const entry of data.projects || []) {
+              if (entry.slug && entry.author?.username) {
+                authorBySlug.set(entry.slug, entry.author.username)
+              }
+            }
+          }
+        } catch {}
+      }
+
+      progressItems.forEach((item) => {
+        if (item.projectShortUrl) {
+          const authorUsername = authorBySlug.get(item.projectShortUrl)
+          if (authorUsername) {
+            item.authorUsername = authorUsername
+          }
+        }
+      })
+
+      setProgress(progressItems)
+      setFeed(feedItems)
+      setAuthorProfiles(authorProfilesMap)
+
+      if (results[2].status === 'fulfilled') {
+        setReaderBobbins(results[2].value.bobbins || [])
+      }
+
+      setSubscriptions(subscriptionItems)
+      const tiers: Record<string, string> = {}
+      for (const row of subscriptionItems) {
+        if (row.subscription?.tierId && row.tier?.name) {
+          tiers[row.subscription.tierId] = row.tier.name
+        }
+      }
+      setTierNames(tiers)
     } catch (err) {
       console.error('Failed to load library data:', err)
     } finally {
@@ -333,32 +358,55 @@ export default function LibraryPage() {
             ) : (
               <div className="space-y-3">
                 {progress.map(item => (
-                  <Link
-                    key={item.viewId}
-                    href={item.projectShortUrl ? `/read/${item.authorUsername || item.projectId}/${item.projectShortUrl}/${item.chapterId}` : '#'}
-                    className="flex items-center gap-4 p-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
-                        {item.chapterTitle}
-                      </p>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {item.projectName}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3 flex-shrink-0">
-                      <div className="w-24">
-                        <div className="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-blue-500 rounded-full"
-                            style={{ width: `${item.lastPositionPercent}%` }}
-                          />
+                  (() => {
+                    const chapterHref = item.projectShortUrl
+                      ? `/read/${item.authorUsername || item.projectId}/${item.projectShortUrl}/${item.chapterId}`
+                      : null
+                    const cardClasses = 'flex items-center gap-4 p-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 transition-colors'
+
+                    const content = (
+                      <>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
+                            {item.chapterTitle}
+                          </p>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">
+                            {item.projectName}
+                          </p>
                         </div>
-                        <p className="text-xs text-gray-400 mt-0.5 text-right">{item.lastPositionPercent}%</p>
-                      </div>
-                      <span className="text-xs text-gray-400">{formatTimeAgo(item.startedAt)}</span>
-                    </div>
-                  </Link>
+                        <div className="flex items-center gap-3 flex-shrink-0">
+                          <div className="w-24">
+                            <div className="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-blue-500 rounded-full"
+                                style={{ width: `${item.lastPositionPercent}%` }}
+                              />
+                            </div>
+                            <p className="text-xs text-gray-400 mt-0.5 text-right">{item.lastPositionPercent}%</p>
+                          </div>
+                          <span className="text-xs text-gray-400">{formatTimeAgo(item.startedAt)}</span>
+                        </div>
+                      </>
+                    )
+
+                    if (!chapterHref) {
+                      return (
+                        <div key={item.viewId} className={`${cardClasses} opacity-70`} aria-disabled="true">
+                          {content}
+                        </div>
+                      )
+                    }
+
+                    return (
+                      <Link
+                        key={item.viewId}
+                        href={chapterHref}
+                        className={`${cardClasses} hover:border-blue-300 dark:hover:border-blue-700`}
+                      >
+                        {content}
+                      </Link>
+                    )
+                  })()
                 ))}
               </div>
             )}
@@ -377,27 +425,51 @@ export default function LibraryPage() {
             ) : (
               <div className="space-y-3">
                 {feed.map(item => (
-                  <Link
-                    key={item.publicationId}
-                    href={item.projectShortUrl ? `/read/${item.authorUsername || item.authorId}/${item.projectShortUrl}/${item.chapterId}` : '#'}
-                    className="block p-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
-                          {item.chapterTitle}
-                        </p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                          {item.projectName} &middot; {item.authorName}
-                        </p>
+                  (() => {
+                    const chapterHref = item.projectShortUrl
+                      ? `/read/${item.authorUsername || item.authorId}/${item.projectShortUrl}/${item.chapterId}`
+                      : null
+
+                    const content = (
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
+                            {item.chapterTitle}
+                          </p>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">
+                            {item.projectName} &middot; {item.authorName}
+                          </p>
+                        </div>
+                        {item.publishedAt && (
+                          <span className="text-xs text-gray-400 flex-shrink-0">
+                            {formatTimeAgo(item.publishedAt)}
+                          </span>
+                        )}
                       </div>
-                      {item.publishedAt && (
-                        <span className="text-xs text-gray-400 flex-shrink-0">
-                          {formatTimeAgo(item.publishedAt)}
-                        </span>
-                      )}
-                    </div>
-                  </Link>
+                    )
+
+                    if (!chapterHref) {
+                      return (
+                        <div
+                          key={item.publicationId}
+                          className="block p-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 opacity-70"
+                          aria-disabled="true"
+                        >
+                          {content}
+                        </div>
+                      )
+                    }
+
+                    return (
+                      <Link
+                        key={item.publicationId}
+                        href={chapterHref}
+                        className="block p-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
+                      >
+                        {content}
+                      </Link>
+                    )
+                  })()
                 ))}
               </div>
             )}
@@ -407,43 +479,68 @@ export default function LibraryPage() {
         {/* Subscriptions */}
         {activeTab === 'subscriptions' && (
           <div>
-            {Object.keys(authorProfiles).length === 0 ? (
+            {subscriptions.length === 0 ? (
               <EmptyState
-                title="No subscriptions yet"
-                description="Discover authors and follow them to keep up with their work."
+                title="No active subscriptions"
+                description="Discover authors and subscribe to support their work."
                 action={{ label: 'Explore Authors', href: '/explore' }}
               />
             ) : (
               <div className="space-y-3">
-                {Object.entries(authorProfiles).map(([authorId, profile]) => (
-                  <div
-                    key={authorId}
-                    className="flex items-center justify-between p-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800"
-                  >
-                    <div className="min-w-0">
-                      <Link
-                        href={`/u/${profile.username || authorId}`}
-                        className="font-medium text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400"
-                      >
-                        {profile.displayName}
-                      </Link>
-                      {profile.username && (
-                        <p className="text-sm text-gray-500 dark:text-gray-400">@{profile.username}</p>
-                      )}
+                {subscriptions.map((row) => {
+                  const authorId = row.subscription.authorId
+                  const profile = authorProfiles[authorId]
+                  const authorName = profile?.displayName || row.author?.name || 'Unknown'
+                  const username = profile?.username || ''
+                  const tierName = row.tier?.name || tierNames[row.subscription.tierId] || 'Subscription'
+                  const renewText = row.subscription.currentPeriodEnd
+                    ? new Date(row.subscription.currentPeriodEnd).toLocaleDateString()
+                    : null
+                  const status = row.subscription.status.toLowerCase()
+                  const statusClass = status === 'active'
+                    ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400'
+                    : status === 'past_due'
+                      ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+
+                  return (
+                    <div
+                      key={row.subscription.id}
+                      className="flex items-center justify-between p-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800"
+                    >
+                      <div className="min-w-0">
+                        <Link
+                          href={`/u/${username || authorId}`}
+                          className="font-medium text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400"
+                        >
+                          {authorName}
+                        </Link>
+                        {username && (
+                          <p className="text-sm text-gray-500 dark:text-gray-400">@{username}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs px-2 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded">
+                          {tierName}
+                        </span>
+                        <span className={`text-xs px-2 py-1 rounded ${statusClass}`}>
+                          {row.subscription.status}
+                        </span>
+                        {renewText && (
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            {row.subscription.cancelAtPeriodEnd ? `Ends ${renewText}` : `Renews ${renewText}`}
+                          </span>
+                        )}
+                        <Link
+                          href={`/u/${username || authorId}`}
+                          className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                        >
+                          View Profile
+                        </Link>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs px-2 py-1 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded">
-                        Following
-                      </span>
-                      <Link
-                        href={`/u/${profile.username || authorId}`}
-                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                      >
-                        View Profile
-                      </Link>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
 
                 <div className="pt-4 border-t border-gray-200 dark:border-gray-800 mt-4">
                   <button
