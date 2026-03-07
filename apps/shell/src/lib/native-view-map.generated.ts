@@ -7,6 +7,7 @@
 // Next.js/webpack requires static strings in import() calls, so this map
 // must be generated at build time rather than constructed dynamically.
 export const NATIVE_VIEW_MAP: Record<string, () => Promise<any>> = {
+  'cat.panels/cat-panel': () => import('@bobbinry/cat/panels/cat-panel'),
   'google-drive-publisher.panels/drive-sync': () => import('@bobbinry/google-drive-publisher/panels/drive-sync'),
   'corkboard.board': () => import('@bobbinry/corkboard/views/board'),
   'smart-publisher.release-manager': () => import('@bobbinry/smart-publisher/views/ReleaseManager'),

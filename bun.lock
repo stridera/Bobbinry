@@ -64,6 +64,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@auth/core": "^0.40.0",
+        "@bobbinry/cat": "workspace:*",
         "@bobbinry/corkboard": "workspace:*",
         "@bobbinry/entities": "workspace:*",
         "@bobbinry/google-drive-publisher": "workspace:*",
@@ -110,6 +111,21 @@
         "jest-environment-jsdom": "^29.7.0",
         "ts-jest": "^29.2.5",
         "typescript": "6.0.0-beta",
+      },
+    },
+    "bobbins/cat": {
+      "name": "@bobbinry/cat",
+      "version": "1.0.0",
+      "dependencies": {
+        "@bobbinry/sdk": "workspace:*",
+        "@bobbinry/types": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/react": "^19.2.14",
+        "typescript": "6.0.0-beta",
+      },
+      "peerDependencies": {
+        "react": "^19.0.0",
       },
     },
     "bobbins/corkboard": {
@@ -516,6 +532,8 @@
     "@bcoe/v8-coverage": ["@bcoe/v8-coverage@0.2.3", "", {}, "sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2nSUHW9tYpxWriPrWDASIxiaXax83REcLxuSdnGPZtw=="],
 
     "@bobbinry/action-runtime": ["@bobbinry/action-runtime@workspace:packages/action-runtime"],
+
+    "@bobbinry/cat": ["@bobbinry/cat@workspace:bobbins/cat"],
 
     "@bobbinry/compiler": ["@bobbinry/compiler@workspace:packages/compiler"],
 
