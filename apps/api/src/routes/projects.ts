@@ -8,6 +8,42 @@ import { eq, and, count } from 'drizzle-orm'
 import { ManifestCompiler } from '@bobbinry/compiler'
 import { requireAuth, requireProjectOwnership } from '../middleware/auth'
 import { getUserMembershipTier, getProjectLimit } from '../lib/membership'
+import { checkAndUpgradeBobbin, type UpgradeResult } from '../lib/bobbin-upgrader'
+
+// In-memory cache of parsed disk manifests, keyed by bobbinId.
+// Invalidated on server restart (which happens on every deploy).
+const manifestCache = new Map<string, Record<string, any>>()
+const PROJECT_ROOT = path.resolve(__dirname, '../../../..')
+
+async function loadDiskManifests(bobbinIds: string[]): Promise<Map<string, Record<string, any>>> {
+  const uncached = bobbinIds.filter(id => !manifestCache.has(id))
+
+  if (uncached.length > 0) {
+    const results = await Promise.allSettled(
+      uncached.map(async (bobbinId) => {
+        const manifestPath = path.resolve(PROJECT_ROOT, `bobbins/${bobbinId}/manifest.yaml`)
+        const content = await fs.readFile(manifestPath, 'utf-8')
+        return { bobbinId, manifest: parseYAML(content) }
+      })
+    )
+
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        manifestCache.set(result.value.bobbinId, result.value.manifest)
+      } else if (!(result.reason as NodeJS.ErrnoException)?.code?.startsWith('ENOENT')) {
+        // Log non-file-not-found errors (permission issues, etc.)
+        console.error('[BOBBIN UPGRADE] Failed to read manifest from disk:', result.reason)
+      }
+    }
+  }
+
+  const out = new Map<string, Record<string, any>>()
+  for (const id of bobbinIds) {
+    const cached = manifestCache.get(id)
+    if (cached) out.set(id, cached)
+  }
+  return out
+}
 
 const projectsPlugin: FastifyPluginAsync = async (fastify) => {
   // Create a new project (requires authentication)
@@ -352,41 +388,20 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
           eq(bobbinsInstalled.enabled, true)
         ))
 
-      // In development, refresh manifests from disk to pick up YAML changes
-      // This prevents stale manifests when devs edit YAML without re-installing
-      if (process.env.NODE_ENV === 'development') {
-        const projectRoot = path.resolve(__dirname, '../../../..')
-        for (const install of installations) {
-          try {
-            const manifestPath = path.resolve(projectRoot, `bobbins/${install.bobbinId}/manifest.yaml`)
-            const content = await fs.readFile(manifestPath, 'utf-8')
-            const freshManifest = parseYAML(content)
-            const stored = install.manifestJson as Record<string, any>
+      // Read disk manifests concurrently, then check for upgrades
+      const upgrades: UpgradeResult[] = []
+      const diskManifests = await loadDiskManifests(installations.map(i => i.bobbinId))
 
-            // Compare key sections that affect the shell
-            const sectionsToSync = ['extensions', 'ui', 'execution', 'capabilities', 'data', 'interactions'] as const
-            let needsUpdate = false
-            const merged = { ...stored }
+      for (const install of installations) {
+        const diskManifest = diskManifests.get(install.bobbinId)
+        if (!diskManifest) continue
 
-            for (const section of sectionsToSync) {
-              const freshVal = JSON.stringify(freshManifest[section] ?? null)
-              const storedVal = JSON.stringify(stored[section] ?? null)
-              if (freshVal !== storedVal) {
-                console.log(`[DEV] Manifest ${install.bobbinId}: "${section}" section changed on disk`)
-                merged[section] = freshManifest[section]
-                needsUpdate = true
-              }
-            }
-
-            if (needsUpdate) {
-              console.log(`[DEV] Refreshing stale manifest for ${install.bobbinId}`)
-              await db.update(bobbinsInstalled)
-                .set({ manifestJson: merged })
-                .where(eq(bobbinsInstalled.id, install.id))
-              install.manifestJson = merged
-            }
-          } catch {
-            // Manifest file not found on disk - skip refresh
+        const result = await checkAndUpgradeBobbin(db, install, diskManifest, projectId)
+        if (result) {
+          upgrades.push(result)
+          if (result.success) {
+            install.version = result.toVersion
+            install.manifestJson = diskManifest
           }
         }
       }
@@ -397,7 +412,8 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
           version: install.version,
           manifest: install.manifestJson,
           installedAt: install.installedAt
-        }))
+        })),
+        ...(upgrades.length > 0 && { upgrades })
       }
     } catch (error) {
       fastify.log.error(error)

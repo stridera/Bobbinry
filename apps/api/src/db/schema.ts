@@ -532,7 +532,9 @@ export const manifestsVersions = pgTable('manifests_versions', {
   manifestJson: jsonb('manifest_json').notNull(),
   signature: text('signature'), // For future validation/integrity
   createdAt: timestamp('created_at').defaultNow().notNull()
-})
+}, (table) => ({
+  bobbinVersionIdx: uniqueIndex('manifests_versions_bobbin_version_idx').on(table.bobbinId, table.version)
+}))
 
 // Publish targets - static site generation results
 export const publishTargets = pgTable('publish_targets', {
