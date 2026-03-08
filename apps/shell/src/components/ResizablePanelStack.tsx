@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, ReactNode, useCallback } from 'react'
+import { PanelActionsProvider } from '@bobbinry/sdk'
 
 interface PanelConfig {
   id: string
@@ -11,6 +12,7 @@ interface PanelConfig {
 interface ResizablePanelStackProps {
   panels: PanelConfig[]
   slotId: string
+  singlePanel?: boolean
 }
 
 interface PanelState {
@@ -63,8 +65,11 @@ function reconcileOrder(savedOrder: string[], panels: PanelConfig[]): string[] {
   return [...kept, ...newIds]
 }
 
-export function ResizablePanelStack({ panels, slotId }: ResizablePanelStackProps) {
+export function ResizablePanelStack({ panels, slotId, singlePanel }: ResizablePanelStackProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const actionsRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  const actionsCallbacks = useRef<Map<string, (el: HTMLDivElement | null) => void>>(new Map())
+  const [actionsTargets, setActionsTargets] = useState<Map<string, HTMLElement>>(new Map())
   const [containerHeight, setContainerHeight] = useState(600)
   const [panelState, setPanelState] = useState<PanelState>(() => {
     const saved = localStorage.getItem(`panelLayout:${slotId}`)
@@ -139,8 +144,8 @@ export function ResizablePanelStack({ panels, slotId }: ResizablePanelStackProps
       const newSizes = [...dragging.startSizes]
       const index = dragging.index
 
-      const collapsedTotal = panelState.collapsed.reduce((sum, c) => sum + (c ? HEADER_HEIGHT : 0), 0)
-      const available = cHeight - collapsedTotal - (orderedPanels.length - 1) * DIVIDER_HEIGHT
+      const allHeaders = orderedPanels.length * HEADER_HEIGHT
+      const available = cHeight - allHeaders - (orderedPanels.length - 1) * DIVIDER_HEIGHT
 
       const currentPx = ((dragging.startSizes[index] ?? 0) / 100) * available
       const nextPx = ((dragging.startSizes[index + 1] ?? 0) / 100) * available
@@ -230,10 +235,27 @@ export function ResizablePanelStack({ panels, slotId }: ResizablePanelStackProps
     setDropTarget(null)
   }, [])
 
-  // Calculate heights
-  const collapsedHeightTotal = panelState.collapsed.reduce((sum, c) => sum + (c ? HEADER_HEIGHT : 0), 0)
+  // Returns a stable ref callback per panel ID so React doesn't re-fire null→element on re-renders
+  const getActionsRef = useCallback((panelId: string) => {
+    let cb = actionsCallbacks.current.get(panelId)
+    if (!cb) {
+      cb = (el: HTMLDivElement | null) => {
+        if (el) {
+          actionsRefs.current.set(panelId, el)
+        } else {
+          actionsRefs.current.delete(panelId)
+        }
+        setActionsTargets(new Map(actionsRefs.current))
+      }
+      actionsCallbacks.current.set(panelId, cb)
+    }
+    return cb
+  }, [])
+
+  // Calculate heights — subtract ALL headers (every panel shows its header regardless of collapsed state)
+  const allHeadersHeight = orderedPanels.length * HEADER_HEIGHT
   const dividersHeightTotal = (orderedPanels.length - 1) * DIVIDER_HEIGHT
-  const availableHeight = containerHeight - collapsedHeightTotal - dividersHeightTotal
+  const availableHeight = containerHeight - allHeadersHeight - dividersHeightTotal
 
   return (
     <div ref={containerRef} className="flex flex-col h-full">
@@ -253,44 +275,59 @@ export function ResizablePanelStack({ panels, slotId }: ResizablePanelStackProps
             >
               {/* Header */}
               <div
-                className={`flex items-center gap-1.5 px-2 h-10 border-b border-gray-200 dark:border-gray-600 cursor-pointer select-none transition-colors
-                  ${isDragOver
-                    ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-400 dark:border-blue-500'
-                    : 'bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600'
+                className={`flex items-center gap-1.5 px-2 h-10 border-b border-gray-200 dark:border-gray-600 select-none transition-colors
+                  ${singlePanel
+                    ? 'bg-gray-50 dark:bg-gray-700'
+                    : `cursor-pointer ${isDragOver
+                      ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-400 dark:border-blue-500'
+                      : 'bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600'
+                    }`
                   }`}
-                draggable
-                onDragStart={(e) => handleDragStart(index, e)}
-                onDragOver={(e) => handleDragOver(index, e)}
-                onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(index, e)}
-                onDragEnd={handleDragEnd}
-                onClick={() => toggleCollapse(index)}
+                draggable={!singlePanel}
+                onDragStart={singlePanel ? undefined : (e) => handleDragStart(index, e)}
+                onDragOver={singlePanel ? undefined : (e) => handleDragOver(index, e)}
+                onDragLeave={singlePanel ? undefined : handleDragLeave}
+                onDrop={singlePanel ? undefined : (e) => handleDrop(index, e)}
+                onDragEnd={singlePanel ? undefined : handleDragEnd}
+                onClick={singlePanel ? undefined : () => toggleCollapse(index)}
               >
-                <span className="text-gray-300 dark:text-gray-500 cursor-grab active:cursor-grabbing flex-shrink-0">
-                  <GripDots />
-                </span>
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-200 flex-1 truncate">{panel.title}</span>
-                <button
-                  className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0 p-0.5"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    toggleCollapse(index)
-                  }}
-                >
-                  {isCollapsed ? <ChevronDown /> : <ChevronUp />}
-                </button>
+                {!singlePanel && (
+                  <span className="text-gray-300 dark:text-gray-500 cursor-grab active:cursor-grabbing flex-shrink-0">
+                    <GripDots />
+                  </span>
+                )}
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">{panel.title}</span>
+                {/* Portal target for panel actions */}
+                <div
+                  ref={getActionsRef(panel.id)}
+                  className="flex items-center gap-1 flex-1 justify-end"
+                  onClick={(e) => e.stopPropagation()}
+                />
+                {!singlePanel && (
+                  <button
+                    className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0 p-0.5"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleCollapse(index)
+                    }}
+                  >
+                    {isCollapsed ? <ChevronDown /> : <ChevronUp />}
+                  </button>
+                )}
               </div>
 
               {/* Content */}
               {!isCollapsed && (
                 <div className="flex-1 overflow-hidden">
-                  {panel.content}
+                  <PanelActionsProvider value={actionsTargets.get(panel.id) || null}>
+                    {panel.content}
+                  </PanelActionsProvider>
                 </div>
               )}
             </div>
 
             {/* Divider (except after last panel) */}
-            {index < orderedPanels.length - 1 && !panelState.collapsed[index] && !panelState.collapsed[index + 1] && (
+            {!singlePanel && index < orderedPanels.length - 1 && !panelState.collapsed[index] && !panelState.collapsed[index + 1] && (
               <div
                 className="h-1 bg-gray-200 dark:bg-gray-600 hover:bg-blue-400 dark:hover:bg-blue-500 cursor-row-resize active:bg-blue-500 transition-colors"
                 onMouseDown={(e) => handleDividerMouseDown(index, e)}

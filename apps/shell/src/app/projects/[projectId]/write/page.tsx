@@ -77,65 +77,58 @@ export default function ProjectWritePage() {
   }, [session?.apiToken, sdk])
 
   // Load installed bobbins and their views
-  useEffect(() => {
-    if (!session?.apiToken) return
+  const loadProject = useRef<(() => Promise<void>) | null>(null)
 
-    const loadProject = async () => {
-      try {
-        console.log('🔄 PROJECT PAGE: Starting loadProject for:', projectId)
-        setLoading(true)
-        sdk.setProject(projectId)
+  // Keep loadProject ref up to date
+  loadProject.current = async () => {
+    try {
+      console.log('🔄 PROJECT PAGE: Starting loadProject for:', projectId)
+      setLoading(true)
+      sdk.setProject(projectId)
 
-        console.log('🔄 PROJECT PAGE: About to call getInstalledBobbins...')
-        const response = await sdk.api.getInstalledBobbins(projectId)
-        console.log('🚀 PROJECT PAGE: getInstalledBobbins response:', response)
-        console.log('🚀 PROJECT PAGE: response.bobbins:', response.bobbins)
-        console.log('🚀 PROJECT PAGE: response.bobbins type:', typeof response.bobbins)
-        console.log('🚀 PROJECT PAGE: response.bobbins length:', response.bobbins?.length)
+      const response = await sdk.api.getInstalledBobbins(projectId)
 
-        const newBobbins = response.bobbins || []
-        const newBobbinIds = newBobbins.map((b: InstalledBobbin) => b.id)
+      const newBobbins = response.bobbins || []
+      const newBobbinIds = newBobbins.map((b: InstalledBobbin) => b.id)
 
-        // Unregister extensions for bobbins that were removed (using ref for previous state)
-        const removedBobbinIds = previousBobbinIdsRef.current.filter(id => !newBobbinIds.includes(id))
-        removedBobbinIds.forEach(bobbinId => {
-          console.log('🗑️ PROJECT PAGE: Unregistering extensions for removed bobbin:', bobbinId)
-          unregisterManifestExtensions(bobbinId)
+      // Unregister extensions for bobbins that were removed (using ref for previous state)
+      const removedBobbinIds = previousBobbinIdsRef.current.filter(id => !newBobbinIds.includes(id))
+      removedBobbinIds.forEach(bobbinId => {
+        unregisterManifestExtensions(bobbinId)
+      })
+
+      // Update the ref with current bobbin IDs
+      previousBobbinIdsRef.current = newBobbinIds
+
+      setInstalledBobbins(newBobbins)
+
+      // Register extensions for all installed bobbins
+      if (newBobbins.length > 0) {
+        newBobbins.forEach((bobbin: InstalledBobbin) => {
+          registerManifestExtensions(bobbin.id, bobbin.manifest)
         })
-
-        // Update the ref with current bobbin IDs
-        previousBobbinIdsRef.current = newBobbinIds
-
-        setInstalledBobbins(newBobbins)
-
-        // Register extensions for all installed bobbins
-        if (newBobbins.length > 0) {
-          console.log('🚀 PROJECT PAGE: Registering extensions for', newBobbins.length, 'bobbins')
-          newBobbins.forEach((bobbin: InstalledBobbin) => {
-            console.log('🚀 PROJECT PAGE: Registering extensions for bobbin:', bobbin.id, 'mode:', bobbin.manifest.execution?.mode)
-            registerManifestExtensions(bobbin.id, bobbin.manifest)
-          })
-        }
-
-        console.log('✅ PROJECT PAGE: Bobbins loaded and registered')
-      } catch (error) {
-        console.error('❌ PROJECT PAGE: Failed to load project:', error)
-        console.error('❌ PROJECT PAGE: Error details:', {
-          message: error instanceof Error ? error.message : 'Unknown error',
-          stack: error instanceof Error ? error.stack : undefined,
-          error
-        })
-      } finally {
-        console.log('✅ PROJECT PAGE: Setting loading=false')
-        setLoading(false)
       }
+    } catch (error) {
+      console.error('Failed to load project:', error)
+    } finally {
+      setLoading(false)
     }
+  }
 
-    if (projectId) {
-      loadProject()
-    }
+  useEffect(() => {
+    if (!session?.apiToken || !projectId) return
+    loadProject.current?.()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, sdk, session?.apiToken])
+
+  // Re-load bobbins when install/uninstall happens via the popover
+  useEffect(() => {
+    const handleBobbinsChanged = () => {
+      loadProject.current?.()
+    }
+    window.addEventListener('bobbinry:bobbins-changed', handleBobbinsChanged)
+    return () => window.removeEventListener('bobbinry:bobbins-changed', handleBobbinsChanged)
+  }, [])
 
   const navigateToBobbins = (slot?: string) => {
     const url = `/projects/${projectId}/bobbins${slot ? `?slot=${encodeURIComponent(slot)}` : ''}`
@@ -203,6 +196,7 @@ export default function ProjectWritePage() {
           projectId={projectId}
           projectName={projectName || undefined}
           user={session?.user}
+          installedBobbins={installedBobbins}
         >
           <ViewRouter projectId={projectId} sdk={sdk} />
         </ShellLayout>

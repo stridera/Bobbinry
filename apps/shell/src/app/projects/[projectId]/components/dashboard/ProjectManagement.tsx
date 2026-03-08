@@ -166,8 +166,9 @@ export function ProjectManagement({ projectId, isArchived, bobbins, onArchiveCha
               Once you delete a project, there is no going back. This action cannot be undone.
             </p>
             <button
-              onClick={() => alert('Delete functionality not yet implemented')}
-              className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors cursor-pointer"
+              disabled
+              title="Coming soon"
+              className="px-4 py-1.5 bg-red-600/50 text-white/70 rounded-lg text-sm font-medium cursor-not-allowed"
             >
               Delete Project
             </button>

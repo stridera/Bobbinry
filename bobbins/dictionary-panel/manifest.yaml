@@ -2,10 +2,10 @@ id: dictionary-panel
 name: Dictionary Panel
 version: 1.0.0
 author: "Bobbins Samples"
-description: "Right-side panel that listens to Manuscript selection events and shows a local dictionary entry. No external network required."
-tags: [panel, dictionary, pubsub]
+description: "Right-side panel with dictionary definitions and thesaurus. Looks up selected words via Free Dictionary API and Datamuse."
+tags: [panel, dictionary, thesaurus, pubsub]
 license: MIT
-capabilities: { publishable: false, external: false, ai: false, customViews: true }
+capabilities: { publishable: false, external: true, ai: false, customViews: true }
 execution:
   mode: sandboxed
 data: { collections: [] }

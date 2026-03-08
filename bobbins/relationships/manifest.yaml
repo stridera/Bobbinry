@@ -1,0 +1,79 @@
+id: relationships
+name: Relationships
+version: 1.0.0
+author: "Bobbins Core"
+description: "Graph and matrix views for entity connections across any bobbin"
+tags: [relationships, graph, connections, worldbuilding]
+license: MIT
+
+capabilities:
+  publishable: false
+  external: false
+  ai: false
+  customViews: true
+
+execution:
+  mode: native
+  signature: dev_mode_skip
+
+data:
+  collections:
+    - name: relationships
+      fields:
+        - { name: source_entity_id, type: text, required: true }
+        - { name: target_entity_id, type: text, required: true }
+        - { name: source_collection, type: text, required: true }
+        - { name: target_collection, type: text, required: true }
+        - { name: relationship_type, type: text, required: true }
+        - { name: label, type: text }
+        - { name: description, type: text }
+        - { name: bidirectional, type: boolean }
+        - { name: strength, type: text }
+        - { name: color, type: text }
+
+ui:
+  views:
+    - id: graph
+      name: Graph
+      type: custom
+      source: "*"
+      handlers:
+        - "*"
+    - id: matrix
+      name: Matrix
+      type: custom
+      source: "*"
+      handlers:
+        - "*"
+    - id: relationship-editor
+      name: Relationship Editor
+      type: custom
+      source: "*"
+      handlers:
+        - "*"
+
+interactions:
+  actions:
+    - id: create_relationship
+      name: Create Relationship
+      type: create
+      target: relationships
+
+extensions:
+  contributions:
+    - slot: shell.leftPanel
+      type: panel
+      id: navigation
+      title: "Relationships"
+      entry: panels/navigation
+
+external: null
+
+linking:
+  entities: []
+
+publish: null
+
+compatibility:
+  minShellVersion: 1.0.0
+  migrations: []

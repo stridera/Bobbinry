@@ -765,5 +765,8 @@ export {
   useBoolean
 } from './hooks'
 
+// Panel actions portal
+export { PanelActionsProvider, PanelActions } from './panel-actions'
+
 // Convenience exports
 export * from '@bobbinry/types'

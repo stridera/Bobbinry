@@ -145,10 +145,11 @@ export default function EntityEditorView({
     })
 
     setEntity(defaultEntity)
-    setSaveStatus('unsaved')
+    // Don't mark as unsaved — wait for user to actually edit a field
+    setSaveStatus('saved')
   }
 
-  async function saveEntity() {
+  async function saveEntity(manual = false) {
     if (!entityType || !entity || !typeConfig) return
 
     try {
@@ -172,6 +173,12 @@ export default function EntityEditorView({
       })
 
       if (missingFields.length > 0) {
+        if (!manual) {
+          // Auto-save: silently skip if required fields aren't filled
+          setSaving(false)
+          setSaveStatus('unsaved')
+          return
+        }
         throw new Error(`Missing required fields: ${missingFields.join(', ')}`)
       }
 
@@ -375,7 +382,7 @@ export default function EntityEditorView({
           </span>
 
           <button
-            onClick={saveEntity}
+            onClick={() => saveEntity(true)}
             disabled={saving || saveStatus === 'saved'}
             className={`px-4 py-2 rounded font-medium ${
               saveStatus === 'saved'

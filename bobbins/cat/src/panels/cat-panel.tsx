@@ -115,10 +115,6 @@ export default function CatPanel() {
 
   return (
     <div className="flex flex-col items-center gap-3 p-3 h-full">
-      <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400 w-full text-center">
-        Cat Companion
-      </h3>
-
       {catImage ? (
         <div className="w-full flex flex-col items-center gap-2">
           <div

@@ -1,0 +1,86 @@
+id: goals
+name: Goals & Progress
+version: 1.0.0
+author: "Bobbins Core"
+description: "Word count goals, writing sessions, streaks, and progress visualization"
+tags: [goals, progress, writing, tracking]
+license: MIT
+
+capabilities:
+  publishable: false
+  external: false
+  ai: false
+  customViews: true
+
+execution:
+  mode: native
+  signature: dev_mode_skip
+
+data:
+  collections:
+    - name: goals
+      fields:
+        - { name: name, type: text, required: true }
+        - { name: type, type: text }
+        - { name: target_count, type: number, required: true }
+        - { name: current_count, type: number }
+        - { name: start_date, type: datetime }
+        - { name: end_date, type: datetime }
+        - { name: status, type: text }
+    - name: writing_sessions
+      fields:
+        - { name: start_time, type: datetime, required: true }
+        - { name: end_time, type: datetime }
+        - { name: word_count, type: number, required: true }
+        - { name: notes, type: text }
+        - { name: goal_id, type: text }
+    - name: streaks
+      fields:
+        - { name: current_streak, type: number }
+        - { name: longest_streak, type: number }
+        - { name: last_writing_date, type: datetime }
+
+ui:
+  views:
+    - id: dashboard
+      name: Dashboard
+      type: custom
+      source: "*"
+      handlers:
+        - "*"
+    - id: goal-editor
+      name: Goal Editor
+      type: custom
+      source: "*"
+      handlers:
+        - "*"
+
+interactions:
+  actions:
+    - id: create_goal
+      name: Create Goal
+      type: create
+      target: goals
+    - id: log_session
+      name: Log Writing Session
+      type: create
+      target: writing_sessions
+
+extensions:
+  contributions:
+    - slot: shell.rightPanel
+      type: panel
+      id: progress
+      title: "Progress"
+      entry: panels/progress
+
+external: null
+
+linking:
+  entities: []
+
+publish: null
+
+compatibility:
+  minShellVersion: 1.0.0
+  migrations: []

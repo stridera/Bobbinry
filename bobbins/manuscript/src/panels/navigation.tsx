@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
-import { BobbinrySDK } from '@bobbinry/sdk'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { BobbinrySDK, PanelActions } from '@bobbinry/sdk'
+import { Toast, ToastContainer } from '@bobbinry/ui-components'
 
 interface NavigationPanelProps {
   context?: {
@@ -41,6 +42,8 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   const [editingValue, setEditingValue] = useState('')
   const [draggedNode, setDraggedNode] = useState<{ id: string; nodeType: 'container' | 'content' } | null>(null)
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
+  const [toast, setToast] = useState<{ message: string; variant: 'danger' } | null>(null)
+  const dismissToast = useCallback(() => setToast(null), [])
 
   // Track auto-selection: only auto-navigate to first item once per mount
   const hasAutoSelectedRef = useRef(false)
@@ -249,6 +252,41 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
       nodeParentMap.current = parentMap
       setTree(treeData)
 
+      // Auto-create first content item if the manuscript is completely empty
+      if (!hasAutoSelectedRef.current && treeData.length === 0) {
+        hasAutoSelectedRef.current = true
+        try {
+          const newContent = await sdk.entities.create('content', {
+            title: 'Untitled',
+            type: 'scene',
+            order: 100,
+            word_count: 0,
+            status: 'draft',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }) as any
+
+          const newNode: TreeNode = {
+            id: newContent.id,
+            title: 'Untitled',
+            nodeType: 'content',
+            type: 'scene',
+            order: 100,
+            parentId: null
+          }
+          setTree([newNode])
+          setSelectedNodeId(newContent.id)
+          // Delay navigation to let ViewRouter finish mounting and register listeners
+          autoSelectTimerRef.current = setTimeout(() => {
+            autoSelectTimerRef.current = null
+            handleNodeClick(newNode)
+          }, 150)
+        } catch (error) {
+          console.error('[NavigationPanel] Failed to auto-create content:', error)
+        }
+        return
+      }
+
       // Auto-select first content item on initial load if nothing is selected
       if (!hasAutoSelectedRef.current && treeData.length > 0) {
         hasAutoSelectedRef.current = true
@@ -345,7 +383,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
       setEditingValue('New Container')
     } catch (error) {
       console.error('Failed to create container:', error)
-      alert('Failed to create container: ' + (error instanceof Error ? error.message : 'Unknown error'))
+      setToast({ message: 'Failed to create container: ' + (error instanceof Error ? error.message : 'Unknown error'), variant: 'danger' })
     }
   }
 
@@ -372,7 +410,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
       setEditingValue('New Content')
     } catch (error) {
       console.error('Failed to create content:', error)
-      alert('Failed to create content: ' + (error instanceof Error ? error.message : 'Unknown error'))
+      setToast({ message: 'Failed to create content: ' + (error instanceof Error ? error.message : 'Unknown error'), variant: 'danger' })
     }
   }
 
@@ -393,7 +431,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
       setEditingNodeId(null)
     } catch (error) {
       console.error('Failed to rename:', error)
-      alert('Failed to rename: ' + (error instanceof Error ? error.message : 'Unknown error'))
+      setToast({ message: 'Failed to rename: ' + (error instanceof Error ? error.message : 'Unknown error'), variant: 'danger' })
     }
   }
 
@@ -417,7 +455,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
       }
     } catch (error) {
       console.error('Failed to delete:', error)
-      alert('Failed to delete: ' + (error instanceof Error ? error.message : 'Unknown error'))
+      setToast({ message: 'Failed to delete: ' + (error instanceof Error ? error.message : 'Unknown error'), variant: 'danger' })
     }
   }
 
@@ -534,7 +572,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
       }
     } catch (error) {
       console.error('Failed to drop:', error)
-      alert('Failed to move item: ' + (error instanceof Error ? error.message : 'Unknown error'))
+      setToast({ message: 'Failed to move item: ' + (error instanceof Error ? error.message : 'Unknown error'), variant: 'danger' })
     } finally {
       setDraggedNode(null)
       setDropTarget(null)
@@ -676,13 +714,13 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
           onDragLeave={handleDragLeaveNode}
           onDrop={(e) => handleDropOnNode(e, node.id, isContainer)}
           onDragEnd={handleDragEnd}
-          className={`pr-2 py-1 cursor-pointer hover:bg-gray-700 text-sm flex items-center gap-1.5 ${isSelected ? 'bg-gray-700' : ''} ${isDropInside ? 'bg-blue-600' : ''} ${isDragging ? 'opacity-40' : ''}`}
+          className={`pr-2 py-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 text-sm flex items-center gap-1.5 ${isSelected ? 'bg-gray-100 dark:bg-gray-700' : ''} ${isDropInside ? 'bg-blue-600' : ''} ${isDragging ? 'opacity-40' : ''}`}
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
           onContextMenu={(e) => handleContextMenu(e, node.id, node.nodeType)}
         >
           {hasChildren && (
             <span
-              className="text-gray-400 text-xs w-3 flex-shrink-0 hover:text-gray-200"
+              className="text-gray-400 text-xs w-3 flex-shrink-0 hover:text-gray-600 dark:hover:text-gray-200"
               onClick={(e) => {
                 e.stopPropagation()
                 toggleNode(node.id)
@@ -718,12 +756,12 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
               }}
               autoFocus
               onFocus={(e) => e.target.select()}
-              className="flex-1 px-1 py-0.5 bg-gray-800 border border-gray-600 rounded text-gray-100"
+              className="flex-1 px-1 py-0.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-gray-100"
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
             <span
-              className="flex-1 text-gray-200 truncate"
+              className="flex-1 text-gray-800 dark:text-gray-200 truncate"
               onClick={(e) => {
                 e.stopPropagation()
                 if (!isEditing) handleNodeClick(node)
@@ -775,68 +813,68 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   }
 
   return (
-    <div className="h-full flex flex-col bg-gray-800">
-      <div className="px-3 py-2 border-b border-gray-700 flex justify-between items-center">
-        <div className="flex items-center gap-2">
-          <h3
-            className="text-sm font-semibold text-gray-200 cursor-pointer hover:text-white transition-colors"
-            onClick={() => {
-              setSelectedNodeId(null)
-              if (typeof window !== 'undefined') {
-                window.dispatchEvent(
-                  new CustomEvent('bobbinry:navigate', {
-                    detail: {
-                      entityType: 'container',
-                      entityId: 'ROOT',
-                      bobbinId: 'manuscript',
-                      metadata: { type: 'root' }
-                    }
-                  })
-                )
-              }
-            }}
-            title="View entire manuscript"
-          >📝 Manuscript</h3>
-          <div className="relative dropdown-container">
-            <button
-              onClick={() => setShowDropdown(!showDropdown)}
-              className="text-lg leading-none text-gray-400 hover:text-gray-200 w-6 h-6 flex items-center justify-center"
-              title="Create new item"
-            >
-              +
-            </button>
-            {showDropdown && (
-              <div className="absolute left-0 top-full mt-1 bg-gray-700 border border-gray-600 rounded shadow-lg z-10 min-w-[150px]">
-                <button
-                  onClick={() => {
-                    createContainer(null)
-                    setShowDropdown(false)
-                  }}
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-600 text-gray-100"
-                >
-                  📁 Create Container
-                </button>
-                <button
-                  onClick={() => {
-                    createContent(null)
-                    setShowDropdown(false)
-                  }}
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-600 text-gray-100 border-t border-gray-600"
-                >
-                  📝 Create Content
-                </button>
-              </div>
-            )}
-          </div>
+    <div className="h-full flex flex-col bg-white dark:bg-gray-800">
+      <PanelActions>
+        <button
+          onClick={() => {
+            setSelectedNodeId(null)
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(
+                new CustomEvent('bobbinry:navigate', {
+                  detail: {
+                    entityType: 'container',
+                    entityId: 'ROOT',
+                    bobbinId: 'manuscript',
+                    metadata: { type: 'root' }
+                  }
+                })
+              )
+            }
+          }}
+          className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+          title="View entire manuscript"
+        >
+          ⌂
+        </button>
+        <div className="relative dropdown-container">
+          <button
+            onClick={() => setShowDropdown(!showDropdown)}
+            className="text-lg leading-none text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 w-6 h-6 flex items-center justify-center"
+            title="Create new item"
+          >
+            +
+          </button>
+          {showDropdown && (
+            <div className="absolute right-0 top-full mt-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded shadow-lg z-50 min-w-[150px]">
+              <button
+                onClick={() => {
+                  createContainer(null)
+                  setShowDropdown(false)
+                }}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100"
+              >
+                📁 Create Container
+              </button>
+              <button
+                onClick={() => {
+                  createContent(null)
+                  setShowDropdown(false)
+                }}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100 border-t border-gray-200 dark:border-gray-600"
+              >
+                📝 Create Content
+              </button>
+            </div>
+          )}
         </div>
         <button
           onClick={loadTree}
-          className="text-xs text-gray-400 hover:text-gray-200"
+          className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
           title="Refresh"
         >
           ↻
         </button>
-      </div>
+      </PanelActions>
 
       <div
         className="flex-1 overflow-y-auto"
@@ -847,11 +885,11 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
         onDrop={handleDropOnRoot}
       >
         {tree.length === 0 ? (
-          <div className="p-4 text-center text-sm text-gray-400">
+          <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
             <div className="mb-3">No content yet</div>
             <button
               onClick={() => createContainer(null)}
-              className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 rounded"
+              className="px-3 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded"
             >
               Create Your First Container
             </button>
@@ -926,6 +964,11 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
           </div>
         )
       })()}
+      {toast && (
+        <ToastContainer position="bottom-center">
+          <Toast message={toast.message} variant={toast.variant} duration={4000} onDismiss={dismissToast} />
+        </ToastContainer>
+      )}
     </div>
   )
 }

@@ -12,8 +12,9 @@
  * - Save functionality that writes to entity_type_definitions table
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
+import { Toast, ToastContainer } from '@bobbinry/ui-components'
 import { templates } from '../templates'
 import type { EntityTemplate, EntityTypeDefinition, FieldDefinition, EditorLayout, ListLayout } from '../types'
 import { TemplatePreviewModal } from '../components/TemplatePreviewModal'
@@ -33,6 +34,10 @@ export default function ConfigView({ projectId, sdk }: ConfigViewProps) {
   const [showTemplateSelector, setShowTemplateSelector] = useState(true)
   const [previewTemplate, setPreviewTemplate] = useState<EntityTemplate | null>(null)
   
+  // Toast state
+  const [toast, setToast] = useState<{ message: string; variant: 'success' | 'danger' } | null>(null)
+  const dismissToast = useCallback(() => setToast(null), [])
+
   // Customization state
   const [customFields, setCustomFields] = useState<FieldDefinition[]>([])
   const [entityLabel, setEntityLabel] = useState('')
@@ -142,9 +147,7 @@ export default function ConfigView({ projectId, sdk }: ConfigViewProps) {
       const result = await response.json()
       console.log('[ConfigView] Entity type saved:', result)
 
-      alert(`Entity type "${entityLabel}" saved successfully!
-
-The entity type is now available in the navigation panel.`)
+      setToast({ message: `Entity type "${entityLabel}" saved! It's now available in the navigation panel.`, variant: 'success' })
 
       // Reload entity types and return to template selector
       await loadEntityTypes()
@@ -152,7 +155,7 @@ The entity type is now available in the navigation panel.`)
       setSelectedTemplate(null)
     } catch (error) {
       console.error('[ConfigView] Failed to save entity type:', error)
-      alert('Failed to save entity type. Check console for details.')
+      setToast({ message: 'Failed to save entity type. Check console for details.', variant: 'danger' })
     }
   }
 
@@ -293,6 +296,11 @@ The entity type is now available in the navigation panel.`)
           />
         )}
       </div>
+      {toast && (
+        <ToastContainer position="bottom-center">
+          <Toast message={toast.message} variant={toast.variant} duration={4000} onDismiss={dismissToast} />
+        </ToastContainer>
+      )}
       </>
     )
   }
@@ -417,6 +425,11 @@ The entity type is now available in the navigation panel.`)
         </button>
       </div>
     </div>
+    {toast && (
+      <ToastContainer position="bottom-center">
+        <Toast message={toast.message} variant={toast.variant} duration={4000} onDismiss={dismissToast} />
+      </ToastContainer>
+    )}
     </>
   )
 }

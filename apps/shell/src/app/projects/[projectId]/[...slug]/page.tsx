@@ -76,46 +76,58 @@ export default function ProjectDeepLinkPage() {
   }, [session?.apiToken, sdk])
 
   // Load installed bobbins and their views
-  useEffect(() => {
-    if (!session?.apiToken) return
+  const previousBobbinIdsRef = useRef<string[]>([])
+  const loadProject = useRef<(() => Promise<void>) | null>(null)
 
-    const loadProject = async () => {
-      try {
-        console.log('🔄 DEEP LINK PAGE: Starting loadProject for:', projectId)
-        setLoading(true)
-        sdk.setProject(projectId)
+  // Keep loadProject ref up to date
+  loadProject.current = async () => {
+    try {
+      console.log('🔄 DEEP LINK PAGE: Starting loadProject for:', projectId)
+      setLoading(true)
+      sdk.setProject(projectId)
 
-        const response = await sdk.api.getInstalledBobbins(projectId)
-        const newBobbins = response.bobbins || []
-        const oldBobbinIds = installedBobbins.map(b => b.id)
-        const newBobbinIds = newBobbins.map((b: InstalledBobbin) => b.id)
+      const response = await sdk.api.getInstalledBobbins(projectId)
+      const newBobbins = response.bobbins || []
+      const newBobbinIds = newBobbins.map((b: InstalledBobbin) => b.id)
 
-        // Unregister extensions for bobbins that were removed
-        const removedBobbinIds = oldBobbinIds.filter(id => !newBobbinIds.includes(id))
-        removedBobbinIds.forEach(bobbinId => {
-          unregisterManifestExtensions(bobbinId)
+      // Unregister extensions for bobbins that were removed (using ref for previous state)
+      const removedBobbinIds = previousBobbinIdsRef.current.filter(id => !newBobbinIds.includes(id))
+      removedBobbinIds.forEach(bobbinId => {
+        unregisterManifestExtensions(bobbinId)
+      })
+
+      // Update the ref with current bobbin IDs
+      previousBobbinIdsRef.current = newBobbinIds
+
+      setInstalledBobbins(newBobbins)
+
+      // Register extensions for all installed bobbins
+      if (newBobbins.length > 0) {
+        newBobbins.forEach((bobbin: InstalledBobbin) => {
+          registerManifestExtensions(bobbin.id, bobbin.manifest)
         })
-
-        setInstalledBobbins(newBobbins)
-
-        // Register extensions for all installed bobbins
-        if (newBobbins.length > 0) {
-          newBobbins.forEach((bobbin: InstalledBobbin) => {
-            registerManifestExtensions(bobbin.id, bobbin.manifest)
-          })
-        }
-      } catch (error) {
-        console.error('❌ DEEP LINK PAGE: Failed to load project:', error)
-      } finally {
-        setLoading(false)
       }
+    } catch (error) {
+      console.error('❌ DEEP LINK PAGE: Failed to load project:', error)
+    } finally {
+      setLoading(false)
     }
-    
-    if (projectId) {
-      loadProject()
-    }
+  }
+
+  useEffect(() => {
+    if (!session?.apiToken || !projectId) return
+    loadProject.current?.()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, sdk, session?.apiToken])
+
+  // Re-load bobbins when install/uninstall happens via the popover
+  useEffect(() => {
+    const handleBobbinsChanged = () => {
+      loadProject.current?.()
+    }
+    window.addEventListener('bobbinry:bobbins-changed', handleBobbinsChanged)
+    return () => window.removeEventListener('bobbinry:bobbins-changed', handleBobbinsChanged)
+  }, [])
 
   // Parse the slug and trigger navigation once loaded
   const slugKey = slug?.join('/') || ''
@@ -185,6 +197,7 @@ export default function ProjectDeepLinkPage() {
       projectId={projectId}
       projectName={projectName || undefined}
       user={session?.user}
+      installedBobbins={installedBobbins}
     >
       <ViewRouter projectId={projectId} sdk={sdk} />
     </ShellLayout>

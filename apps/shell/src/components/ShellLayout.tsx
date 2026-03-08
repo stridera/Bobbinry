@@ -4,6 +4,17 @@ import { ReactNode, useState, useMemo, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { ExtensionSlot } from './ExtensionSlot'
 import { UserMenu } from './UserMenu'
+import { BobbinManagerPopover } from './bobbins'
+
+interface InstalledBobbin {
+  id: string
+  version: string
+  manifest: {
+    name: string
+    description?: string
+  }
+  installedAt: string
+}
 
 interface ShellLayoutProps {
   children: ReactNode
@@ -13,6 +24,7 @@ interface ShellLayoutProps {
   projectId?: string | undefined
   projectName?: string | undefined
   user?: { id: string; email: string; name?: string | null } | undefined
+  installedBobbins?: InstalledBobbin[]
 }
 
 function EmptySlotFallback({
@@ -45,7 +57,7 @@ function EmptySlotFallback({
   )
 }
 
-export function ShellLayout({ children, currentView = 'default', context = {}, onOpenMarketplace, projectId, projectName, user }: ShellLayoutProps) {
+export function ShellLayout({ children, currentView = 'default', context = {}, onOpenMarketplace, projectId, projectName, user, installedBobbins = [] }: ShellLayoutProps) {
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false)
   const [isHydrated, setIsHydrated] = useState(false)
@@ -61,7 +73,7 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
   useEffect(() => {
     const handleViewContextChange = (event: Event) => {
       const customEvent = event as CustomEvent<Record<string, any>>
-      setDynamicContext(customEvent.detail)
+      setDynamicContext(prev => ({ ...prev, ...customEvent.detail }))
     }
 
     if (typeof window !== 'undefined') {
@@ -177,6 +189,13 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
 
         {/* Right: user, panel toggle */}
         <div className="flex items-center gap-0.5 shrink-0">
+          {projectId && (
+            <BobbinManagerPopover
+              projectId={projectId}
+              installedBobbins={installedBobbins}
+              onOpenFullMarketplace={onOpenMarketplace ? () => onOpenMarketplace() : undefined}
+            />
+          )}
           {user && <UserMenu user={user} />}
           <button
             onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}

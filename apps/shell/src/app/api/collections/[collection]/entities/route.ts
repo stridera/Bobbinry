@@ -19,21 +19,27 @@ export async function GET(
 
     const { collection } = await params
     const { db, entities } = await import('@/lib/db')
-    const { eq, and } = await import('drizzle-orm')
+    const { eq, and, sql } = await import('drizzle-orm')
 
     console.log(`[API] GET /api/collections/${collection}/entities`, { projectId, limit, offset })
 
-    const results = await db
-      .select()
-      .from(entities)
-      .where(
-        and(
-          eq(entities.projectId, projectId),
-          eq(entities.collectionName, collection)
-        )
-      )
-      .limit(parseInt(limit))
-      .offset(parseInt(offset))
+    const whereCondition = and(
+      eq(entities.projectId, projectId),
+      eq(entities.collectionName, collection)
+    )
+
+    // Run count and data queries in parallel
+    const [countResult, results] = await Promise.all([
+      db.select({ count: sql<number>`count(*)` }).from(entities).where(whereCondition),
+      db
+        .select()
+        .from(entities)
+        .where(whereCondition)
+        .limit(parseInt(limit))
+        .offset(parseInt(offset))
+    ])
+
+    const total = Number(countResult[0]?.count ?? 0)
 
     // Transform results to extract entity data
     const transformedEntities = results.map(row => ({
@@ -45,7 +51,7 @@ export async function GET(
 
     return NextResponse.json({
       entities: transformedEntities,
-      total: transformedEntities.length,
+      total,
       limit: parseInt(limit),
       offset: parseInt(offset)
     })

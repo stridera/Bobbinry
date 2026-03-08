@@ -179,22 +179,17 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
       return prevIds === newIds ? prev : views
     })
 
-    if (views.length === 0) {
-      console.warn(`[ViewRouter] No views found for entity type: ${entityType}`)
-      setActiveViewId(null)
-      setViewComponent(null)
-      return
-    }
-
     // Determine which view to use:
-    // 1. Explicit request in metadata
+    // 1. Explicit request in metadata (look up directly by bobbin.viewId)
     // 2. Saved preference for this entity type
     // 3. First (highest priority)
-    let selected: ViewRegistryEntry = views[0]!
+    let selected: ViewRegistryEntry | undefined = views[0]
 
     if (currentNav.metadata?.view) {
       const requestedId = `${currentNav.bobbinId}.${currentNav.metadata.view}`
       const match = views.find(v => v.viewId === requestedId)
+        // Direct registry lookup — the view may not match by handler (e.g. dynamic entity types)
+        || viewRegistry.get(requestedId)
       if (match) selected = match
     } else {
       const pref = getViewPreference(entityType)
@@ -202,6 +197,13 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
         const match = views.find(v => v.viewId === pref)
         if (match) selected = match
       }
+    }
+
+    if (!selected) {
+      console.warn(`[ViewRouter] No views found for entity type: ${entityType}`)
+      setActiveViewId(null)
+      setViewComponent(null)
+      return
     }
 
     setActiveViewId(selected.viewId)

@@ -133,10 +133,7 @@ export function CompactCardLayout({
                   if (!fieldDef) return null
 
                   return (
-                    <div key={fieldName} className="space-y-1">
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        {fieldDef.label}
-                      </label>
+                    <div key={fieldName}>
                       {renderField(
                         fieldDef,
                         entity[fieldName],
@@ -157,10 +154,7 @@ export function CompactCardLayout({
                   if (!fieldDef) return null
 
                   return (
-                    <div key={fieldName} className="space-y-1">
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        {fieldDef.label}
-                      </label>
+                    <div key={fieldName}>
                       {renderField(
                         fieldDef,
                         entity[fieldName],
@@ -181,18 +175,13 @@ export function CompactCardLayout({
                   if (!fieldDef) return null
 
                   return (
-                    <div key={fieldName} className="space-y-1">
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        {fieldDef.label}
-                      </label>
-                      <div className="font-mono text-sm bg-gray-50 dark:bg-gray-800 p-3 rounded border border-gray-300 dark:border-gray-600">
-                        {renderField(
-                          { ...fieldDef, type: 'json' },
-                          entity[fieldName],
-                          (value) => onFieldChange(fieldName, value),
-                          readonly
-                        )}
-                      </div>
+                    <div key={fieldName}>
+                      {renderField(
+                        { ...fieldDef, type: 'json' },
+                        entity[fieldName],
+                        (value) => onFieldChange(fieldName, value),
+                        readonly
+                      )}
                     </div>
                   )
                 })}
@@ -207,10 +196,7 @@ export function CompactCardLayout({
                   if (!fieldDef) return null
 
                   return (
-                    <div key={fieldName} className="space-y-1">
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        {fieldDef.label}
-                      </label>
+                    <div key={fieldName}>
                       {renderField(
                         { ...fieldDef, type: 'rich-text' },
                         entity[fieldName],

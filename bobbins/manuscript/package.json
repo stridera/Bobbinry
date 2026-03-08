@@ -24,6 +24,7 @@
     "@bobbinry/sdk": "workspace:*",
     "@bobbinry/types": "workspace:*",
     "@bobbinry/ui-components": "workspace:*",
+    "@tiptap/core": "^3.6.2",
     "@tiptap/extension-character-count": "^3.6.2",
     "@tiptap/extension-image": "^3.20.0",
     "@tiptap/extension-placeholder": "^3.6.2",

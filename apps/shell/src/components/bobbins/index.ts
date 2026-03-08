@@ -1,4 +1,5 @@
 export { BobbinCard } from './BobbinCard'
+export { BobbinManagerPopover } from './BobbinManagerPopover'
 export { BobbinDetailModal } from './BobbinDetailModal'
 export { BobbinFilters } from './BobbinFilters'
 export { ProjectPickerPopover } from './ProjectPickerPopover'

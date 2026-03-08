@@ -252,28 +252,10 @@ export function ExtensionSlot({
     )
   }
 
-  // Use ResizablePanelStack for multiple extensions
-  if (extensions.length > 1) {
-    return (
-      <div className={className}>
-        <ResizablePanelStack panels={panels} slotId={slotId} />
-      </div>
-    )
-  }
-
-  // Single extension - use original simple layout
-  const extension = extensions[0]!
+  // Use ResizablePanelStack for all extensions (single or multiple)
   return (
     <div className={className}>
-      <div className="h-full">
-        <PanelContent
-          extension={extension}
-          context={context}
-          theme={theme}
-          iframeRefs={iframeRefs}
-          buildShellConfig={buildShellConfig}
-        />
-      </div>
+      <ResizablePanelStack panels={panels} slotId={slotId} singlePanel={extensions.length === 1} />
     </div>
   )
 }

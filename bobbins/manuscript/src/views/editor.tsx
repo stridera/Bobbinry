@@ -6,6 +6,8 @@ import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import CharacterCount from '@tiptap/extension-character-count'
 import { ImageUpload } from '../extensions/image-upload'
+import { EntityHighlight } from '../extensions/entity-highlight'
+import type { EntityEntry } from '../extensions/entity-highlight'
 
 interface EditorViewProps {
   projectId: string
@@ -371,6 +373,7 @@ export default function EditorView({ sdk, projectId, entityType, entityId }: Edi
         inline: false,
         allowBase64: false,
       } as any),
+      EntityHighlight,
     ],
     content: '',
     immediatelyRender: false,
@@ -387,7 +390,7 @@ export default function EditorView({ sdk, projectId, entityType, entityId }: Edi
       setWordCount(count)
       // Broadcast word count for shell.editorFooter session stats
       window.dispatchEvent(new CustomEvent('bobbinry:view-context-change', {
-        detail: { wordCount: count, currentView: 'project' }
+        detail: { wordCount: count }
       }))
       // Broadcast text content for bobbins that need to detect typed words
       window.dispatchEvent(new CustomEvent('bobbinry:editor-content-update', {
@@ -469,6 +472,85 @@ export default function EditorView({ sdk, projectId, entityType, entityId }: Edi
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [])
+
+  // --- Entity highlight: load entity names for decoration ---
+  useEffect(() => {
+    if (!editor || !projectId) return
+
+    async function loadEntityNames() {
+      try {
+        const typeDefsRes = await sdk.entities.query({
+          collection: 'entity_type_definitions',
+          limit: 100,
+        })
+        const typeDefs = (typeDefsRes.data as any[]) || []
+
+        const entityResults = await Promise.all(
+          typeDefs.map(async (td) => {
+            const typeId = (td.typeId || td.type_id) as string
+            const typeIcon = (td.icon || '') as string
+            const typeLabel = (td.label || typeId) as string
+            try {
+              const entitiesRes = await sdk.entities.query({
+                collection: typeId,
+                limit: 500,
+              })
+              return ((entitiesRes.data as any[]) || [])
+                .filter((entity: any) => entity.name)
+                .map((entity: any) => ({
+                  id: entity.id,
+                  name: entity.name,
+                  typeId,
+                  typeIcon,
+                  typeLabel,
+                }))
+            } catch {
+              return [] // Skip types that fail to query
+            }
+          })
+        )
+        const entries: EntityEntry[] = entityResults.flat()
+
+        // Update extension storage and trigger decoration rebuild
+        if (!editor) return
+        ;(editor.storage as any).entityHighlight.entityList = entries
+        editor.view.dispatch(
+          editor.state.tr.setMeta('entityListUpdated', true)
+        )
+      } catch (err) {
+        console.error('[EditorView] Failed to load entity names:', err)
+      }
+    }
+
+    loadEntityNames()
+
+    // Re-load when entities are added/renamed/deleted
+    function handleEntityUpdated() {
+      loadEntityNames()
+    }
+    window.addEventListener('bobbinry:entity-updated', handleEntityUpdated)
+    return () => window.removeEventListener('bobbinry:entity-updated', handleEntityUpdated)
+  }, [editor, projectId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // --- Inject entity-highlight CSS ---
+  useEffect(() => {
+    const style = document.createElement('style')
+    style.textContent = `
+      .entity-highlight {
+        text-decoration: underline;
+        text-decoration-style: dotted;
+        text-decoration-color: rgb(147, 130, 220);
+        text-underline-offset: 3px;
+        cursor: pointer;
+        border-radius: 2px;
+      }
+      .entity-highlight:hover {
+        background-color: rgba(147, 130, 220, 0.15);
+      }
+    `
+    document.head.appendChild(style)
+    return () => { document.head.removeChild(style) }
   }, [])
 
   /**
