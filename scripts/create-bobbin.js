@@ -73,8 +73,8 @@ Object.entries(files).forEach(([relativePath, content]) => {
 console.log(`\n✅ Bobbin "${bobbinName}" created successfully!\n`)
 console.log('Next steps:')
 console.log(`  1. cd bobbins/${bobbinName}`)
-console.log(`  2. pnpm install`)
-console.log(`  3. pnpm build`)
+console.log(`  2. bun install`)
+console.log(`  3. bun run build`)
 console.log(`  4. Edit manifest.yaml to define your data model`)
 console.log(`  5. Customize src/views/main.tsx for your UI\n`)
 console.log(`📚 See docs/BOBBIN_DEVELOPMENT_GUIDE.md for more info\n`)
@@ -119,31 +119,39 @@ execution:
 
 data:
   collections:
-    - name: Item
+    - name: items
       fields:
         - { name: title, type: text, required: true }
         - { name: description, type: text }
         - { name: status, type: text }
-        - { name: created_at, type: timestamp }
-        - { name: updated_at, type: timestamp }
+        - { name: created_at, type: datetime }
+        - { name: updated_at, type: datetime }
 
 ui:
   views:
     - id: main
       name: Main View
-      type: list
-      source: Item
-      layout:
-        display:
-          title: title
-          subtitle: description
+      type: custom
+      source: "*"
+      handlers:
+        - "*"
 
 interactions:
   actions:
     - id: create_item
       name: Create Item
       type: create
-      target: Item
+      target: items
+
+extensions:
+  contributions:
+    - slot: shell.rightPanel
+      type: panel
+      id: ${id}-sidebar
+      title: "${name}"
+      entry: panels/sidebar
+      when:
+        inView: project
 
 compatibility:
   minShellVersion: 1.0.0
@@ -153,30 +161,35 @@ compatibility:
 
 function generatePackageJson(name) {
   return `{
-  "name": "@bobbins/${name}",
+  "name": "@bobbinry/${name}",
   "version": "0.1.0",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./views/*": "./src/views/*.tsx",
+    "./panels/*": "./src/panels/*.tsx"
+  },
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch",
-    "test": "vitest"
+    "dev": "tsc --noEmit --watch --preserveWatchOutput",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
   },
   "dependencies": {
     "@bobbinry/sdk": "workspace:*",
     "@bobbinry/types": "workspace:*",
-    "@bobbinry/ui-components": "workspace:*",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "@bobbinry/ui-components": "workspace:*"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
-    "@types/react": "^19.0.6",
-    "@types/react-dom": "^19.0.6",
-    "typescript": "^5.7.3",
-    "vitest": "^2.1.8"
+    "@types/react": "^19.2.14",
+    "typescript": "6.0.0-beta"
   }
 }
 `
@@ -184,17 +197,23 @@ function generatePackageJson(name) {
 
 function generateTsConfig() {
   return `{
-  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
     "outDir": "./dist",
     "rootDir": "./src",
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "jsx": "react-jsx",
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "lib": ["ES2022", "DOM"]
+    "noEmit": false
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.test.tsx"]
@@ -397,15 +416,14 @@ export default function ${pascalName}Sidebar({ sdk, projectId }: ${pascalName}Si
 
 function generateTest(pascalName) {
   return `import { render, screen } from '@testing-library/react'
-import { describe, it, expect, vi } from 'vitest'
 import ${pascalName}View from '../views/main'
 
 describe('${pascalName}View', () => {
   it('renders loading state initially', () => {
     const mockSDK = {
-      setProject: vi.fn(),
+      setProject: jest.fn(),
       entities: {
-        query: vi.fn().mockResolvedValue({ data: [], total: 0 })
+        query: jest.fn().mockResolvedValue({ data: [], total: 0 })
       }
     } as any
 
@@ -423,9 +441,9 @@ describe('${pascalName}View', () => {
 
   it('renders empty state when no items', async () => {
     const mockSDK = {
-      setProject: vi.fn(),
+      setProject: jest.fn(),
       entities: {
-        query: vi.fn().mockResolvedValue({ data: [], total: 0 })
+        query: jest.fn().mockResolvedValue({ data: [], total: 0 })
       }
     } as any
 
@@ -460,22 +478,22 @@ ${name} provides [describe what your bobbin does].
 - Create and manage items
 - Theme-aware UI (light/dark mode)
 - TypeScript support
-- Tested with Vitest
+- Tested with Jest
 
 ## Development
 
 \`\`\`bash
 # Install dependencies
-pnpm install
+bun install
 
 # Build
-pnpm build
+bun run build
 
 # Watch mode
-pnpm dev
+bun run dev
 
 # Run tests
-pnpm test
+bun run test
 \`\`\`
 
 ## Usage
@@ -490,8 +508,8 @@ pnpm test
 - **title** (text, required) - Item title
 - **description** (text) - Optional description
 - **status** (text) - Item status
-- **created_at** (timestamp) - Creation timestamp
-- **updated_at** (timestamp) - Last update timestamp
+- **created_at** (datetime) - Creation timestamp
+- **updated_at** (datetime) - Last update timestamp
 
 ## License
 
