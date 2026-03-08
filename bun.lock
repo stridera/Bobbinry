@@ -151,6 +151,10 @@
       "name": "@bobbinry/debugger",
       "version": "1.0.0",
     },
+    "bobbins/dictionary-panel": {
+      "name": "@bobbinry/dictionary-panel",
+      "version": "1.0.0",
+    },
     "bobbins/entities": {
       "name": "@bobbinry/entities",
       "version": "1.0.0",
@@ -205,7 +209,23 @@
         "@types/react": "^19",
       },
       "peerDependencies": {
-        "react": "^18.2.0",
+        "react": "^19.0.0",
+      },
+    },
+    "bobbins/hello-world": {
+      "name": "@bobbinry/hello-world",
+      "version": "1.0.0",
+      "dependencies": {
+        "@bobbinry/sdk": "workspace:*",
+        "@bobbinry/types": "workspace:*",
+        "@bobbinry/ui-components": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/react": "^19.2.14",
+        "typescript": "6.0.0-beta",
+      },
+      "peerDependencies": {
+        "react": "^19.0.0",
       },
     },
     "bobbins/manuscript": {
@@ -280,7 +300,7 @@
         "@types/react": "^19",
       },
       "peerDependencies": {
-        "react": "^18.2.0",
+        "react": "^19.0.0",
       },
     },
     "bobbins/timeline": {
@@ -309,7 +329,7 @@
         "@types/react": "^19",
       },
       "peerDependencies": {
-        "react": "^18.2.0",
+        "react": "^19.0.0",
       },
     },
     "packages/action-runtime": {
@@ -615,6 +635,8 @@
 
     "@bobbinry/debugger": ["@bobbinry/debugger@workspace:bobbins/debugger"],
 
+    "@bobbinry/dictionary-panel": ["@bobbinry/dictionary-panel@workspace:bobbins/dictionary-panel"],
+
     "@bobbinry/entities": ["@bobbinry/entities@workspace:bobbins/entities"],
 
     "@bobbinry/event-bus": ["@bobbinry/event-bus@workspace:packages/event-bus"],
@@ -622,6 +644,8 @@
     "@bobbinry/goals": ["@bobbinry/goals@workspace:bobbins/goals"],
 
     "@bobbinry/google-drive-publisher": ["@bobbinry/google-drive-publisher@workspace:bobbins/google-drive-publisher"],
+
+    "@bobbinry/hello-world": ["@bobbinry/hello-world@workspace:bobbins/hello-world"],
 
     "@bobbinry/manuscript": ["@bobbinry/manuscript@workspace:bobbins/manuscript"],
 

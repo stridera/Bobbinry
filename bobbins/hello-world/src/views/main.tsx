@@ -79,7 +79,7 @@ interface Item {
  * MAIN VIEW COMPONENT
  * =============================================================================
  */
-export default function HelloWorldView({ sdk, projectId }: HelloWorldViewProps) {
+export default function HelloWorldView({ sdk }: HelloWorldViewProps) {
   // ===== STATE MANAGEMENT =====
   const [newTitle, setNewTitle] = useState('')
 
@@ -107,8 +107,6 @@ export default function HelloWorldView({ sdk, projectId }: HelloWorldViewProps) 
     await create({
       title: newTitle,
       status: 'active',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
     })
   }
 
@@ -192,7 +190,7 @@ export default function HelloWorldView({ sdk, projectId }: HelloWorldViewProps) 
               <Card
                 key={item.id}
                 title={item.title}
-                subtitle={item.description}
+                subtitle={item.description ?? ''}
                 hover
               >
                 {/* Optional status badge */}

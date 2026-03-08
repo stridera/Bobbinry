@@ -68,7 +68,7 @@ extensions:
   contributions:
     - slot: shell.leftPanel
       type: panel
-      id: navigation
+      id: notes-navigation
       title: "Notes"
       entry: panels/navigation
 

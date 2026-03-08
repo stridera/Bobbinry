@@ -1,0 +1,9 @@
+{
+  "name": "@bobbinry/dictionary-panel",
+  "version": "1.0.0",
+  "description": "Right-side panel with dictionary definitions and thesaurus",
+  "private": true,
+  "scripts": {
+    "build": "mkdir -p dist/views/panel && cp views/panel/* dist/views/panel/"
+  }
+}

@@ -60,9 +60,9 @@ extensions:
   contributions:
     - slot: shell.leftPanel
       type: panel
-      id: navigation
+      id: entities-navigation
       title: "Entities"
-      entry: views/navigation
+      entry: panels/navigation
     - slot: shell.rightPanel
       type: panel
       id: entity-preview

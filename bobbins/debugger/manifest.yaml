@@ -3,6 +3,16 @@ name: Debugger
 version: 1.0.0
 description: Debug panel for viewing message bus events and system logs
 author: Bobbinry Team
+tags:
+  - debugging
+  - developer-tools
+license: Apache-2.0
+
+capabilities:
+  publishable: false
+  external: false
+  ai: false
+  customViews: false
 
 execution:
   mode: sandboxed
@@ -19,3 +29,6 @@ extensions:
         consumes:
           - { topic: "*", intent: debugging, sensitivityRequired: low }
       when: { inView: "*" }
+
+compatibility:
+  minShellVersion: "0.1.0"

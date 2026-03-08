@@ -201,6 +201,7 @@ function checkPkgNameMatches(ctx: BobbinContext): Diagnostic[] {
 
 function checkPkgHasExports(ctx: BobbinContext): Diagnostic[] {
   if (!ctx.pkg) return [];
+  if (ctx.pkg.private) return [];
   if (!ctx.pkg.exports) {
     return [{ rule: "pkg-has-exports", message: "missing exports field", severity: "warning" }];
   }
@@ -221,6 +222,7 @@ function checkPkgMainSrc(ctx: BobbinContext): Diagnostic[] {
 
 function checkPkgHasTypes(ctx: BobbinContext): Diagnostic[] {
   if (!ctx.pkg || !ctx.hasSrcDir) return [];
+  if (ctx.pkg.private) return [];
   if (!ctx.pkg.types) {
     return [{ rule: "pkg-has-types", message: "missing types field", severity: "warning" }];
   }
@@ -252,7 +254,8 @@ function checkPkgReactVersion(ctx: BobbinContext): Diagnostic[] {
 function checkPkgHasScripts(ctx: BobbinContext): Diagnostic[] {
   if (!ctx.pkg) return [];
   const scripts = ctx.pkg.scripts || {};
-  const expected = ["build", "dev", "typecheck"];
+  // Private packages only need a build script
+  const expected = ctx.pkg.private ? ["build"] : ["build", "dev", "typecheck"];
   const diags: Diagnostic[] = [];
   for (const s of expected) {
     if (!scripts[s]) {
@@ -268,6 +271,8 @@ function checkPkgHasScripts(ctx: BobbinContext): Diagnostic[] {
 
 function checkViewsInViews(ctx: BobbinContext): Diagnostic[] {
   if (!ctx.manifest?.extensions?.contributions) return [];
+  // Sandboxed bobbins use flat paths (not src/panels vs src/views)
+  if (ctx.manifest.execution?.mode === "sandboxed") return [];
   const diags: Diagnostic[] = [];
   for (const contrib of ctx.manifest.extensions.contributions) {
     if (!contrib.entry) continue;
@@ -338,6 +343,9 @@ function checkViewFileExists(ctx: BobbinContext): Diagnostic[] {
   const diags: Diagnostic[] = [];
   for (const view of ctx.manifest.ui.views) {
     if (!view.id) continue;
+    // Skip declarative views whose source is a data collection, not a file path
+    const source = view.source ? String(view.source) : "";
+    if (source && !source.startsWith("views/") && source !== "*") continue;
     const candidates = [
       path.join(ctx.dirPath, "src", "views", view.id + ".tsx"),
       path.join(ctx.dirPath, "src", "views", view.id + ".ts"),

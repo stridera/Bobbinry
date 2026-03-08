@@ -63,7 +63,7 @@ extensions:
   contributions:
     - slot: shell.leftPanel
       type: panel
-      id: navigation
+      id: relationships-navigation
       title: "Relationships"
       entry: panels/navigation
 

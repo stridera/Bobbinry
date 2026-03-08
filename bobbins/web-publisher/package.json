@@ -2,17 +2,22 @@
   "name": "@bobbinry/web-publisher",
   "version": "0.1.0",
   "description": "Web Publisher bobbin - manual and scheduled chapter publishing",
-  "main": "views/PublishManager.tsx",
+  "main": "views/publish-manager.tsx",
   "exports": {
-    "./views/PublishManager": "./views/PublishManager.tsx",
+    "./views/publish-manager": "./views/publish-manager.tsx",
     "./panels/chapter-publish": "./panels/chapter-publish.tsx",
     "./panels/publish-manager": "./panels/publish-manager.tsx"
+  },
+  "scripts": {
+    "build": "echo 'consumed as source by shell'",
+    "dev": "echo 'consumed as source by shell'",
+    "typecheck": "echo 'consumed as source by shell'"
   },
   "dependencies": {
     "@bobbinry/sdk": "workspace:*"
   },
   "peerDependencies": {
-    "react": "^18.2.0"
+    "react": "^19.0.0"
   },
   "devDependencies": {
     "@types/react": "^19"

@@ -30,5 +30,8 @@ extensions:
       when:
         inView: project
 
+compatibility:
+  minShellVersion: "0.1.0"
+
 data:
   collections: []

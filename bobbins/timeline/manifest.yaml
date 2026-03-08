@@ -67,7 +67,7 @@ extensions:
   contributions:
     - slot: shell.leftPanel
       type: panel
-      id: navigation
+      id: timeline-navigation
       title: "Timeline"
       entry: panels/navigation
 

@@ -9,5 +9,7 @@ capabilities: { publishable: false, external: false, ai: false, customViews: tru
 execution:
   mode: native
   signature: dev_mode_skip
+compatibility:
+  minShellVersion: "0.1.0"
 data:
   collections: []

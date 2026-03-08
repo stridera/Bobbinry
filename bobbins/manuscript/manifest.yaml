@@ -23,7 +23,7 @@ extensions:
   contributions:
     - slot: shell.leftPanel
       type: panel
-      id: navigation
+      id: manuscript-navigation
       title: "Manuscript"
       entry: panels/navigation
       priority: 10
@@ -34,7 +34,7 @@ extensions:
       type: view
       id: session-stats
       title: "Session Stats"
-      entry: panels/session-stats
+      entry: views/session-stats
       priority: 5
       when:
         inView: project
