@@ -350,8 +350,11 @@ export function DashboardContent({ user, apiToken }: { user: User; apiToken: str
                   </svg>
                 }
                 title={searchQuery ? 'No results found' : 'Your story begins here'}
-                description={searchQuery ? `No projects matching "${searchQuery}"` : 'Create your first project and start writing'}
-                {...(!searchQuery && { action: { label: 'Create Project', href: '/projects/new' } })}
+                description={searchQuery ? `No projects matching "${searchQuery}"` : 'Create a project to start writing, or organize with a collection'}
+                {...(!searchQuery && {
+                  action: { label: 'Create Project', href: '/projects/new' },
+                  secondaryAction: { label: 'New Collection', onClick: () => setShowCreateCollection(true) },
+                })}
               />
             )}
           </div>
