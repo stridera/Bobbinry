@@ -3,8 +3,14 @@
   "concurrency": "30",
   "globalPassThroughEnv": [
     "NEXTAUTH_URL",
+    "NEXTAUTH_SECRET",
     "NEXT_PUBLIC_APP_URL",
-    "NODE_ENV"
+    "NEXT_PUBLIC_API_URL",
+    "NODE_ENV",
+    "API_JWT_SECRET",
+    "INTERNAL_API_AUTH_TOKEN",
+    "GOOGLE_ID",
+    "GOOGLE_SECRET"
   ],
   "tasks": {
     "build": {
