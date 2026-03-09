@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
+import { requireAuth, requireVerified } from '../middleware/auth'
 import { db } from '../db/connection'
 import {
   chapterPublications,
@@ -211,7 +212,9 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       firstPublishedAt?: string
       scheduledFor?: string
     }
-  }>('/projects/:projectId/chapters/:chapterId/publish', async (request, reply) => {
+  }>('/projects/:projectId/chapters/:chapterId/publish', {
+    preHandler: [requireAuth, requireVerified]
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId, chapterId } = request.params

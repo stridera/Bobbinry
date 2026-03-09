@@ -52,6 +52,7 @@ interface BobbinryUser {
   id: string
   email: string
   name: string | null
+  emailVerified?: string | null
 }
 
 /**
@@ -124,8 +125,9 @@ const providers: any[] = [
         return {
           id: user.id,
           email: user.email,
-          name: user.name || user.email
-        }
+          name: user.name || user.email,
+          emailVerified: user.emailVerified ? new Date(user.emailVerified) : null,
+        } as any
       } catch {
         return null
       }
@@ -161,7 +163,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           return false // Deny sign-in if we can't provision
         }
         // Store the API-side user ID so the jwt callback can pick it up
-        user.id = apiUser.id
+        user.id = apiUser.id;
+        (user as any).emailVerified = apiUser.emailVerified || new Date()
       }
       return true
     },
@@ -169,6 +172,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (user) {
         token.id = user.id
         token.apiToken = await signApiToken(user.id)
+        token.emailVerified = !!(user as any).emailVerified
         // Use profile displayName as the canonical display name
         try {
           const profileRes = await fetch(`${config.apiUrl}/api/users/${user.id}/profile`)
@@ -183,6 +187,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // Handle session updates (e.g. after profile displayName change)
       if (trigger === 'update' && updateData?.name) {
         token.name = updateData.name
+      }
+      // Handle email verification refresh via explicit update trigger
+      if (trigger === 'update' && updateData?.emailVerified !== undefined) {
+        token.emailVerified = !!updateData.emailVerified
       }
       // Handle membership refresh via explicit update trigger
       if (trigger === 'update' && updateData?.membershipTier !== undefined) {
@@ -211,6 +219,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // Default values if never fetched
       if (!token.membershipTier) token.membershipTier = 'free'
       if (!token.badges) token.badges = []
+      if (token.emailVerified === undefined) token.emailVerified = false
       return token
     },
     async session({ session, token }) {
@@ -218,6 +227,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.user.id = token.id as string
         session.user.membershipTier = (token.membershipTier as 'free' | 'supporter') || 'free'
         session.user.badges = (token.badges as string[]) || []
+        ;(session.user as any).emailVerified = !!token.emailVerified
       }
       session.apiToken = token.apiToken as string
       return session

@@ -6,14 +6,14 @@
 
 import { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { db } from '../db/connection'
-import { users, userProfiles } from '../db/schema'
+import { users, userProfiles, emailVerificationTokens } from '../db/schema'
 import { eq } from 'drizzle-orm'
 import { randomBytes, scrypt, timingSafeEqual } from 'crypto'
 import { promisify } from 'util'
 import { requireAuth } from '../middleware/auth'
 import { incrementCounter } from '../lib/metrics'
 import { verifyInternalRequest } from '../lib/internal-auth'
-import { sendWelcomeEmail } from '../lib/email'
+import { sendWelcomeEmail, sendVerificationEmail } from '../lib/email'
 
 const scryptAsync = promisify(scrypt)
 const LOGIN_WINDOW_MS = 15 * 60 * 1000
@@ -69,6 +69,22 @@ function recordLoginFailure(key: string): void {
 
 function clearLoginFailures(key: string): void {
   lockoutState.delete(key)
+}
+
+async function createVerificationToken(userId: string): Promise<string> {
+  // Delete any existing tokens for this user
+  await db.delete(emailVerificationTokens).where(eq(emailVerificationTokens.userId, userId))
+
+  const token = randomBytes(32).toString('hex')
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+
+  await db.insert(emailVerificationTokens).values({
+    userId,
+    token,
+    expiresAt,
+  })
+
+  return token
 }
 
 const authPlugin: FastifyPluginAsync = async (fastify) => {
@@ -154,7 +170,8 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
       return reply.send({
         id: user.id,
         email: user.email,
-        name: user.name
+        name: user.name,
+        emailVerified: user.emailVerified
       })
     } catch (error) {
       fastify.log.error({ error }, 'Login failed')
@@ -227,16 +244,20 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
         displayName: newUser.name || null,
       }).onConflictDoNothing()
 
-      // Send welcome email (fire-and-forget)
-      sendWelcomeEmail(newUser.email, newUser.name || undefined).catch(err => {
-        fastify.log.warn({ err, userId: newUser.id }, 'Failed to send welcome email')
+      // Send verification email instead of welcome (welcome sent after verification)
+      ;(async () => {
+        const token = await createVerificationToken(newUser.id)
+        await sendVerificationEmail(newUser.email, token, newUser.name || undefined)
+      })().catch(err => {
+        fastify.log.warn({ err, userId: newUser.id }, 'Failed to send verification email')
       })
 
       incrementCounter('auth.signup.success')
       return reply.status(201).send({
         id: newUser.id,
         email: newUser.email,
-        name: newUser.name
+        name: newUser.name,
+        emailVerified: null
       })
     } catch (error) {
       fastify.log.error({ error }, 'Signup failed')
@@ -283,20 +304,27 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
         .limit(1)
 
       if (existing) {
+        // If existing user hasn't been verified yet (e.g. signed up with password, now using OAuth),
+        // mark them as verified since OAuth provider verified the email
+        if (!existing.emailVerified) {
+          await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, existing.id))
+        }
         return reply.send({
           id: existing.id,
           email: existing.email,
-          name: existing.name
+          name: existing.name,
+          emailVerified: existing.emailVerified || new Date()
         })
       }
 
-      // Create new user without password
+      // Create new user without password — OAuth users are auto-verified
       const [newUser] = await db
         .insert(users)
         .values({
           email: normalizedEmail,
           name: name || null,
-          passwordHash: null
+          passwordHash: null,
+          emailVerified: new Date()
         })
         .returning()
 
@@ -318,7 +346,8 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
       return reply.status(201).send({
         id: newUser.id,
         email: newUser.email,
-        name: newUser.name
+        name: newUser.name,
+        emailVerified: newUser.emailVerified
       })
     } catch (error) {
       fastify.log.error({ error }, 'OAuth provisioning failed')
@@ -375,6 +404,102 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
   })
 
   /**
+   * Verify email address
+   * GET /auth/verify-email?token=...
+   *
+   * Validates the token, marks user as verified, sends welcome email.
+   */
+  fastify.get<{
+    Querystring: { token: string }
+  }>('/auth/verify-email', {
+    config: {
+      rateLimit: {
+        max: 20,
+        timeWindow: '1 minute'
+      }
+    }
+  }, async (request, reply) => {
+    try {
+      const { token } = request.query
+
+      if (!token) {
+        return reply.status(400).send({ error: 'Token is required' })
+      }
+
+      // Find the token
+      const [record] = await db
+        .select()
+        .from(emailVerificationTokens)
+        .where(eq(emailVerificationTokens.token, token))
+        .limit(1)
+
+      if (!record) {
+        return reply.status(400).send({ error: 'Invalid or expired verification link' })
+      }
+
+      if (record.expiresAt < new Date()) {
+        // Clean up expired token
+        await db.delete(emailVerificationTokens).where(eq(emailVerificationTokens.id, record.id))
+        return reply.status(400).send({ error: 'Verification link has expired. Please request a new one.' })
+      }
+
+      // Mark user as verified + delete tokens in parallel; RETURNING gives us user info for welcome email
+      const [[user]] = await Promise.all([
+        db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, record.userId)).returning({ email: users.email, name: users.name }),
+        db.delete(emailVerificationTokens).where(eq(emailVerificationTokens.userId, record.userId)),
+      ])
+
+      // Send welcome email now that they're verified
+      if (user) {
+        sendWelcomeEmail(user.email, user.name || undefined).catch(err => {
+          fastify.log.warn({ err, userId: record.userId }, 'Failed to send welcome email after verification')
+        })
+      }
+
+      incrementCounter('auth.email_verified')
+      return reply.send({ success: true, message: 'Email verified successfully' })
+    } catch (error) {
+      fastify.log.error({ error }, 'Email verification failed')
+      return reply.status(500).send({ error: 'Verification failed' })
+    }
+  })
+
+  /**
+   * Resend verification email
+   * POST /auth/resend-verification
+   *
+   * Requires authentication. Generates a new token and sends a verification email.
+   */
+  fastify.post('/auth/resend-verification', {
+    preHandler: requireAuth,
+    config: {
+      rateLimit: {
+        max: 3,
+        timeWindow: '1 minute'
+      }
+    }
+  }, async (request, reply) => {
+    try {
+      const user = request.user!
+
+      if (user.emailVerified) {
+        return reply.status(400).send({ error: 'Email is already verified' })
+      }
+
+      const token = await createVerificationToken(user.id)
+
+      sendVerificationEmail(user.email, token, user.name || undefined).catch(err => {
+        fastify.log.warn({ err, userId: user.id }, 'Failed to send verification email')
+      })
+
+      return reply.send({ success: true, message: 'Verification email sent' })
+    } catch (error) {
+      fastify.log.error({ error }, 'Resend verification failed')
+      return reply.status(500).send({ error: 'Failed to resend verification email' })
+    }
+  })
+
+  /**
    * Get current user session
    * GET /auth/session
    *
@@ -385,14 +510,14 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
     preHandler: requireAuth
   }, async (request, reply) => {
     try {
-      // User is guaranteed to exist after requireAuth middleware
       const user = request.user!
 
       return reply.send({
         user: {
           id: user.id,
           email: user.email,
-          name: user.name
+          name: user.name,
+          emailVerified: user.emailVerified
         }
       })
     } catch (error) {

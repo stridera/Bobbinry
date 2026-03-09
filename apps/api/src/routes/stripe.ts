@@ -11,7 +11,7 @@ import {
   userBadges,
 } from '../db/schema'
 import { eq, and, sql } from 'drizzle-orm'
-import { requireAuth, requireSelf } from '../middleware/auth'
+import { requireAuth, requireSelf, requireVerified } from '../middleware/auth'
 
 function isValidUUID(uuid: string): boolean {
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -144,7 +144,7 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
     Params: { userId: string }
     Body: { returnUrl?: string; refreshUrl?: string }
   }>('/users/:userId/stripe/connect', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, requireVerified]
   }, async (request, reply) => {
     try {
       const { userId } = request.params

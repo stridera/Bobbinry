@@ -2,7 +2,7 @@ import { FastifyPluginAsync } from 'fastify'
 import { db } from '../db/connection'
 import { projectFollows, projects, subscriptions, users, userNotificationPreferences } from '../db/schema'
 import { eq, and, count } from 'drizzle-orm'
-import { requireAuth, optionalAuth } from '../middleware/auth'
+import { requireAuth, optionalAuth, requireVerified } from '../middleware/auth'
 import { sendNewFollowerEmail } from '../lib/email'
 
 function isValidUUID(uuid: string): boolean {
@@ -15,7 +15,7 @@ const projectFollowsPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.post<{
     Params: { projectId: string }
   }>('/projects/:projectId/follow', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, requireVerified]
   }, async (request, reply) => {
     try {
       const { projectId } = request.params

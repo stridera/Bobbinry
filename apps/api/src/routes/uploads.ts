@@ -103,6 +103,15 @@ async function uploadsPlugin(fastify: FastifyInstance) {
       return reply.status(400).send({ error: `Invalid upload context. Must be one of: ${[...UPLOAD_CONTEXTS].join(', ')}` })
     }
 
+    // Require email verification for non-avatar uploads
+    if (context !== 'avatar' && !user.emailVerified) {
+      return reply.status(403).send({
+        error: 'Email not verified',
+        code: 'EMAIL_NOT_VERIFIED',
+        message: 'Please verify your email address to upload files'
+      })
+    }
+
     // Validate content type
     if (!contentType || !ALLOWED_IMAGE_TYPES.has(contentType)) {
       return reply.status(400).send({ error: `Unsupported content type. Allowed: ${[...ALLOWED_IMAGE_TYPES].join(', ')}` })

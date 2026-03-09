@@ -22,6 +22,7 @@ interface User {
   id: string
   email: string
   name?: string | null
+  emailVerified?: boolean
 }
 
 interface Project {
@@ -53,6 +54,44 @@ interface DashboardStats {
   projects: { total: string; active: string; archived: string }
   collections: { total: string }
   entities: { total: string }
+}
+
+function EmailVerificationBanner({ apiToken }: { apiToken: string }) {
+  const [resending, setResending] = useState(false)
+  const [sent, setSent] = useState(false)
+
+  const handleResend = async () => {
+    setResending(true)
+    try {
+      await apiFetch('/api/auth/resend-verification', apiToken, { method: 'POST' })
+      setSent(true)
+    } catch {
+      // silent fail
+    } finally {
+      setResending(false)
+    }
+  }
+
+  return (
+    <div className="bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-900">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
+        <p className="text-sm text-amber-800 dark:text-amber-200">
+          Please verify your email to unlock all features.
+        </p>
+        {sent ? (
+          <span className="text-sm text-green-700 dark:text-green-400">Verification email sent!</span>
+        ) : (
+          <button
+            onClick={handleResend}
+            disabled={resending}
+            className="text-sm font-medium text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-100 disabled:opacity-50"
+          >
+            {resending ? 'Sending...' : 'Resend verification email'}
+          </button>
+        )}
+      </div>
+    </div>
+  )
 }
 
 function getGreeting(): string {
@@ -186,6 +225,8 @@ export function DashboardContent({ user, apiToken }: { user: User; apiToken: str
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       <SiteNav />
+
+      {!user.emailVerified && <EmailVerificationBanner apiToken={apiToken} />}
 
       {/* Sub-header with greeting and actions */}
       <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">

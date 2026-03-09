@@ -16,6 +16,7 @@ export interface AuthenticatedUser {
   id: string
   email: string
   name: string | null
+  emailVerified: Date | null
 }
 
 // Extend FastifyRequest to include user
@@ -130,7 +131,8 @@ export async function requireAuth(
     .select({
       id: users.id,
       email: users.email,
-      name: users.name
+      name: users.name,
+      emailVerified: users.emailVerified
     })
     .from(users)
     .where(eq(users.id, tokenPayload.id))
@@ -146,6 +148,33 @@ export async function requireAuth(
 
   // Attach user to request
   request.user = user
+}
+
+/**
+ * Email verification middleware - requires verified email
+ *
+ * Must be used after requireAuth. Returns 403 if user's email is not verified.
+ */
+export async function requireVerified(
+  request: FastifyRequest,
+  reply: FastifyReply
+): Promise<void> {
+  if (!request.user) {
+    reply.status(401).send({
+      error: 'Authentication required',
+      message: 'Missing or invalid Authorization header'
+    })
+    return
+  }
+
+  if (!request.user.emailVerified) {
+    reply.status(403).send({
+      error: 'Email not verified',
+      code: 'EMAIL_NOT_VERIFIED',
+      message: 'Please verify your email address to use this feature'
+    })
+    return
+  }
 }
 
 /**
@@ -175,7 +204,8 @@ export async function optionalAuth(
     .select({
       id: users.id,
       email: users.email,
-      name: users.name
+      name: users.name,
+      emailVerified: users.emailVerified
     })
     .from(users)
     .where(eq(users.id, tokenPayload.id))

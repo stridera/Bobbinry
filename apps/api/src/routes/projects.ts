@@ -6,7 +6,7 @@ import { db } from '../db/connection'
 import { projects, bobbinsInstalled } from '../db/schema'
 import { eq, and, count } from 'drizzle-orm'
 import { ManifestCompiler } from '@bobbinry/compiler'
-import { requireAuth, requireProjectOwnership } from '../middleware/auth'
+import { requireAuth, requireProjectOwnership, requireVerified } from '../middleware/auth'
 import { getUserMembershipTier, getProjectLimit } from '../lib/membership'
 import { checkAndUpgradeBobbin, type UpgradeResult } from '../lib/bobbin-upgrader'
 
@@ -53,7 +53,7 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
       description?: string
     }
   }>('/projects', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, requireVerified]
   }, async (request, reply) => {
     try {
       const { name, description } = request.body

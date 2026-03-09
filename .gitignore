@@ -28,6 +28,7 @@ yarn-debug.log*
 
 # Deployment / infra (local-only)
 infra/production-setup.md
+infra/TODO.md
 
 # Test screenshots
 /*.png
