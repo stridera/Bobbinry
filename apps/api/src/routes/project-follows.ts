@@ -1,8 +1,9 @@
 import { FastifyPluginAsync } from 'fastify'
 import { db } from '../db/connection'
-import { projectFollows, projects, subscriptions } from '../db/schema'
+import { projectFollows, projects, subscriptions, users, userNotificationPreferences } from '../db/schema'
 import { eq, and, count } from 'drizzle-orm'
 import { requireAuth, optionalAuth } from '../middleware/auth'
+import { sendNewFollowerEmail } from '../lib/email'
 
 function isValidUUID(uuid: string): boolean {
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -56,6 +57,31 @@ const projectFollowsPlugin: FastifyPluginAsync = async (fastify) => {
       await db
         .insert(projectFollows)
         .values({ followerId: userId, projectId })
+
+      // Notify project owner of new follower (fire-and-forget)
+      ;(async () => {
+        // Check owner's notification preferences
+        const [prefs] = await db
+          .select({ emailNewFollower: userNotificationPreferences.emailNewFollower })
+          .from(userNotificationPreferences)
+          .where(eq(userNotificationPreferences.userId, project.ownerId))
+          .limit(1)
+
+        if (prefs && !prefs.emailNewFollower) return
+
+        // Get owner email and follower name
+        const [[owner], [follower], [proj]] = await Promise.all([
+          db.select({ email: users.email }).from(users).where(eq(users.id, project.ownerId)).limit(1),
+          db.select({ name: users.name }).from(users).where(eq(users.id, userId)).limit(1),
+          db.select({ name: projects.name }).from(projects).where(eq(projects.id, projectId)).limit(1),
+        ])
+
+        if (owner && proj) {
+          await sendNewFollowerEmail(owner.email, follower?.name || 'Someone', proj.name)
+        }
+      })().catch(err => {
+        fastify.log.warn({ err, projectId }, 'Failed to send new follower email')
+      })
 
       return reply.status(201).send({ success: true })
     } catch (error) {

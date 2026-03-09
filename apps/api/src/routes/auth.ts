@@ -13,6 +13,7 @@ import { promisify } from 'util'
 import { requireAuth } from '../middleware/auth'
 import { incrementCounter } from '../lib/metrics'
 import { verifyInternalRequest } from '../lib/internal-auth'
+import { sendWelcomeEmail } from '../lib/email'
 
 const scryptAsync = promisify(scrypt)
 const LOGIN_WINDOW_MS = 15 * 60 * 1000
@@ -226,6 +227,11 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
         displayName: newUser.name || null,
       }).onConflictDoNothing()
 
+      // Send welcome email (fire-and-forget)
+      sendWelcomeEmail(newUser.email, newUser.name || undefined).catch(err => {
+        fastify.log.warn({ err, userId: newUser.id }, 'Failed to send welcome email')
+      })
+
       incrementCounter('auth.signup.success')
       return reply.status(201).send({
         id: newUser.id,
@@ -303,6 +309,11 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
         userId: newUser.id,
         displayName: newUser.name || null,
       }).onConflictDoNothing()
+
+      // Send welcome email (fire-and-forget)
+      sendWelcomeEmail(newUser.email, newUser.name || undefined).catch(err => {
+        fastify.log.warn({ err, userId: newUser.id }, 'Failed to send welcome email')
+      })
 
       return reply.status(201).send({
         id: newUser.id,
