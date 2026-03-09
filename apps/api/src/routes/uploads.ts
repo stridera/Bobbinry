@@ -387,11 +387,14 @@ async function uploadsPlugin(fastify: FastifyInstance) {
     // This prevents enumeration of arbitrary S3 keys and ensures removed
     // uploads are no longer accessible.
     // Also allow variant keys (e.g. "key__thumb.webp") by checking the base key.
+    // variantKey() strips the original extension (e.g. .jpg) before adding __variant.webp,
+    // so we need a LIKE match: "foo/bar__thumb.webp" → "foo/bar" → match "foo/bar.jpg"
+    const isVariant = /__(?:thumb|medium)\.[a-z]+$/.test(key)
     const baseKey = key.replace(/__(?:thumb|medium)\.[a-z]+$/, '')
     const [upload] = await db
       .select({ status: uploads.status })
       .from(uploads)
-      .where(eq(uploads.s3Key, baseKey))
+      .where(isVariant ? sql`${uploads.s3Key} LIKE ${baseKey + '.%'}` : eq(uploads.s3Key, baseKey))
       .limit(1)
 
     if (!upload || upload.status !== 'active') {
