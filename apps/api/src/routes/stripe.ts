@@ -24,7 +24,7 @@ const PLATFORM_FEE_PERCENT = parseInt(process.env.PLATFORM_FEE_PERCENT || '5', 1
 function getStripe(): Stripe | null {
   const key = process.env.STRIPE_SECRET_KEY
   if (!key) return null
-  return new Stripe(key, { apiVersion: '2025-01-27.acacia' as any })
+  return new Stripe(key, { apiVersion: '2025-12-18.acacia' as any })
 }
 
 const stripePlugin: FastifyPluginAsync = async (fastify) => {
@@ -169,14 +169,11 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
         // Get user info for pre-filling
         const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1)
 
-        // Create Express account
+        // Create Standard connected account (merchants collect directly)
         const account = await stripe.accounts.create({
-          type: 'express',
+          type: 'standard',
           ...(user?.email ? { email: user.email } : {}),
           metadata: { bobbinry_user_id: userId },
-          capabilities: {
-            transfers: { requested: true }
-          }
         } as Stripe.AccountCreateParams)
         stripeAccountId = account.id
 
