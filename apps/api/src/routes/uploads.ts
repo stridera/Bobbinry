@@ -21,6 +21,8 @@ import { requireAuth, requireProjectOwnership } from '../middleware/auth'
 import { generatePresignedPutUrl, headObject, deleteObject, getPublicUrl, getObject } from '../lib/s3'
 import { generateVariants, variantKey } from '../lib/image-variants'
 import { getUserMembershipTier, getSizeLimits } from '../lib/membership'
+import { cleanupOldAvatarUploads } from '../lib/upload-cleanup'
+import { userProfiles } from '../db/schema'
 
 // --- Constants ---
 
@@ -204,6 +206,25 @@ async function uploadsPlugin(fastify: FastifyInstance) {
         }
       } catch (err) {
         fastify.log.warn({ err, key: fileKey }, 'Failed to generate image variants')
+      }
+    }
+
+    // Auto-save avatar to user profile and clean up old avatars
+    if (context === 'avatar') {
+      try {
+        // Clean up previous avatar uploads (S3 objects + DB records)
+        await cleanupOldAvatarUploads(user.id, fileKey)
+
+        // Upsert avatarUrl on user profile
+        await db
+          .insert(userProfiles)
+          .values({ userId: user.id, avatarUrl: url })
+          .onConflictDoUpdate({
+            target: userProfiles.userId,
+            set: { avatarUrl: url, updatedAt: new Date() },
+          })
+      } catch (err) {
+        fastify.log.warn({ err, userId: user.id }, 'Failed to auto-save avatar to profile')
       }
     }
 

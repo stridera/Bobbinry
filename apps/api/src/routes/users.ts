@@ -21,6 +21,7 @@ import { eq, and, or, desc, isNull, sql, count, isNotNull, inArray } from 'drizz
 import { requireAuth, requireSelf } from '../middleware/auth'
 import Stripe from 'stripe'
 import { incrementCounter } from '../lib/metrics'
+import { cleanupOldAvatarUploads } from '../lib/upload-cleanup'
 
 function getStripe(): Stripe | null {
   const key = process.env.STRIPE_SECRET_KEY
@@ -169,6 +170,8 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
         .where(eq(userProfiles.userId, userId))
         .limit(1)
 
+      let result: { profile: any; status: number }
+
       if (existingProfile.length > 0) {
         // Update existing profile
         const [updated] = await db
@@ -180,7 +183,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
           .where(eq(userProfiles.userId, userId))
           .returning()
 
-        return reply.status(200).send({ profile: updated })
+        result = { profile: updated, status: 200 }
       } else {
         // Create new profile
         const [created] = await db
@@ -191,8 +194,17 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
           })
           .returning()
 
-        return reply.status(201).send({ profile: created })
+        result = { profile: created, status: 201 }
       }
+
+      // If avatar was cleared, clean up all avatar uploads from S3
+      if (profileData.avatarUrl !== undefined && !profileData.avatarUrl) {
+        cleanupOldAvatarUploads(userId).catch(err => {
+          fastify.log.warn({ err, userId }, 'Failed to cleanup avatar uploads on removal')
+        })
+      }
+
+      return reply.status(result.status).send({ profile: result.profile })
     } catch (error) {
       fastify.log.error(error)
       return reply.status(500).send({ error: 'Failed to update profile' })

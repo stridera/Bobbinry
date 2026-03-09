@@ -183,6 +183,8 @@ export default function SettingsPage() {
       }
       const { url } = await confirmRes.json()
       setProfile(p => ({ ...p, avatarUrl: url }))
+      setSuccess('Avatar updated!')
+      setTimeout(() => setSuccess(null), 3000)
     } catch (err) {
       console.error('Avatar upload failed:', err)
       setProfileError(err instanceof Error ? err.message : 'Avatar upload failed')
