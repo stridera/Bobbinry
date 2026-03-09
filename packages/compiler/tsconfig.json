@@ -5,8 +5,8 @@
     "lib": [
       "ES2022"
     ],
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
     "target": "ES2022",
     // Emit configuration for library
     "outDir": "./dist",

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -65,6 +65,14 @@ const templateIcons: Record<string, React.JSX.Element> = {
 }
 
 export default function NewProjectPage() {
+  return (
+    <Suspense>
+      <NewProjectContent />
+    </Suspense>
+  )
+}
+
+function NewProjectContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const collectionId = searchParams.get('collectionId')
@@ -132,10 +140,10 @@ export default function NewProjectPage() {
       const projectId = project.id
 
       const template = templates.find(t => t.id === selectedTemplate)
-      const failedInstalls: string[] = []
+      let failedInstalls: string[] = []
       if (template && template.bobbins.length > 0) {
-        for (const bobbinId of template.bobbins) {
-          try {
+        const results = await Promise.allSettled(
+          template.bobbins.map(async (bobbinId) => {
             const installRes = await apiFetch(
               `/api/projects/${projectId}/bobbins/install`,
               session.apiToken,
@@ -147,14 +155,13 @@ export default function NewProjectPage() {
                 })
               }
             )
-            if (!installRes.ok) {
-              failedInstalls.push(bobbinId)
-            }
-          } catch (bobbinError) {
-            console.error(`Failed to install bobbin ${bobbinId}:`, bobbinError)
-            failedInstalls.push(bobbinId)
-          }
-        }
+            if (!installRes.ok) throw new Error('install failed')
+            return bobbinId
+          })
+        )
+        failedInstalls = results
+          .map((r, i) => r.status === 'rejected' ? template.bobbins[i] : null)
+          .filter((id): id is string => id !== null)
       }
 
       if (failedInstalls.length > 0) {

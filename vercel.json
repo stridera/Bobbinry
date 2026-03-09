@@ -1,0 +1,6 @@
+{
+  "buildCommand": "bun run build --filter=shell",
+  "installCommand": "bun install",
+  "framework": "nextjs",
+  "outputDirectory": "apps/shell/.next"
+}
