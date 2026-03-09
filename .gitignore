@@ -27,8 +27,6 @@ yarn-debug.log*
 .screenshots/
 
 # Deployment / infra (local-only)
-.dockerignore
-apps/api/Dockerfile
 infra/production-setup.md
 
 # Test screenshots
