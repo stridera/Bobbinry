@@ -299,6 +299,7 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
 
       const account = await stripe.accounts.retrieve(config.stripeAccountId)
       const isComplete = !!(account.charges_enabled && account.details_submitted)
+      const detailsSubmitted = !!account.details_submitted
 
       if (isComplete && !config.stripeOnboardingComplete) {
         await db.update(userPaymentConfig).set({
@@ -307,7 +308,11 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
         }).where(eq(userPaymentConfig.userId, userId))
       }
 
-      return reply.status(200).send({ onboardingComplete: isComplete })
+      return reply.status(200).send({
+        onboardingComplete: isComplete,
+        detailsSubmitted,
+        chargesEnabled: !!account.charges_enabled,
+      })
     } catch (error) {
       fastify.log.error(error)
       return reply.status(500).send({ error: 'Failed to verify onboarding status' })

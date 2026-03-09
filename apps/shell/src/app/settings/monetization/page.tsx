@@ -117,6 +117,10 @@ function MonetizationContent() {
           setSuccess('Stripe account connected successfully!')
           setTimeout(() => setSuccess(null), 5000)
           await loadData() // Reload to reflect updated payment config
+        } else if (data.detailsSubmitted) {
+          setSuccess('Stripe onboarding complete! Your account is pending verification by Stripe. This usually takes 1-2 business days.')
+          setTimeout(() => setSuccess(null), 10000)
+          await loadData()
         }
       }
     } catch {
@@ -357,6 +361,22 @@ function MonetizationContent() {
               <div className="w-3 h-3 rounded-full bg-green-500" />
               <span className="text-sm text-gray-700 dark:text-gray-300">Stripe account connected</span>
               <span className="text-xs text-gray-400 dark:text-gray-500">({paymentConfig.stripeAccountId})</span>
+            </div>
+          ) : paymentConfig?.stripeAccountId ? (
+            <div>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-3 h-3 rounded-full bg-yellow-500" />
+                <span className="text-sm text-gray-700 dark:text-gray-300">Stripe account pending verification</span>
+              </div>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                Your Stripe account has been submitted and is being reviewed. This usually takes 1-2 business days. You&apos;ll be able to receive payments once verification is complete.
+              </p>
+              <button
+                onClick={connectStripe}
+                className="px-4 py-2.5 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors font-medium text-sm"
+              >
+                Continue Stripe Setup
+              </button>
             </div>
           ) : (
             <div>
