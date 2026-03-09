@@ -24,7 +24,7 @@ const PLATFORM_FEE_PERCENT = parseInt(process.env.PLATFORM_FEE_PERCENT || '5', 1
 function getStripe(): Stripe | null {
   const key = process.env.STRIPE_SECRET_KEY
   if (!key) return null
-  return new Stripe(key, { apiVersion: '2025-12-18.acacia' as any })
+  return new Stripe(key, { apiVersion: '2026-02-25.clover' as any })
 }
 
 const stripePlugin: FastifyPluginAsync = async (fastify) => {
