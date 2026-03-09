@@ -351,15 +351,30 @@ async function uploadsPlugin(fastify: FastifyInstance) {
     }
   })
 
-  // GET /images/:key — public image proxy (streams from S3)
+  // GET /images/:key — image proxy (serves only tracked uploads)
   fastify.get<{
     Params: { key: string }
   }>('/images/:key', async (request, reply) => {
     const key = decodeURIComponent(request.params.key)
 
-    // Basic path traversal protection
+    // Path traversal protection
     if (key.includes('..') || key.startsWith('/')) {
       return reply.status(400).send({ error: 'Invalid key' })
+    }
+
+    // Only serve images that exist in the uploads table with active status.
+    // This prevents enumeration of arbitrary S3 keys and ensures removed
+    // uploads are no longer accessible.
+    // Also allow variant keys (e.g. "key__thumb.webp") by checking the base key.
+    const baseKey = key.replace(/__(?:thumb|medium)\.[a-z]+$/, '')
+    const [upload] = await db
+      .select({ status: uploads.status })
+      .from(uploads)
+      .where(eq(uploads.s3Key, baseKey))
+      .limit(1)
+
+    if (!upload || upload.status !== 'active') {
+      return reply.status(404).send({ error: 'Image not found' })
     }
 
     const result = await getObject(key)

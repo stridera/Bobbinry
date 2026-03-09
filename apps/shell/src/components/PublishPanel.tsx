@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import { PanelActions } from '@bobbinry/sdk'
 import { apiFetch } from '@/lib/api'
 import { config } from '@/lib/config'
 
@@ -135,17 +136,14 @@ export function PublishPanel(props: PublishPanelProps) {
 
   return (
     <div className="p-3 space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-          Publishing
-        </h3>
+      <PanelActions>
         <Link
           href="/publish"
           className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
         >
           Dashboard
         </Link>
-      </div>
+      </PanelActions>
 
       {loading ? (
         <div className="py-4 text-center">

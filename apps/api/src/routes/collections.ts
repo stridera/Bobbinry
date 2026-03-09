@@ -10,6 +10,32 @@ import { db } from '../db/connection'
 import { projectCollections, projectCollectionMemberships, projects } from '../db/schema'
 import { eq, and, desc, sql } from 'drizzle-orm'
 import { randomBytes } from 'crypto'
+import { requireAuth } from '../middleware/auth'
+
+/** Verify the authenticated user owns a collection. Returns the collection or sends 403/404. */
+async function requireCollectionOwnership(
+  request: import('fastify').FastifyRequest,
+  reply: import('fastify').FastifyReply,
+  collectionId: string
+): Promise<typeof projectCollections.$inferSelect | null> {
+  const [collection] = await db
+    .select()
+    .from(projectCollections)
+    .where(eq(projectCollections.id, collectionId))
+    .limit(1)
+
+  if (!collection) {
+    reply.status(404).send({ error: 'Collection not found' })
+    return null
+  }
+
+  if (collection.userId !== request.user!.id) {
+    reply.status(403).send({ error: 'You do not own this collection' })
+    return null
+  }
+
+  return collection
+}
 
 const collectionsPlugin: FastifyPluginAsync = async (fastify) => {
   /**
@@ -20,13 +46,11 @@ const collectionsPlugin: FastifyPluginAsync = async (fastify) => {
     Querystring: {
       userId: string
     }
-  }>('/users/me/collections', async (request, reply) => {
+  }>('/users/me/collections', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
-      const { userId } = request.query
-
-      if (!userId) {
-        return reply.status(400).send({ error: 'userId query parameter required' })
-      }
+      const userId = request.user!.id
 
       // Get collections with project counts
       const collections = await db
@@ -70,12 +94,15 @@ const collectionsPlugin: FastifyPluginAsync = async (fastify) => {
       colorTheme?: string
       coverImage?: string
     }
-  }>('/collections', async (request, reply) => {
+  }>('/collections', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
-      const { userId, name, description, colorTheme, coverImage } = request.body
+      const userId = request.user!.id
+      const { name, description, colorTheme, coverImage } = request.body
 
-      if (!userId || !name) {
-        return reply.status(400).send({ error: 'userId and name are required' })
+      if (!name) {
+        return reply.status(400).send({ error: 'name is required' })
       }
 
       const [collection] = await db
@@ -140,10 +167,15 @@ const collectionsPlugin: FastifyPluginAsync = async (fastify) => {
       coverImage?: string
       isPublic?: boolean
     }
-  }>('/collections/:collectionId', async (request, reply) => {
+  }>('/collections/:collectionId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { collectionId } = request.params
       const updates = request.body
+
+      const owned = await requireCollectionOwnership(request, reply, collectionId)
+      if (!owned) return
 
       const [collection] = await db
         .update(projectCollections)
@@ -173,9 +205,14 @@ const collectionsPlugin: FastifyPluginAsync = async (fastify) => {
     Params: {
       collectionId: string
     }
-  }>('/collections/:collectionId', async (request, reply) => {
+  }>('/collections/:collectionId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { collectionId } = request.params
+
+      const owned = await requireCollectionOwnership(request, reply, collectionId)
+      if (!owned) return
 
       // Delete collection (cascade will remove memberships)
       await db
@@ -267,10 +304,15 @@ const collectionsPlugin: FastifyPluginAsync = async (fastify) => {
     Body: {
       orderIndex?: number
     }
-  }>('/collections/:collectionId/projects/:projectId', async (request, reply) => {
+  }>('/collections/:collectionId/projects/:projectId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { collectionId, projectId } = request.params
       const { orderIndex = 0 } = request.body
+
+      const owned = await requireCollectionOwnership(request, reply, collectionId)
+      if (!owned) return
 
       // Check if project exists
       const [project] = await db
@@ -314,9 +356,14 @@ const collectionsPlugin: FastifyPluginAsync = async (fastify) => {
       collectionId: string
       projectId: string
     }
-  }>('/collections/:collectionId/projects/:projectId', async (request, reply) => {
+  }>('/collections/:collectionId/projects/:projectId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { collectionId, projectId } = request.params
+
+      const owned = await requireCollectionOwnership(request, reply, collectionId)
+      if (!owned) return
 
       await db
         .delete(projectCollectionMemberships)
@@ -345,10 +392,15 @@ const collectionsPlugin: FastifyPluginAsync = async (fastify) => {
     Body: {
       projectIds: string[]
     }
-  }>('/collections/:collectionId/projects/reorder', async (request, reply) => {
+  }>('/collections/:collectionId/projects/reorder', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { collectionId } = request.params
       const { projectIds } = request.body
+
+      const owned = await requireCollectionOwnership(request, reply, collectionId)
+      if (!owned) return
 
       if (!Array.isArray(projectIds)) {
         return reply.status(400).send({ error: 'projectIds must be an array' })
@@ -388,10 +440,15 @@ const collectionsPlugin: FastifyPluginAsync = async (fastify) => {
     Body: {
       customUrl?: string
     }
-  }>('/collections/:collectionId/short-url', async (request, reply) => {
+  }>('/collections/:collectionId/short-url', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { collectionId } = request.params
       const { customUrl } = request.body
+
+      const owned = await requireCollectionOwnership(request, reply, collectionId)
+      if (!owned) return
 
       // Reserved words
       const reservedWords = [
@@ -445,9 +502,14 @@ const collectionsPlugin: FastifyPluginAsync = async (fastify) => {
     Params: {
       collectionId: string
     }
-  }>('/collections/:collectionId/short-url', async (request, reply) => {
+  }>('/collections/:collectionId/short-url', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { collectionId } = request.params
+
+      const owned = await requireCollectionOwnership(request, reply, collectionId)
+      if (!owned) return
 
       await db
         .update(projectCollections)

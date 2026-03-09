@@ -1,9 +1,13 @@
+'use client'
+
 /**
  * Sortable Project Card Component
  *
- * A draggable version of ProjectCard
+ * A draggable version of ProjectCard with remove-from-collection action
  */
 
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import Link from 'next/link'
@@ -24,9 +28,15 @@ interface Project {
 interface SortableProjectCardProps {
   project: Project
   isDragging: boolean
+  onRemoveFromCollection?: (projectId: string) => void
 }
 
-export function SortableProjectCard({ project }: SortableProjectCardProps) {
+export function SortableProjectCard({ project, onRemoveFromCollection }: SortableProjectCardProps) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })
+
   const {
     attributes,
     listeners,
@@ -41,6 +51,35 @@ export function SortableProjectCard({ project }: SortableProjectCardProps) {
     transition,
     opacity: isThisCardDragging ? 0.5 : 1,
   }
+
+  const updateMenuPosition = useCallback(() => {
+    if (!buttonRef.current) return
+    const rect = buttonRef.current.getBoundingClientRect()
+    setMenuPos({
+      top: rect.bottom + 4,
+      left: rect.right,
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!menuOpen) return
+    updateMenuPosition()
+    const handleClick = (e: MouseEvent) => {
+      if (
+        menuRef.current && !menuRef.current.contains(e.target as Node) &&
+        buttonRef.current && !buttonRef.current.contains(e.target as Node)
+      ) {
+        setMenuOpen(false)
+      }
+    }
+    const handleScroll = () => setMenuOpen(false)
+    document.addEventListener('mousedown', handleClick)
+    window.addEventListener('scroll', handleScroll, true)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      window.removeEventListener('scroll', handleScroll, true)
+    }
+  }, [menuOpen, updateMenuPosition])
 
   const projectUrl = project.shortUrl ? `/p/${project.shortUrl}` : `/projects/${project.id}`
 
@@ -135,7 +174,42 @@ export function SortableProjectCard({ project }: SortableProjectCardProps) {
             </div>
           </div>
         </Link>
+
+        {/* Remove from collection */}
+        {onRemoveFromCollection && (
+          <button
+            ref={buttonRef}
+            onClick={() => setMenuOpen(!menuOpen)}
+            className="flex-shrink-0 p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            aria-label="Project actions"
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <circle cx="12" cy="5" r="1.5" />
+              <circle cx="12" cy="12" r="1.5" />
+              <circle cx="12" cy="19" r="1.5" />
+            </svg>
+          </button>
+        )}
       </div>
+
+      {menuOpen && onRemoveFromCollection && createPortal(
+        <div
+          ref={menuRef}
+          className="fixed w-52 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg z-[9999] py-1"
+          style={{ top: menuPos.top, left: menuPos.left - 208 }}
+        >
+          <button
+            onClick={() => {
+              onRemoveFromCollection(project.id)
+              setMenuOpen(false)
+            }}
+            className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+          >
+            Remove from Collection
+          </button>
+        </div>,
+        document.body
+      )}
     </div>
   )
 }

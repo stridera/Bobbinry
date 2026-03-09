@@ -23,6 +23,18 @@ type DB = typeof dbType
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
+ * Deterministic JSON string for deep comparison.
+ * JSONB sorts keys alphabetically, so we do the same for the disk manifest.
+ */
+function stableStringify(obj: unknown): string {
+  return JSON.stringify(obj, (_, val) =>
+    val && typeof val === 'object' && !Array.isArray(val)
+      ? Object.fromEntries(Object.entries(val).sort(([a], [b]) => a.localeCompare(b)))
+      : val
+  )
+}
+
+/**
  * Compare two semver strings. Returns -1 if a < b, 0 if equal, 1 if a > b.
  */
 export function compareSemver(a: string, b: string): -1 | 0 | 1 {
@@ -63,6 +75,16 @@ export async function checkAndUpgradeBobbin(
   const diskVersion = diskManifest.version as string
 
   if (!diskVersion || compareSemver(diskVersion, installedVersion) <= 0) {
+    // Warn if manifest content drifted without a version bump (helps diagnose stale-manifest bugs)
+    if (diskVersion && compareSemver(diskVersion, installedVersion) === 0) {
+      const diskStr = stableStringify(diskManifest)
+      const dbStr = stableStringify(installedRow.manifestJson)
+      if (diskStr !== dbStr) {
+        console.warn(
+          `[BOBBIN UPGRADE] ${installedRow.bobbinId}: manifest on disk differs from DB at same version ${diskVersion} — bump the version to apply changes`
+        )
+      }
+    }
     return null
   }
 
@@ -95,6 +117,13 @@ export async function checkAndUpgradeBobbin(
           const migration = migrations[i]!
           const migrationSql = migration.up.replaceAll('{{project_id}}', projectId)
           console.log(`  Migration ${i + 1}/${migrations.length}: "${migration.description}" — running`)
+
+          // Safety: only allow whitelisted SQL statement types in bobbin migrations
+          const firstWord = migrationSql.trimStart().split(/\s/)[0]?.toUpperCase()
+          const allowedStatements = new Set(['CREATE', 'ALTER', 'DROP', 'INSERT', 'UPDATE', 'DELETE', 'WITH'])
+          if (!firstWord || !allowedStatements.has(firstWord)) {
+            throw new Error(`Disallowed SQL statement in migration: "${firstWord}..."`)
+          }
 
           await tx.execute(sql.raw(migrationSql))
 

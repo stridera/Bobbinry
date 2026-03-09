@@ -62,11 +62,13 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // Get subscribers for an author
+  // Get subscribers for an author (author-only)
   fastify.get<{
     Params: { authorId: string }
     Querystring: { status?: string; tierId?: string }
-  }>('/authors/:authorId/subscribers', async (request, reply) => {
+  }>('/authors/:authorId/subscribers', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { authorId } = request.params
       const { status, tierId } = request.query
@@ -74,6 +76,9 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
       if (!isValidUUID(authorId)) {
         return reply.status(400).send({ error: 'Invalid author ID format' })
       }
+
+      // Only the author can view their subscriber list
+      if (!requireSelf(request, reply, authorId)) return
 
       if (tierId && !isValidUUID(tierId)) {
         return reply.status(400).send({ error: 'Invalid tier ID format' })
@@ -115,11 +120,14 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
       paymentMethodId?: string // Stripe payment method
       discountCode?: string
     }
-  }>('/users/:userId/subscribe', async (request, reply) => {
+  }>('/users/:userId/subscribe', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { userId } = request.params
       const { authorId, tierId, discountCode } = request.body
-      // const paymentMethodId = request.body.paymentMethodId // TODO: Use for payment processing
+
+      if (!requireSelf(request, reply, userId)) return
 
       if (!isValidUUID(userId) || !isValidUUID(authorId) || !isValidUUID(tierId)) {
         return reply.status(400).send({ error: 'Invalid ID format' })
@@ -243,7 +251,9 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
       tierId?: string
       cancelAtPeriodEnd?: boolean
     }
-  }>('/subscriptions/:subscriptionId', async (request, reply) => {
+  }>('/subscriptions/:subscriptionId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { subscriptionId } = request.params
       const { tierId, cancelAtPeriodEnd } = request.body
@@ -252,7 +262,7 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Invalid subscription ID format' })
       }
 
-      // Get current subscription
+      // Get current subscription and verify ownership
       const current = await db
         .select()
         .from(subscriptions)
@@ -261,6 +271,11 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
 
       if (current.length === 0) {
         return reply.status(404).send({ error: 'Subscription not found' })
+      }
+
+      // Only the subscriber can modify their own subscription
+      if (current[0]!.subscriberId !== request.user!.id) {
+        return reply.status(403).send({ error: 'You can only modify your own subscriptions' })
       }
 
       const updateData: any = {}
@@ -314,12 +329,29 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
   // Cancel subscription immediately
   fastify.delete<{
     Params: { subscriptionId: string }
-  }>('/subscriptions/:subscriptionId', async (request, reply) => {
+  }>('/subscriptions/:subscriptionId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { subscriptionId } = request.params
 
       if (!isValidUUID(subscriptionId)) {
         return reply.status(400).send({ error: 'Invalid subscription ID format' })
+      }
+
+      // Verify ownership before canceling
+      const [current] = await db
+        .select()
+        .from(subscriptions)
+        .where(eq(subscriptions.id, subscriptionId))
+        .limit(1)
+
+      if (!current) {
+        return reply.status(404).send({ error: 'Subscription not found' })
+      }
+
+      if (current.subscriberId !== request.user!.id) {
+        return reply.status(403).send({ error: 'You can only cancel your own subscriptions' })
       }
 
       // TODO: Cancel in Stripe
@@ -355,12 +387,29 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
   // Get payment history for a subscription
   fastify.get<{
     Params: { subscriptionId: string }
-  }>('/subscriptions/:subscriptionId/payments', async (request, reply) => {
+  }>('/subscriptions/:subscriptionId/payments', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { subscriptionId } = request.params
 
       if (!isValidUUID(subscriptionId)) {
         return reply.status(400).send({ error: 'Invalid subscription ID format' })
+      }
+
+      // Verify the requester owns this subscription
+      const [sub] = await db
+        .select()
+        .from(subscriptions)
+        .where(eq(subscriptions.id, subscriptionId))
+        .limit(1)
+
+      if (!sub) {
+        return reply.status(404).send({ error: 'Subscription not found' })
+      }
+
+      if (sub.subscriberId !== request.user!.id && sub.authorId !== request.user!.id) {
+        return reply.status(403).send({ error: 'Access denied' })
       }
 
       const payments = await db
@@ -380,10 +429,14 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { userId: string }
     Querystring: { status?: string }
-  }>('/users/:userId/payments', async (request, reply) => {
+  }>('/users/:userId/payments', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { userId } = request.params
       const { status } = request.query
+
+      if (!requireSelf(request, reply, userId)) return
 
       if (!isValidUUID(userId)) {
         return reply.status(400).send({ error: 'Invalid user ID format' })
@@ -435,7 +488,9 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { authorId: string }
     Querystring: { active?: string }
-  }>('/authors/:authorId/discount-codes', async (request, reply) => {
+  }>('/authors/:authorId/discount-codes', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { authorId } = request.params
       const { active } = request.query
@@ -443,6 +498,8 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
       if (!isValidUUID(authorId)) {
         return reply.status(400).send({ error: 'Invalid author ID format' })
       }
+
+      if (!requireSelf(request, reply, authorId)) return
 
       const whereConditions = active === 'true'
         ? and(eq(discountCodes.authorId, authorId), eq(discountCodes.isActive, true))
@@ -471,7 +528,9 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
       maxUses?: string
       expiresAt?: string
     }
-  }>('/authors/:authorId/discount-codes', async (request, reply) => {
+  }>('/authors/:authorId/discount-codes', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { authorId } = request.params
       const { code, discountType, discountValue, maxUses, expiresAt } = request.body
@@ -479,6 +538,8 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
       if (!isValidUUID(authorId)) {
         return reply.status(400).send({ error: 'Invalid author ID format' })
       }
+
+      if (!requireSelf(request, reply, authorId)) return
 
       if (!code || code.trim().length === 0) {
         return reply.status(400).send({ error: 'Code is required' })
@@ -524,13 +585,30 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
       maxUses?: string
       expiresAt?: string
     }
-  }>('/discount-codes/:codeId', async (request, reply) => {
+  }>('/discount-codes/:codeId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { codeId } = request.params
       const updateData = request.body
 
       if (!isValidUUID(codeId)) {
         return reply.status(400).send({ error: 'Invalid code ID format' })
+      }
+
+      // Verify the author owns this discount code
+      const [existing] = await db
+        .select()
+        .from(discountCodes)
+        .where(eq(discountCodes.id, codeId))
+        .limit(1)
+
+      if (!existing) {
+        return reply.status(404).send({ error: 'Discount code not found' })
+      }
+
+      if (existing.authorId !== request.user!.id) {
+        return reply.status(403).send({ error: 'You can only modify your own discount codes' })
       }
 
       const [updated] = await db
@@ -558,12 +636,29 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
   // Delete discount code
   fastify.delete<{
     Params: { codeId: string }
-  }>('/discount-codes/:codeId', async (request, reply) => {
+  }>('/discount-codes/:codeId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { codeId } = request.params
 
       if (!isValidUUID(codeId)) {
         return reply.status(400).send({ error: 'Invalid code ID format' })
+      }
+
+      // Verify the author owns this discount code
+      const [existing] = await db
+        .select()
+        .from(discountCodes)
+        .where(eq(discountCodes.id, codeId))
+        .limit(1)
+
+      if (!existing) {
+        return reply.status(404).send({ error: 'Discount code not found' })
+      }
+
+      if (existing.authorId !== request.user!.id) {
+        return reply.status(403).send({ error: 'You can only delete your own discount codes' })
       }
 
       await db
@@ -641,10 +736,14 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { userId: string }
     Querystring: { type?: string; active?: string }
-  }>('/users/:userId/access-grants', async (request, reply) => {
+  }>('/users/:userId/access-grants', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { userId } = request.params
       const { type, active } = request.query
+
+      if (!requireSelf(request, reply, userId)) return
 
       if (!isValidUUID(userId)) {
         return reply.status(400).send({ error: 'Invalid user ID format' })
@@ -685,10 +784,14 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
       expiresAt?: string
       reason?: string
     }
-  }>('/authors/:authorId/access-grants', async (request, reply) => {
+  }>('/authors/:authorId/access-grants', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { authorId } = request.params
       const { grantedTo, projectId, grantType, expiresAt, reason } = request.body
+
+      if (!requireSelf(request, reply, authorId)) return
 
       if (!isValidUUID(authorId) || !isValidUUID(grantedTo)) {
         return reply.status(400).send({ error: 'Invalid ID format' })
@@ -722,12 +825,29 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
   // Revoke access grant
   fastify.delete<{
     Params: { grantId: string }
-  }>('/access-grants/:grantId', async (request, reply) => {
+  }>('/access-grants/:grantId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { grantId } = request.params
 
       if (!isValidUUID(grantId)) {
         return reply.status(400).send({ error: 'Invalid grant ID format' })
+      }
+
+      // Verify the author owns this grant
+      const [existing] = await db
+        .select()
+        .from(accessGrants)
+        .where(eq(accessGrants.id, grantId))
+        .limit(1)
+
+      if (!existing) {
+        return reply.status(404).send({ error: 'Access grant not found' })
+      }
+
+      if (existing.authorId !== request.user!.id) {
+        return reply.status(403).send({ error: 'You can only revoke your own access grants' })
       }
 
       const [revoked] = await db

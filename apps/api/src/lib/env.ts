@@ -21,10 +21,19 @@ interface EnvConfig {
   S3_BUCKET: string
   S3_ACCESS_KEY: string
   S3_SECRET_KEY: string
+  RESEND_API_KEY: string | undefined
+  EMAIL_FROM: string
 }
 
 const requiredEnvVars = {
-  production: ['DATABASE_URL', 'WEB_ORIGIN', 'INTERNAL_API_AUTH_TOKEN'],
+  production: [
+    'DATABASE_URL',
+    'WEB_ORIGIN',
+    'INTERNAL_API_AUTH_TOKEN',
+    'S3_ENDPOINT',
+    'S3_ACCESS_KEY',
+    'S3_SECRET_KEY',
+  ],
   development: [] as string[],
   test: ['DATABASE_URL'] as string[]
 } as const
@@ -64,6 +73,8 @@ export function validateEnv(): EnvConfig {
     S3_BUCKET: process.env.S3_BUCKET || 'bobbinry',
     S3_ACCESS_KEY: process.env.S3_ACCESS_KEY || 'admin',
     S3_SECRET_KEY: process.env.S3_SECRET_KEY || 'adminadmin',
+    RESEND_API_KEY: process.env.RESEND_API_KEY,
+    EMAIL_FROM: process.env.EMAIL_FROM || 'noreply@bobbinry.com',
   }
 }
 

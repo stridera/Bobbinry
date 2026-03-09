@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
@@ -66,6 +66,8 @@ const templateIcons: Record<string, React.JSX.Element> = {
 
 export default function NewProjectPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const collectionId = searchParams.get('collectionId')
   const { data: session } = useSession()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -158,6 +160,18 @@ export default function NewProjectPage() {
       if (failedInstalls.length > 0) {
         router.push(`/projects/${projectId}/bobbins?setup=template-failed`)
         return
+      }
+
+      if (collectionId) {
+        await apiFetch(
+          `/api/collections/${collectionId}/projects/${projectId}`,
+          session.apiToken,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderIndex: 0 }),
+          }
+        ).catch(() => {})
       }
 
       router.push(`/projects/${projectId}`)

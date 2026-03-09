@@ -184,8 +184,9 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
         const bobbinsDir = path.resolve(projectRoot, 'bobbins')
         const fullPath = path.resolve(projectRoot, manifestPath)
 
-        // Security check: Ensure the resolved path is within allowed directories
-        if (!fullPath.startsWith(bobbinsDir + path.sep)) {
+        // Security check: resolve symlinks, then ensure canonical path is within bobbins/
+        const realPath = await fs.realpath(fullPath).catch(() => fullPath)
+        if (!realPath.startsWith(bobbinsDir + path.sep)) {
           return reply.status(403).send({
             error: 'Access denied',
             message: 'Manifest path must be within the bobbins directory'

@@ -25,3 +25,12 @@ yarn-debug.log*
 *.log
 .dev-pids/
 .screenshots/
+
+# Deployment / infra (local-only)
+fly.toml
+.dockerignore
+apps/api/Dockerfile
+infra/production-setup.md
+
+# Test screenshots
+/*.png

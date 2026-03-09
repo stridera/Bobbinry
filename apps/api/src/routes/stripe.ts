@@ -34,12 +34,15 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
 
   fastify.get<{
     Params: { userId: string }
-  }>('/users/:userId/payment-config', async (request, reply) => {
+  }>('/users/:userId/payment-config', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { userId } = request.params
       if (!isValidUUID(userId)) {
         return reply.status(400).send({ error: 'Invalid user ID format' })
       }
+      if (!requireSelf(request, reply, userId)) return
 
       const config = await db
         .select()
@@ -467,15 +470,18 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
       let event: Stripe.Event
 
       if (signature && webhookSecret && request.rawBody) {
-        // Verify webhook signature in production
+        // Verify webhook signature
         event = stripe.webhooks.constructEvent(
           request.rawBody as string,
           signature,
           webhookSecret
         )
-      } else {
-        // Development: trust the payload
+      } else if (process.env.NODE_ENV === 'development') {
+        // Development only: trust the payload when webhook secret isn't configured
+        fastify.log.warn('Stripe webhook received without signature verification (dev mode)')
         event = request.body as Stripe.Event
+      } else {
+        return reply.status(400).send({ error: 'Missing webhook signature' })
       }
 
       fastify.log.info({ eventType: event.type }, 'Stripe webhook received')

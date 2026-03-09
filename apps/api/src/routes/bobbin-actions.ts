@@ -11,6 +11,7 @@
  */
 
 import { FastifyPluginAsync } from 'fastify'
+import { requireAuth, requireProjectOwnership } from '../middleware/auth'
 
 // Types for bobbin action handlers (replicated here to avoid cross-package imports)
 interface ActionContext {
@@ -37,10 +38,23 @@ const bobbinActionsPlugin: FastifyPluginAsync = async (fastify) => {
       params: Record<string, any>
       context: Partial<ActionContext>
     }
-  }>('/bobbins/:bobbinId/actions/:actionId', async (request, reply) => {
+  }>('/bobbins/:bobbinId/actions/:actionId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     try {
       const { bobbinId, actionId } = request.params
       const { params, context } = request.body
+
+      // Validate context
+      if (!context.projectId) {
+        return reply.status(400).send({
+          error: 'Missing required context: projectId'
+        })
+      }
+
+      // Verify the authenticated user owns this project
+      const hasAccess = await requireProjectOwnership(request, reply, context.projectId)
+      if (!hasAccess) return
 
       fastify.log.info({ bobbinId, actionId, context }, 'Invoking bobbin action')
 
@@ -64,19 +78,12 @@ const bobbinActionsPlugin: FastifyPluginAsync = async (fastify) => {
         })
       }
 
-      // Validate context
-      if (!context.projectId) {
-        return reply.status(400).send({
-          error: 'Missing required context: projectId'
-        })
-      }
-
       // Build full action context
       const fullContext: ActionContext = {
         projectId: context.projectId,
         bobbinId,
         ...(context.viewId && { viewId: context.viewId }),
-        ...(context.userId && { userId: context.userId }),
+        userId: request.user!.id,
         ...(context.entityId && { entityId: context.entityId })
       }
 

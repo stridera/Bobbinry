@@ -53,7 +53,9 @@ export function RecentActivityPanel({ userId, apiToken }: { userId: string; apiT
 
   const getEntityType = (collectionName: string) => {
     const singular = collectionName.endsWith('s') ? collectionName.slice(0, -1) : collectionName
-    return singular.charAt(0).toUpperCase() + singular.slice(1)
+    // Convert underscored names to title case (e.g. "scene_beat" → "Scene beat")
+    const label = singular.replace(/_/g, ' ')
+    return label.charAt(0).toUpperCase() + label.slice(1)
   }
 
   if (loading) {

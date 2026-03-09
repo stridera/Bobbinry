@@ -12,7 +12,7 @@ import {
   projectCollections,
   projectCollectionMemberships
 } from '../db/schema'
-import { eq, and, desc, sql, inArray } from 'drizzle-orm'
+import { eq, and, ne, desc, sql, inArray } from 'drizzle-orm'
 import { randomBytes } from 'crypto'
 import { requireAuth, requireProjectOwnership } from '../middleware/auth'
 
@@ -152,7 +152,7 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.send({ activity: [] })
       }
 
-      // Get recently edited entities
+      // Get recently edited entities (exclude internal collections like entity_type_definitions)
       const recentActivity = await db
         .select({
           entity: entities,
@@ -161,7 +161,10 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
         })
         .from(entities)
         .innerJoin(projects, eq(entities.projectId, projects.id))
-        .where(inArray(entities.projectId, projectIds))
+        .where(and(
+          inArray(entities.projectId, projectIds),
+          ne(entities.collectionName, 'entity_type_definitions')
+        ))
         .orderBy(desc(entities.lastEditedAt))
         .limit(parseInt(limit))
 

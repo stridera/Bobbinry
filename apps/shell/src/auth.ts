@@ -23,7 +23,7 @@ const jwtSecret = new TextEncoder().encode(
 async function signApiToken(userId: string): Promise<string> {
   return new SignJWT({ id: userId })
     .setProtectedHeader({ alg: 'HS256' })
-    .setExpirationTime('30d')
+    .setExpirationTime('7d')
     .sign(jwtSecret)
 }
 

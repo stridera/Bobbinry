@@ -1,8 +1,7 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "concurrency": "20",
+  "concurrency": "30",
   "globalPassThroughEnv": [
-    "NEXTAUTH_SECRET",
     "NEXTAUTH_URL",
     "NEXT_PUBLIC_APP_URL",
     "NODE_ENV"
@@ -11,6 +10,9 @@
     "build": {
       "dependsOn": [
         "^build"
+      ],
+      "passThroughEnv": [
+        "NEXTAUTH_SECRET"
       ],
       "outputs": [
         "dist/**",

@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
+import { PanelActions } from '@bobbinry/sdk'
 
 interface ChapterPublishProps {
   projectId: string
@@ -149,17 +150,14 @@ export default function ChapterPublishPanel(props: ChapterPublishProps) {
 
   return (
     <div className="p-3 space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-          Publishing
-        </h3>
+      <PanelActions>
         <a
           href="/publish"
           className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
         >
           Dashboard
         </a>
-      </div>
+      </PanelActions>
 
       {loading ? (
         <div className="py-4 text-center">

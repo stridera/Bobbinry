@@ -55,20 +55,25 @@ export async function ensureBucketExists(): Promise<void> {
       await client.send(new CreateBucketCommand({ Bucket: bucket }))
 
       // Configure CORS for direct browser uploads
-      await client.send(new PutBucketCorsCommand({
-        Bucket: bucket,
-        CORSConfiguration: {
-          CORSRules: [
-            {
-              AllowedOrigins: ['*'],
-              AllowedMethods: ['GET', 'PUT', 'HEAD'],
-              AllowedHeaders: ['*'],
-              ExposeHeaders: ['ETag', 'Content-Length'],
-              MaxAgeSeconds: 3600,
-            },
-          ],
-        },
-      }))
+      // R2 manages CORS via its dashboard, so this may fail in production
+      try {
+        await client.send(new PutBucketCorsCommand({
+          Bucket: bucket,
+          CORSConfiguration: {
+            CORSRules: [
+              {
+                AllowedOrigins: [env.WEB_ORIGIN],
+                AllowedMethods: ['GET', 'PUT', 'HEAD'],
+                AllowedHeaders: ['*'],
+                ExposeHeaders: ['ETag', 'Content-Length'],
+                MaxAgeSeconds: 3600,
+              },
+            ],
+          },
+        }))
+      } catch (corsErr) {
+        console.warn(`Could not set CORS on bucket ${bucket} (expected on R2):`, (corsErr as Error).message)
+      }
 
       console.log(`Created S3 bucket: ${bucket}`)
     } else {

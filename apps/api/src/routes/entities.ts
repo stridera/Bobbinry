@@ -100,16 +100,15 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
               continue
             }
 
-            // Key is validated above, safe to interpolate
-            // Value is always parameterized by Drizzle's template
+            // Key is validated by regex above (safe to interpolate as identifier)
+            // Value MUST be parameterized via Drizzle's sql template to prevent injection
             if (value === null) {
-              // Filter for NULL values - key is pre-validated
-              const nullCheckSql = sql.raw(`entity_data->>'${key}' IS NULL`)
+              const nullCheckSql = sql`${sql.raw(`entity_data->>'${key}'`)} IS NULL`
               whereCondition = and(whereCondition, nullCheckSql)
             } else {
-              // Filter for specific values - value is parameterized via template
-              const valueSql = sql.raw(`entity_data->>'${key}' = '${String(value).replace(/'/g, "''")}'`)
-              whereCondition = and(whereCondition, valueSql)
+              const strValue = String(value)
+              const filterSql = sql`${sql.raw(`entity_data->>'${key}'`)} = ${strValue}`
+              whereCondition = and(whereCondition, filterSql)
             }
           }
         } catch {

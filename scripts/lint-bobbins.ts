@@ -415,6 +415,36 @@ function checkKebabCaseFiles(ctx: BobbinContext): Diagnostic[] {
   return diags;
 }
 
+function checkManifestVersionBumped(ctx: BobbinContext): Diagnostic[] {
+  if (!ctx.manifest?.version) return [];
+  const manifestPath = path.join(ctx.dirPath, "manifest.yaml");
+  try {
+    // Get the committed version of the manifest (if any)
+    const { execSync } = require("child_process");
+    const committed = execSync(`git show HEAD:bobbins/${ctx.dirName}/manifest.yaml 2>/dev/null`, {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const committedManifest = YAML.parse(committed);
+    if (!committedManifest?.version) return [];
+
+    // Same version — check if content actually changed
+    if (committedManifest.version === ctx.manifest.version) {
+      const current = fs.readFileSync(manifestPath, "utf-8");
+      if (current.trim() !== committed.trim()) {
+        return [{
+          rule: "manifest-version-bumped",
+          message: `manifest content changed but version is still ${ctx.manifest.version} — bump the version`,
+          severity: "error",
+        }];
+      }
+    }
+  } catch {
+    // No git history or git not available — skip
+  }
+  return [];
+}
+
 // --- Cross-bobbin rules ---
 
 function checkPanelIdUnique(contexts: BobbinContext[]): Map<string, Diagnostic[]> {
@@ -500,6 +530,7 @@ const perBobbinRules = [
   checkPanelIdNamespaced,
   checkTsconfigExists,
   checkKebabCaseFiles,
+  checkManifestVersionBumped,
 ];
 
 function main() {

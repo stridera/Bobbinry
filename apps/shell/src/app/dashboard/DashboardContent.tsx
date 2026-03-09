@@ -11,6 +11,7 @@ import Link from 'next/link'
 import { ProjectCard } from './ProjectCard'
 import { RecentActivityPanel } from './RecentActivityPanel'
 import { SortableCollection } from './SortableCollection'
+import { CreateCollectionModal } from './CreateCollectionModal'
 import { DashboardLoadingState } from '@/components/LoadingState'
 import { EmptyState } from '@/components/EmptyState'
 import { SiteNav } from '@/components/SiteNav'
@@ -67,6 +68,7 @@ export function DashboardContent({ user, apiToken }: { user: User; apiToken: str
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [showArchived, setShowArchived] = useState(false)
+  const [showCreateCollection, setShowCreateCollection] = useState(false)
 
   useEffect(() => {
     loadDashboard()
@@ -107,8 +109,9 @@ export function DashboardContent({ user, apiToken }: { user: User; apiToken: str
 
   const handleReorder = async (collectionId: string, projectIds: string[]) => {
     try {
-      const response = await fetch(
-        `${config.apiUrl}/api/collections/${collectionId}/projects/reorder`,
+      const response = await apiFetch(
+        `/api/collections/${collectionId}/projects/reorder`,
+        apiToken,
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -124,6 +127,57 @@ export function DashboardContent({ user, apiToken }: { user: User; apiToken: str
       throw error
     }
   }
+
+  const handleAddToCollection = async (collectionId: string, projectId: string) => {
+    try {
+      const res = await apiFetch(
+        `/api/collections/${collectionId}/projects/${projectId}`,
+        apiToken,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderIndex: 0 }),
+        }
+      )
+      if (res.ok || res.status === 409) {
+        loadDashboard()
+      }
+    } catch (error) {
+      console.error('Failed to add project to collection:', error)
+    }
+  }
+
+  const handleRemoveFromCollection = async (collectionId: string, projectId: string) => {
+    try {
+      const res = await apiFetch(
+        `/api/collections/${collectionId}/projects/${projectId}`,
+        apiToken,
+        { method: 'DELETE' }
+      )
+      if (res.ok || res.status === 204) {
+        loadDashboard()
+      }
+    } catch (error) {
+      console.error('Failed to remove project from collection:', error)
+    }
+  }
+
+  const handleDeleteCollection = async (collectionId: string) => {
+    try {
+      const res = await apiFetch(
+        `/api/collections/${collectionId}`,
+        apiToken,
+        { method: 'DELETE' }
+      )
+      if (res.ok || res.status === 204) {
+        loadDashboard()
+      }
+    } catch (error) {
+      console.error('Failed to delete collection:', error)
+    }
+  }
+
+  const collectionsList = data?.collections.map(c => ({ id: c.id, name: c.name })) ?? []
 
   if (loading) {
     return <DashboardLoadingState />
@@ -142,15 +196,26 @@ export function DashboardContent({ user, apiToken }: { user: User; apiToken: str
                 {getGreeting()}, {user.name || user.email}
               </p>
             </div>
-            <Link
-              href="/projects/new"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              New Project
-            </Link>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowCreateCollection(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg font-medium transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+                New Collection
+              </button>
+              <Link
+                href="/projects/new"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                New Project
+              </Link>
+            </div>
           </div>
 
           {/* Stats */}
@@ -213,6 +278,8 @@ export function DashboardContent({ user, apiToken }: { user: User; apiToken: str
                   key={collection.id}
                   collection={{ ...collection, projects: filtered }}
                   onReorder={handleReorder}
+                  onDeleteCollection={handleDeleteCollection}
+                  onRemoveFromCollection={handleRemoveFromCollection}
                 />
               )
             })}
@@ -223,7 +290,12 @@ export function DashboardContent({ user, apiToken }: { user: User; apiToken: str
                 <h2 className="font-display text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">Projects</h2>
                 <div className="grid gap-3">
                   {filteredProjects(data.uncategorized).map((project) => (
-                    <ProjectCard key={project.id} project={project} />
+                    <ProjectCard
+                      key={project.id}
+                      project={project}
+                      collections={collectionsList}
+                      onAddToCollection={handleAddToCollection}
+                    />
                   ))}
                 </div>
               </div>
@@ -249,6 +321,18 @@ export function DashboardContent({ user, apiToken }: { user: User; apiToken: str
           </div>
         </div>
       </div>
+
+      {/* Create Collection Modal */}
+      {showCreateCollection && (
+        <CreateCollectionModal
+          apiToken={apiToken}
+          onCreated={() => {
+            setShowCreateCollection(false)
+            loadDashboard()
+          }}
+          onClose={() => setShowCreateCollection(false)}
+        />
+      )}
     </div>
   )
 }
