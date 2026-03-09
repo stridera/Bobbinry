@@ -129,8 +129,8 @@ function MonetizationContent() {
     setLoading(true)
     try {
       const [tiersRes, configRes, codesRes] = await Promise.all([
-        fetch(`${config.apiUrl}/api/users/${session.user.id}/subscription-tiers`),
-        fetch(`${config.apiUrl}/api/users/${session.user.id}/payment-config`),
+        apiFetch(`/api/users/${session.user.id}/subscription-tiers`, session.apiToken),
+        apiFetch(`/api/users/${session.user.id}/payment-config`, session.apiToken),
         apiFetch(`/api/authors/${session.user.id}/discount-codes`, session.apiToken)
       ])
 
