@@ -27,7 +27,6 @@ yarn-debug.log*
 .screenshots/
 
 # Deployment / infra (local-only)
-fly.toml
 .dockerignore
 apps/api/Dockerfile
 infra/production-setup.md
