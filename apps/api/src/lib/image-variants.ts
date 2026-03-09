@@ -10,8 +10,8 @@ export type VariantName = keyof typeof VARIANT_CONFIGS
 
 export function variantKey(originalKey: string, variant: VariantName): string {
   const lastDot = originalKey.lastIndexOf('.')
-  if (lastDot === -1) return `${originalKey}_${variant}.webp`
-  return `${originalKey.substring(0, lastDot)}_${variant}.webp`
+  if (lastDot === -1) return `${originalKey}__${variant}.webp`
+  return `${originalKey.substring(0, lastDot)}__${variant}.webp`
 }
 
 export async function generateVariants(originalKey: string): Promise<void> {
