@@ -295,13 +295,14 @@ function SaveIndicator({ status, focusMode }: { status: SaveStatus; focusMode: b
  * 4. On navigation back, local draft takes priority over server content
  *    if the draft is newer and hasn't been confirmed saved
  */
-export default function EditorView({ sdk, projectId, entityType, entityId }: EditorViewProps) {
+export default function EditorView({ sdk, projectId, entityType, entityId, metadata }: EditorViewProps) {
   const [title, setTitle] = useState('')
   const [loading, setLoading] = useState(true)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('clean')
   const [wordCount, setWordCount] = useState(0)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const titleInputRef = useRef<HTMLInputElement>(null)
 
   // Track the entity that's currently being edited so we can flush on navigate
   const activeEntityRef = useRef<string | null>(null)
@@ -532,6 +533,26 @@ export default function EditorView({ sdk, projectId, entityType, entityId }: Edi
     window.addEventListener('bobbinry:entity-updated', handleEntityUpdated)
     return () => window.removeEventListener('bobbinry:entity-updated', handleEntityUpdated)
   }, [editor, projectId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync title when another view (e.g. sidebar) renames the current entity
+  useEffect(() => {
+    function handleExternalRename(e: Event) {
+      const { entityId: updatedId, changes } = (e as CustomEvent).detail
+      if (updatedId === entityId && changes?.title != null) {
+        setTitle(changes.title)
+      }
+    }
+    window.addEventListener('bobbinry:entity-updated', handleExternalRename)
+    return () => window.removeEventListener('bobbinry:entity-updated', handleExternalRename)
+  }, [entityId])
+
+  // Focus and select title when creating new content
+  useEffect(() => {
+    if (!loading && metadata?.focusTitle && titleInputRef.current) {
+      titleInputRef.current.focus()
+      titleInputRef.current.select()
+    }
+  }, [loading, metadata?.focusTitle])
 
   // --- Inject entity-highlight CSS ---
   useEffect(() => {
@@ -870,6 +891,7 @@ export default function EditorView({ sdk, projectId, entityType, entityId }: Edi
         <div className="max-w-2xl mx-auto px-8 pt-12 pb-[40vh]">
           {/* Title - integrated into writing surface */}
           <input
+            ref={titleInputRef}
             type="text"
             value={title}
             onChange={(e) => handleTitleChange(e.target.value)}

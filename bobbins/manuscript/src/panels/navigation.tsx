@@ -371,8 +371,6 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
       }
 
       setSelectedNodeId(newContent.id)
-      setEditingNodeId(newContent.id)
-      setEditingValue('New Content')
 
       // Auto-navigate to the new content so the editor loads it
       if (typeof window !== 'undefined') {
@@ -384,7 +382,8 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
               bobbinId: 'manuscript',
               metadata: {
                 type: 'scene',
-                parentId: containerId
+                parentId: containerId,
+                focusTitle: true
               }
             }
           })
@@ -411,6 +410,17 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
       })
       await loadTree()
       setEditingNodeId(null)
+
+      // Notify other views (e.g. editor) of the rename
+      window.dispatchEvent(
+        new CustomEvent('bobbinry:entity-updated', {
+          detail: {
+            collection,
+            entityId: nodeId,
+            changes: { title: newTitle.trim() }
+          }
+        })
+      )
     } catch (error) {
       console.error('Failed to rename:', error)
       setToast({ message: 'Failed to rename: ' + (error instanceof Error ? error.message : 'Unknown error'), variant: 'danger' })
@@ -833,7 +843,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
                   createContainer(null)
                   setShowDropdown(false)
                 }}
-                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100"
+                className="w-full text-left px-3 py-2 text-sm whitespace-nowrap hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100"
               >
                 📁 Create Container
               </button>
@@ -842,7 +852,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
                   createContent(null)
                   setShowDropdown(false)
                 }}
-                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100 border-t border-gray-200 dark:border-gray-600"
+                className="w-full text-left px-3 py-2 text-sm whitespace-nowrap hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100 border-t border-gray-200 dark:border-gray-600"
               >
                 📝 Create Content
               </button>
