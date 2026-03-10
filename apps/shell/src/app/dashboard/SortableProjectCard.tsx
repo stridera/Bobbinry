@@ -81,7 +81,7 @@ export function SortableProjectCard({ project, onRemoveFromCollection }: Sortabl
     }
   }, [menuOpen, updateMenuPosition])
 
-  const projectUrl = project.shortUrl ? `/p/${project.shortUrl}` : `/projects/${project.id}`
+  const projectUrl = `/projects/${project.id}`
 
   return (
     <div

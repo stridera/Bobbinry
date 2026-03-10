@@ -10,7 +10,8 @@ import {
   projects,
   entities,
   projectCollections,
-  projectCollectionMemberships
+  projectCollectionMemberships,
+  userProfiles
 } from '../db/schema'
 import { eq, and, ne, desc, sql, inArray } from 'drizzle-orm'
 import { randomBytes } from 'crypto'
@@ -491,20 +492,26 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
     try {
       const { shortUrl } = request.params
 
-      const [project] = await db
-        .select()
+      const [result] = await db
+        .select({
+          projectId: projects.id,
+          ownerId: projects.ownerId,
+          shortUrl: projects.shortUrl,
+          username: userProfiles.username,
+        })
         .from(projects)
+        .leftJoin(userProfiles, eq(userProfiles.userId, projects.ownerId))
         .where(eq(projects.shortUrl, shortUrl))
         .limit(1)
 
-      if (!project) {
+      if (!result) {
         return reply.status(404).send({ error: 'Project not found' })
       }
 
-      // Return project data (shell can handle redirect)
+      const author = result.username || result.ownerId
       return reply.send({
-        projectId: project.id,
-        redirectTo: `/projects/${project.id}`
+        projectId: result.projectId,
+        redirectTo: `/read/${author}/${result.shortUrl}`
       })
     } catch (error) {
       fastify.log.error({ error }, 'Failed to resolve project short URL')
