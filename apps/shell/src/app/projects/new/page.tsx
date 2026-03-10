@@ -85,11 +85,13 @@ function NewProjectContent() {
   const [atLimit, setAtLimit] = useState(false)
 
   const tier = (session?.user as any)?.membershipTier || 'free'
+  const badges: string[] = (session?.user as any)?.badges || []
+  const isOwner = badges.includes('owner')
   const limit = tier === 'supporter' ? 25 : 3
 
-  // Check current project count
+  // Check current project count (owners are exempt)
   React.useEffect(() => {
-    if (!session?.apiToken) return
+    if (!session?.apiToken || isOwner) return
     apiFetch('/api/projects', session.apiToken)
       .then(res => res.json())
       .then(data => {
@@ -97,7 +99,7 @@ function NewProjectContent() {
         setAtLimit(nonArchived.length >= limit)
       })
       .catch(() => {})
-  }, [session?.apiToken, limit])
+  }, [session?.apiToken, limit, isOwner])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
