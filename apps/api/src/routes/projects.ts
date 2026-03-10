@@ -411,7 +411,9 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
         bobbins: installations.map((install: any) => ({
           id: install.bobbinId,
           version: install.version,
-          manifest: install.manifestJson,
+          // Prefer disk manifest over DB snapshot — disk is always the source of truth
+          // for first-party bobbins and avoids stale manifests after content-only changes
+          manifest: diskManifests.get(install.bobbinId) || install.manifestJson,
           installedAt: install.installedAt
         })),
         ...(upgrades.length > 0 && { upgrades })
