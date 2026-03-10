@@ -14,7 +14,7 @@ before_snapshots=$(find "$META_DIR" -maxdepth 1 -name '*_snapshot.json' | sort)
 before_journal=$(cat "$META_DIR/_journal.json")
 
 # Run generate (compares schema.ts against migration snapshots, no DB needed)
-npx drizzle-kit generate 2>&1
+bunx drizzle-kit generate 2>&1
 
 after_sql=$(find "$MIGRATIONS_DIR" -maxdepth 1 -name '*.sql' | sort)
 
