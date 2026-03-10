@@ -12,10 +12,6 @@ export interface BobbinMetadata {
     ai?: boolean
     customViews?: boolean
   }
-  execution?: {
-    mode: 'native' | 'sandboxed'
-    signature?: string
-  }
   slots?: string[]
   manifestContent: string
   isInstalled: boolean

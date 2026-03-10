@@ -244,7 +244,7 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
     }
 
     // Load component
-    if (entry.execution === 'native' && entry.componentLoader) {
+    if (entry.componentLoader) {
       entry.componentLoader()
         .then((component) => {
           setViewComponent(() => component as React.ComponentType<any>)
@@ -253,9 +253,6 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
           console.error('[ViewRouter] Failed to load component:', error)
           setViewComponent(null)
         })
-    } else if (entry.execution === 'sandboxed') {
-      console.warn('[ViewRouter] Sandboxed views not yet supported')
-      setViewComponent(null)
     }
   }
 

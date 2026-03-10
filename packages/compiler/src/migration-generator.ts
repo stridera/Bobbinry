@@ -9,21 +9,16 @@ import type { Collection, Field } from '@bobbinry/types'
 export interface MigrationOptions {
   bobbinId: string
   projectId: string
-  tier: 'tier1' | 'tier2'
 }
 
 /**
- * Generate a migration for a collection
+ * Generate a migration for a collection (JSONB storage)
  */
 export function generateCollectionMigration(
   collection: Collection,
   options: MigrationOptions
 ): string {
-  if (options.tier === 'tier1') {
-    return generateTier1Migration(collection, options)
-  } else {
-    return generateTier2Migration(collection, options)
-  }
+  return generateTier1Migration(collection, options)
 }
 
 /**
@@ -74,156 +69,6 @@ function generateTier1Migration(
   
   lines.push(`-- Collection '${collection.name}' ready for use in Tier 1`)
   return lines.join('\n')
-}
-
-/**
- * Generate Tier 2 migration (physical table)
- * 
- * Tier 2 creates a dedicated physical table for high-performance
- * collections (>50K rows, P95 latency >200ms)
- */
-function generateTier2Migration(
-  collection: Collection,
-  options: MigrationOptions
-): string {
-  const { bobbinId, projectId } = options
-  
-  // Generate table name
-  const tableName = `${bobbinId}_${collection.name}`
-    .toLowerCase()
-    .replace(/[^a-z0-9_]/g, '_')
-  
-  const lines: string[] = []
-  lines.push(`-- Tier 2 Migration for collection: ${collection.name}`)
-  lines.push(`-- Bobbin: ${bobbinId}`)
-  lines.push(`-- Project: ${projectId}`)
-  lines.push(`-- Storage: Physical table`)
-  lines.push('')
-  lines.push(`CREATE TABLE IF NOT EXISTS ${tableName} (`)
-  lines.push(`  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),`)
-  lines.push(`  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,`)
-  
-  // Generate columns for each field
-  for (const field of collection.fields) {
-    const columnDef = generateColumnDefinition(field)
-    lines.push(`  ${field.name} ${columnDef},`)
-  }
-  
-  // Metadata columns
-  lines.push(`  created_at TIMESTAMP NOT NULL DEFAULT NOW(),`)
-  lines.push(`  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),`)
-  lines.push(`  last_edited_by UUID REFERENCES users(id),`)
-  lines.push(`  last_edited_at TIMESTAMP`)
-  lines.push(`);`)
-  lines.push('')
-  
-  // Generate indexes
-  lines.push(`-- Indexes for ${tableName}`)
-  lines.push(`CREATE INDEX IF NOT EXISTS idx_${tableName}_project_id ON ${tableName}(project_id);`)
-  lines.push(`CREATE INDEX IF NOT EXISTS idx_${tableName}_updated_at ON ${tableName}(updated_at DESC);`)
-  lines.push('')
-  
-  // Indexes for searchable/sortable fields
-  const indexableFields = collection.fields.filter(f => 
-    f.hints?.searchable || f.hints?.sortable
-  )
-  
-  for (const field of indexableFields) {
-    const indexName = `idx_${tableName}_${field.name}`.substring(0, 63)
-    const indexType = field.type === 'text' && field.hints?.searchable ? 'GIN' : 'BTREE'
-    
-    if (field.type === 'text' && field.hints?.searchable) {
-      // Full-text search index
-      lines.push(`CREATE INDEX IF NOT EXISTS ${indexName}_fts`)
-      lines.push(`  ON ${tableName} USING GIN (to_tsvector('english', ${field.name}));`)
-    } else {
-      // Regular B-tree index
-      lines.push(`CREATE INDEX IF NOT EXISTS ${indexName}`)
-      lines.push(`  ON ${tableName} USING ${indexType} (${field.name});`)
-    }
-    lines.push('')
-  }
-  
-  // Create trigger for updated_at
-  lines.push(`-- Auto-update updated_at timestamp`)
-  lines.push(`CREATE OR REPLACE FUNCTION update_${tableName}_updated_at()`)
-  lines.push(`RETURNS TRIGGER AS $$`)
-  lines.push(`BEGIN`)
-  lines.push(`  NEW.updated_at = NOW();`)
-  lines.push(`  RETURN NEW;`)
-  lines.push(`END;`)
-  lines.push(`$$ LANGUAGE plpgsql;`)
-  lines.push('')
-  lines.push(`CREATE TRIGGER trigger_${tableName}_updated_at`)
-  lines.push(`  BEFORE UPDATE ON ${tableName}`)
-  lines.push(`  FOR EACH ROW`)
-  lines.push(`  EXECUTE FUNCTION update_${tableName}_updated_at();`)
-  lines.push('')
-  
-  return lines.join('\n')
-}
-
-/**
- * Generate SQL column definition from field spec
- */
-function generateColumnDefinition(field: Field): string {
-  let sqlType: string
-  
-  switch (field.type) {
-    case 'text':
-    case 'text':
-      sqlType = field.validation?.max ? `VARCHAR(${field.validation.max})` : 'TEXT'
-      break
-    case 'number':
-      sqlType = 'NUMERIC'
-      break
-    case 'boolean':
-      sqlType = 'BOOLEAN'
-      break
-    case 'date':
-      sqlType = 'DATE'
-      break
-    case 'datetime':
-      sqlType = 'TIMESTAMP'
-      break
-    case 'reference':
-      sqlType = 'UUID'
-      break
-    case 'json':
-      sqlType = 'JSONB'
-      break
-    case 'rich_text':
-      sqlType = 'TEXT'
-      break
-    case 'image':
-    case 'file':
-      sqlType = 'TEXT' // Store URL/path
-      break
-    default:
-      sqlType = 'TEXT'
-  }
-  
-  // Add constraints
-  const constraints: string[] = []
-  
-  if (field.required) {
-    constraints.push('NOT NULL')
-  }
-  
-  // Unique constraints would need to be defined in hints or validation
-  // For now, we don't support unique constraint in Field type
-  
-  if (field.default !== undefined) {
-    if (typeof field.default === 'string') {
-      constraints.push(`DEFAULT '${field.default}'`)
-    } else if (typeof field.default === 'boolean') {
-      constraints.push(`DEFAULT ${field.default}`)
-    } else if (typeof field.default === 'number') {
-      constraints.push(`DEFAULT ${field.default}`)
-    }
-  }
-  
-  return `${sqlType}${constraints.length > 0 ? ' ' + constraints.join(' ') : ''}`
 }
 
 /**

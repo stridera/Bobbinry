@@ -44,18 +44,6 @@ export function BobbinDetailModal({ bobbin, onClose, actionSlot }: BobbinDetailM
                 <p className="text-gray-600 dark:text-gray-400">{bobbin.license}</p>
               </div>
             )}
-            {bobbin.execution && (
-              <div>
-                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Execution Mode</h3>
-                <span className={`inline-block px-3 py-1 rounded text-sm ${
-                  bobbin.execution.mode === 'native'
-                    ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400'
-                    : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
-                }`}>
-                  {bobbin.execution.mode}
-                </span>
-              </div>
-            )}
           </div>
 
           {bobbin.tags && bobbin.tags.length > 0 && (

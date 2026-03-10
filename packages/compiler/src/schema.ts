@@ -42,11 +42,6 @@ export const manifestSchema = {
     "license": {
       "type": "string"
     },
-    "requires": {
-      "type": "array",
-      "items": { "type": "string" },
-      "description": "List of bobbin IDs that must be installed first"
-    },
     "capabilities": {
       "type": "object",
       "properties": {
@@ -272,21 +267,6 @@ export const manifestSchema = {
           }
         }
       }
-    },
-    "execution": {
-      "type": "object",
-      "required": ["mode"],
-      "properties": {
-        "mode": {
-          "enum": ["native", "sandboxed"],
-          "description": "Execution mode - native for first-party bobbins, sandboxed for third-party"
-        },
-        "signature": {
-          "type": "string",
-          "description": "Ed25519 signature for native bobbins (required in production, can be 'dev_mode_skip' in development)"
-        }
-      },
-      "additionalProperties": false
     },
     "compatibility": {
       "type": "object",

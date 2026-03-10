@@ -99,12 +99,6 @@ export interface Manifest {
     paidOnly?: boolean // Gate resource-intensive operations to paid users
   }
 
-  // v0.2: Execution mode - native vs sandboxed
-  execution?: {
-    mode: 'native' | 'sandboxed'
-    signature?: string  // Ed25519 signature for native bobbins (required in production)
-  }
-
   // Compatibility requirements
   compatibility?: {
     minShellVersion: string

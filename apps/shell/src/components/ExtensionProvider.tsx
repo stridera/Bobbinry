@@ -154,13 +154,11 @@ export function ExtensionProvider({ children }: ExtensionProviderProps) {
 // from the registry via onChange subscription.
 export function useManifestExtensions() {
   const registerManifestExtensions = useCallback((bobbinId: string, manifest: any) => {
-    console.log('[ExtensionProvider] registerManifestExtensions called for:', bobbinId, 'mode:', manifest.execution?.mode)
+    console.log('[ExtensionProvider] registerManifestExtensions called for:', bobbinId)
 
     try {
-      // Register native views in viewRegistry
-      // Default to native when execution block is absent (first-party bobbins omit it)
-      const isNative = !manifest.execution || manifest.execution.mode === 'native'
-      if (isNative && manifest.ui?.views) {
+      // Register views in viewRegistry
+      if (manifest.ui?.views) {
         const { viewRegistry } = require('../lib/view-registry')
         const { createComponentLoader } = require('../lib/native-view-loader')
 
@@ -171,7 +169,6 @@ export function useManifestExtensions() {
           viewRegistry.register({
             viewId: fullViewId,
             bobbinId: bobbinId,
-            execution: 'native',
             componentLoader: createComponentLoader(bobbinId, view.id),
             ssr: true,
             capabilities: ['read', 'write'],
@@ -210,8 +207,8 @@ export function useManifestExtensions() {
           console.log('[ExtensionProvider] Registering extension:', contribution.id, 'slot:', contribution.slot)
           extensionRegistry.registerExtension(bobbinId, contribution)
 
-          // For native panels/views, load and attach the component
-          if (isNative && (contribution.type === 'panel' || contribution.type === 'view') && contribution.entry) {
+          // For panels/views, load and attach the component
+          if ((contribution.type === 'panel' || contribution.type === 'view') && contribution.entry) {
             console.log(`[ExtensionProvider] Loading native panel component: ${bobbinId}.${contribution.entry}`)
 
             loadNativeView(bobbinId, contribution.entry).then((component: any) => {

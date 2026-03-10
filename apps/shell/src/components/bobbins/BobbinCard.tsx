@@ -29,18 +29,6 @@ export function BobbinCard({ bobbin, onViewDetails, actionSlot }: BobbinCardProp
           <span className="text-gray-500 dark:text-gray-400">v{bobbin.version}</span>
           <span className="text-gray-400 dark:text-gray-600">&middot;</span>
           <span className="text-gray-500 dark:text-gray-400">{bobbin.author}</span>
-          {bobbin.execution && (
-            <>
-              <span className="text-gray-400 dark:text-gray-600">&middot;</span>
-              <span className={`px-2 py-0.5 rounded ${
-                bobbin.execution.mode === 'native'
-                  ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400'
-                  : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
-              }`}>
-                {bobbin.execution.mode}
-              </span>
-            </>
-          )}
         </div>
       </div>
 

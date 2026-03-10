@@ -251,27 +251,6 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
         })
       }
 
-      // Check bobbin dependencies
-      const requiredBobbins: string[] = manifest.compatibility?.requiredBobbins || manifest.requires || []
-      if (requiredBobbins.length > 0) {
-        const existingInstalls = await db
-          .select({ bobbinId: bobbinsInstalled.bobbinId })
-          .from(bobbinsInstalled)
-          .where(and(
-            eq(bobbinsInstalled.projectId, projectId),
-            eq(bobbinsInstalled.enabled, true)
-          ))
-        const installedIds = new Set(existingInstalls.map(i => i.bobbinId))
-        const missingBobbins = requiredBobbins.filter((id: string) => !installedIds.has(id))
-        if (missingBobbins.length > 0) {
-          return reply.status(400).send({
-            error: 'missing_dependencies',
-            message: `This bobbin requires the following bobbins to be installed first: ${missingBobbins.join(', ')}`,
-            missingBobbins
-          })
-        }
-      }
-
       // Validate and compile manifest
       const compiler = new ManifestCompiler({ projectId })
       const result = await compiler.compile(manifest)

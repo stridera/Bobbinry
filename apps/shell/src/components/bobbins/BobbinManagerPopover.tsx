@@ -81,7 +81,6 @@ export function BobbinManagerPopover({ projectId, installedBobbins, onOpenFullMa
     searchQuery,
     selectedCategory: 'all',
     filterMode: 'all',
-    filterExecution: 'all',
     sortBy: 'name',
   })
 

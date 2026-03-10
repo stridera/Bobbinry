@@ -5,7 +5,6 @@ import rateLimit from '@fastify/rate-limit'
 import { randomUUID } from 'crypto'
 import { performance } from 'perf_hooks'
 import projectsPlugin from './routes/projects'
-import viewsPlugin from './routes/views'
 import entitiesPlugin from './routes/entities'
 import usersPlugin from './routes/users'
 import subscriptionsPlugin from './routes/subscriptions'
@@ -196,7 +195,6 @@ export function build(opts = {}): FastifyInstance {
 
   // Register route plugins
   server.register(projectsPlugin, { prefix: '/api' })
-  server.register(viewsPlugin, { prefix: '/api' })
   server.register(entitiesPlugin, { prefix: '/api' })
   server.register(usersPlugin, { prefix: '/api' })
   server.register(subscriptionsPlugin, { prefix: '/api' })

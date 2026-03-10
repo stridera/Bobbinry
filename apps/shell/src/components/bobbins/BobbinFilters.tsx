@@ -9,12 +9,9 @@ interface BobbinFiltersProps {
   onCategoryChange: (category: string) => void
   filterMode: 'all' | 'installed' | 'available'
   onFilterModeChange: (mode: 'all' | 'installed' | 'available') => void
-  filterExecution: 'all' | 'native' | 'sandboxed'
-  onFilterExecutionChange: (mode: 'all' | 'native' | 'sandboxed') => void
   sortBy: 'name' | 'author' | 'recent'
   onSortChange: (sort: 'name' | 'author' | 'recent') => void
   showStatusFilter?: boolean
-  showExecutionFilter?: boolean
 }
 
 export function BobbinFilters({
@@ -24,12 +21,9 @@ export function BobbinFilters({
   onCategoryChange,
   filterMode,
   onFilterModeChange,
-  filterExecution,
-  onFilterExecutionChange,
   sortBy,
   onSortChange,
   showStatusFilter = true,
-  showExecutionFilter = true,
 }: BobbinFiltersProps) {
   return (
     <div className="space-y-4">
@@ -51,11 +45,10 @@ export function BobbinFilters({
       </div>
 
       <div className={`grid grid-cols-1 gap-4 ${
-        showStatusFilter && showExecutionFilter ? 'md:grid-cols-4' :
-        showStatusFilter || showExecutionFilter ? 'md:grid-cols-3' : 'md:grid-cols-1'
+        showStatusFilter ? 'md:grid-cols-3' : 'md:grid-cols-1'
       }`}>
         {/* Search */}
-        <div className={showStatusFilter || showExecutionFilter ? 'md:col-span-2' : ''}>
+        <div className={showStatusFilter ? 'md:col-span-2' : ''}>
           <input
             type="text"
             placeholder="Search bobbins by name, description, author, or tags..."
@@ -75,19 +68,6 @@ export function BobbinFilters({
             <option value="all">All Bobbins</option>
             <option value="installed">Installed Only</option>
             <option value="available">Available Only</option>
-          </select>
-        )}
-
-        {/* Filter by Execution Mode */}
-        {showExecutionFilter && (
-          <select
-            value={filterExecution}
-            onChange={(e) => onFilterExecutionChange(e.target.value as any)}
-            className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">All Modes</option>
-            <option value="native">Native (First-Party)</option>
-            <option value="sandboxed">Sandboxed (Third-Party)</option>
           </select>
         )}
       </div>

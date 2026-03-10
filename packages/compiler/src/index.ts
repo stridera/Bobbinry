@@ -43,16 +43,6 @@ export class ManifestCompiler {
         return result
       }
 
-      // Verify signature for native bobbins
-      const signatureResult = await this.verifySignature(manifest)
-      if (!signatureResult.valid) {
-        result.errors.push(...signatureResult.errors)
-        return result
-      }
-      if (signatureResult.warnings) {
-        result.warnings.push(...signatureResult.warnings)
-      }
-
       // Generate database migrations from collections
       const migrations = await this.generateMigrations(manifest)
       result.migrations = migrations
@@ -117,127 +107,6 @@ export class ManifestCompiler {
     }
   }
 
-  /**
-   * Verify signature for native bobbins
-   *
-   * Native bobbins must be cryptographically signed in production to ensure they haven't been tampered with.
-   * In development mode, we allow a special 'dev_mode_skip' signature.
-   *
-   * @param manifest - The manifest to verify
-   * @returns Validation result with errors/warnings
-   */
-  private async verifySignature(manifest: Manifest): Promise<ValidationResult & { warnings?: string[] }> {
-    // Only verify signatures for native execution mode
-    if (!manifest.execution || manifest.execution.mode !== 'native') {
-      return { valid: true, errors: [] }
-    }
-
-    const isDevelopment = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'
-    const signature = manifest.execution.signature
-
-    // Development mode: allow dev_mode_skip
-    if (isDevelopment) {
-      if (signature === 'dev_mode_skip') {
-        return {
-          valid: true,
-          errors: [],
-          warnings: [`Native bobbin '${manifest.id}' using dev_mode_skip signature - this is only allowed in development`]
-        }
-      }
-
-      // In dev, we're more lenient - missing signature gets a warning but still passes
-      if (!signature) {
-        return {
-          valid: true,
-          errors: [],
-          warnings: [`Native bobbin '${manifest.id}' has no signature - this would fail in production`]
-        }
-      }
-    }
-
-    // Production mode: require valid signature
-    if (!isDevelopment) {
-      if (!signature) {
-        return {
-          valid: false,
-          errors: [`Native bobbin '${manifest.id}' requires a valid Ed25519 signature in production`]
-        }
-      }
-
-      if (signature === 'dev_mode_skip') {
-        return {
-          valid: false,
-          errors: [`Native bobbin '${manifest.id}' cannot use dev_mode_skip signature in production`]
-        }
-      }
-
-      // Implement Ed25519 signature verification
-      const { verifyManifestSignature, isTrustedPublicKey } = await import('./crypto')
-      
-      // Parse signature (should be an object with publicKey and signature fields)
-      let sigData: { publicKey: string; signature: string }
-      try {
-        if (typeof signature === 'string') {
-          sigData = JSON.parse(signature)
-        } else {
-          sigData = signature as { publicKey: string; signature: string }
-        }
-      } catch {
-        return {
-          valid: false,
-          errors: [`Native bobbin '${manifest.id}' has invalid signature format`]
-        }
-      }
-
-      if (!sigData.publicKey || !sigData.signature) {
-        return {
-          valid: false,
-          errors: [`Native bobbin '${manifest.id}' signature missing publicKey or signature field`]
-        }
-      }
-
-      // Check if public key is trusted
-      if (!isTrustedPublicKey(sigData.publicKey)) {
-        return {
-          valid: false,
-          errors: [
-            `Native bobbin '${manifest.id}' signed with untrusted public key`,
-            `Only bobbins signed by verified publishers can run in native mode`
-          ]
-        }
-      }
-
-      // Create manifest without signature for verification
-      const manifestCopy = { ...manifest }
-      delete (manifestCopy as any).execution?.signature
-      const manifestJson = JSON.stringify(manifestCopy, null, 2)
-
-      // Verify signature
-      const isValid = verifyManifestSignature(
-        manifestJson,
-        sigData.signature,
-        sigData.publicKey
-      )
-
-      if (!isValid) {
-        return {
-          valid: false,
-          errors: [`Native bobbin '${manifest.id}' has invalid signature - verification failed`]
-        }
-      }
-
-      // Signature is valid
-      return {
-        valid: true,
-        errors: [],
-        warnings: [`Native bobbin '${manifest.id}' signature verified successfully`]
-      }
-    }
-
-    // Should never reach here, but TypeScript wants exhaustive checking
-    return { valid: true, errors: [] }
-  }
-
   static async parseManifestFile(filePath: string): Promise<Manifest> {
     const content = fs.readFileSync(filePath, 'utf8')
 
@@ -257,32 +126,21 @@ export class ManifestCompiler {
       return migrations
     }
 
-    // SECURITY: Never trust manifest for infrastructure decisions
-    // Storage tier and execution mode are determined by:
-    // 1. Bobbin provenance (first-party vs external)
-    // 2. Admin configuration in bobbins_installed table
-    // 3. Runtime performance metrics (auto-promotion)
-    
-    // All external bobbins start in Tier 1 (JSONB) regardless of manifest claims
-    // Promotion happens based on actual usage, not manifest hints
-    
-    // TODO: Generate Drizzle migrations for each collection
-    // Default to Tier 1 for initial install
+    // Generate JSONB migrations for each collection
     for (const collection of manifest.data.collections) {
-      const migration = this.generateCollectionMigration(collection, false)
+      const migration = this.generateCollectionMigration(collection)
       migrations.push(migration)
     }
 
     return migrations
   }
 
-  private generateCollectionMigration(collection: any, preferPhysical: boolean = false): string {
+  private generateCollectionMigration(collection: any): string {
     const { generateCollectionMigration } = require('./migration-generator')
-    
+
     return generateCollectionMigration(collection, {
       bobbinId: 'unknown', // TODO: Pass actual bobbin ID
-      projectId: this.options.projectId,
-      tier: preferPhysical ? 'tier2' : 'tier1'
+      projectId: this.options.projectId
     })
   }
 
@@ -291,22 +149,21 @@ export class ManifestCompiler {
       return
     }
 
-    const executionMode = manifest.execution?.mode || 'sandboxed'
     const bobbinId = manifest.id
 
-    console.log(`[ManifestCompiler] Registering ${manifest.ui.views.length} views for ${bobbinId} (${executionMode} mode)`)
+    console.log(`[ManifestCompiler] Registering ${manifest.ui.views.length} views for ${bobbinId}`)
 
     for (const view of manifest.ui.views) {
       const viewId = `${bobbinId}.${view.id}`
 
-      console.log(`[ManifestCompiler] Registering view: ${viewId} (${executionMode})`)
+      console.log(`[ManifestCompiler] Registering view: ${viewId}`)
 
       // View registration will be handled by shell at runtime
       // The manifest data is stored and processed when bobbin is installed
       // This method is primarily for validation and logging during compilation
 
       // TODO: In future, could generate view registration code or config files here
-      // For now, the shell will read manifest.execution.mode at runtime
+      // For now, the shell will read manifest data at runtime
     }
   }
 

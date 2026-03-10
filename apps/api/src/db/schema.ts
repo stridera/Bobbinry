@@ -103,6 +103,7 @@ export const subscriptionTiers = pgTable('subscription_tiers', {
 export const userPaymentConfig = pgTable('user_payment_config', {
   userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).primaryKey(),
   stripeAccountId: varchar('stripe_account_id', { length: 255 }),
+  stripeAccountType: varchar('stripe_account_type', { length: 20 }), // 'express' | 'standard' | null
   stripeOnboardingComplete: boolean('stripe_onboarding_complete').default(false).notNull(),
   patreonAccessToken: text('patreon_access_token'), // Encrypted
   patreonRefreshToken: text('patreon_refresh_token'), // Encrypted
@@ -561,12 +562,7 @@ export const bobbinsInstalled = pgTable('bobbins_installed', {
   version: varchar('version', { length: 50 }).notNull(),
   manifestJson: jsonb('manifest_json').notNull(),
   enabled: boolean('enabled').default(true).notNull(),
-  
-  // Admin-controlled configuration (NOT from manifest)
-  executionMode: varchar('execution_mode', { length: 50 }).default('sandboxed').notNull(), // 'sandboxed' | 'native'
-  trustLevel: varchar('trust_level', { length: 50 }).default('community').notNull(), // 'first-party' | 'verified' | 'community'
-  storageTier: varchar('storage_tier', { length: 50 }).default('tier1').notNull(), // 'tier1' | 'tier2'
-  
+
   installedAt: timestamp('installed_at').defaultNow().notNull(),
   configUpdatedBy: uuid('config_updated_by').references(() => users.id),
   configUpdatedAt: timestamp('config_updated_at')

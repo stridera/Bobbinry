@@ -50,42 +50,9 @@ describe('Bobbin Lifecycle Integration Tests', () => {
         bobbinId: 'manuscript',
         version: '1.0.0',
         manifestJson: manifest,
-        executionMode: 'native', // Admin sets this for first-party bobbins
-        trustLevel: 'first-party',
-        storageTier: 'tier2'
       }).returning()
 
       expect(installation).toBeDefined()
-      expect(installation!.executionMode).toBe('native')
-      expect(installation!.trustLevel).toBe('first-party')
-      expect(installation!.storageTier).toBe('tier2')
-
-      // Cleanup
-      await db.delete(bobbinsInstalled).where(eq(bobbinsInstalled.id, installation!.id))
-    })
-
-    it('should install external bobbin with sandboxed execution by default', async () => {
-      const manifest = {
-        id: 'external-bobbin',
-        name: 'External Bobbin',
-        version: '1.0.0',
-        data: {
-          collections: [{ name: 'items', fields: [] }]
-        }
-      }
-
-      const [installation] = await db.insert(bobbinsInstalled).values({
-        projectId: testProjectId,
-        bobbinId: 'external-bobbin',
-        version: '1.0.0',
-        manifestJson: manifest
-        // Note: no execution/storage hints - uses defaults
-      }).returning()
-
-      expect(installation).toBeDefined()
-      expect(installation!.executionMode).toBe('sandboxed') // Default
-      expect(installation!.trustLevel).toBe('community') // Default
-      expect(installation!.storageTier).toBe('tier1') // Default
 
       // Cleanup
       await db.delete(bobbinsInstalled).where(eq(bobbinsInstalled.id, installation!.id))
@@ -127,9 +94,7 @@ describe('Bobbin Lifecycle Integration Tests', () => {
           projectId: testProjectId,
           bobbinId: 'manuscript',
           version: '1.0.0',
-          manifestJson: { id: 'manuscript', name: 'Manuscript', version: '1.0.0' },
-          executionMode: 'native',
-          trustLevel: 'first-party'
+          manifestJson: { id: 'manuscript', name: 'Manuscript', version: '1.0.0' }
         })
       }
     })
@@ -242,83 +207,6 @@ describe('Bobbin Lifecycle Integration Tests', () => {
         .where(eq(entities.id, entity!.id))
 
       expect(result.length).toBe(0)
-    })
-  })
-
-  describe('Security Boundaries', () => {
-    it('should not allow manifest to override execution mode', async () => {
-      // Malicious manifest trying to claim native execution
-      const maliciousManifest = {
-        id: 'malicious',
-        name: 'Malicious Bobbin',
-        version: '1.0.0',
-        execution: {
-          mode: 'native' // SHOULD BE IGNORED
-        },
-        data: { collections: [] }
-      }
-
-      const [installation] = await db.insert(bobbinsInstalled).values({
-        projectId: testProjectId,
-        bobbinId: 'malicious',
-        version: '1.0.0',
-        manifestJson: maliciousManifest
-        // Don't set executionMode - use default
-      }).returning()
-
-      // Should default to sandboxed despite manifest claim
-      expect(installation!.executionMode).toBe('sandboxed')
-      expect(installation!.trustLevel).toBe('community')
-    })
-
-    it('should not allow manifest to request physical storage', async () => {
-      const manifest = {
-        id: 'storage-requester',
-        name: 'Storage Requester',
-        version: '1.0.0',
-        execution: {
-          storage: 'prefer_physical' // SHOULD BE IGNORED
-        },
-        data: { collections: [] }
-      }
-
-      const [installation] = await db.insert(bobbinsInstalled).values({
-        projectId: testProjectId,
-        bobbinId: 'storage-requester',
-        version: '1.0.0',
-        manifestJson: manifest
-      }).returning()
-
-      // Should default to Tier 1 despite manifest request
-      expect(installation!.storageTier).toBe('tier1')
-    })
-
-    it('should allow admin to upgrade bobbin trust level', async () => {
-      // Install as untrusted
-      const [installation] = await db.insert(bobbinsInstalled).values({
-        projectId: testProjectId,
-        bobbinId: 'upgradable',
-        version: '1.0.0',
-        manifestJson: { id: 'upgradable', name: 'Upgradable', version: '1.0.0' }
-      }).returning()
-
-      expect(installation!.trustLevel).toBe('community')
-      expect(installation!.executionMode).toBe('sandboxed')
-
-      // Admin upgrades trust level
-      const [upgraded] = await db.update(bobbinsInstalled)
-        .set({
-          trustLevel: 'verified',
-          executionMode: 'native', // Admin decision
-          configUpdatedBy: testUserId,
-          configUpdatedAt: new Date()
-        })
-        .where(eq(bobbinsInstalled.id, installation!.id))
-        .returning()
-
-      expect(upgraded!.trustLevel).toBe('verified')
-      expect(upgraded!.executionMode).toBe('native')
-      expect(upgraded!.configUpdatedBy).toBe(testUserId)
     })
   })
 

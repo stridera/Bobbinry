@@ -5,13 +5,12 @@ interface FilterOptions {
   searchQuery: string
   selectedCategory: string
   filterMode: 'all' | 'installed' | 'available'
-  filterExecution: 'all' | 'native' | 'sandboxed'
   filterSlot?: string | undefined
   sortBy: 'name' | 'author' | 'recent'
 }
 
 export function useBobbinFilters(bobbins: BobbinMetadata[], options: FilterOptions) {
-  const { searchQuery, selectedCategory, filterMode, filterExecution, filterSlot, sortBy } = options
+  const { searchQuery, selectedCategory, filterMode, filterSlot, sortBy } = options
 
   return useMemo(() => {
     let filtered = bobbins
@@ -42,10 +41,6 @@ export function useBobbinFilters(bobbins: BobbinMetadata[], options: FilterOptio
       filtered = filtered.filter(b => !b.isInstalled)
     }
 
-    if (filterExecution !== 'all') {
-      filtered = filtered.filter(b => b.execution?.mode === filterExecution)
-    }
-
     filtered = [...filtered].sort((a, b) => {
       if (sortBy === 'name') return a.name.localeCompare(b.name)
       if (sortBy === 'author') return a.author.localeCompare(b.author)
@@ -55,5 +50,5 @@ export function useBobbinFilters(bobbins: BobbinMetadata[], options: FilterOptio
     })
 
     return filtered
-  }, [bobbins, searchQuery, selectedCategory, filterMode, filterExecution, filterSlot, sortBy])
+  }, [bobbins, searchQuery, selectedCategory, filterMode, filterSlot, sortBy])
 }

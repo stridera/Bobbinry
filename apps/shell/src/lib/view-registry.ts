@@ -1,27 +1,19 @@
 /**
- * View Registry - Centralized management of bobbin views with execution mode tracking
- * 
- * Manages how views are loaded and rendered:
- * - Native views: React components imported directly from workspace
- * - Sandboxed views: iframes with postMessage communication
+ * View Registry - Centralized management of bobbin views
+ *
+ * Manages how views are loaded and rendered as React components.
  */
 
 import { ComponentType } from 'react'
 
-export type ExecutionMode = 'native' | 'sandboxed'
-
 export interface ViewRegistryEntry {
   viewId: string
   bobbinId: string
-  execution: ExecutionMode
-  
-  // Native-specific configuration
-  componentLoader?: () => Promise<ComponentType<any>>
+
+  // Component loader
+  componentLoader: () => Promise<ComponentType<any>>
   ssr?: boolean
-  
-  // Sandboxed-specific configuration
-  iframeSrc?: string
-  
+
   // Common metadata
   capabilities: string[]
   metadata: {
@@ -30,15 +22,13 @@ export interface ViewRegistryEntry {
     source: string
   }
 
-  // View routing - NEW
+  // View routing
   handlers?: string[]  // Entity types this view can handle (e.g., ['scene', 'chapter'])
   priority?: number    // Higher = preferred default (optional)
 }
 
 export interface ViewRegistryStats {
   totalViews: number
-  nativeViews: number
-  sandboxedViews: number
   viewsByBobbin: Record<string, number>
 }
 
@@ -54,17 +44,10 @@ export class ViewRegistry {
    * Register a new view
    */
   register(entry: ViewRegistryEntry): void {
-    const { viewId, bobbinId, execution } = entry
+    const { viewId, bobbinId } = entry
 
-    // Validate entry based on execution mode
-    if (execution === 'native') {
-      if (!entry.componentLoader) {
-        throw new Error(`Native view ${viewId} must have componentLoader`)
-      }
-    } else if (execution === 'sandboxed') {
-      if (!entry.iframeSrc) {
-        throw new Error(`Sandboxed view ${viewId} must have iframeSrc`)
-      }
+    if (!entry.componentLoader) {
+      throw new Error(`View ${viewId} must have componentLoader`)
     }
 
     // Check for duplicates
@@ -81,7 +64,7 @@ export class ViewRegistry {
     }
     this.viewsByBobbin.get(bobbinId)!.add(viewId)
 
-    console.log(`[ViewRegistry] Registered ${execution} view: ${viewId}`)
+    console.log(`[ViewRegistry] Registered view: ${viewId}`)
   }
 
   /**
@@ -200,10 +183,6 @@ export class ViewRegistry {
   }
 
   getStats(): ViewRegistryStats {
-    const allViews = Array.from(this.views.values())
-    const nativeViews = allViews.filter(v => v.execution === 'native')
-    const sandboxedViews = allViews.filter(v => v.execution === 'sandboxed')
-
     const viewsByBobbin: Record<string, number> = {}
     for (const [bobbinId, viewIds] of this.viewsByBobbin) {
       viewsByBobbin[bobbinId] = viewIds.size
@@ -211,8 +190,6 @@ export class ViewRegistry {
 
     return {
       totalViews: this.views.size,
-      nativeViews: nativeViews.length,
-      sandboxedViews: sandboxedViews.length,
       viewsByBobbin
     }
   }
@@ -224,24 +201,6 @@ export class ViewRegistry {
     console.log('[ViewRegistry] Clearing all views')
     this.views.clear()
     this.viewsByBobbin.clear()
-  }
-
-  /**
-   * Get all native views (for preloading, SSR, etc.)
-   */
-  getNativeViews(): ViewRegistryEntry[] {
-    return Array.from(this.views.values()).filter(
-      entry => entry.execution === 'native'
-    )
-  }
-
-  /**
-   * Get all sandboxed views
-   */
-  getSandboxedViews(): ViewRegistryEntry[] {
-    return Array.from(this.views.values()).filter(
-      entry => entry.execution === 'sandboxed'
-    )
   }
 }
 

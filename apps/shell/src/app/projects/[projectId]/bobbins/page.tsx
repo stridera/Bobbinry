@@ -28,7 +28,6 @@ function BobbinsContent() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [filterMode, setFilterMode] = useState<'all' | 'installed' | 'available'>('all')
-  const [filterExecution, setFilterExecution] = useState<'all' | 'native' | 'sandboxed'>('all')
   const [sortBy, setSortBy] = useState<'name' | 'author' | 'recent'>('name')
   const [selectedBobbin, setSelectedBobbin] = useState<BobbinMetadata | null>(null)
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
@@ -154,7 +153,6 @@ function BobbinsContent() {
     searchQuery,
     selectedCategory,
     filterMode,
-    filterExecution,
     filterSlot: slotFilter,
     sortBy,
   })
@@ -224,8 +222,6 @@ function BobbinsContent() {
           onCategoryChange={setSelectedCategory}
           filterMode={filterMode}
           onFilterModeChange={setFilterMode}
-          filterExecution={filterExecution}
-          onFilterExecutionChange={setFilterExecution}
           sortBy={sortBy}
           onSortChange={setSortBy}
         />
