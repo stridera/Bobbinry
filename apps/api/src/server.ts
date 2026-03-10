@@ -29,6 +29,8 @@ import { loadAllDiskManifests } from './lib/disk-manifests'
 import { initNotificationHandlers } from './jobs/notification-handlers'
 import { getMetricsSnapshot, incrementCounter, observeTimingMs } from './lib/metrics'
 import { verifyInternalRequest } from './lib/internal-auth'
+import googleDrivePlugin from './routes/google-drive'
+import { initDriveSyncHandler } from './jobs/drive-sync-handler'
 
 export function build(opts = {}): FastifyInstance {
   const server = Fastify({
@@ -214,12 +216,14 @@ export function build(opts = {}): FastifyInstance {
   server.register(membershipPlugin, { prefix: '/api' })
   server.register(notificationsPlugin, { prefix: '/api' })
   server.register(adminPlugin, { prefix: '/api' })
+  server.register(googleDrivePlugin, { prefix: '/api' })
 
   // Warm disk manifest cache, then start the trigger scheduler
   server.addHook('onReady', async () => {
     await loadAllDiskManifests()
     startTriggerScheduler()
     initNotificationHandlers()
+    initDriveSyncHandler()
   })
 
   server.addHook('onClose', async () => {
