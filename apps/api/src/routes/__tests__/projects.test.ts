@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from '@jest/globals'
 import { db } from '../../db/connection'
-import { projects } from '../../db/schema'
+import { projects, users } from '../../db/schema'
+import { eq } from 'drizzle-orm'
 import { createTestApp, createTestToken, createTestUser, createTestProject, cleanupAllTestData } from '../../__tests__/test-helpers'
 
 describe('Projects API', () => {
@@ -21,6 +22,7 @@ describe('Projects API', () => {
   describe('POST /api/projects', () => {
     it('should create a new project', async () => {
       const user = await createTestUser()
+      await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, user.id))
       const token = await createTestToken(user.id)
 
       const response = await app.inject({
@@ -42,6 +44,7 @@ describe('Projects API', () => {
 
     it('should return 400 for invalid project data', async () => {
       const user = await createTestUser()
+      await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, user.id))
       const token = await createTestToken(user.id)
 
       const response = await app.inject({

@@ -1,9 +1,13 @@
 import * as jose from 'jose'
+import { scrypt, randomBytes } from 'crypto'
+import { promisify } from 'util'
 import { build } from '../server'
 import { db } from '../db/connection'
 import { users, projects } from '../db/schema'
 import { getJwtSecret } from '../middleware/auth'
 import { sql } from 'drizzle-orm'
+
+const scryptAsync = promisify(scrypt)
 
 /**
  * Build and ready a Fastify app instance for testing.
@@ -39,6 +43,25 @@ export async function createTestUser(overrides: { email?: string; name?: string 
 }
 
 /**
+ * Insert a test user with a password hash (for login/TOTP tests). Returns the full row.
+ */
+export async function createTestUserWithPassword(
+  password: string,
+  overrides: { email?: string; name?: string } = {}
+) {
+  userCounter++
+  const salt = randomBytes(16).toString('hex')
+  const hash = ((await scryptAsync(password, salt, 64)) as Buffer).toString('hex')
+  const passwordHash = `${salt}:${hash}`
+  const [user] = await db.insert(users).values({
+    email: overrides.email ?? `test-${userCounter}-${Date.now()}@test.local`,
+    name: overrides.name ?? `Test User ${userCounter}`,
+    passwordHash
+  }).returning()
+  return user!
+}
+
+/**
  * Insert a test project with defaults. Returns the full row.
  */
 export async function createTestProject(ownerId: string, overrides: { name?: string; description?: string } = {}) {
@@ -52,6 +75,9 @@ export async function createTestProject(ownerId: string, overrides: { name?: str
 
 // All table names from schema.ts — TRUNCATE CASCADE handles FK ordering
 const ALL_TABLES = [
+  'notifications',
+  'email_verification_tokens',
+  'password_reset_tokens',
   'provenance_events',
   'uploads',
   'entities',
@@ -94,7 +120,16 @@ const ALL_TABLES = [
 
 /**
  * Truncate all tables in a single statement. CASCADE handles FK dependencies.
+ * Safety: refuses to run against non-test databases to prevent accidental data loss.
  */
 export async function cleanupAllTestData() {
+  const dbUrl = process.env.DATABASE_URL || ''
+  if (!dbUrl.includes('_test') && !dbUrl.includes('test')) {
+    throw new Error(
+      `cleanupAllTestData() refused to run — DATABASE_URL does not contain "test".\n` +
+      `Current DATABASE_URL: ${dbUrl.replace(/\/\/.*@/, '//***@')}\n` +
+      `Set DATABASE_URL to a test database (e.g. bobbins_test) before running integration tests.`
+    )
+  }
   await db.execute(sql.raw(`TRUNCATE ${ALL_TABLES.join(', ')} CASCADE`))
 }
