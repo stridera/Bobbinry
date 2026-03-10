@@ -20,6 +20,9 @@ jobs:
           yes '' | sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh
           sudo apt-get install -y -qq postgresql-client-${{ env.PG_VERSION }}
 
+      - name: Set PostgreSQL binary path
+        run: echo "PG_BIN=/usr/lib/postgresql/${{ env.PG_VERSION }}/bin" >> $GITHUB_ENV
+
       - name: Run pg_dump
         env:
           DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
@@ -28,7 +31,7 @@ jobs:
           FILENAME="bobbinry-prod-${TIMESTAMP}.sql.gz"
           echo "FILENAME=${FILENAME}" >> $GITHUB_ENV
 
-          pg_dump "$DATABASE_URL" | gzip > "${FILENAME}"
+          $PG_BIN/pg_dump "$DATABASE_URL" | gzip > "${FILENAME}"
 
           SIZE=$(stat --format=%s "${FILENAME}")
           echo "Backup created: ${FILENAME} (${SIZE} bytes)"
