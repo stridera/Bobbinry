@@ -28,12 +28,10 @@ interface Project {
 
 interface Chapter {
   id: string
-  entityData: {
-    title?: string
-    type?: string
-    order?: number
-    status?: string
-  }
+  title?: string
+  type?: string
+  order?: number
+  status?: string
 }
 
 interface ChapterPublication {
@@ -156,8 +154,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
       if (res.ok) {
         const data = await res.json()
         const chapterList = (data.entities || [])
-          .filter((e: Chapter) => e.entityData?.type === 'chapter' || !e.entityData?.type)
-          .sort((a: Chapter, b: Chapter) => (a.entityData?.order ?? 0) - (b.entityData?.order ?? 0))
+          .sort((a: Chapter, b: Chapter) => (a.order ?? 0) - (b.order ?? 0))
         setChapters(prev => ({ ...prev, [projectId]: chapterList }))
       }
     } catch (err) {
@@ -559,7 +556,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
                                   const status = pub?.publishStatus || 'draft'
                                   const isPublished = status === 'published'
                                   const isComplete = status === 'complete'
-                                  const chapterTitle = chapter.entityData?.title || `Chapter ${idx + 1}`
+                                  const chapterTitle = chapter.title || `Chapter ${idx + 1}`
                                   const isChapterLoading = actionInProgress === `${project.id}-${chapter.id}`
 
                                   return (
