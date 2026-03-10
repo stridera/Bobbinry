@@ -5,6 +5,7 @@ import { bobbinsInstalled, entities } from '../db/schema'
 import { eq, and, sql, or } from 'drizzle-orm'
 import { requireAuth, requireProjectOwnership } from '../middleware/auth'
 import { serverEventBus, contentEdited } from '../lib/event-bus'
+import { findBobbinForCollection } from '../lib/disk-manifests'
 
 /** Format an entity row into the standard API response shape */
 function formatEntityResponse(row: typeof entities.$inferSelect) {
@@ -198,18 +199,11 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'No bobbins installed in project' })
       }
 
-      // Find which bobbin contains this collection
-      let targetBobbin = null
-      for (const install of installation) {
-        const manifest = install.manifestJson as any
-        const collections = manifest.data?.collections || []
-        if (collections.some((c: any) => c.name === collection)) {
-          targetBobbin = install
-          break
-        }
-      }
+      // Find which bobbin contains this collection (use disk manifests as source of truth)
+      const bobbinIds = installation.map(i => i.bobbinId)
+      const targetBobbinId = await findBobbinForCollection(bobbinIds, collection)
 
-      if (!targetBobbin) {
+      if (!targetBobbinId) {
         return reply.status(400).send({
           error: `Collection '${collection}' not found in any installed bobbin`
         })
@@ -223,7 +217,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
         .values({
           id: entityId,
           projectId,
-          bobbinId: targetBobbin.bobbinId,
+          bobbinId: targetBobbinId,
           collectionName: collection,
           entityData: data
         })
@@ -502,26 +496,21 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
                   throw new Error('Create operation requires data')
                 }
                 
-                // Find target bobbin
+                // Find target bobbin (use disk manifests as source of truth)
                 const installations = await tx
-                  .select()
+                  .select({ bobbinId: bobbinsInstalled.bobbinId })
                   .from(bobbinsInstalled)
                   .where(and(
                     eq(bobbinsInstalled.projectId, projectId),
                     eq(bobbinsInstalled.enabled, true)
                   ))
 
-                let targetBobbin = null
-                for (const install of installations) {
-                  const manifest = install.manifestJson as any
-                  const collections = manifest.data?.collections || []
-                  if (collections.some((c: any) => c.name === collection)) {
-                    targetBobbin = install
-                    break
-                  }
-                }
+                const targetBobbinId = await findBobbinForCollection(
+                  installations.map(i => i.bobbinId),
+                  collection
+                )
 
-                if (!targetBobbin) {
+                if (!targetBobbinId) {
                   throw new Error(`Collection '${collection}' not found`)
                 }
 
@@ -531,7 +520,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
                   .values({
                     id: entityId,
                     projectId,
-                    bobbinId: targetBobbin.bobbinId,
+                    bobbinId: targetBobbinId,
                     collectionName: collection,
                     entityData: data
                   })

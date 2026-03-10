@@ -1,7 +1,6 @@
 import { FastifyPluginAsync } from 'fastify'
 import { parse as parseYAML } from 'yaml'
 import * as path from 'path'
-import * as fs from 'fs/promises'
 import { db } from '../db/connection'
 import { projects, bobbinsInstalled, entities } from '../db/schema'
 import { eq, and, count } from 'drizzle-orm'
@@ -9,41 +8,7 @@ import { ManifestCompiler } from '@bobbinry/compiler'
 import { requireAuth, requireProjectOwnership, requireVerified } from '../middleware/auth'
 import { getUserMembershipTier, getProjectLimit } from '../lib/membership'
 import { checkAndUpgradeBobbin, type UpgradeResult } from '../lib/bobbin-upgrader'
-
-// In-memory cache of parsed disk manifests, keyed by bobbinId.
-// Invalidated on server restart (which happens on every deploy).
-const manifestCache = new Map<string, Record<string, any>>()
-const PROJECT_ROOT = path.resolve(__dirname, '../../../..')
-
-async function loadDiskManifests(bobbinIds: string[]): Promise<Map<string, Record<string, any>>> {
-  const uncached = bobbinIds.filter(id => !manifestCache.has(id))
-
-  if (uncached.length > 0) {
-    const results = await Promise.allSettled(
-      uncached.map(async (bobbinId) => {
-        const manifestPath = path.resolve(PROJECT_ROOT, `bobbins/${bobbinId}/manifest.yaml`)
-        const content = await fs.readFile(manifestPath, 'utf-8')
-        return { bobbinId, manifest: parseYAML(content) }
-      })
-    )
-
-    for (const result of results) {
-      if (result.status === 'fulfilled') {
-        manifestCache.set(result.value.bobbinId, result.value.manifest)
-      } else if (!(result.reason as NodeJS.ErrnoException)?.code?.startsWith('ENOENT')) {
-        // Log non-file-not-found errors (permission issues, etc.)
-        console.error('[BOBBIN UPGRADE] Failed to read manifest from disk:', result.reason)
-      }
-    }
-  }
-
-  const out = new Map<string, Record<string, any>>()
-  for (const id of bobbinIds) {
-    const cached = manifestCache.get(id)
-    if (cached) out.set(id, cached)
-  }
-  return out
-}
+import { loadDiskManifests } from '../lib/disk-manifests'
 
 const projectsPlugin: FastifyPluginAsync = async (fastify) => {
   // Create a new project (requires authentication)

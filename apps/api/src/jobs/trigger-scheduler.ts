@@ -12,6 +12,7 @@ import { db } from '../db/connection'
 import { bobbinsInstalled, entities, projectDestinations } from '../db/schema'
 import { eq, and, gt } from 'drizzle-orm'
 import { processEmbargoReleases, initTierDispatch } from './tier-dispatch'
+import { loadDiskManifests } from '../lib/disk-manifests'
 
 /** Sync frequency to milliseconds lookup for backup bobbins */
 const SYNC_FREQUENCY_MS: Record<string, number> = {
@@ -109,28 +110,43 @@ export function registerActionHandler(
   actionHandlers[bobbinId]![actionId] = handler
 }
 
+interface InstalledBobbin {
+  bobbinId: string
+  projectId: string
+}
+
+/** Shared query for both schedule triggers and backup sync. */
+async function getInstalledBobbins(): Promise<{
+  installed: InstalledBobbin[]
+  diskManifests: Map<string, Record<string, any>>
+}> {
+  const installed = await db
+    .select({
+      bobbinId: bobbinsInstalled.bobbinId,
+      projectId: bobbinsInstalled.projectId,
+    })
+    .from(bobbinsInstalled)
+    .where(eq(bobbinsInstalled.enabled, true))
+
+  const bobbinIds = [...new Set(installed.map(b => b.bobbinId))]
+  const diskManifests = await loadDiskManifests(bobbinIds)
+  return { installed, diskManifests }
+}
+
 /**
  * Process all schedule triggers.
  * Scans installed bobbins for schedule triggers that match the current time,
  * then invokes the corresponding action handlers.
  */
-export async function processScheduleTriggers(): Promise<void> {
+export async function processScheduleTriggers(
+  installed: InstalledBobbin[],
+  diskManifests: Map<string, Record<string, any>>
+): Promise<void> {
   const now = new Date()
 
   try {
-    // Get all installed bobbins with their projects
-    const installed = await db
-      .select({
-        bobbinId: bobbinsInstalled.bobbinId,
-        projectId: bobbinsInstalled.projectId,
-        manifestJson: bobbinsInstalled.manifestJson,
-        enabled: bobbinsInstalled.enabled
-      })
-      .from(bobbinsInstalled)
-      .where(eq(bobbinsInstalled.enabled, true))
-
     for (const bobbin of installed) {
-      const manifest = bobbin.manifestJson as any
+      const manifest = diskManifests.get(bobbin.bobbinId)
       const interactions: ManifestInteractions | undefined = manifest?.interactions
 
       if (!interactions?.triggers) continue
@@ -165,21 +181,15 @@ export async function processScheduleTriggers(): Promise<void> {
  * Queries backup bobbins, checks sync frequency against last sync time,
  * and emits events for bobbins that need to sync.
  */
-export async function processBackupSync(): Promise<void> {
+export async function processBackupSync(
+  installed: InstalledBobbin[],
+  diskManifests: Map<string, Record<string, any>>
+): Promise<void> {
   try {
-    const installed = await db
-      .select({
-        bobbinId: bobbinsInstalled.bobbinId,
-        projectId: bobbinsInstalled.projectId,
-        manifestJson: bobbinsInstalled.manifestJson,
-      })
-      .from(bobbinsInstalled)
-      .where(eq(bobbinsInstalled.enabled, true))
-
     const now = new Date()
 
     for (const bobbin of installed) {
-      const manifest = bobbin.manifestJson as any
+      const manifest = diskManifests.get(bobbin.bobbinId)
       const capabilities = manifest?.capabilities || {}
       const sync = manifest?.sync || {}
 
@@ -247,15 +257,19 @@ export function startTriggerScheduler(): void {
   initTierDispatch()
 
   console.log('[trigger-scheduler] Starting trigger scheduler (1-minute interval)')
-  intervalId = setInterval(async () => {
+
+  async function tick() {
+    const { installed, diskManifests } = await getInstalledBobbins()
     await Promise.allSettled([
-      processScheduleTriggers(),
-      processBackupSync(),
+      processScheduleTriggers(installed, diskManifests),
+      processBackupSync(installed, diskManifests),
       processEmbargoReleases(),
     ])
-  }, 60 * 1000)
+  }
+
+  intervalId = setInterval(tick, 60 * 1000)
   // Run once immediately
-  processScheduleTriggers()
+  tick().catch(err => console.error('[trigger-scheduler] Initial tick failed:', err))
 }
 
 /**

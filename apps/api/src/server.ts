@@ -24,6 +24,7 @@ import membershipPlugin from './routes/membership'
 import { checkDatabaseHealth } from './db/connection'
 import { env } from './lib/env'
 import { startTriggerScheduler, stopTriggerScheduler } from './jobs/trigger-scheduler'
+import { loadAllDiskManifests } from './lib/disk-manifests'
 import { initNotificationHandlers } from './jobs/notification-handlers'
 import { getMetricsSnapshot, incrementCounter, observeTimingMs } from './lib/metrics'
 import { verifyInternalRequest } from './lib/internal-auth'
@@ -212,8 +213,9 @@ export function build(opts = {}): FastifyInstance {
   server.register(membershipPlugin, { prefix: '/api' })
   server.register(notificationsPlugin, { prefix: '/api' })
 
-  // Start the trigger scheduler for cron-based bobbin actions
+  // Warm disk manifest cache, then start the trigger scheduler
   server.addHook('onReady', async () => {
+    await loadAllDiskManifests()
     startTriggerScheduler()
     initNotificationHandlers()
   })

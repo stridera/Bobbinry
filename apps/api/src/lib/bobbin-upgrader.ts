@@ -75,14 +75,19 @@ export async function checkAndUpgradeBobbin(
   const diskVersion = diskManifest.version as string
 
   if (!diskVersion || compareSemver(diskVersion, installedVersion) <= 0) {
-    // Warn if manifest content drifted without a version bump (helps diagnose stale-manifest bugs)
+    // Auto-sync DB manifest when content drifted without a version bump.
+    // Runtime reads all go through disk now, but this keeps the DB copy fresh
+    // for SQL inspection and future worker processes.
     if (diskVersion && compareSemver(diskVersion, installedVersion) === 0) {
       const diskStr = stableStringify(diskManifest)
       const dbStr = stableStringify(installedRow.manifestJson)
       if (diskStr !== dbStr) {
-        console.warn(
-          `[BOBBIN UPGRADE] ${installedRow.bobbinId}: manifest on disk differs from DB at same version ${diskVersion} — bump the version to apply changes`
+        console.log(
+          `[BOBBIN UPGRADE] ${installedRow.bobbinId}: syncing drifted manifest at version ${diskVersion}`
         )
+        await db.update(bobbinsInstalled)
+          .set({ manifestJson: diskManifest })
+          .where(eq(bobbinsInstalled.id, installedRow.id))
       }
     }
     return null

@@ -15,6 +15,7 @@ import {
 import { eq, and, sql } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { requireAuth, requireProjectOwnership } from '../middleware/auth'
+import { loadDiskManifests } from '../lib/disk-manifests'
 
 const VALID_TAG_CATEGORIES = ['genre', 'theme', 'trope', 'setting', 'custom'] as const
 
@@ -257,7 +258,6 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
             id: bobbinsInstalled.id,
             bobbinId: bobbinsInstalled.bobbinId,
             version: bobbinsInstalled.version,
-            manifestJson: bobbinsInstalled.manifestJson
           })
           .from(bobbinsInstalled)
           .where(eq(bobbinsInstalled.projectId, projectId)),
@@ -353,9 +353,10 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
         moderationMode: 'open'
       }
 
-      // Format bobbins
+      // Format bobbins using disk manifests as source of truth
+      const diskManifests = await loadDiskManifests(bobbinsResult.map(b => b.bobbinId))
       const bobbins = bobbinsResult.map(b => {
-        const manifest = b.manifestJson as Record<string, any>
+        const manifest = diskManifests.get(b.bobbinId) as Record<string, any> | undefined
         return {
           id: b.id,
           bobbinId: b.bobbinId,
