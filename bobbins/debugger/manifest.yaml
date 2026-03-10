@@ -14,21 +14,3 @@ capabilities:
   ai: false
   customViews: false
 
-execution:
-  mode: sandboxed
-
-extensions:
-  target: { id: shell, version: "*" }
-  contributions:
-    - slot: shell.rightPanel
-      type: panel
-      id: debugger.panel
-      title: "🐛 Debugger"
-      entry: dist/panels/debugger.html
-      pubsub:
-        consumes:
-          - { topic: "*", intent: debugging, sensitivityRequired: low }
-      when: { inView: "*" }
-
-compatibility:
-  minShellVersion: "0.1.0"

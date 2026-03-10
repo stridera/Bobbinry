@@ -15,11 +15,6 @@ capabilities:
   external: false
   ai: false
   customViews: true
-
-execution:
-  mode: native
-  signature: dev_mode_skip
-
 # Corkboard is UI-only - no data collections
 # It provides alternative views for existing collections from other bobbins
 

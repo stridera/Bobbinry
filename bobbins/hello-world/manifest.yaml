@@ -6,9 +6,6 @@ description: "Tutorial bobbin demonstrating SDK hooks, entity management, and th
 tags: [tutorial, example]
 license: MIT
 capabilities: { publishable: false, external: false, ai: false, customViews: true }
-execution:
-  mode: native
-  signature: dev_mode_skip
 compatibility:
   minShellVersion: "0.1.0"
 data:

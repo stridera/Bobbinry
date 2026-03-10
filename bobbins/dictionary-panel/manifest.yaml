@@ -6,22 +6,3 @@ description: "Right-side panel with dictionary definitions and thesaurus. Looks 
 tags: [panel, dictionary, thesaurus, pubsub]
 license: MIT
 capabilities: { publishable: false, external: true, ai: false, customViews: true }
-execution:
-  mode: sandboxed
-data: { collections: [] }
-extensions:
-  target: { id: manuscript, version: "^1.0.0" }
-  contributions:
-    - slot: shell.rightPanel
-      type: panel
-      id: dictionary.panel
-      title: "Dictionary"
-      entry: views/panel/index.html
-      pubsub:
-        consumes:
-          - { topic: manuscript.editor.selection.v1, intent: dictionary-lookup, sensitivityRequired: medium }
-      when: { inView: manuscript.editor }
-pubsub: { produces: [] }
-offline: { defaultCache: open_entities }
-sync: { conflictPolicy: field_merge }
-compatibility: { minShellVersion: 1.0.0, migrations: [] }
