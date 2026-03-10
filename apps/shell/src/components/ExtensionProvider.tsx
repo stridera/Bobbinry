@@ -158,7 +158,9 @@ export function useManifestExtensions() {
 
     try {
       // Register native views in viewRegistry
-      if (manifest.execution?.mode === 'native' && manifest.ui?.views) {
+      // Default to native when execution block is absent (first-party bobbins omit it)
+      const isNative = !manifest.execution || manifest.execution.mode === 'native'
+      if (isNative && manifest.ui?.views) {
         const { viewRegistry } = require('../lib/view-registry')
         const { createComponentLoader } = require('../lib/native-view-loader')
 
@@ -209,7 +211,7 @@ export function useManifestExtensions() {
           extensionRegistry.registerExtension(bobbinId, contribution)
 
           // For native panels/views, load and attach the component
-          if (manifest.execution?.mode === 'native' && (contribution.type === 'panel' || contribution.type === 'view') && contribution.entry) {
+          if (isNative && (contribution.type === 'panel' || contribution.type === 'view') && contribution.entry) {
             console.log(`[ExtensionProvider] Loading native panel component: ${bobbinId}.${contribution.entry}`)
 
             loadNativeView(bobbinId, contribution.entry).then((component: any) => {

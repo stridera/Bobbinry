@@ -63,8 +63,8 @@ async function main() {
     const manifestContent = await readFile(manifestPath, 'utf-8')
     const manifest = parseYAML(manifestContent)
 
-    // Only process native bobbins
-    if (manifest.execution?.mode !== 'native') {
+    // Only process native bobbins (default to native when execution block is absent)
+    if (manifest.execution?.mode === 'sandboxed') {
       continue
     }
 

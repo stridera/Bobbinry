@@ -156,14 +156,6 @@ function checkCapabilitiesPresent(ctx: BobbinContext): Diagnostic[] {
   return [];
 }
 
-function checkExecutionPresent(ctx: BobbinContext): Diagnostic[] {
-  if (!ctx.manifest) return [];
-  if (!ctx.manifest.execution) {
-    return [{ rule: "execution-present", message: "missing execution block", severity: "warning" }];
-  }
-  return [];
-}
-
 function checkCompatibilityPresent(ctx: BobbinContext): Diagnostic[] {
   if (!ctx.manifest) return [];
   if (!ctx.manifest.compatibility?.minShellVersion) {
@@ -272,7 +264,7 @@ function checkPkgHasScripts(ctx: BobbinContext): Diagnostic[] {
 function checkViewsInViews(ctx: BobbinContext): Diagnostic[] {
   if (!ctx.manifest?.extensions?.contributions) return [];
   // Sandboxed bobbins use flat paths (not src/panels vs src/views)
-  if (ctx.manifest.execution?.mode === "sandboxed") return [];
+  if (ctx.manifest.execution?.mode === "sandboxed" || ctx.manifest.format === "flat") return [];
   const diags: Diagnostic[] = [];
   for (const contrib of ctx.manifest.extensions.contributions) {
     if (!contrib.entry) continue;
@@ -386,7 +378,7 @@ function checkPanelIdNamespaced(ctx: BobbinContext): Diagnostic[] {
 function checkTsconfigExists(ctx: BobbinContext): Diagnostic[] {
   if (!ctx.hasSrcDir) return [];
   // Only native bobbins with src/ need tsconfig
-  if (ctx.manifest?.execution?.mode === "sandboxed") return [];
+  if (ctx.manifest?.execution?.mode === "sandboxed" || ctx.manifest?.format === "flat") return [];
   if (!fs.existsSync(path.join(ctx.dirPath, "tsconfig.json"))) {
     return [{ rule: "tsconfig-exists", message: "missing tsconfig.json", severity: "warning" }];
   }
@@ -515,7 +507,6 @@ const perBobbinRules = [
   checkNameTitleCase,
   checkAuthorConsistent,
   checkCapabilitiesPresent,
-  checkExecutionPresent,
   checkCompatibilityPresent,
   checkPkgExists,
   checkPkgNameMatches,
