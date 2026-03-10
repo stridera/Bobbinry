@@ -58,7 +58,7 @@ const membershipPlugin: FastifyPluginAsync = async (fastify) => {
         }
       }
 
-      return reply.send({ tier, badges, membership })
+      return reply.send({ tier, badges, membership, emailVerified: !!user.emailVerified })
     } catch (error) {
       fastify.log.error(error)
       return reply.status(500).send({ error: 'Failed to fetch membership' })

@@ -445,7 +445,7 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
 
       // Mark user as verified + delete tokens in parallel; RETURNING gives us user info for welcome email
       const [[user]] = await Promise.all([
-        db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, record.userId)).returning({ email: users.email, name: users.name }),
+        db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, record.userId)).returning({ id: users.id, email: users.email, name: users.name }),
         db.delete(emailVerificationTokens).where(eq(emailVerificationTokens.userId, record.userId)),
       ])
 
@@ -457,7 +457,7 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
       }
 
       incrementCounter('auth.email_verified')
-      return reply.send({ success: true, message: 'Email verified successfully' })
+      return reply.send({ success: true, message: 'Email verified successfully', userId: record.userId })
     } catch (error) {
       fastify.log.error({ error }, 'Email verification failed')
       return reply.status(500).send({ error: 'Verification failed' })

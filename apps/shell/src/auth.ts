@@ -211,6 +211,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             const data = await membershipRes.json()
             token.membershipTier = data.tier || 'free'
             token.badges = data.badges || []
+            if (data.emailVerified !== undefined) {
+              token.emailVerified = data.emailVerified
+            }
           }
         } catch {}
         // Round to nearest TTL window to avoid constant token churn

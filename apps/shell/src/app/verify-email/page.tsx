@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useState, useEffect, useCallback } from 'react'
+import { Suspense, useState, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -29,32 +29,33 @@ function VerifyEmailContent() {
   const [resending, setResending] = useState(false)
   const [resendSuccess, setResendSuccess] = useState(false)
 
-  const verifyToken = useCallback(async (t: string) => {
-    setStatus('verifying')
-    try {
-      const res = await fetch(`${config.apiUrl}/api/auth/verify-email?token=${encodeURIComponent(t)}`)
-      const data = await res.json()
-
-      if (res.ok) {
-        setStatus('success')
-        // Refresh the session to pick up emailVerified
-        await updateSession({ emailVerified: true })
-        setTimeout(() => router.push('/dashboard'), 2000)
-      } else {
-        setStatus('error')
-        setError(data.error || 'Verification failed')
-      }
-    } catch {
-      setStatus('error')
-      setError('Something went wrong. Please try again.')
-    }
-  }, [router, updateSession])
+  const verifiedRef = useRef(false)
 
   useEffect(() => {
-    if (token) {
-      verifyToken(token)
-    }
-  }, [token, verifyToken])
+    if (!token || verifiedRef.current) return
+    verifiedRef.current = true
+
+    setStatus('verifying')
+    fetch(`${config.apiUrl}/api/auth/verify-email?token=${encodeURIComponent(token)}`)
+      .then(async (res) => {
+        const data = await res.json()
+        if (res.ok) {
+          setStatus('success')
+          // Only update the current session if the verified user matches
+          if (session?.user?.id === data.userId) {
+            await updateSession({ emailVerified: true })
+          }
+          setTimeout(() => router.push('/dashboard'), 2000)
+        } else {
+          setStatus('error')
+          setError(data.error || 'Verification failed')
+        }
+      })
+      .catch(() => {
+        setStatus('error')
+        setError('Something went wrong. Please try again.')
+      })
+  }, [token]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleResend = async () => {
     if (!session?.apiToken) return
@@ -69,10 +70,14 @@ function VerifyEmailContent() {
         },
       })
 
+      const data = await res.json()
       if (res.ok) {
         setResendSuccess(true)
+      } else if (data.error === 'Email is already verified') {
+        setStatus('success')
+        await updateSession({ emailVerified: true })
+        setTimeout(() => router.push('/dashboard'), 2000)
       } else {
-        const data = await res.json()
         setError(data.error || 'Failed to resend')
       }
     } catch {
