@@ -1,0 +1,20 @@
+id: google-drive-backup
+name: Google Drive Backup
+version: 1.0.0
+author: Bobbins Core
+description: Automatically back up all your projects to Google Drive
+tags: [backup, integration, cloud-storage, automation]
+license: MIT
+
+capabilities:
+  external: true
+  backup: true
+  customViews: true
+extensions:
+  contributions:
+    - slot: shell.projectBackup
+      type: panel
+      id: drive-sync
+      title: "Google Drive Backup"
+      entry: panels/drive-sync
+      priority: 6

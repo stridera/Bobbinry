@@ -72,7 +72,7 @@
         "@bobbinry/corkboard": "workspace:*",
         "@bobbinry/entities": "workspace:*",
         "@bobbinry/goals": "workspace:*",
-        "@bobbinry/google-drive-publisher": "workspace:*",
+        "@bobbinry/google-drive-backup": "workspace:*",
         "@bobbinry/manuscript": "workspace:*",
         "@bobbinry/notes": "workspace:*",
         "@bobbinry/relationships": "workspace:*",
@@ -203,8 +203,8 @@
         "react": "^19.0.0",
       },
     },
-    "bobbins/google-drive-publisher": {
-      "name": "@bobbinry/google-drive-publisher",
+    "bobbins/google-drive-backup": {
+      "name": "@bobbinry/google-drive-backup",
       "version": "0.1.0",
       "dependencies": {
         "@bobbinry/sdk": "workspace:*",
@@ -647,7 +647,7 @@
 
     "@bobbinry/goals": ["@bobbinry/goals@workspace:bobbins/goals"],
 
-    "@bobbinry/google-drive-publisher": ["@bobbinry/google-drive-publisher@workspace:bobbins/google-drive-publisher"],
+    "@bobbinry/google-drive-backup": ["@bobbinry/google-drive-backup@workspace:bobbins/google-drive-backup"],
 
     "@bobbinry/hello-world": ["@bobbinry/hello-world@workspace:bobbins/hello-world"],
 

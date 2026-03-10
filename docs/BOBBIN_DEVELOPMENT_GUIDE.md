@@ -3,13 +3,60 @@
 A comprehensive guide for building bobbins for the Bobbinry platform.
 
 ## Table of Contents
-1. [Quick Start](#quick-start)
-2. [Manifest Structure](#manifest-structure)
-3. [Theming Best Practices](#theming-best-practices)
-4. [Message Bus Communication](#message-bus-communication)
-5. [Entity Data Access](#entity-data-access)
-6. [View Development](#view-development)
-7. [Testing](#testing)
+1. [Bobbin Types](#bobbin-types)
+2. [Quick Start](#quick-start)
+3. [Manifest Structure](#manifest-structure)
+4. [Theming Best Practices](#theming-best-practices)
+5. [Message Bus Communication](#message-bus-communication)
+6. [Entity Data Access](#entity-data-access)
+7. [View Development](#view-development)
+8. [Testing](#testing)
+
+## Bobbin Types
+
+Bobbins fall into four categories based on their purpose:
+
+### Workspace Bobbins
+Add tools to the writing environment. These are project-scoped and installed per-project.
+
+Examples: `manuscript`, `entities`, `notes`, `corkboard`, `timeline`, `goals`
+
+### Publisher Bobbins
+Distribute content to readers. Use `capabilities.publishable: true`.
+
+Examples: `web-publisher`, `smart-publisher`
+
+### Backup Bobbins
+Sync project content to external storage. Use `capabilities.backup: true`. Installed per-user (not per-project) — once connected, all projects are backed up by default. Users can opt individual projects out. Contribute panels to the `shell.projectBackup` slot.
+
+Examples: `google-drive-backup`
+
+```yaml
+# Minimal backup bobbin manifest
+id: my-backup
+name: My Backup Service
+version: 1.0.0
+author: Your Name
+description: Back up projects to My Service
+
+capabilities:
+  external: true
+  backup: true
+  customViews: true
+
+extensions:
+  contributions:
+    - slot: shell.projectBackup
+      type: panel
+      id: status-panel
+      title: "My Backup"
+      entry: panels/status
+```
+
+### Reader Bobbins
+Enhance the reading experience. Installed per-user via reader-bobbins settings. Use `capabilities.readerBobbinType`.
+
+Examples: text-to-speech, translation, annotations
 
 ## Quick Start
 

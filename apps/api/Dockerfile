@@ -32,7 +32,7 @@ COPY bobbins/debugger/package.json bobbins/debugger/
 COPY bobbins/dictionary-panel/package.json bobbins/dictionary-panel/
 COPY bobbins/entities/package.json bobbins/entities/
 COPY bobbins/goals/package.json bobbins/goals/
-COPY bobbins/google-drive-publisher/package.json bobbins/google-drive-publisher/
+COPY bobbins/google-drive-backup/package.json bobbins/google-drive-backup/
 COPY bobbins/hello-world/package.json bobbins/hello-world/
 COPY bobbins/manuscript/package.json bobbins/manuscript/
 COPY bobbins/notes/package.json bobbins/notes/

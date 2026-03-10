@@ -31,6 +31,66 @@ import {
 
 export { syncChapterToGoogleDrive, batchSyncChapters }
 
+/** Create DB callback helpers — lazily imports DB deps so they resolve from the API package */
+async function createDbCallbacks() {
+  const { db } = await import('../../../apps/api/src/db/connection')
+  const { projectDestinations } = await import('../../../apps/api/src/db/schema')
+  const { eq } = await import('drizzle-orm')
+
+  const persistToken = async (destinationId: string, accessToken: string, tokenExpiresAt: string) => {
+    const [dest] = await db.select().from(projectDestinations).where(eq(projectDestinations.id, destinationId)).limit(1)
+    if (!dest) return
+    await db
+      .update(projectDestinations)
+      .set({
+        config: { ...(dest.config as any), accessToken, tokenExpiresAt },
+        updatedAt: new Date(),
+      })
+      .where(eq(projectDestinations.id, destinationId))
+  }
+
+  const deactivateDestination = async (destinationId: string, error: string) => {
+    await db
+      .update(projectDestinations)
+      .set({
+        isActive: false,
+        lastSyncError: error,
+        lastSyncStatus: 'failed',
+        updatedAt: new Date(),
+      })
+      .where(eq(projectDestinations.id, destinationId))
+  }
+
+  return { db, projectDestinations, eq, persistToken, deactivateDestination }
+}
+
+/**
+ * Action: initiate_drive_oauth
+ * Returns the Google OAuth authorize URL for the frontend to redirect to
+ */
+export async function initiateDriveOAuth(
+  params: Record<string, unknown>,
+  context: ActionContext,
+  fastify: FastifyInstance
+): Promise<ActionResult> {
+  try {
+    const { env } = await import('../../../apps/api/src/lib/env')
+
+    if (!env.GOOGLE_ID) {
+      return { success: false, error: 'Google OAuth not configured on this server' }
+    }
+
+    const url = `${env.API_ORIGIN}/api/backups/google-drive/authorize`
+    return { success: true, data: { url } }
+  } catch (error) {
+    fastify.log.error({ error }, 'initiateDriveOAuth action failed')
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
+}
+
 /**
  * Action: sync_to_drive
  * Syncs a single chapter to Google Drive
@@ -45,13 +105,12 @@ export async function syncToDrive(
   fastify: FastifyInstance
 ): Promise<ActionResult> {
   try {
-    const { db } = await import('../../../apps/api/src/db/connection')
-    const { entities, projectDestinations } = await import('../../../apps/api/src/db/schema')
-    const { eq, and } = await import('drizzle-orm')
+    const { db, projectDestinations, eq, persistToken, deactivateDestination } = await createDbCallbacks()
+    const { entities } = await import('../../../apps/api/src/db/schema')
+    const { and } = await import('drizzle-orm')
 
     const { chapterId, destinationId, force } = params
 
-    // Get chapter
     const [chapter] = await db
       .select()
       .from(entities)
@@ -62,7 +121,6 @@ export async function syncToDrive(
       return { success: false, error: 'Chapter not found' }
     }
 
-    // Get destination
     const [destination] = await db
       .select()
       .from(projectDestinations)
@@ -77,31 +135,26 @@ export async function syncToDrive(
       return { success: false, error: 'Destination is not active' }
     }
 
-    // Check if already synced
-    const existingFileId = (chapter.data as any)?.driveFileId || null
+    const existingFileId = (chapter.entityData as any)?.driveFileId || null
 
     if (existingFileId && !force) {
       return {
         success: true,
-        data: {
-          message: 'Chapter already synced',
-          fileId: existingFileId,
-          skipped: true
-        }
+        data: { message: 'Chapter already synced', fileId: existingFileId, skipped: true }
       }
     }
 
-    // Sync to Google Drive
     const chapterContent: ChapterContent = {
       id: chapter.id,
-      title: (chapter.data as any)?.title || 'Untitled',
-      content: (chapter.data as any)?.content || '',
+      title: (chapter.entityData as any)?.title || 'Untitled',
+      content: (chapter.entityData as any)?.content || '',
       projectId: chapter.projectId
     }
 
-    const result = await syncChapterToGoogleDrive(chapterContent, destination, existingFileId, fastify)
+    const result = await syncChapterToGoogleDrive(
+      chapterContent, destination, existingFileId, fastify.log, persistToken, deactivateDestination
+    )
 
-    // Update destination sync status
     await db
       .update(projectDestinations)
       .set({
@@ -112,13 +165,12 @@ export async function syncToDrive(
       })
       .where(eq(projectDestinations.id, destinationId))
 
-    // Store file ID in chapter data if successful
     if (result.success && result.fileId) {
       await db
         .update(entities)
         .set({
-          data: {
-            ...(chapter.data as any),
+          entityData: {
+            ...(chapter.entityData as any),
             driveFileId: result.fileId,
             driveFileUrl: result.fileUrl,
             lastSyncedAt: new Date().toISOString()
@@ -130,17 +182,12 @@ export async function syncToDrive(
 
     return {
       success: result.success,
-      data: result.success
-        ? { fileId: result.fileId, fileUrl: result.fileUrl }
-        : undefined,
+      data: result.success ? { fileId: result.fileId, fileUrl: result.fileUrl } : undefined,
       error: result.error
     }
   } catch (error) {
     fastify.log.error({ error }, 'syncToDrive action failed')
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    }
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
   }
 }
 
@@ -158,13 +205,12 @@ export async function syncAllChapters(
   fastify: FastifyInstance
 ): Promise<ActionResult> {
   try {
-    const { db } = await import('../../../apps/api/src/db/connection')
-    const { entities, projectDestinations } = await import('../../../apps/api/src/db/schema')
-    const { eq, and } = await import('drizzle-orm')
+    const { db, projectDestinations, eq, persistToken, deactivateDestination } = await createDbCallbacks()
+    const { entities } = await import('../../../apps/api/src/db/schema')
+    const { and } = await import('drizzle-orm')
 
-    const { destinationId, collection, publishedOnly } = params
+    const { destinationId, collection } = params
 
-    // Get destination
     const [destination] = await db
       .select()
       .from(projectDestinations)
@@ -179,7 +225,6 @@ export async function syncAllChapters(
       return { success: false, error: 'Destination is not active' }
     }
 
-    // Get chapters to sync
     let chaptersQuery = db
       .select()
       .from(entities)
@@ -194,38 +239,28 @@ export async function syncAllChapters(
     const chapters = await chaptersQuery
 
     if (chapters.length === 0) {
-      return {
-        success: true,
-        data: { message: 'No chapters to sync', succeeded: 0, failed: 0 }
-      }
+      return { success: true, data: { message: 'No chapters to sync', succeeded: 0, failed: 0 } }
     }
 
-    // Build sync logs map
     const syncLogs = new Map<string, string>()
     for (const chapter of chapters) {
-      const fileId = (chapter.data as any)?.driveFileId
+      const fileId = (chapter.entityData as any)?.driveFileId
       if (fileId) {
         syncLogs.set(chapter.id, fileId)
       }
     }
 
-    // Convert to chapter content format
     const chapterContents: ChapterContent[] = chapters.map((chapter) => ({
       id: chapter.id,
-      title: (chapter.data as any)?.title || 'Untitled',
-      content: (chapter.data as any)?.content || '',
+      title: (chapter.entityData as any)?.title || 'Untitled',
+      content: (chapter.entityData as any)?.content || '',
       projectId: chapter.projectId
     }))
 
-    // Batch sync
     const { succeeded, failed, results } = await batchSyncChapters(
-      chapterContents,
-      destination,
-      syncLogs,
-      fastify
+      chapterContents, destination, syncLogs, fastify.log, persistToken, deactivateDestination
     )
 
-    // Update chapter data with file IDs
     for (const { chapterId, result } of results) {
       if (result.success && result.fileId) {
         const chapter = chapters.find((c) => c.id === chapterId)
@@ -233,8 +268,8 @@ export async function syncAllChapters(
           await db
             .update(entities)
             .set({
-              data: {
-                ...(chapter.data as any),
+              entityData: {
+                ...(chapter.entityData as any),
                 driveFileId: result.fileId,
                 driveFileUrl: result.fileUrl,
                 lastSyncedAt: new Date().toISOString()
@@ -246,7 +281,6 @@ export async function syncAllChapters(
       }
     }
 
-    // Update destination sync status
     const overallStatus = failed === 0 ? 'success' : succeeded > 0 ? 'partial' : 'failed'
     await db
       .update(projectDestinations)
@@ -258,42 +292,28 @@ export async function syncAllChapters(
       })
       .where(eq(projectDestinations.id, destinationId))
 
-    return {
-      success: true,
-      data: {
-        succeeded,
-        failed,
-        total: chapters.length
-      }
-    }
+    return { success: true, data: { succeeded, failed, total: chapters.length } }
   } catch (error) {
     fastify.log.error({ error }, 'syncAllChapters action failed')
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    }
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
   }
 }
 
 /**
  * Action: test_connection
- * Tests the Google Drive connection
+ * Tests the Google Drive connection by calling the Drive About API
  */
 export async function testConnection(
-  params: {
-    destinationId: string
-  },
+  params: { destinationId: string },
   context: ActionContext,
   fastify: FastifyInstance
 ): Promise<ActionResult> {
   try {
-    const { db } = await import('../../../apps/api/src/db/connection')
-    const { projectDestinations } = await import('../../../apps/api/src/db/schema')
-    const { eq } = await import('drizzle-orm')
+    const { db, projectDestinations, eq } = await createDbCallbacks()
+    const { ensureFreshToken } = await import('../../../apps/api/src/routes/google-drive')
 
     const { destinationId } = params
 
-    // Get destination
     const [destination] = await db
       .select()
       .from(projectDestinations)
@@ -310,31 +330,31 @@ export async function testConnection(
       return { success: false, error: 'Invalid configuration: missing credentials' }
     }
 
-    // TODO: Test connection with googleapis
-    // Simulated success for now
-    fastify.log.info({ destinationId }, 'Drive connection test simulated')
+    const accessToken = await ensureFreshToken(destination)
 
-    return {
-      success: true,
-      data: {
-        message: 'Connection test successful (simulated)',
-        user: {
-          displayName: 'Test User',
-          emailAddress: 'test@example.com'
-        }
-      }
+    const resp = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+
+    if (!resp.ok) {
+      const errText = await resp.text()
+      return { success: false, error: `Drive API error (${resp.status}): ${errText}` }
     }
+
+    const about = (await resp.json()) as {
+      user?: { displayName?: string; emailAddress?: string }
+    }
+
+    return { success: true, data: { message: 'Connection successful', user: about.user } }
   } catch (error) {
     fastify.log.error({ error }, 'testConnection action failed')
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    }
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
   }
 }
 
-// Action registry - maps action IDs from manifest to handler functions
+// Action registry
 export const actions = {
+  initiate_drive_oauth: initiateDriveOAuth,
   sync_to_drive: syncToDrive,
   sync_all_chapters: syncAllChapters,
   test_connection: testConnection

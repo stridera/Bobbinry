@@ -1,22 +1,21 @@
-id: google-drive-publisher
-name: Google Drive Publisher
+id: google-drive-backup
+name: Google Drive Backup
 version: 1.0.0
 author: Bobbins Core
-description: Sync chapters to Google Drive folders in real-time
-tags: [publishing, integration, cloud-storage, automation]
+description: Automatically back up all your projects to Google Drive
+tags: [backup, integration, cloud-storage, automation]
 license: MIT
 
 capabilities:
-  publishable: true
   external: true  # Requires Google Drive API access
-  ai: false
+  backup: true
   customViews: true
 extensions:
   contributions:
-    - slot: shell.publishDashboard
+    - slot: shell.projectBackup
       type: panel
       id: drive-sync
-      title: "Google Drive Sync"
+      title: "Google Drive Backup"
       entry: panels/drive-sync
       priority: 6
 
@@ -32,7 +31,7 @@ data:
         - { name: is_active, type: boolean }
         - { name: auto_sync, type: boolean }
         - { name: sync_format, type: text }  # markdown, docx, pdf
-        
+
     - name: SyncLog
       fields:
         - { name: chapter_id, type: text, required: true }
@@ -61,7 +60,7 @@ ui:
           - authorize_drive
           - test_connection
           - manual_sync_all
-          
+
     - id: sync-history
       name: Sync History
       type: table
@@ -86,50 +85,50 @@ interactions:
       target: Chapter  # From manuscript bobbin
       actions:
         - sync_to_drive
-        
+
     - id: on_chapter_update
       event: update
       target: Chapter
       actions:
         - sync_to_drive
-        
+
     - id: on_chapter_publish
       event: publish
       target: Chapter
       actions:
         - sync_published_version
-        
+
   actions:
     - id: authorize_drive
       name: Authorize Google Drive
       type: custom
       handler: initiateDriveOAuth
       description: Start OAuth flow to connect Google Drive account
-      
+
     - id: sync_to_drive
       name: Sync to Drive
       type: custom
       handler: syncChapterToDrive
       description: Upload or update chapter in Google Drive
-      
+
     - id: sync_published_version
       name: Sync Published Version
       type: custom
       handler: syncPublishedChapter
       description: Sync only the published version of a chapter
-      
+
     - id: test_connection
       name: Test Connection
       type: custom
       handler: testDriveConnection
       description: Verify Drive credentials are valid
-      
+
     - id: manual_sync_all
       name: Sync All Chapters
       type: custom
       handler: syncAllChapters
       description: Manually trigger sync of all chapters
-      
+
     - id: retry_failed
       name: Retry Failed Syncs
       type: custom

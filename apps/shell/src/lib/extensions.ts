@@ -68,6 +68,13 @@ export const BUILTIN_SLOTS: Record<string, SlotDefinition> = {
     supportedTypes: ['panel'],
     maxContributions: 10
   },
+  'shell.projectBackup': {
+    id: 'shell.projectBackup',
+    name: 'Project Backup',
+    description: 'Backup status and controls on the project dashboard',
+    supportedTypes: ['panel'],
+    maxContributions: 5
+  },
   'shell.editorFooter': {
     id: 'shell.editorFooter',
     name: 'Editor Footer',

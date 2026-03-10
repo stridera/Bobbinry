@@ -18,7 +18,7 @@
     "@bobbinry/corkboard": "workspace:*",
     "@bobbinry/entities": "workspace:*",
     "@bobbinry/goals": "workspace:*",
-    "@bobbinry/google-drive-publisher": "workspace:*",
+    "@bobbinry/google-drive-backup": "workspace:*",
     "@bobbinry/manuscript": "workspace:*",
     "@bobbinry/notes": "workspace:*",
     "@bobbinry/relationships": "workspace:*",

@@ -1,7 +1,7 @@
 {
-  "name": "@bobbinry/google-drive-publisher",
+  "name": "@bobbinry/google-drive-backup",
   "version": "0.1.0",
-  "description": "Google Drive Publisher bobbin - sync chapters to Google Drive folders",
+  "description": "Google Drive Backup bobbin - automatically back up projects to Google Drive",
   "main": "panels/drive-sync.tsx",
   "exports": {
     "./panels/drive-sync": "./panels/drive-sync.tsx"

@@ -657,26 +657,6 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
                                   context={{ projectId: project.id, apiToken, publisherCategory: 'audience' }}
                                   fallback={null}
                                 />
-                                {/* Sync & Backup publishers (collapsed) */}
-                                <details className="group">
-                                  <summary className="px-5 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 cursor-pointer select-none flex items-center gap-1.5 border-t border-gray-100 dark:border-gray-800">
-                                    <svg className="w-3 h-3 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                    </svg>
-                                    Sync &amp; Backup
-                                  </summary>
-                                  <div className="px-5 pb-3">
-                                    <ExtensionSlot
-                                      slotId="shell.publishDashboard"
-                                      context={{ projectId: project.id, apiToken, publisherCategory: 'backup' }}
-                                      fallback={
-                                        <p className="text-xs text-gray-400 dark:text-gray-500 py-2">
-                                          No backup bobbins installed. Browse the marketplace for Google Drive, Dropbox, or other sync options.
-                                        </p>
-                                      }
-                                    />
-                                  </div>
-                                </details>
                               </div>
                             )}
                           </div>

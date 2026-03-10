@@ -14,7 +14,8 @@ export interface Manifest {
     external?: boolean
     ai?: boolean
     customViews?: boolean
-    publisherCategory?: 'backup' | 'audience' | 'distribution'
+    backup?: boolean
+    publisherCategory?: 'audience' | 'distribution'
     readerBobbinType?: 'automation' | 'reader'
   }
 

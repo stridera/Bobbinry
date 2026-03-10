@@ -48,7 +48,16 @@ export const manifestSchema = {
         "publishable": { "type": "boolean" },
         "external": { "type": "boolean" },
         "ai": { "type": "boolean" },
-        "customViews": { "type": "boolean" }
+        "customViews": { "type": "boolean" },
+        "backup": { "type": "boolean" },
+        "publisherCategory": {
+          "type": "string",
+          "enum": ["audience", "distribution"]
+        },
+        "readerBobbinType": {
+          "type": "string",
+          "enum": ["automation", "reader"]
+        }
       },
       "additionalProperties": false
     },
@@ -275,6 +284,19 @@ export const manifestSchema = {
         "migrations": {
           "type": "array",
           "items": { "$ref": "#/definitions/Migration" }
+        }
+      }
+    },
+    "seed": {
+      "type": "array",
+      "description": "Default entities to create when bobbin is installed",
+      "items": {
+        "type": "object",
+        "required": ["collection", "data"],
+        "properties": {
+          "collection": { "type": "string" },
+          "ref": { "type": "string" },
+          "data": { "type": "object" }
         }
       }
     }

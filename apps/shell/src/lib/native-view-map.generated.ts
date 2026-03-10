@@ -8,7 +8,6 @@
 // must be generated at build time rather than constructed dynamically.
 export const NATIVE_VIEW_MAP: Record<string, () => Promise<any>> = {
   'cat.panels/cat-panel': () => import('@bobbinry/cat/panels/cat-panel'),
-  'google-drive-publisher.panels/drive-sync': () => import('@bobbinry/google-drive-publisher/panels/drive-sync'),
   'corkboard.board': () => import('@bobbinry/corkboard/views/board'),
   'smart-publisher.release-manager': () => import('@bobbinry/smart-publisher/views/release-manager'),
   'smart-publisher.release-config': () => import('@bobbinry/smart-publisher/views/release-config'),
@@ -21,6 +20,7 @@ export const NATIVE_VIEW_MAP: Record<string, () => Promise<any>> = {
   'notes.pinboard': () => import('@bobbinry/notes/views/pinboard'),
   'notes.panels/navigation': () => import('@bobbinry/notes/panels/navigation'),
   'notes.panels/chapter-notes': () => import('@bobbinry/notes/panels/chapter-notes'),
+  'google-drive-backup.panels/drive-sync': () => import('@bobbinry/google-drive-backup/panels/drive-sync'),
   'entities.config': () => import('@bobbinry/entities/views/config'),
   'entities.entity-list': () => import('@bobbinry/entities/views/entity-list'),
   'entities.entity-editor': () => import('@bobbinry/entities/views/entity-editor'),
