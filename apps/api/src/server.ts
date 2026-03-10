@@ -21,6 +21,7 @@ import projectTagsPlugin from './routes/project-tags'
 import projectFollowsPlugin from './routes/project-follows'
 import notificationsPlugin from './routes/notifications'
 import membershipPlugin from './routes/membership'
+import adminPlugin from './routes/admin'
 import { checkDatabaseHealth } from './db/connection'
 import { env } from './lib/env'
 import { startTriggerScheduler, stopTriggerScheduler } from './jobs/trigger-scheduler'
@@ -212,6 +213,7 @@ export function build(opts = {}): FastifyInstance {
   server.register(projectFollowsPlugin, { prefix: '/api' })
   server.register(membershipPlugin, { prefix: '/api' })
   server.register(notificationsPlugin, { prefix: '/api' })
+  server.register(adminPlugin, { prefix: '/api' })
 
   // Warm disk manifest cache, then start the trigger scheduler
   server.addHook('onReady', async () => {

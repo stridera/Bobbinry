@@ -10,6 +10,7 @@ import * as jose from 'jose'
 import { db } from '../db/connection'
 import { users, projects } from '../db/schema'
 import { eq } from 'drizzle-orm'
+import { getUserBadges } from '../lib/membership'
 
 // User context attached to authenticated requests
 export interface AuthenticatedUser {
@@ -172,6 +173,33 @@ export async function requireVerified(
       error: 'Email not verified',
       code: 'EMAIL_NOT_VERIFIED',
       message: 'Please verify your email address to use this feature'
+    })
+    return
+  }
+}
+
+/**
+ * Owner authorization middleware - requires 'owner' badge
+ *
+ * Must be used after requireAuth. Returns 403 if user doesn't have the 'owner' badge.
+ */
+export async function requireOwner(
+  request: FastifyRequest,
+  reply: FastifyReply
+): Promise<void> {
+  if (!request.user) {
+    reply.status(401).send({
+      error: 'Authentication required',
+      message: 'Missing or invalid Authorization header'
+    })
+    return
+  }
+
+  const badges = await getUserBadges(request.user.id)
+  if (!badges.includes('owner')) {
+    reply.status(403).send({
+      error: 'Forbidden',
+      message: 'Owner access required'
     })
     return
   }

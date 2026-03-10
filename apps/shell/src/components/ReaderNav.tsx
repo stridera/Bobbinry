@@ -88,7 +88,7 @@ export function ReaderNav({ crumbs = [], themed }: ReaderNavProps) {
             Explore
           </Link>
           {session?.user ? (
-            <UserMenu user={session.user as { id: string; email: string; name?: string | null }} />
+            <UserMenu user={session.user as { id: string; email: string; name?: string | null; badges?: string[] }} />
           ) : (
             <div className="flex items-center gap-2">
               <Link

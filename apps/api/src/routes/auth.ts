@@ -6,7 +6,7 @@
 
 import { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { db } from '../db/connection'
-import { users, userProfiles, emailVerificationTokens, passwordResetTokens } from '../db/schema'
+import { users, userProfiles, userBadges, emailVerificationTokens, passwordResetTokens } from '../db/schema'
 import { eq } from 'drizzle-orm'
 import { randomBytes, scrypt, timingSafeEqual, createHash } from 'crypto'
 import { promisify } from 'util'
@@ -18,6 +18,9 @@ import { TOTP, Secret } from 'otpauth'
 import QRCode from 'qrcode'
 
 const scryptAsync = promisify(scrypt)
+
+/** Flip to false when beta ends to stop auto-assigning beta_tester badge */
+const ASSIGN_BETA_BADGE_ON_SIGNUP = true
 const LOGIN_WINDOW_MS = 15 * 60 * 1000
 const MAX_LOGIN_ATTEMPTS = 8
 const lockoutState = new Map<string, { failures: number; firstFailureAt: number; lockedUntil?: number }>()
@@ -296,6 +299,14 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
         displayName: newUser.name || null,
       }).onConflictDoNothing()
 
+      // Auto-assign beta_tester badge
+      if (ASSIGN_BETA_BADGE_ON_SIGNUP) {
+        await db.insert(userBadges).values({
+          userId: newUser.id,
+          badge: 'beta_tester',
+        }).onConflictDoNothing()
+      }
+
       // Send verification email instead of welcome (welcome sent after verification)
       ;(async () => {
         const token = await createVerificationToken(newUser.id)
@@ -389,6 +400,14 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
         userId: newUser.id,
         displayName: newUser.name || null,
       }).onConflictDoNothing()
+
+      // Auto-assign beta_tester badge
+      if (ASSIGN_BETA_BADGE_ON_SIGNUP) {
+        await db.insert(userBadges).values({
+          userId: newUser.id,
+          badge: 'beta_tester',
+        }).onConflictDoNothing()
+      }
 
       // Send welcome email (fire-and-forget)
       sendWelcomeEmail(newUser.email, newUser.name || undefined).catch(err => {
