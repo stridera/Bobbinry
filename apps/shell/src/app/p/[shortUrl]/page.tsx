@@ -8,7 +8,7 @@ export default async function ShortUrlRedirect({
 }) {
   const { shortUrl } = await params
 
-  const res = await fetch(`${config.apiUrl}/p/${encodeURIComponent(shortUrl)}`, {
+  const res = await fetch(`${config.apiUrl}/api/p/${encodeURIComponent(shortUrl)}`, {
     cache: 'no-store',
   })
 
