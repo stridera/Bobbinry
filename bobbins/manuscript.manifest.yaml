@@ -10,9 +10,6 @@ capabilities:
   external: false
   ai: false
   customViews: false
-execution:
-  mode: native
-  signature: dev_mode_skip
 extensions:
   slots:
     - id: editor.toolbar

@@ -25,11 +25,6 @@ extensions:
       title: "Release Queue"
       entry: panels/release-queue
       priority: 8
-
-execution:
-  mode: native
-  signature: dev_mode_skip
-
 data:
   collections:
     - name: ReleaseQueue
