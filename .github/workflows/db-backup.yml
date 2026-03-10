@@ -1,0 +1,78 @@
+name: db-backup
+
+on:
+  schedule:
+    - cron: '0 8 * * *' # Runs daily at midnight PST (us-west-2)
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+
+    env:
+      RETENTION: 30
+      PG_VERSION: '17'
+
+    steps:
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update -qq
+          yes '' | sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh
+          sudo apt-get install -y -qq postgresql-client-${{ env.PG_VERSION }}
+
+      - name: Run pg_dump
+        env:
+          DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+        run: |
+          TIMESTAMP="$(date -u +'%Y-%m-%d_%H%M%S')"
+          FILENAME="bobbinry-prod-${TIMESTAMP}.sql.gz"
+          echo "FILENAME=${FILENAME}" >> $GITHUB_ENV
+
+          pg_dump "$DATABASE_URL" | gzip > "${FILENAME}"
+
+          SIZE=$(stat --format=%s "${FILENAME}")
+          echo "Backup created: ${FILENAME} (${SIZE} bytes)"
+
+          if [ "$SIZE" -lt 1000 ]; then
+            echo "::error::Backup file suspiciously small (${SIZE} bytes) — aborting upload"
+            exit 1
+          fi
+
+      - name: Upload to Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          S3_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          S3_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          aws s3 cp "${{ env.FILENAME }}" \
+            "s3://${S3_BUCKET}/backups/${{ env.FILENAME }}" \
+            --endpoint-url "${S3_ENDPOINT}" \
+            --region auto
+
+          echo "Uploaded: s3://${S3_BUCKET}/backups/${{ env.FILENAME }}"
+
+      - name: Prune old backups
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          S3_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          S3_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          THRESHOLD_DATE=$(date -u -d "-${{ env.RETENTION }} days" +%Y-%m-%dT%H:%M:%SZ)
+
+          aws s3api list-objects-v2 \
+            --bucket "${S3_BUCKET}" \
+            --prefix "backups/" \
+            --endpoint-url "${S3_ENDPOINT}" \
+            --region auto \
+            --query "Contents[?LastModified<'${THRESHOLD_DATE}'] | [?ends_with(Key, '.gz')].Key" \
+            --output text | tr '\t' '\n' | while read -r file; do
+              [ -z "$file" ] || [ "$file" = "None" ] && continue
+              echo "Deleting old backup: ${file}"
+              aws s3 rm "s3://${S3_BUCKET}/${file}" \
+                --endpoint-url "${S3_ENDPOINT}" \
+                --region auto
+            done
+
+          echo "Pruned backups older than ${{ env.RETENTION }} days"
