@@ -6,10 +6,13 @@ import {
   subscriptionTiers,
   discountCodes,
   accessGrants,
-  users
+  users,
+  notifications,
+  userNotificationPreferences
 } from '../db/schema'
 import { eq, and, or, desc, sql } from 'drizzle-orm'
 import { requireAuth, requireSelf } from '../middleware/auth'
+import { sendEmail } from '../lib/email'
 
 // Helper to validate UUID
 function isValidUUID(uuid: string): boolean {
@@ -232,6 +235,57 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
           })
           .where(eq(discountCodes.code, discountCode))
       }
+
+      // Notify author of new subscriber (fire-and-forget)
+      ;(async () => {
+        const [subscriber] = await db
+          .select({ name: users.name })
+          .from(users)
+          .where(eq(users.id, userId))
+          .limit(1)
+
+        const subscriberName = subscriber?.name || 'Someone'
+        const tierName = tier[0]!.name || 'a tier'
+
+        // Insert in-app notification
+        await db.insert(notifications).values({
+          recipientId: authorId,
+          actorId: userId,
+          type: 'new_subscriber',
+          title: `${subscriberName} subscribed to "${tierName}"`,
+          metadata: {
+            tierId,
+            tierName,
+            url: `/dashboard`,
+          },
+        })
+
+        // Send email if enabled
+        const [prefs] = await db
+          .select({ emailNewSubscriber: userNotificationPreferences.emailNewSubscriber })
+          .from(userNotificationPreferences)
+          .where(eq(userNotificationPreferences.userId, authorId))
+          .limit(1)
+
+        if (!prefs || prefs.emailNewSubscriber) {
+          const [author] = await db
+            .select({ email: users.email })
+            .from(users)
+            .where(eq(users.id, authorId))
+            .limit(1)
+
+          if (author) {
+            await sendEmail({
+              to: author.email,
+              subject: `${subscriberName} subscribed to "${tierName}"`,
+              html: `<p><strong>${subscriberName}</strong> subscribed to your <strong>${tierName}</strong> tier.</p><p><a href="https://bobbinry.com/dashboard">View your dashboard &rarr;</a></p>`,
+              text: `${subscriberName} subscribed to your "${tierName}" tier. View your dashboard at https://bobbinry.com/dashboard`,
+            })
+          }
+        }
+      })().catch(err => {
+        fastify.log.warn({ err }, 'Failed to send new subscriber notification')
+      })
 
       return reply.status(201).send({
         subscription,

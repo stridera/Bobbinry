@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { UserMenu } from './UserMenu'
+import { NotificationDrawer } from './NotificationDrawer'
 
 const NAV_LINKS = [
   { href: '/read', label: 'Read' },
@@ -84,7 +85,10 @@ export function SiteNav() {
         {/* Right side */}
         <div className="flex items-center gap-3">
           {session?.user ? (
-            <UserMenu user={session.user as { id: string; email: string; name?: string | null }} />
+            <>
+              <NotificationDrawer />
+              <UserMenu user={session.user as { id: string; email: string; name?: string | null }} />
+            </>
           ) : (
             <div className="flex items-center gap-2">
               <Link

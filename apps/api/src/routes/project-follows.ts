@@ -1,6 +1,6 @@
 import { FastifyPluginAsync } from 'fastify'
 import { db } from '../db/connection'
-import { projectFollows, projects, subscriptions, users, userNotificationPreferences } from '../db/schema'
+import { projectFollows, projects, subscriptions, users, userNotificationPreferences, notifications } from '../db/schema'
 import { eq, and, count } from 'drizzle-orm'
 import { requireAuth, optionalAuth, requireVerified } from '../middleware/auth'
 import { sendNewFollowerEmail } from '../lib/email'
@@ -77,10 +77,23 @@ const projectFollowsPlugin: FastifyPluginAsync = async (fastify) => {
         ])
 
         if (owner && proj) {
+          // Insert in-app notification
+          await db.insert(notifications).values({
+            recipientId: project.ownerId,
+            actorId: userId,
+            type: 'new_follower',
+            title: `${follower?.name || 'Someone'} followed "${proj.name}"`,
+            metadata: {
+              projectId,
+              projectTitle: proj.name,
+              url: `/dashboard`,
+            },
+          })
+
           await sendNewFollowerEmail(owner.email, follower?.name || 'Someone', proj.name)
         }
       })().catch(err => {
-        fastify.log.warn({ err, projectId }, 'Failed to send new follower email')
+        fastify.log.warn({ err, projectId }, 'Failed to send new follower notification')
       })
 
       return reply.status(201).send({ success: true })

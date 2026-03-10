@@ -136,6 +136,32 @@ export const userNotificationPreferences = pgTable('user_notification_preference
   updatedAt: timestamp('updated_at').defaultNow().notNull()
 })
 
+// In-app notifications
+export const notifications = pgTable('notifications', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  recipientId: uuid('recipient_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
+  type: varchar('type', { length: 50 }).notNull(), // new_chapter, new_follower, new_subscriber, new_comment
+  title: text('title').notNull(),
+  body: text('body'),
+  metadata: jsonb('metadata').$type<{
+    projectId?: string
+    projectTitle?: string
+    chapterId?: string
+    chapterTitle?: string
+    tierId?: string
+    tierName?: string
+    url?: string
+  }>(),
+  isRead: boolean('is_read').default(false).notNull(),
+  readAt: timestamp('read_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  recipientIdx: index('notifications_recipient_idx').on(table.recipientId),
+  recipientReadIdx: index('notifications_recipient_read_idx').on(table.recipientId, table.isRead),
+  createdAtIdx: index('notifications_created_at_idx').on(table.createdAt),
+}))
+
 // User reading preferences
 export const userReadingPreferences = pgTable('user_reading_preferences', {
   userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).primaryKey(),
@@ -742,6 +768,19 @@ export const userNotificationPreferencesRelations = relations(userNotificationPr
   user: one(users, {
     fields: [userNotificationPreferences.userId],
     references: [users.id]
+  })
+}))
+
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  recipient: one(users, {
+    fields: [notifications.recipientId],
+    references: [users.id],
+    relationName: 'notificationRecipient'
+  }),
+  actor: one(users, {
+    fields: [notifications.actorId],
+    references: [users.id],
+    relationName: 'notificationActor'
   })
 }))
 

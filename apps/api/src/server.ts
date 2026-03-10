@@ -20,10 +20,12 @@ import discoverPlugin from './routes/discover'
 import uploadsPlugin from './routes/uploads'
 import projectTagsPlugin from './routes/project-tags'
 import projectFollowsPlugin from './routes/project-follows'
+import notificationsPlugin from './routes/notifications'
 import membershipPlugin from './routes/membership'
 import { checkDatabaseHealth } from './db/connection'
 import { env } from './lib/env'
 import { startTriggerScheduler, stopTriggerScheduler } from './jobs/trigger-scheduler'
+import { initNotificationHandlers } from './jobs/notification-handlers'
 import { getMetricsSnapshot, incrementCounter, observeTimingMs } from './lib/metrics'
 import { verifyInternalRequest } from './lib/internal-auth'
 
@@ -210,10 +212,12 @@ export function build(opts = {}): FastifyInstance {
   server.register(projectTagsPlugin, { prefix: '/api' })
   server.register(projectFollowsPlugin, { prefix: '/api' })
   server.register(membershipPlugin, { prefix: '/api' })
+  server.register(notificationsPlugin, { prefix: '/api' })
 
   // Start the trigger scheduler for cron-based bobbin actions
   server.addHook('onReady', async () => {
     startTriggerScheduler()
+    initNotificationHandlers()
   })
 
   server.addHook('onClose', async () => {
