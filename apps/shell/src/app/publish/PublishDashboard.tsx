@@ -99,7 +99,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
     } finally {
       setLoading(false)
     }
-  }, [user.id, apiToken])
+  }, [apiToken])
 
   // Load user profile for default slug generation
   useEffect(() => {

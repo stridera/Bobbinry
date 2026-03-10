@@ -42,7 +42,7 @@ export function ExtensionProvider({ children }: ExtensionProviderProps) {
 
   // Hydration-safe initialization
   useEffect(() => {
-    // Mark as hydrated first
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration bridge
     setIsHydrated(true)
 
     // Don't reset on client hydration - ExtensionSlots are already subscribed

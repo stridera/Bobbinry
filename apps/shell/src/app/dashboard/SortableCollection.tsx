@@ -58,6 +58,7 @@ export function SortableCollection({ collection, onReorder, onDeleteCollection, 
   const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync local drag state with parent prop
     setProjects(collection.projects)
   }, [collection.projects])
   const menuRef = useRef<HTMLDivElement>(null)

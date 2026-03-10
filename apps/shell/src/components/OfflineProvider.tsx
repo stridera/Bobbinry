@@ -39,6 +39,7 @@ export function OfflineProvider({ children }: OfflineProviderProps) {
 
   // Ensure we're on the client side to prevent hydration mismatches
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration bridge
     setIsClient(true)
   }, [])
 

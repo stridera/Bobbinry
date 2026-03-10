@@ -5,7 +5,6 @@ import { useSession } from 'next-auth/react'
 import { useSearchParams } from 'next/navigation'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { config } from '@/lib/config'
 import { apiFetch } from '@/lib/api'
 import { SiteNav } from '@/components/SiteNav'
 

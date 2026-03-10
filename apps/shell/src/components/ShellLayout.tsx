@@ -67,6 +67,7 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
   const focusModeRef = useRef(false)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration bridge
     setIsHydrated(true)
   }, [])
 
@@ -121,6 +122,7 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('bobbinry:focus-mode-change', { detail: { active: focusMode } }))
     if (focusMode) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- broadcast side-effect
       setShowFocusHint(true)
       const timeout = setTimeout(() => setShowFocusHint(false), 4000)
       return () => clearTimeout(timeout)

@@ -109,7 +109,7 @@ async function handleApiRequest(request) {
     }
 
     return networkResponse
-  } catch (error) {
+  } catch {
     console.log('Network failed, serving from cache:', request.url)
 
     if (cachedResponse) {
@@ -140,7 +140,7 @@ async function handleNavigationRequest(request) {
   try {
     const networkResponse = await fetch(request)
     return networkResponse
-  } catch (error) {
+  } catch {
     console.log('Navigation offline, serving cached page')
 
     const cachedResponse = await cache.match('/')
@@ -168,7 +168,7 @@ async function handleStaticAsset(request) {
       cache.put(request, networkResponse.clone())
     }
     return networkResponse
-  } catch (error) {
+  } catch {
     console.log('Failed to fetch asset:', request.url)
     return new Response('Asset not available offline', { status: 404 })
   }
@@ -331,8 +331,9 @@ async function openSyncDB() {
   })
 }
 
-// Helper to add pending change
-async function addPendingChange(change) {
+// Helper to add pending change (reserved for future offline sync)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function _addPendingChange(change) {
   try {
     const db = await openSyncDB()
     const tx = db.transaction('pendingChanges', 'readwrite')
@@ -347,8 +348,9 @@ async function addPendingChange(change) {
   }
 }
 
-// Helper to add pending message
-async function addPendingMessage(message) {
+// Helper to add pending message (reserved for future offline sync)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function _addPendingMessage(message) {
   try {
     const db = await openSyncDB()
     const tx = db.transaction('pendingMessages', 'readwrite')

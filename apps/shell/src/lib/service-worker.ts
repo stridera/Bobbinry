@@ -172,10 +172,8 @@ export function useOfflineStatus() {
 
   useEffect(() => {
     // Hydration-bridging: synchronize client-only state after mount.
-    // These are intentional synchronous setState calls to bridge SSR → client.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration bridge
     setIsHydrated(true)
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsOnline(typeof navigator !== 'undefined' ? navigator.onLine : false)
 
     const swManager = ServiceWorkerManager.getInstance()

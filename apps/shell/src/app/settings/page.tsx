@@ -232,6 +232,7 @@ function TwoFactorSection({ apiToken }: { apiToken: string }) {
             Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.), then enter the 6-digit code below.
           </p>
           <div className="flex justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element -- data URL QR code, not optimizable */}
             <img src={setupData.qrCode} alt="TOTP QR Code" className="w-48 h-48 rounded-lg border border-gray-200 dark:border-gray-600" />
           </div>
           <div className="text-center">

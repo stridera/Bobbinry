@@ -17,6 +17,7 @@ export function OptimizedImage({ src, variant, alt, className, onError }: Optimi
 
   // Reset when the source image changes (e.g. after a new upload)
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync derived state from props
     setCurrentSrc(getVariantUrl(src, variant))
     setFailed(false)
   }, [src, variant])

@@ -22,6 +22,7 @@ export function ExtensionSlotClient({
   useEffect(() => {
     // Get initial extensions
     const currentExtensions = extensionRegistry.getExtensionsForSlot(slotId, context)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync from external registry
     setExtensions(currentExtensions)
 
     // Listen for changes to this slot

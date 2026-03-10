@@ -115,7 +115,6 @@ export default function ProjectWritePage() {
   useEffect(() => {
     if (!session?.apiToken || !projectId) return
     loadProject.current?.()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, sdk, session?.apiToken])
 
   // Re-load bobbins when install/uninstall happens via the popover

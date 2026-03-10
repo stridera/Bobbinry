@@ -16,15 +16,6 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>('light')
 
-  // Initialize theme from localStorage and system preference
-  useEffect(() => {
-    const stored = localStorage.getItem('bobbinry-theme') as Theme | null
-    const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-    const initialTheme = stored || systemTheme
-    setThemeState(initialTheme)
-    applyTheme(initialTheme)
-  }, [])
-
   // Apply theme to document
   const applyTheme = (newTheme: Theme) => {
     if (newTheme === 'dark') {
@@ -33,6 +24,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       document.documentElement.classList.remove('dark')
     }
   }
+
+  // Initialize theme from localStorage and system preference
+  useEffect(() => {
+    const stored = localStorage.getItem('bobbinry-theme') as Theme | null
+    const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    const initialTheme = stored || systemTheme
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration bridge
+    setThemeState(initialTheme)
+    applyTheme(initialTheme)
+  }, [])
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme)

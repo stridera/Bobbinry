@@ -126,7 +126,6 @@ function ProjectReadingContent() {
       if (attempts >= maxAttempts) clearInterval(interval)
     }, 2000)
     return () => clearInterval(interval)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [justSubscribed, subscribedTierId, author?.userId, userId, apiToken])
 
   useEffect(() => {

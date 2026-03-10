@@ -16,7 +16,6 @@ import { DashboardLoadingState } from '@/components/LoadingState'
 import { EmptyState } from '@/components/EmptyState'
 import { SiteNav } from '@/components/SiteNav'
 import { apiFetch } from '@/lib/api'
-import { config } from '@/lib/config'
 
 interface User {
   id: string

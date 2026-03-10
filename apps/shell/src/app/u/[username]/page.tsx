@@ -149,7 +149,7 @@ function PublicProfileContent() {
     const interval = setInterval(async () => {
       attempts++
       try {
-        const res = await apiFetch(`/api/users/${session.user.id}/subscriptions?status=active`, apiToken)
+        const res = await apiFetch(`/api/users/${session?.user?.id}/subscriptions?status=active`, apiToken)
         if (res.ok) {
           const data = await res.json()
           const match = data.subscriptions?.find(
@@ -164,7 +164,6 @@ function PublicProfileContent() {
       if (attempts >= maxAttempts) clearInterval(interval)
     }, 2000)
     return () => clearInterval(interval)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [justSubscribed, subscribedTierId, profile?.userId, session?.user?.id, apiToken])
 
   useEffect(() => {

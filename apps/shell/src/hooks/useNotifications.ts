@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { apiFetch } from '@/lib/api'
 
@@ -47,6 +47,7 @@ export function useUnreadCount() {
 
   useEffect(() => {
     if (!apiToken) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch + polling subscription
     refetch()
     const interval = setInterval(refetch, POLL_INTERVAL)
     return () => clearInterval(interval)
