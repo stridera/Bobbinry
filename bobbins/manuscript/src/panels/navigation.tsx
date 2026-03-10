@@ -373,6 +373,23 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
       setSelectedNodeId(newContent.id)
       setEditingNodeId(newContent.id)
       setEditingValue('New Content')
+
+      // Auto-navigate to the new content so the editor loads it
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('bobbinry:navigate', {
+            detail: {
+              entityType: 'content',
+              entityId: newContent.id,
+              bobbinId: 'manuscript',
+              metadata: {
+                type: 'scene',
+                parentId: containerId
+              }
+            }
+          })
+        )
+      }
     } catch (error) {
       console.error('Failed to create content:', error)
       setToast({ message: 'Failed to create content: ' + (error instanceof Error ? error.message : 'Unknown error'), variant: 'danger' })
