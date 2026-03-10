@@ -1,5 +1,5 @@
 # ---- Build stage ----
-FROM node:20-slim AS builder
+FROM node:22-slim AS builder
 
 # Install bun
 RUN npm install -g bun@1.3.9
@@ -56,7 +56,7 @@ COPY tsconfig.base.json ./
 RUN npx turbo build --filter=api
 
 # ---- Runtime stage ----
-FROM node:20-slim AS runtime
+FROM node:22-slim AS runtime
 
 WORKDIR /app
 

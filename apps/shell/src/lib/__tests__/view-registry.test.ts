@@ -16,7 +16,6 @@ describe('ViewRegistry', () => {
       const entry: ViewRegistryEntry = {
         viewId: 'manuscript.editor',
         bobbinId: 'manuscript',
-        execution: 'native',
         componentLoader: async () => ({ default: () => null } as any),
         ssr: true,
         capabilities: ['offline', 'pubsub.produce'],
@@ -33,12 +32,11 @@ describe('ViewRegistry', () => {
       expect(registry.get('manuscript.editor')).toEqual(entry)
     })
 
-    it('should register a sandboxed view', () => {
+    it('should register another view', () => {
       const entry: ViewRegistryEntry = {
         viewId: 'dictionary.panel',
         bobbinId: 'dictionary',
-        execution: 'sandboxed',
-        iframeSrc: '/api/views/dictionary/panel',
+        componentLoader: async () => ({ default: () => null } as any),
         capabilities: ['pubsub.consume'],
         metadata: {
           name: 'Dictionary Panel',
@@ -53,11 +51,10 @@ describe('ViewRegistry', () => {
       expect(registry.get('dictionary.panel')).toEqual(entry)
     })
 
-    it('should throw error for native view without componentLoader', () => {
-      const entry: ViewRegistryEntry = {
+    it('should throw error for view without componentLoader', () => {
+      const entry = {
         viewId: 'invalid.view',
         bobbinId: 'invalid',
-        execution: 'native',
         // Missing componentLoader
         capabilities: [],
         metadata: {
@@ -70,30 +67,12 @@ describe('ViewRegistry', () => {
       expect(() => registry.register(entry)).toThrow('must have componentLoader')
     })
 
-    it('should throw error for sandboxed view without iframeSrc', () => {
-      const entry: ViewRegistryEntry = {
-        viewId: 'invalid.view',
-        bobbinId: 'invalid',
-        execution: 'sandboxed',
-        // Missing iframeSrc
-        capabilities: [],
-        metadata: {
-          name: 'Invalid',
-          type: 'panel',
-          source: 'items'
-        }
-      } as any
-
-      expect(() => registry.register(entry)).toThrow('must have iframeSrc')
-    })
-
     it('should warn when overwriting existing view', () => {
       const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation()
 
       const entry1: ViewRegistryEntry = {
         viewId: 'test.view',
         bobbinId: 'test',
-        execution: 'native',
         componentLoader: async () => ({ default: () => null } as any),
         capabilities: [],
         metadata: { name: 'Test', type: 'editor', source: 'items' }
@@ -121,7 +100,6 @@ describe('ViewRegistry', () => {
       registry.register({
         viewId: 'manuscript.editor',
         bobbinId: 'manuscript',
-        execution: 'native',
         componentLoader: async () => ({ default: () => null } as any),
         capabilities: [],
         metadata: { name: 'Editor', type: 'editor', source: 'scenes' }
@@ -130,7 +108,6 @@ describe('ViewRegistry', () => {
       registry.register({
         viewId: 'manuscript.outline',
         bobbinId: 'manuscript',
-        execution: 'native',
         componentLoader: async () => ({ default: () => null } as any),
         capabilities: [],
         metadata: { name: 'Outline', type: 'tree', source: 'books' }
@@ -139,8 +116,7 @@ describe('ViewRegistry', () => {
       registry.register({
         viewId: 'dictionary.panel',
         bobbinId: 'dictionary',
-        execution: 'sandboxed',
-        iframeSrc: '/api/views/dictionary/panel',
+        componentLoader: async () => ({ default: () => null } as any),
         capabilities: [],
         metadata: { name: 'Panel', type: 'panel', source: 'words' }
       })
@@ -174,16 +150,20 @@ describe('ViewRegistry', () => {
       expect(views).toHaveLength(3)
     })
 
-    it('should get only native views', () => {
-      const nativeViews = registry.getNativeViews()
-      expect(nativeViews).toHaveLength(2)
-      expect(nativeViews.every(v => v.execution === 'native')).toBe(true)
-    })
+    it('should get views by handler', () => {
+      // Register a view with handlers
+      registry.register({
+        viewId: 'manuscript.scene-editor',
+        bobbinId: 'manuscript',
+        componentLoader: async () => ({ default: () => null } as any),
+        capabilities: [],
+        handlers: ['scene'],
+        metadata: { name: 'Scene Editor', type: 'editor', source: 'scenes' }
+      })
 
-    it('should get only sandboxed views', () => {
-      const sandboxedViews = registry.getSandboxedViews()
-      expect(sandboxedViews).toHaveLength(1)
-      expect(sandboxedViews.every(v => v.execution === 'sandboxed')).toBe(true)
+      const views = registry.getViewsByHandler('scene')
+      expect(views).toHaveLength(1)
+      expect(views[0]?.viewId).toBe('manuscript.scene-editor')
     })
   })
 
@@ -192,7 +172,6 @@ describe('ViewRegistry', () => {
       registry.register({
         viewId: 'manuscript.editor',
         bobbinId: 'manuscript',
-        execution: 'native',
         componentLoader: async () => ({ default: () => null } as any),
         capabilities: [],
         metadata: { name: 'Editor', type: 'editor', source: 'scenes' }
@@ -201,7 +180,6 @@ describe('ViewRegistry', () => {
       registry.register({
         viewId: 'manuscript.outline',
         bobbinId: 'manuscript',
-        execution: 'native',
         componentLoader: async () => ({ default: () => null } as any),
         capabilities: [],
         metadata: { name: 'Outline', type: 'tree', source: 'books' }
@@ -249,7 +227,6 @@ describe('ViewRegistry', () => {
       registry.register({
         viewId: 'manuscript.editor',
         bobbinId: 'manuscript',
-        execution: 'native',
         componentLoader: async () => ({ default: () => null } as any),
         capabilities: [],
         metadata: { name: 'Editor', type: 'editor', source: 'scenes' }
@@ -258,7 +235,6 @@ describe('ViewRegistry', () => {
       registry.register({
         viewId: 'manuscript.outline',
         bobbinId: 'manuscript',
-        execution: 'native',
         componentLoader: async () => ({ default: () => null } as any),
         capabilities: [],
         metadata: { name: 'Outline', type: 'tree', source: 'books' }
@@ -267,8 +243,7 @@ describe('ViewRegistry', () => {
       registry.register({
         viewId: 'dictionary.panel',
         bobbinId: 'dictionary',
-        execution: 'sandboxed',
-        iframeSrc: '/api/views/dictionary/panel',
+        componentLoader: async () => ({ default: () => null } as any),
         capabilities: [],
         metadata: { name: 'Panel', type: 'panel', source: 'words' }
       })
@@ -278,8 +253,6 @@ describe('ViewRegistry', () => {
       const stats = registry.getStats()
 
       expect(stats.totalViews).toBe(3)
-      expect(stats.nativeViews).toBe(2)
-      expect(stats.sandboxedViews).toBe(1)
       expect(stats.viewsByBobbin).toEqual({
         manuscript: 2,
         dictionary: 1
@@ -291,7 +264,6 @@ describe('ViewRegistry', () => {
 
       const stats = registry.getStats()
       expect(stats.totalViews).toBe(2)
-      expect(stats.nativeViews).toBe(1)
       expect(stats.viewsByBobbin.manuscript).toBe(1)
     })
   })
@@ -301,7 +273,6 @@ describe('ViewRegistry', () => {
       registry.register({
         viewId: 'test.view',
         bobbinId: 'test',
-        execution: 'native',
         componentLoader: async () => ({ default: () => null } as any),
         capabilities: [],
         metadata: { name: 'Test', type: 'editor', source: 'items' }

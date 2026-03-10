@@ -98,7 +98,12 @@ describe('checkAndUpgradeBobbin', () => {
       })
     }
     mockDb = {
-      transaction: jest.fn(async (fn: (tx: any) => Promise<any>) => fn(mockTx))
+      transaction: jest.fn(async (fn: (tx: any) => Promise<any>) => fn(mockTx)),
+      update: jest.fn().mockReturnValue({
+        set: jest.fn().mockReturnValue({
+          where: jest.fn().mockResolvedValue(undefined as never)
+        })
+      })
     }
   })
 
@@ -195,7 +200,7 @@ describe('checkAndUpgradeBobbin', () => {
       version: '2.0.0',
       compatibility: {
         migrations: [
-          { version: '2.0.0', description: 'Bad migration', up: 'INVALID SQL' }
+          { version: '2.0.0', description: 'Bad migration', up: 'UPDATE bad_table SET x = 1' }
         ]
       }
     }
@@ -208,7 +213,7 @@ describe('checkAndUpgradeBobbin', () => {
       toVersion: '2.0.0',
       migrationsRun: 0,
       success: false,
-      error: 'column does not exist'
+      error: 'column does not exist',
     })
   })
 
