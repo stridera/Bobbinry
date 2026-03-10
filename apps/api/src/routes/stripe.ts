@@ -7,11 +7,13 @@ import {
   subscriptionTiers,
   userPaymentConfig,
   users,
+  userProfiles,
   siteMemberships,
   userBadges,
 } from '../db/schema'
 import { eq, and, sql } from 'drizzle-orm'
 import { requireAuth, requireSelf, requireVerified } from '../middleware/auth'
+import { getStripe, createExpressAccount, createOnboardingLink } from '../lib/stripe'
 
 function isValidUUID(uuid: string): boolean {
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -19,13 +21,6 @@ function isValidUUID(uuid: string): boolean {
 }
 
 const PLATFORM_FEE_PERCENT = parseInt(process.env.PLATFORM_FEE_PERCENT || '5', 10)
-
-// Initialize Stripe - will be null if no secret key configured
-function getStripe(): Stripe | null {
-  const key = process.env.STRIPE_SECRET_KEY
-  if (!key) return null
-  return new Stripe(key, { apiVersion: '2026-02-25.clover' as any })
-}
 
 const stripePlugin: FastifyPluginAsync = async (fastify) => {
   // ============================================================================
@@ -166,27 +161,27 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
       let stripeAccountId = existing?.stripeAccountId
 
       if (!stripeAccountId) {
-        // Get user info for pre-filling
+        // Get user + profile for prefill
         const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1)
+        if (!user) return reply.status(404).send({ error: 'User not found' })
 
-        // Create Standard connected account (merchants collect directly)
-        const account = await stripe.accounts.create({
-          type: 'standard',
-          ...(user?.email ? { email: user.email } : {}),
-          metadata: { bobbinry_user_id: userId },
-        } as Stripe.AccountCreateParams)
+        const [profile] = await db.select().from(userProfiles).where(eq(userProfiles.userId, userId)).limit(1)
+
+        const account = await createExpressAccount(stripe, { user, profile })
         stripeAccountId = account.id
 
-        // Save account ID
+        // Save account ID + type
         await db.insert(userPaymentConfig).values({
           userId,
           stripeAccountId: account.id,
+          stripeAccountType: 'express',
           stripeOnboardingComplete: false,
           paymentProvider: 'stripe'
         }).onConflictDoUpdate({
           target: userPaymentConfig.userId,
           set: {
             stripeAccountId: account.id,
+            stripeAccountType: 'express',
             updatedAt: new Date()
           }
         })
@@ -194,17 +189,53 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
 
       // Create Account Link for onboarding
       const baseUrl = process.env.WEB_ORIGIN || 'http://localhost:3100'
-      const accountLink = await stripe.accountLinks.create({
-        account: stripeAccountId,
-        return_url: returnUrl || `${baseUrl}/settings/monetization?stripe=complete`,
-        refresh_url: refreshUrl || `${baseUrl}/settings/monetization?stripe=refresh`,
-        type: 'account_onboarding'
-      })
+      const accountLink = await createOnboardingLink(
+        stripe,
+        stripeAccountId,
+        returnUrl || `${baseUrl}/settings/monetization?stripe=complete`,
+        refreshUrl || `${baseUrl}/settings/monetization?stripe=refresh`
+      )
 
       return reply.status(200).send({ url: accountLink.url })
     } catch (error) {
       fastify.log.error(error)
       return reply.status(500).send({ error: 'Failed to initiate Stripe Connect' })
+    }
+  })
+
+  /**
+   * Get a temporary Stripe dashboard login link for Express accounts.
+   * For legacy Standard accounts, returns the direct Stripe dashboard URL.
+   */
+  fastify.get<{
+    Params: { userId: string }
+  }>('/users/:userId/stripe/dashboard-link', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    try {
+      const { userId } = request.params
+      if (!isValidUUID(userId)) return reply.status(400).send({ error: 'Invalid user ID format' })
+      if (!requireSelf(request, reply, userId)) return
+
+      const [config] = await db.select().from(userPaymentConfig).where(eq(userPaymentConfig.userId, userId)).limit(1)
+      if (!config?.stripeAccountId) {
+        return reply.status(404).send({ error: 'No Stripe account found' })
+      }
+
+      // Legacy Standard accounts: direct dashboard link
+      if (!config.stripeAccountType || config.stripeAccountType === 'standard') {
+        return reply.status(200).send({ url: 'https://dashboard.stripe.com' })
+      }
+
+      // Express accounts: generate a temporary login link
+      const stripe = getStripe()
+      if (!stripe) return reply.status(503).send({ error: 'Stripe not configured' })
+
+      const loginLink = await stripe.accounts.createLoginLink(config.stripeAccountId)
+      return reply.status(200).send({ url: loginLink.url })
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.status(500).send({ error: 'Failed to generate dashboard link' })
     }
   })
 

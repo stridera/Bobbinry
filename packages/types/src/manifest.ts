@@ -99,6 +99,13 @@ export interface Manifest {
     paidOnly?: boolean // Gate resource-intensive operations to paid users
   }
 
+  // Seed data to create on first install
+  seed?: Array<{
+    collection: string
+    ref?: string
+    data: Record<string, unknown>
+  }>
+
   // Compatibility requirements
   compatibility?: {
     minShellVersion: string

@@ -64,8 +64,13 @@ extensions:
     - slot: shell.leftPanel
       type: panel
       id: notes-navigation
-      title: "Notes"
+      title: "Project Notes"
       entry: panels/navigation
+    - slot: shell.rightPanel
+      type: panel
+      id: chapter-notes
+      title: "Chapter Notes"
+      entry: panels/chapter-notes
 
 external: null
 

@@ -20,6 +20,7 @@ export const NATIVE_VIEW_MAP: Record<string, () => Promise<any>> = {
   'notes.note-editor': () => import('@bobbinry/notes/views/note-editor'),
   'notes.pinboard': () => import('@bobbinry/notes/views/pinboard'),
   'notes.panels/navigation': () => import('@bobbinry/notes/panels/navigation'),
+  'notes.panels/chapter-notes': () => import('@bobbinry/notes/panels/chapter-notes'),
   'entities.config': () => import('@bobbinry/entities/views/config'),
   'entities.entity-list': () => import('@bobbinry/entities/views/entity-list'),
   'entities.entity-editor': () => import('@bobbinry/entities/views/entity-editor'),

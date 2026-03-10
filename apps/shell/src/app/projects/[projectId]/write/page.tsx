@@ -18,9 +18,6 @@ interface InstalledBobbin {
   manifest: {
     name: string
     description?: string
-    execution?: {
-      mode: 'native' | 'sandboxed'
-    }
     ui?: {
       views?: Array<{
         id: string

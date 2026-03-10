@@ -3,7 +3,7 @@ import { parse as parseYAML } from 'yaml'
 import * as path from 'path'
 import * as fs from 'fs/promises'
 import { db } from '../db/connection'
-import { projects, bobbinsInstalled } from '../db/schema'
+import { projects, bobbinsInstalled, entities } from '../db/schema'
 import { eq, and, count } from 'drizzle-orm'
 import { ManifestCompiler } from '@bobbinry/compiler'
 import { requireAuth, requireProjectOwnership, requireVerified } from '../middleware/auth'
@@ -318,6 +318,43 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
 
         if (!installation) {
           return reply.status(500).send({ error: 'Failed to create installation' })
+        }
+
+        // Process seed data for new installations
+        if (manifest.seed && Array.isArray(manifest.seed)) {
+          try {
+            const refMap = new Map<string, string>()
+
+            for (const seedItem of manifest.seed) {
+              const data = { ...seedItem.data }
+
+              // Replace {{ref:xxx}} placeholders with actual entity IDs
+              for (const [key, value] of Object.entries(data)) {
+                if (typeof value !== 'string') continue
+                const match = value.match(/^\{\{ref:(.+)\}\}$/)
+                if (!match) continue
+                const refId = refMap.get(match[1]!)
+                if (refId) {
+                  data[key] = refId
+                } else {
+                  fastify.log.warn(`[BOBBIN INSTALL] Unresolved seed ref "{{ref:${match[1]}}}" in ${seedItem.collection}.${key}`)
+                }
+              }
+
+              const [entity] = await db.insert(entities).values({
+                projectId,
+                bobbinId: manifest.id,
+                collectionName: seedItem.collection,
+                entityData: data
+              }).returning()
+
+              if (seedItem.ref && entity) {
+                refMap.set(seedItem.ref, entity.id)
+              }
+            }
+          } catch (seedError) {
+            fastify.log.error(seedError, '[BOBBIN INSTALL] Failed to create seed data')
+          }
         }
 
         return {

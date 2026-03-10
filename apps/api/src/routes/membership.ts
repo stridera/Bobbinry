@@ -11,18 +11,12 @@
  */
 
 import { FastifyPluginAsync } from 'fastify'
-import Stripe from 'stripe'
 import { db } from '../db/connection'
 import { siteMemberships, users } from '../db/schema'
 import { eq } from 'drizzle-orm'
 import { requireAuth } from '../middleware/auth'
 import { getUserMembershipTier, getUserBadges } from '../lib/membership'
-
-function getStripe(): Stripe | null {
-  const key = process.env.STRIPE_SECRET_KEY
-  if (!key) return null
-  return new Stripe(key, { apiVersion: '2025-01-27.acacia' as any })
-}
+import { getStripe } from '../lib/stripe'
 
 function isValidUUID(uuid: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid)

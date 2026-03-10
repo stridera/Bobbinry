@@ -252,41 +252,6 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
       nodeParentMap.current = parentMap
       setTree(treeData)
 
-      // Auto-create first content item if the manuscript is completely empty
-      if (!hasAutoSelectedRef.current && treeData.length === 0) {
-        hasAutoSelectedRef.current = true
-        try {
-          const newContent = await sdk.entities.create('content', {
-            title: 'Untitled',
-            type: 'scene',
-            order: 100,
-            word_count: 0,
-            status: 'draft',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }) as any
-
-          const newNode: TreeNode = {
-            id: newContent.id,
-            title: 'Untitled',
-            nodeType: 'content',
-            type: 'scene',
-            order: 100,
-            parentId: null
-          }
-          setTree([newNode])
-          setSelectedNodeId(newContent.id)
-          // Delay navigation to let ViewRouter finish mounting and register listeners
-          autoSelectTimerRef.current = setTimeout(() => {
-            autoSelectTimerRef.current = null
-            handleNodeClick(newNode)
-          }, 150)
-        } catch (error) {
-          console.error('[NavigationPanel] Failed to auto-create content:', error)
-        }
-        return
-      }
-
       // Auto-select first content item on initial load if nothing is selected
       if (!hasAutoSelectedRef.current && treeData.length > 0) {
         hasAutoSelectedRef.current = true

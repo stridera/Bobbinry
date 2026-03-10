@@ -19,15 +19,9 @@ import {
 } from '../db/schema'
 import { eq, and, or, desc, isNull, sql, count, isNotNull, inArray } from 'drizzle-orm'
 import { requireAuth, requireSelf } from '../middleware/auth'
-import Stripe from 'stripe'
 import { incrementCounter } from '../lib/metrics'
 import { cleanupOldAvatarUploads } from '../lib/upload-cleanup'
-
-function getStripe(): Stripe | null {
-  const key = process.env.STRIPE_SECRET_KEY
-  if (!key) return null
-  return new Stripe(key, { apiVersion: '2025-01-27.acacia' as any })
-}
+import { getStripe, createExpressAccount, createOnboardingLink } from '../lib/stripe'
 
 // Helper to validate UUID
 function isValidUUID(uuid: string): boolean {
@@ -299,31 +293,31 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
           const stripe = getStripe()
           if (stripe) {
             const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1)
-            const account = await stripe.accounts.create({
-              type: 'express',
-              ...(user?.email ? { email: user.email } : {}),
-              metadata: { bobbinry_user_id: userId },
-              capabilities: { transfers: { requested: true } }
-            } as Stripe.AccountCreateParams)
+            if (user) {
+              const [profile] = await db.select().from(userProfiles).where(eq(userProfiles.userId, userId)).limit(1)
 
-            await db.insert(userPaymentConfig).values({
-              userId,
-              stripeAccountId: account.id,
-              stripeOnboardingComplete: false,
-              paymentProvider: 'stripe'
-            }).onConflictDoUpdate({
-              target: userPaymentConfig.userId,
-              set: { stripeAccountId: account.id, updatedAt: new Date() }
-            })
+              const account = await createExpressAccount(stripe, { user, profile })
 
-            const baseUrl = process.env.WEB_ORIGIN || 'http://localhost:3100'
-            const accountLink = await stripe.accountLinks.create({
-              account: account.id,
-              return_url: `${baseUrl}/settings/monetization?stripe=complete`,
-              refresh_url: `${baseUrl}/settings/monetization?stripe=refresh`,
-              type: 'account_onboarding'
-            })
-            onboardingUrl = accountLink.url
+              await db.insert(userPaymentConfig).values({
+                userId,
+                stripeAccountId: account.id,
+                stripeAccountType: 'express',
+                stripeOnboardingComplete: false,
+                paymentProvider: 'stripe'
+              }).onConflictDoUpdate({
+                target: userPaymentConfig.userId,
+                set: { stripeAccountId: account.id, stripeAccountType: 'express', updatedAt: new Date() }
+              })
+
+              const baseUrl = process.env.WEB_ORIGIN || 'http://localhost:3100'
+              const accountLink = await createOnboardingLink(
+                stripe,
+                account.id,
+                `${baseUrl}/settings/monetization?stripe=complete`,
+                `${baseUrl}/settings/monetization?stripe=refresh`
+              )
+              onboardingUrl = accountLink.url
+            }
           }
         }
       }

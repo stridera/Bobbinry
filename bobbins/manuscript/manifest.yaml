@@ -262,3 +262,19 @@ publish:
 
 compatibility:
   minShellVersion: "0.1.0"
+
+seed:
+  - collection: containers
+    ref: chapter
+    data:
+      title: "Chapter 1"
+      type: chapter
+      order: 100
+  - collection: content
+    data:
+      title: "Untitled"
+      type: scene
+      container_id: "{{ref:chapter}}"
+      order: 100
+      word_count: 0
+      status: draft

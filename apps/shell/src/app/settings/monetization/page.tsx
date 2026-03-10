@@ -34,6 +34,7 @@ interface DiscountCode {
 
 interface PaymentConfig {
   stripeAccountId: string | null
+  stripeAccountType: string | null
   stripeOnboardingComplete: boolean
   paymentProvider: string
 }
@@ -297,8 +298,8 @@ function MonetizationContent() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            returnUrl: `${window.location.origin}/settings/monetization`,
-            refreshUrl: `${window.location.origin}/settings/monetization`
+            returnUrl: `${window.location.origin}/settings/monetization?stripe=complete`,
+            refreshUrl: `${window.location.origin}/settings/monetization?stripe=refresh`
           })
         }
       )
@@ -310,6 +311,24 @@ function MonetizationContent() {
       }
     } catch {
       setError('Failed to start Stripe onboarding')
+    }
+  }
+
+  const openStripeDashboard = async () => {
+    if (!session?.apiToken || !session?.user?.id) return
+    try {
+      const res = await apiFetch(
+        `/api/users/${session.user.id}/stripe/dashboard-link`,
+        session.apiToken
+      )
+      if (res.ok) {
+        const data = await res.json()
+        if (data.url) {
+          window.open(data.url, '_blank', 'noopener')
+        }
+      }
+    } catch {
+      setError('Failed to open Stripe dashboard')
     }
   }
 
@@ -357,10 +376,18 @@ function MonetizationContent() {
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
           <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Payment Setup</h2>
           {paymentConfig?.stripeOnboardingComplete ? (
-            <div className="flex items-center gap-3">
-              <div className="w-3 h-3 rounded-full bg-green-500" />
-              <span className="text-sm text-gray-700 dark:text-gray-300">Stripe account connected</span>
-              <span className="text-xs text-gray-400 dark:text-gray-500">({paymentConfig.stripeAccountId})</span>
+            <div>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-3 h-3 rounded-full bg-green-500" />
+                <span className="text-sm text-gray-700 dark:text-gray-300">Stripe account connected</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">({paymentConfig.stripeAccountId})</span>
+              </div>
+              <button
+                onClick={openStripeDashboard}
+                className="px-4 py-2.5 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors font-medium text-sm"
+              >
+                Manage Stripe Account
+              </button>
             </div>
           ) : paymentConfig?.stripeAccountId ? (
             <div>
