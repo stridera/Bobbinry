@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useSession } from 'next-auth/react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -30,6 +30,29 @@ interface BackupStatus {
 }
 
 export default function BackupsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+          <SiteNav />
+          <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+            <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 animate-pulse">
+              <div className="h-7 bg-gray-100 dark:bg-gray-700 rounded w-32 mb-2" />
+              <div className="h-4 bg-gray-100 dark:bg-gray-700 rounded w-64" />
+            </div>
+          </header>
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+            <SkeletonList count={3} />
+          </div>
+        </div>
+      }
+    >
+      <BackupsContent />
+    </Suspense>
+  )
+}
+
+function BackupsContent() {
   const { data: session } = useSession()
   const searchParams = useSearchParams()
   const apiToken = (session as any)?.apiToken as string | undefined
