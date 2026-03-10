@@ -142,8 +142,9 @@ function NewProjectContent() {
       const template = templates.find(t => t.id === selectedTemplate)
       let failedInstalls: string[] = []
       if (template && template.bobbins.length > 0) {
-        const results = await Promise.allSettled(
-          template.bobbins.map(async (bobbinId) => {
+        // Install sequentially — later bobbins may depend on earlier ones
+        for (const bobbinId of template.bobbins) {
+          try {
             const installRes = await apiFetch(
               `/api/projects/${projectId}/bobbins/install`,
               session.apiToken,
@@ -155,13 +156,11 @@ function NewProjectContent() {
                 })
               }
             )
-            if (!installRes.ok) throw new Error('install failed')
-            return bobbinId
-          })
-        )
-        failedInstalls = results
-          .map((r, i) => r.status === 'rejected' ? template.bobbins[i] : null)
-          .filter((id): id is string => id !== null)
+            if (!installRes.ok) failedInstalls.push(bobbinId)
+          } catch {
+            failedInstalls.push(bobbinId)
+          }
+        }
       }
 
       if (failedInstalls.length > 0) {

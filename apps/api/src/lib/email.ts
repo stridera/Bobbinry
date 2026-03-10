@@ -74,6 +74,23 @@ export async function sendVerificationEmail(to: string, token: string, name?: st
   })
 }
 
+export async function sendPasswordResetEmail(to: string, token: string, name?: string): Promise<boolean> {
+  const displayName = name || 'there'
+  const resetUrl = `${env.WEB_ORIGIN}/reset-password?token=${token}`
+  return sendEmail({
+    to,
+    subject: 'Reset your password — Bobbinry',
+    html: `
+      <h1>Hey ${escapeHtml(displayName)}, reset your password</h1>
+      <p>We received a request to reset your Bobbinry password. Click the link below to choose a new one.</p>
+      <p><a href="${resetUrl}">Reset my password &rarr;</a></p>
+      <p>This link expires in 1 hour.</p>
+      <p style="color: #888; font-size: 12px;">If you didn't request a password reset, you can ignore this email. Your password won't be changed.</p>
+    `,
+    text: `Hey ${displayName}, reset your Bobbinry password. Visit: ${resetUrl} — This link expires in 1 hour. If you didn't request this, ignore this email.`,
+  })
+}
+
 export async function sendWelcomeEmail(to: string, name?: string): Promise<boolean> {
   const displayName = name || 'there'
   return sendEmail({

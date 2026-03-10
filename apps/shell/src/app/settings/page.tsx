@@ -101,6 +101,231 @@ function SocialInput({
   )
 }
 
+// 2FA management section (only for credentials users)
+function TwoFactorSection({ apiToken }: { apiToken: string }) {
+  const [totpEnabled, setTotpEnabled] = useState(false)
+  const [setupData, setSetupData] = useState<{ secret: string; qrCode: string } | null>(null)
+  const [verifyCode, setVerifyCode] = useState('')
+  const [disableCode, setDisableCode] = useState('')
+  const [backupCodes, setBackupCodes] = useState<string[] | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  // Start visible — the API guards both "not credentials" and "already enabled" in the setup call
+  const [isCredentialsUser, setIsCredentialsUser] = useState(true)
+
+  const startSetup = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await apiFetch('/api/auth/totp/setup', apiToken, {
+        method: 'POST',
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        if (data.error?.includes('only available for password-based')) {
+          setIsCredentialsUser(false)
+          return
+        }
+        if (data.error?.includes('already enabled')) {
+          setTotpEnabled(true)
+          return
+        }
+        throw new Error(data.error || 'Failed to start setup')
+      }
+      setSetupData({ secret: data.secret, qrCode: data.qrCode })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start setup')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const enableTotp = async () => {
+    if (!verifyCode) return
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await apiFetch('/api/auth/totp/enable', apiToken, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: verifyCode }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to enable 2FA')
+      }
+      setBackupCodes(data.backupCodes)
+      setTotpEnabled(true)
+      setSetupData(null)
+      setVerifyCode('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to enable 2FA')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const disableTotp = async () => {
+    if (!disableCode) return
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await apiFetch('/api/auth/totp/disable', apiToken, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: disableCode }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to disable 2FA')
+      }
+      setTotpEnabled(false)
+      setDisableCode('')
+      setBackupCodes(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to disable 2FA')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (isCredentialsUser === false) return null
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+      <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Two-Factor Authentication</h2>
+
+      {error && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 mb-4">
+          <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+        </div>
+      )}
+
+      {/* Show backup codes after enabling */}
+      {backupCodes && (
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 mb-4">
+          <h3 className="text-sm font-semibold text-amber-800 dark:text-amber-300 mb-2">Save your backup codes</h3>
+          <p className="text-xs text-amber-700 dark:text-amber-400 mb-3">
+            Store these codes in a safe place. Each code can only be used once. They will not be shown again.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {backupCodes.map((code) => (
+              <code key={code} className="bg-white dark:bg-gray-900 px-3 py-1.5 rounded text-sm font-mono text-gray-900 dark:text-gray-100 text-center border border-amber-200 dark:border-amber-700">
+                {code}
+              </code>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => setBackupCodes(null)}
+            className="mt-3 text-sm text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-300 font-medium"
+          >
+            I&apos;ve saved my codes
+          </button>
+        </div>
+      )}
+
+      {/* Setup flow */}
+      {setupData && !totpEnabled && (
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.), then enter the 6-digit code below.
+          </p>
+          <div className="flex justify-center">
+            <img src={setupData.qrCode} alt="TOTP QR Code" className="w-48 h-48 rounded-lg border border-gray-200 dark:border-gray-600" />
+          </div>
+          <div className="text-center">
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Or enter this key manually:</p>
+            <code className="text-xs font-mono bg-gray-100 dark:bg-gray-900 px-3 py-1 rounded text-gray-700 dark:text-gray-300 select-all">
+              {setupData.secret}
+            </code>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Verification Code
+            </label>
+            <input
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              value={verifyCode}
+              onChange={e => setVerifyCode(e.target.value)}
+              placeholder="000000"
+              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900/50 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center text-lg tracking-widest font-mono"
+            />
+          </div>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => { setSetupData(null); setVerifyCode(''); setError(null) }}
+              className="flex-1 px-4 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={enableTotp}
+              disabled={loading || !verifyCode}
+              className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 text-sm font-medium"
+            >
+              {loading ? 'Verifying...' : 'Enable 2FA'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Enabled state */}
+      {totpEnabled && !setupData && !backupCodes && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-green-500" />
+            <span className="text-sm text-gray-700 dark:text-gray-300">Two-factor authentication is enabled</span>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Enter code to disable
+            </label>
+            <input
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              value={disableCode}
+              onChange={e => setDisableCode(e.target.value)}
+              placeholder="000000"
+              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900/50 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center text-lg tracking-widest font-mono"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={disableTotp}
+            disabled={loading || !disableCode}
+            className="px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 text-sm font-medium"
+          >
+            {loading ? 'Disabling...' : 'Disable 2FA'}
+          </button>
+        </div>
+      )}
+
+      {/* Not enabled, no setup in progress */}
+      {!totpEnabled && !setupData && (
+        <div className="space-y-3">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Add an extra layer of security to your account by requiring a code from your authenticator app when signing in.
+          </p>
+          <button
+            type="button"
+            onClick={startSetup}
+            disabled={loading}
+            className="px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 text-sm font-medium"
+          >
+            {loading ? 'Setting up...' : 'Enable Two-Factor Authentication'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function SettingsPage() {
   const { data: session, status, update: updateSession } = useSession()
   const [saving, setSaving] = useState(false)
@@ -302,6 +527,9 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+
+        {/* Two-Factor Authentication */}
+        {session.apiToken && <TwoFactorSection apiToken={session.apiToken} />}
 
         {/* Public Profile */}
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">

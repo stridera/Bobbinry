@@ -11,10 +11,22 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   stripeCustomerId: varchar('stripe_customer_id', { length: 255 }),
+  totpSecret: text('totp_secret'),
+  totpEnabled: boolean('totp_enabled').default(false).notNull(),
+  totpBackupCodes: text('totp_backup_codes'), // JSON array of hashed backup codes
 })
 
 // Email verification tokens for credentials-based signup
 export const emailVerificationTokens = pgTable('email_verification_tokens', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  token: varchar('token', { length: 128 }).unique().notNull(),
+  expiresAt: timestamp('expires_at').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+// Password reset tokens for forgot password flow
+export const passwordResetTokens = pgTable('password_reset_tokens', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   token: varchar('token', { length: 128 }).unique().notNull(),

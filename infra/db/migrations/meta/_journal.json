@@ -64,6 +64,13 @@
       "when": 1773292800000,
       "tag": "0009_add_notifications_table",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1773465600000,
+      "tag": "0010_add_password_reset_and_totp",
+      "breakpoints": true
     }
   ]
 }

@@ -60,7 +60,7 @@ export function ProjectWelcome({ onInstallBobbins }: ProjectWelcomeProps) {
         </div>
 
         <button
-          onClick={onInstallBobbins}
+          onClick={() => onInstallBobbins?.()}
           className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white rounded-lg font-medium text-lg transition-colors"
         >
           Browse Bobbins

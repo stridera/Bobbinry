@@ -107,6 +107,31 @@ const providers: any[] = [
       }
 
       try {
+        // If totpCode + userId are present, this is step 2 of 2FA login
+        const creds = credentials as any
+        if (creds.totpCode && creds.userId) {
+          const verifyRes = await fetch(`${config.apiUrl}/api/auth/totp/verify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: creds.userId,
+              code: creds.totpCode,
+            })
+          })
+
+          if (!verifyRes.ok) {
+            throw new Error('INVALID_TOTP')
+          }
+
+          const { user } = await verifyRes.json()
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.name || user.email,
+            emailVerified: user.emailVerified ? new Date(user.emailVerified) : null,
+          } as any
+        }
+
         const response = await fetch(`${config.apiUrl}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -120,7 +145,14 @@ const providers: any[] = [
           return null
         }
 
-        const user: BobbinryUser = await response.json()
+        const data = await response.json()
+
+        // If 2FA is required, throw a special error the login page will catch
+        if (data.requiresTwoFactor) {
+          throw new Error(`REQUIRES_2FA:${data.userId}`)
+        }
+
+        const user: BobbinryUser = data
 
         return {
           id: user.id,
@@ -128,7 +160,11 @@ const providers: any[] = [
           name: user.name || user.email,
           emailVerified: user.emailVerified ? new Date(user.emailVerified) : null,
         } as any
-      } catch {
+      } catch (err) {
+        // Re-throw our special errors so they propagate to the login page
+        if (err instanceof Error && (err.message.startsWith('REQUIRES_2FA:') || err.message === 'INVALID_TOTP')) {
+          throw err
+        }
         return null
       }
     }

@@ -132,7 +132,7 @@ export async function requireAuth(
       id: users.id,
       email: users.email,
       name: users.name,
-      emailVerified: users.emailVerified
+      emailVerified: users.emailVerified,
     })
     .from(users)
     .where(eq(users.id, tokenPayload.id))
@@ -205,7 +205,7 @@ export async function optionalAuth(
       id: users.id,
       email: users.email,
       name: users.name,
-      emailVerified: users.emailVerified
+      emailVerified: users.emailVerified,
     })
     .from(users)
     .where(eq(users.id, tokenPayload.id))

@@ -104,14 +104,6 @@ export function RecentActivityPanel({ userId, apiToken }: { userId: string; apiT
         </div>
       )}
 
-      <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-        <Link
-          href="/activity"
-          className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
-        >
-          View all activity &rarr;
-        </Link>
-      </div>
     </div>
   )
 }
