@@ -104,9 +104,13 @@ export function ProjectCard({ project, collections, currentCollectionId, onAddTo
                   </span>
                 )}
                 {project.shortUrl && (
-                  <span className="flex-shrink-0 px-2 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs rounded-full">
+                  <Link
+                    href={`/p/${project.shortUrl}`}
+                    className="flex-shrink-0 px-2 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-xs rounded-full transition-colors"
+                    title="View published project"
+                  >
                     /{project.shortUrl}
-                  </span>
+                  </Link>
                 )}
               </div>
 
