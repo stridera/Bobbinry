@@ -140,7 +140,7 @@ function NewProjectContent() {
       const projectId = project.id
 
       const template = templates.find(t => t.id === selectedTemplate)
-      let failedInstalls: string[] = []
+      const failedInstalls: string[] = []
       if (template && template.bobbins.length > 0) {
         // Install sequentially — later bobbins may depend on earlier ones
         for (const bobbinId of template.bobbins) {
