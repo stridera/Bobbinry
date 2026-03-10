@@ -48,6 +48,7 @@ const membershipPlugin: FastifyPluginAsync = async (fastify) => {
             status: m.status,
             currentPeriodEnd: m.currentPeriodEnd,
             cancelAtPeriodEnd: m.cancelAtPeriodEnd,
+            source: (m.stripeSubscriptionId ? 'stripe' : 'admin') as 'stripe' | 'admin',
           }
         }
       }

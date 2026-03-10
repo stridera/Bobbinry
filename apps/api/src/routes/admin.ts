@@ -6,8 +6,8 @@
 
 import { FastifyPluginAsync } from 'fastify'
 import { db } from '../db/connection'
-import { users, projects, userBadges, userProfiles } from '../db/schema'
-import { eq, sql, ilike, or, count, desc } from 'drizzle-orm'
+import { users, projects, userBadges, userProfiles, siteMemberships } from '../db/schema'
+import { eq, sql, ilike, or, and, count, desc } from 'drizzle-orm'
 import { requireAuth, requireOwner } from '../middleware/auth'
 
 const adminPlugin: FastifyPluginAsync = async (fastify) => {
@@ -106,9 +106,32 @@ const adminPlugin: FastifyPluginAsync = async (fastify) => {
       badgesByUser.set(b.userId, list)
     }
 
+    // Fetch memberships for all returned users in one query
+    const allMemberships = userIds.length > 0
+      ? await db
+          .select({
+            userId: siteMemberships.userId,
+            tier: siteMemberships.tier,
+            status: siteMemberships.status,
+            stripeSubscriptionId: siteMemberships.stripeSubscriptionId,
+          })
+          .from(siteMemberships)
+          .where(sql`${siteMemberships.userId} IN ${userIds}`)
+      : []
+
+    const membershipByUser = new Map<string, { tier: string; status: string; source: 'admin' | 'stripe' }>()
+    for (const m of allMemberships) {
+      membershipByUser.set(m.userId, {
+        tier: m.tier,
+        status: m.status,
+        source: m.stripeSubscriptionId ? 'stripe' : 'admin',
+      })
+    }
+
     const usersWithBadges = rows.map(u => ({
       ...u,
       badges: badgesByUser.get(u.id) || [],
+      membership: membershipByUser.get(u.id) || null,
     }))
 
     return reply.send({
@@ -158,6 +181,125 @@ const adminPlugin: FastifyPluginAsync = async (fastify) => {
     }
 
     return reply.status(201).send(inserted)
+  })
+
+  /**
+   * POST /admin/users/:userId/supporter
+   * Grant or revoke admin supporter status
+   */
+  fastify.post<{
+    Params: { userId: string }
+    Body: { grant: boolean }
+  }>('/admin/users/:userId/supporter', {
+    preHandler: adminPreHandler,
+  }, async (request, reply) => {
+    const { userId } = request.params
+    const { grant } = request.body
+
+    if (typeof grant !== 'boolean') {
+      return reply.status(400).send({ error: '"grant" (boolean) is required' })
+    }
+
+    // Verify target user exists
+    const [targetUser] = await db.select({ id: users.id }).from(users).where(eq(users.id, userId)).limit(1)
+    if (!targetUser) {
+      return reply.status(404).send({ error: 'User not found' })
+    }
+
+    // Check for existing Stripe-paid membership
+    const [existing] = await db
+      .select({
+        tier: siteMemberships.tier,
+        status: siteMemberships.status,
+        stripeSubscriptionId: siteMemberships.stripeSubscriptionId,
+      })
+      .from(siteMemberships)
+      .where(eq(siteMemberships.userId, userId))
+      .limit(1)
+
+    if (grant) {
+      // If already an active Stripe subscriber, just ensure badge exists — don't touch the Stripe row
+      const isStripePaid = existing?.stripeSubscriptionId && existing.status === 'active'
+
+      if (!isStripePaid) {
+        // Upsert admin-granted site membership
+        await db
+          .insert(siteMemberships)
+          .values({
+            userId,
+            tier: 'supporter',
+            status: 'active',
+            stripeSubscriptionId: null,
+            stripePriceId: null,
+            currentPeriodStart: null,
+            currentPeriodEnd: null,
+            cancelAtPeriodEnd: false,
+          })
+          .onConflictDoUpdate({
+            target: siteMemberships.userId,
+            set: {
+              tier: 'supporter',
+              status: 'active',
+              stripeSubscriptionId: null,
+              stripePriceId: null,
+              currentPeriodStart: null,
+              currentPeriodEnd: null,
+              cancelAtPeriodEnd: false,
+              updatedAt: new Date(),
+            },
+          })
+      }
+
+      // Upsert supporter badge
+      await db
+        .insert(userBadges)
+        .values({
+          userId,
+          badge: 'supporter',
+          label: 'Supporter',
+          grantedBy: request.user!.id,
+        })
+        .onConflictDoNothing()
+
+      // Re-activate if badge existed but was deactivated
+      await db
+        .update(userBadges)
+        .set({ isActive: true })
+        .where(
+          and(
+            eq(userBadges.userId, userId),
+            eq(userBadges.badge, 'supporter')
+          )
+        )
+
+      return reply.send({ supporter: true, source: isStripePaid ? 'stripe' : 'admin' })
+    } else {
+      // Revoke — cannot revoke Stripe-paid
+      if (existing?.stripeSubscriptionId && existing.status === 'active') {
+        return reply.status(409).send({ error: 'Cannot revoke Stripe-paid supporter membership' })
+      }
+
+      // Downgrade membership
+      if (existing) {
+        await db
+          .update(siteMemberships)
+          .set({ tier: 'free', status: 'revoked', updatedAt: new Date() })
+          .where(eq(siteMemberships.userId, userId))
+      }
+
+      // Deactivate supporter badge
+      await db
+        .update(userBadges)
+        .set({ isActive: false })
+        .where(
+          and(
+            eq(userBadges.userId, userId),
+            eq(userBadges.badge, 'supporter')
+          )
+        )
+
+      return reply.send({ supporter: false })
+    }
   })
 
   /**

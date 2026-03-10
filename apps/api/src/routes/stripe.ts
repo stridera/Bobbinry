@@ -962,6 +962,17 @@ async function handleSiteMembershipDeleted(subscription: Stripe.Subscription, fa
     const userId = subscription.metadata?.bobbinry_user_id
     if (!userId) return
 
+    // Skip if membership is admin-granted (no stripeSubscriptionId)
+    const [existing] = await db
+      .select({ stripeSubscriptionId: siteMemberships.stripeSubscriptionId })
+      .from(siteMemberships)
+      .where(eq(siteMemberships.userId, userId))
+      .limit(1)
+    if (existing && !existing.stripeSubscriptionId) {
+      fastify.log.info({ userId }, 'Skipping Stripe deletion for admin-granted membership')
+      return
+    }
+
     // Set membership to expired
     await db
       .update(siteMemberships)

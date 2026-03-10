@@ -13,6 +13,12 @@ interface UserBadge {
   label: string | null
 }
 
+interface AdminMembership {
+  tier: string
+  status: string
+  source: 'admin' | 'stripe'
+}
+
 interface AdminUser {
   id: string
   email: string
@@ -21,6 +27,7 @@ interface AdminUser {
   createdAt: string
   username: string | null
   badges: UserBadge[]
+  membership: AdminMembership | null
 }
 
 export default function AdminUsersPage() {
@@ -88,6 +95,21 @@ export default function AdminUsersPage() {
       fetchUsers()
     } else {
       alert('Failed to remove badge')
+    }
+  }
+
+  const toggleSupporter = async (userId: string, grant: boolean) => {
+    if (!session?.apiToken) return
+    const res = await apiFetch(`/api/admin/users/${userId}/supporter`, session.apiToken, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ grant }),
+    })
+    if (res.ok) {
+      fetchUsers()
+    } else {
+      const data = await res.json().catch(() => null)
+      alert(data?.error || `Failed to ${grant ? 'grant' : 'revoke'} supporter`)
     }
   }
 
@@ -207,9 +229,41 @@ export default function AdminUsersPage() {
                     </div>
                   </div>
 
-                  {/* Expanded badge management */}
+                  {/* Expanded user management */}
                   {expandedUser === user.id && (
-                    <div className="px-4 py-3 bg-gray-50 dark:bg-gray-700/20 border-t border-gray-100 dark:border-gray-700">
+                    <div className="px-4 py-3 bg-gray-50 dark:bg-gray-700/20 border-t border-gray-100 dark:border-gray-700 space-y-3">
+                      {/* Supporter status */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-gray-500 dark:text-gray-400 mr-1">Supporter:</span>
+                        {user.membership?.tier === 'supporter' && user.membership.status === 'active' ? (
+                          user.membership.source === 'stripe' ? (
+                            <span className="px-2 py-1 text-xs font-medium rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
+                              Active (Stripe)
+                            </span>
+                          ) : (
+                            <>
+                              <span className="px-2 py-1 text-xs font-medium rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
+                                Active (admin-granted)
+                              </span>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); toggleSupporter(user.id, false) }}
+                                className="px-2 py-1 text-xs font-medium rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
+                              >
+                                Revoke
+                              </button>
+                            </>
+                          )
+                        ) : (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleSupporter(user.id, true) }}
+                            className="px-2 py-1 text-xs font-medium rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors"
+                          >
+                            Grant Supporter
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Badges */}
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs font-medium text-gray-500 dark:text-gray-400 mr-1">Badges:</span>
                         {user.badges.map((b) => (
@@ -228,7 +282,7 @@ export default function AdminUsersPage() {
                           </span>
                         ))}
 
-                        {/* Add badge dropdown */}
+                        {/* Add badge dropdown — supporter managed via toggle above */}
                         <select
                           className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 outline-none"
                           value=""
@@ -241,7 +295,7 @@ export default function AdminUsersPage() {
                         >
                           <option value="">+ Add badge</option>
                           {KNOWN_BADGES
-                            .filter((b) => !user.badges.some((ub) => ub.badge === b))
+                            .filter((b) => b !== 'supporter' && !user.badges.some((ub) => ub.badge === b))
                             .map((b) => (
                               <option key={b} value={b}>{b}</option>
                             ))}

@@ -15,6 +15,7 @@ interface MembershipData {
     status: string
     currentPeriodEnd: string | null
     cancelAtPeriodEnd: boolean
+    source?: 'stripe' | 'admin'
   } | null
 }
 
@@ -183,19 +184,23 @@ function MembershipContent() {
                   <UserBadges badges={membershipData.badges} size="md" />
                 </div>
                 <p className="text-sm text-purple-700 dark:text-purple-300">
-                  {membershipData.membership.cancelAtPeriodEnd
-                    ? `Access until ${new Date(membershipData.membership.currentPeriodEnd!).toLocaleDateString()}`
-                    : `Renews ${new Date(membershipData.membership.currentPeriodEnd!).toLocaleDateString()}`
+                  {membershipData.membership.source === 'admin'
+                    ? 'Granted by site admin'
+                    : membershipData.membership.cancelAtPeriodEnd
+                      ? `Access until ${new Date(membershipData.membership.currentPeriodEnd!).toLocaleDateString()}`
+                      : `Renews ${new Date(membershipData.membership.currentPeriodEnd!).toLocaleDateString()}`
                   }
                 </p>
               </div>
-              <button
-                onClick={handleManage}
-                disabled={portalLoading}
-                className="px-4 py-2 text-sm font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors"
-              >
-                {portalLoading ? 'Loading...' : 'Manage Billing'}
-              </button>
+              {membershipData.membership.source !== 'admin' && (
+                <button
+                  onClick={handleManage}
+                  disabled={portalLoading}
+                  className="px-4 py-2 text-sm font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                >
+                  {portalLoading ? 'Loading...' : 'Manage Billing'}
+                </button>
+              )}
             </div>
           </div>
         )}
