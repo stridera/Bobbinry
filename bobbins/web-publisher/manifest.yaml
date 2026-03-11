@@ -27,6 +27,12 @@ extensions:
       title: "Publish Manager"
       entry: panels/publish-manager
       priority: 10
+    - slot: shell.publishDashboard
+      type: panel
+      id: analytics-detail
+      title: "Analytics Detail"
+      entry: panels/analytics-detail
+      priority: 5
 
 data:
   collections:

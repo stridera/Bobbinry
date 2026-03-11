@@ -6,7 +6,8 @@
   "exports": {
     "./views/publish-manager": "./views/publish-manager.tsx",
     "./panels/chapter-publish": "./panels/chapter-publish.tsx",
-    "./panels/publish-manager": "./panels/publish-manager.tsx"
+    "./panels/publish-manager": "./panels/publish-manager.tsx",
+    "./panels/analytics-detail": "./panels/analytics-detail.tsx"
   },
   "scripts": {
     "build": "echo 'consumed as source by shell'",

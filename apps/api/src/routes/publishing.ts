@@ -1052,6 +1052,117 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
+  // Get per-chapter analytics breakdown (device, progress, referrers)
+  fastify.get<{
+    Params: { projectId: string; chapterId: string }
+  }>('/projects/:projectId/chapters/:chapterId/analytics/breakdown', async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const { chapterId } = request.params
+
+      // Device distribution
+      const deviceRows = await db
+        .select({
+          deviceType: chapterViews.deviceType,
+          count: sql<number>`count(*)::int`
+        })
+        .from(chapterViews)
+        .where(eq(chapterViews.chapterId, chapterId))
+        .groupBy(chapterViews.deviceType)
+
+      const devices: Record<string, number> = {}
+      for (const row of deviceRows) {
+        devices[row.deviceType || 'unknown'] = row.count
+      }
+
+      // Reading progress buckets
+      const progressRows = await db
+        .select({
+          bucket: sql<string>`CASE
+            WHEN ${chapterViews.completedAt} IS NOT NULL THEN 'completed'
+            WHEN ${chapterViews.lastPositionPercent} >= 75 THEN '75-100'
+            WHEN ${chapterViews.lastPositionPercent} >= 50 THEN '50-75'
+            WHEN ${chapterViews.lastPositionPercent} >= 25 THEN '25-50'
+            ELSE '0-25'
+          END`,
+          count: sql<number>`count(*)::int`
+        })
+        .from(chapterViews)
+        .where(eq(chapterViews.chapterId, chapterId))
+        .groupBy(sql`CASE
+          WHEN ${chapterViews.completedAt} IS NOT NULL THEN 'completed'
+          WHEN ${chapterViews.lastPositionPercent} >= 75 THEN '75-100'
+          WHEN ${chapterViews.lastPositionPercent} >= 50 THEN '50-75'
+          WHEN ${chapterViews.lastPositionPercent} >= 25 THEN '25-50'
+          ELSE '0-25'
+        END`)
+
+      const progress: Record<string, number> = { '0-25': 0, '25-50': 0, '50-75': 0, '75-100': 0, completed: 0 }
+      for (const row of progressRows) {
+        progress[row.bucket] = row.count
+      }
+
+      // Top 5 referrers
+      const referrerRows = await db
+        .select({
+          referrer: chapterViews.referrer,
+          count: sql<number>`count(*)::int`
+        })
+        .from(chapterViews)
+        .where(and(eq(chapterViews.chapterId, chapterId), sql`${chapterViews.referrer} IS NOT NULL`))
+        .groupBy(chapterViews.referrer)
+        .orderBy(sql`count(*) DESC`)
+        .limit(5)
+
+      const referrers = referrerRows.map(r => ({ referrer: r.referrer || 'direct', count: r.count }))
+
+      return reply.send({ breakdown: { devices, progress, referrers }, correlationId })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to get analytics breakdown')
+      return reply.status(500).send({ error: 'Failed to get analytics breakdown', correlationId })
+    }
+  })
+
+  // Get per-chapter analytics for an entire project
+  fastify.get<{
+    Params: { projectId: string }
+  }>('/projects/:projectId/analytics/chapters', async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const { projectId } = request.params
+
+      const rows = await db
+        .select({
+          chapterId: chapterPublications.chapterId,
+          title: sql<string>`${entities.entityData}->>'title'`,
+          order: sql<number>`(${entities.entityData}->>'order')::int`,
+          viewCount: chapterPublications.viewCount,
+          uniqueViewCount: chapterPublications.uniqueViewCount,
+          completionCount: chapterPublications.completionCount,
+          avgReadTimeSeconds: chapterPublications.avgReadTimeSeconds,
+        })
+        .from(chapterPublications)
+        .innerJoin(entities, eq(entities.id, chapterPublications.chapterId))
+        .where(eq(chapterPublications.projectId, projectId))
+        .orderBy(sql`(${entities.entityData}->>'order')::int`)
+
+      const chapters = rows.map(r => ({
+        chapterId: r.chapterId,
+        title: r.title || 'Untitled',
+        order: r.order ?? 0,
+        viewCount: Number(r.viewCount || 0),
+        uniqueViewCount: Number(r.uniqueViewCount || 0),
+        completionCount: Number(r.completionCount || 0),
+        avgReadTimeSeconds: Number(r.avgReadTimeSeconds || 0),
+      }))
+
+      return reply.send({ chapters, correlationId })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to get chapter analytics')
+      return reply.status(500).send({ error: 'Failed to get chapter analytics', correlationId })
+    }
+  })
+
   // Get project-level analytics
   fastify.get<{
     Params: { projectId: string }

@@ -212,6 +212,7 @@ export function useManifestExtensions() {
             console.log(`[ExtensionProvider] Loading native panel component: ${bobbinId}.${contribution.entry}`)
 
             loadNativeView(bobbinId, contribution.entry).then((component: any) => {
+              if (!component) return // View not found (stale bobbin ID) — skip silently
               console.log(`[ExtensionProvider] Component loaded for ${bobbinId}.${contribution.entry}:`, typeof component)
               const extensionId = `${bobbinId}.${contribution.id}`
               extensionRegistry.registerExtensionComponent(extensionId, component)

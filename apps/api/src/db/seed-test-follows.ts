@@ -74,7 +74,7 @@ async function seedTestFollows() {
     const [ch1] = await db.insert(entities).values({
       projectId: project1.id,
       bobbinId: 'manuscript',
-      collectionName: 'chapters',
+      collectionName: 'content',
       entityData: { title: 'The Observatory', order: 1, content: 'Lira gazed through the ancient telescope...' }
     }).returning()
     if (!ch1) throw new Error('Failed to create ch1')
@@ -82,7 +82,7 @@ async function seedTestFollows() {
     const [ch2] = await db.insert(entities).values({
       projectId: project1.id,
       bobbinId: 'manuscript',
-      collectionName: 'chapters',
+      collectionName: 'content',
       entityData: { title: 'First Thread', order: 2, content: 'The starlight bent at her touch...' }
     }).returning()
     if (!ch2) throw new Error('Failed to create ch2')
@@ -90,7 +90,7 @@ async function seedTestFollows() {
     const [ch3] = await db.insert(entities).values({
       projectId: project1.id,
       bobbinId: 'manuscript',
-      collectionName: 'chapters',
+      collectionName: 'content',
       entityData: { title: 'Unraveling', order: 3, content: 'But every thread she pulled...' }
     }).returning()
     if (!ch3) throw new Error('Failed to create ch3')
@@ -99,7 +99,7 @@ async function seedTestFollows() {
     const [ch4] = await db.insert(entities).values({
       projectId: project2.id,
       bobbinId: 'manuscript',
-      collectionName: 'chapters',
+      collectionName: 'content',
       entityData: { title: 'Gears and Ghosts', order: 1, content: 'Unit 7 opened its eyes for the first time...' }
     }).returning()
     if (!ch4) throw new Error('Failed to create ch4')

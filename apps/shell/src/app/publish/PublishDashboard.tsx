@@ -51,6 +51,8 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
   const [publications, setPublications] = useState<Record<string, Record<string, ChapterPublication>>>({})
   const [slugInputs, setSlugInputs] = useState<Record<string, string>>({})
   const [slugAvailability, setSlugAvailability] = useState<Record<string, boolean | null>>({})
+  const [publishRefreshKey, setPublishRefreshKey] = useState(0)
+  const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null)
   const [slugChecking, setSlugChecking] = useState<Record<string, boolean>>({})
   const [username, setUsername] = useState<string>('')
   const loadedBobbinProjectsRef = useRef<Set<string>>(new Set())
@@ -203,6 +205,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
   const toggleProjectExpansion = (projectId: string) => {
     if (expandedProject === projectId) {
       setExpandedProject(null)
+      setSelectedChapterId(null)
     } else {
       setExpandedProject(projectId)
       if (!chapters[projectId]) {
@@ -310,6 +313,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
         text: `Published ${successCount} of ${projectChapters.length} chapters!`,
       })
       await loadChapters(projectId)
+      setPublishRefreshKey(k => k + 1)
     } catch {
       setMessage({ type: 'error', text: 'Failed to publish chapters' })
     } finally {
@@ -332,6 +336,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
         init ?? { method: 'POST' }
       )
       await loadChapters(projectId)
+      setPublishRefreshKey(k => k + 1)
     } catch {
       setMessage({ type: 'error', text: errorText })
     } finally {
@@ -654,7 +659,15 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
                                 {/* Audience publishers (prominent) */}
                                 <ExtensionSlot
                                   slotId="shell.publishDashboard"
-                                  context={{ projectId: project.id, apiToken, publisherCategory: 'audience' }}
+                                  context={{
+                                    projectId: project.id,
+                                    apiToken,
+                                    publisherCategory: 'audience',
+                                    refreshKey: publishRefreshKey,
+                                    selectedChapterId,
+                                    onSelectChapter: setSelectedChapterId,
+                                  }}
+                                  layout="inline"
                                   fallback={null}
                                 />
                               </div>

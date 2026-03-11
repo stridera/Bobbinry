@@ -377,9 +377,24 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
       const upgrades: UpgradeResult[] = []
       const diskManifests = await loadDiskManifests(installations.map(i => i.bobbinId))
 
-      for (const install of installations) {
-        const diskManifest = diskManifests.get(install.bobbinId)
-        if (!diskManifest) continue
+      // Filter out bobbins that no longer exist on disk (renamed/removed).
+      // Auto-uninstall stale records so they don't reappear.
+      const staleInstalls = installations.filter(i => !diskManifests.has(i.bobbinId))
+      const liveInstalls = installations.filter(i => diskManifests.has(i.bobbinId))
+
+      if (staleInstalls.length > 0) {
+        const staleIds = staleInstalls.map(i => i.bobbinId)
+        fastify.log.info(`[bobbins] Auto-uninstalling stale bobbins from project ${projectId}: ${staleIds.join(', ')}`)
+        // Fire-and-forget cleanup — don't block the response
+        Promise.all(
+          staleInstalls.map(i =>
+            db.delete(bobbinsInstalled).where(eq(bobbinsInstalled.id, i.id))
+          )
+        ).catch(err => fastify.log.error(err, 'Failed to auto-uninstall stale bobbins'))
+      }
+
+      for (const install of liveInstalls) {
+        const diskManifest = diskManifests.get(install.bobbinId)!
 
         const result = await checkAndUpgradeBobbin(db, install, diskManifest, projectId)
         if (result) {
@@ -392,12 +407,11 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
       }
 
       return {
-        bobbins: installations.map((install: any) => ({
+        bobbins: liveInstalls.map((install: any) => ({
           id: install.bobbinId,
           version: install.version,
-          // Prefer disk manifest over DB snapshot — disk is always the source of truth
-          // for first-party bobbins and avoids stale manifests after content-only changes
-          manifest: diskManifests.get(install.bobbinId) || install.manifestJson,
+          // Disk is always the source of truth for first-party bobbins
+          manifest: diskManifests.get(install.bobbinId),
           installedAt: install.installedAt
         })),
         ...(upgrades.length > 0 && { upgrades })

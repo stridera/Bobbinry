@@ -67,11 +67,13 @@ export async function loadNativeView(
       return module.default
     }
     
-    // If not in map, throw error
-    throw new Error(
-      `Native view ${viewKey} not found in NATIVE_VIEW_MAP. ` +
-      `Available views: ${Object.keys(NATIVE_VIEW_MAP).join(', ')}`
+    // If not in map, warn and return null — the bobbin may have a stale
+    // or mismatched ID in the database. Throwing here would block ALL
+    // panels for the project from loading.
+    console.warn(
+      `[native-view-loader] View ${viewKey} not found in NATIVE_VIEW_MAP (bobbin: ${bobbinId}). Skipping.`
     )
+    return null as any
   } catch (error) {
     // If the error is about missing default export, re-throw as-is
     if (error instanceof Error && error.message.includes('does not have a default export')) {
@@ -80,10 +82,8 @@ export async function loadNativeView(
 
     // Otherwise wrap with additional context
     throw new Error(
-      `Failed to load native view: ${viewKey}
-` +
-      `Bobbin: ${bobbinId}, View: ${viewPath}
-` +
+      `Failed to load native view: ${viewKey}\n` +
+      `Bobbin: ${bobbinId}, View: ${viewPath}\n` +
       `Error: ${error instanceof Error ? error.message : String(error)}`
     )
   }

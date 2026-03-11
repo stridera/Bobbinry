@@ -235,19 +235,27 @@ export function ExtensionSlot({
   }
 
   // Inline layout: render all extensions as direct flex children
+  // Native components render directly (bypassing PanelContent memo) so context
+  // updates like selectedChapterId and callbacks flow through immediately.
   if (layout === 'inline') {
     return (
       <div className={className}>
-        {extensions.map(extension => (
-          <PanelContent
-            key={extension.id}
-            extension={extension}
-            context={context}
-            theme={theme}
-            iframeRefs={iframeRefs}
-            buildShellConfig={buildShellConfig}
-          />
-        ))}
+        {extensions.map(extension => {
+          const Component = extension.component
+          if (typeof Component === 'function') {
+            return <Component key={extension.id} {...context} context={context} />
+          }
+          return (
+            <PanelContent
+              key={extension.id}
+              extension={extension}
+              context={context}
+              theme={theme}
+              iframeRefs={iframeRefs}
+              buildShellConfig={buildShellConfig}
+            />
+          )
+        })}
       </div>
     )
   }
