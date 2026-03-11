@@ -5,21 +5,7 @@
  * They are invoked by the API when the bobbin receives action requests via the message bus.
  */
 
-import type { FastifyInstance } from 'fastify'
-
-export interface ActionContext {
-  projectId: string
-  bobbinId: string
-  viewId?: string
-  userId?: string
-  entityId?: string
-}
-
-export interface ActionResult {
-  success: boolean
-  data?: any
-  error?: string
-}
+import type { ActionContext, ActionResult, ActionRuntimeHost } from '@bobbinry/action-runtime'
 
 /**
  * Action: publishChapter
@@ -33,7 +19,7 @@ export async function publishChapter(
     previewParagraphs?: number
   },
   context: ActionContext,
-  fastify: FastifyInstance
+  runtime: ActionRuntimeHost
 ): Promise<ActionResult> {
   try {
     const { db } = await import('../../../apps/api/src/db/connection')
@@ -84,7 +70,7 @@ export async function publishChapter(
       }
     }
   } catch (error) {
-    fastify.log.error({ error }, 'publishChapter action failed')
+    runtime.log.error({ error }, 'publishChapter action failed')
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -103,7 +89,7 @@ export async function scheduleChapterRelease(
     tierSchedule?: Array<{ tierId: string; delayDays: number }>
   },
   context: ActionContext,
-  fastify: FastifyInstance
+  runtime: ActionRuntimeHost
 ): Promise<ActionResult> {
   try {
     const { db } = await import('../../../apps/api/src/db/connection')
@@ -159,7 +145,7 @@ export async function scheduleChapterRelease(
       }
     }
   } catch (error) {
-    fastify.log.error({ error }, 'scheduleChapterRelease action failed')
+    runtime.log.error({ error }, 'scheduleChapterRelease action failed')
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -176,7 +162,7 @@ export async function unpublishChapter(
     chapterId: string
   },
   context: ActionContext,
-  fastify: FastifyInstance
+  runtime: ActionRuntimeHost
 ): Promise<ActionResult> {
   try {
     const { db } = await import('../../../apps/api/src/db/connection')
@@ -202,7 +188,7 @@ export async function unpublishChapter(
       data: { chapterId, isPublished: false }
     }
   } catch (error) {
-    fastify.log.error({ error }, 'unpublishChapter action failed')
+    runtime.log.error({ error }, 'unpublishChapter action failed')
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -222,7 +208,7 @@ export async function trackChapterView(
     referrer?: string
   },
   context: ActionContext,
-  fastify: FastifyInstance
+  runtime: ActionRuntimeHost
 ): Promise<ActionResult> {
   try {
     const { db } = await import('../../../apps/api/src/db/connection')
@@ -260,7 +246,7 @@ export async function trackChapterView(
       data: { viewId: view.id }
     }
   } catch (error) {
-    fastify.log.error({ error }, 'trackChapterView action failed')
+    runtime.log.error({ error }, 'trackChapterView action failed')
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -280,7 +266,7 @@ export async function updateReaderProgress(
     readTimeSeconds?: number
   },
   context: ActionContext,
-  fastify: FastifyInstance
+  runtime: ActionRuntimeHost
 ): Promise<ActionResult> {
   try {
     const { db } = await import('../../../apps/api/src/db/connection')
@@ -325,7 +311,7 @@ export async function updateReaderProgress(
       }
     }
   } catch (error) {
-    fastify.log.error({ error }, 'updateReaderProgress action failed')
+    runtime.log.error({ error }, 'updateReaderProgress action failed')
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -342,7 +328,7 @@ export async function checkReaderAccess(
     chapterId: string
   },
   context: ActionContext,
-  fastify: FastifyInstance
+  runtime: ActionRuntimeHost
 ): Promise<ActionResult> {
   try {
     const { db } = await import('../../../apps/api/src/db/connection')
@@ -424,7 +410,7 @@ export async function checkReaderAccess(
     // Public access
     return { success: true, data: { canAccess: true, reason: 'Public' } }
   } catch (error) {
-    fastify.log.error({ error }, 'checkReaderAccess action failed')
+    runtime.log.error({ error }, 'checkReaderAccess action failed')
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -443,7 +429,7 @@ export async function exportAnalyticsData(
     endDate?: string
   },
   context: ActionContext,
-  fastify: FastifyInstance
+  runtime: ActionRuntimeHost
 ): Promise<ActionResult> {
   try {
     const { db } = await import('../../../apps/api/src/db/connection')
@@ -490,7 +476,7 @@ export async function exportAnalyticsData(
       }
     }
   } catch (error) {
-    fastify.log.error({ error }, 'exportAnalyticsData action failed')
+    runtime.log.error({ error }, 'exportAnalyticsData action failed')
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -509,7 +495,7 @@ export async function sendSubscriberAnnouncement(
     message: string
   },
   context: ActionContext,
-  fastify: FastifyInstance
+  runtime: ActionRuntimeHost
 ): Promise<ActionResult> {
   try {
     const { db } = await import('../../../apps/api/src/db/connection')
@@ -539,7 +525,7 @@ export async function sendSubscriberAnnouncement(
 
     // TODO: Implement actual email sending
     // For now, just log the intent
-    fastify.log.info({
+    runtime.log.info({
       subscriberCount: subscribers.length,
       subject,
       tierId: tierId || 'all'
@@ -553,7 +539,7 @@ export async function sendSubscriberAnnouncement(
       }
     }
   } catch (error) {
-    fastify.log.error({ error }, 'sendSubscriberAnnouncement action failed')
+    runtime.log.error({ error }, 'sendSubscriberAnnouncement action failed')
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -572,9 +558,3 @@ export const actions = {
   export_analytics: exportAnalyticsData,
   send_announcement: sendSubscriberAnnouncement
 }
-
-export type ActionHandler = (
-  params: any,
-  context: ActionContext,
-  fastify: FastifyInstance
-) => Promise<ActionResult>

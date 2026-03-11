@@ -127,7 +127,7 @@ bobbins/entities/
 ├── tsconfig.json                 # TypeScript configuration
 ├── jest.config.js                # Jest test configuration
 ├── jest.setup.js                 # Test environment setup
-├── entities.manifest.yaml        # Bobbin manifest
+├── manifest.yaml                 # Bobbin manifest
 ├── README.md                     # 483-line implementation guide
 ├── IMPLEMENTATION_STATUS.md      # Phase-by-phase checklist
 ├── COMPLETION_SUMMARY.md         # This file

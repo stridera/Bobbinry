@@ -253,7 +253,9 @@ export interface Action {
   id: string
   name: string
   type: ActionType
+  description?: string
   target?: string
+  handler?: string
   parameters?: ActionParameter[]
   permissions?: ActionPermission[]
 }

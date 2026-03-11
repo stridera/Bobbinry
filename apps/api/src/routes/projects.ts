@@ -8,7 +8,7 @@ import { ManifestCompiler } from '@bobbinry/compiler'
 import { requireAuth, requireProjectOwnership, requireVerified } from '../middleware/auth'
 import { getUserMembershipTier, getProjectLimit, getUserBadges } from '../lib/membership'
 import { checkAndUpgradeBobbin, type UpgradeResult } from '../lib/bobbin-upgrader'
-import { loadDiskManifests } from '../lib/disk-manifests'
+import { loadDiskManifests, normalizeManifestPathInput } from '../lib/disk-manifests'
 
 const projectsPlugin: FastifyPluginAsync = async (fastify) => {
   // Create a new project (requires authentication)
@@ -148,10 +148,12 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
         // Read from file - SECURITY: Only allow paths within bobbins directory
         const fs = await import('fs/promises')
 
+        const normalizedManifestPath = normalizeManifestPathInput(manifestPath)
+
         // Resolve paths
         const projectRoot = path.resolve(__dirname, '../../../..')
         const bobbinsDir = path.resolve(projectRoot, 'bobbins')
-        const fullPath = path.resolve(projectRoot, manifestPath)
+        const fullPath = path.resolve(projectRoot, normalizedManifestPath)
 
         // Security check: resolve symlinks, then ensure canonical path is within bobbins/
         const realPath = await fs.realpath(fullPath).catch(() => fullPath)
@@ -162,35 +164,15 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
           })
         }
 
-        // Try the given path, falling back to alternative manifest location
-        // Supports both: bobbins/foo.manifest.yaml and bobbins/foo/manifest.yaml
         try {
           content = await fs.readFile(fullPath, 'utf-8')
         } catch (err: any) {
-          if (err?.code !== 'ENOENT') {
-            return reply.status(400).send({
-              error: 'Failed to read manifest file',
-              details: err.message ?? 'Unknown error'
-            })
-          }
-          // Try subdirectory format: bobbins/foo/manifest.yaml
-          let altContent: string | undefined
-          const match = manifestPath.match(/^bobbins\/(.+)\.manifest\.yaml$/)
-          if (match) {
-            const altPath = path.resolve(projectRoot, `bobbins/${match[1]}/manifest.yaml`)
-            if (altPath.startsWith(bobbinsDir + path.sep)) {
-              altContent = await fs.readFile(altPath, 'utf-8').catch(() => undefined)
-            }
-          }
-          if (!altContent) {
-            return reply.status(400).send({
-              error: 'Failed to read manifest file',
-              details: err.message
-            })
-          }
-          content = altContent
+          return reply.status(400).send({
+            error: 'Failed to read manifest file',
+            details: err?.message ?? 'Unknown error'
+          })
         }
-        type = manifestPath.endsWith('.yaml') || manifestPath.endsWith('.yml') ? 'yaml' : 'json'
+        type = normalizedManifestPath.endsWith('.yaml') || normalizedManifestPath.endsWith('.yml') ? 'yaml' : 'json'
       } else if (manifestContent) {
         content = manifestContent
         type = manifestType || 'json'

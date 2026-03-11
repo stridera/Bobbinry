@@ -1,6 +1,6 @@
 id: corkboard
 name: Corkboard
-version: 1.0.0
+version: 1.0.1
 author: Bobbinry Team
 description: Visual board interface for organizing and reordering content cards
 tags:
@@ -68,7 +68,7 @@ interactions:
 
     - id: view_details
       name: View Details
-      type: custom
+      type: update
       parameters:
         - name: id
           type: text

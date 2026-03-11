@@ -154,7 +154,7 @@ function NewProjectContent() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  manifestPath: `bobbins/${bobbinId}.manifest.yaml`
+                  manifestPath: `bobbins/${bobbinId}/manifest.yaml`
                 })
               }
             )

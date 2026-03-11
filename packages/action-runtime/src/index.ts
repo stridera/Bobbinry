@@ -1,12 +1,10 @@
-// Action Runtime SDK - P1 implementation stubs
-// This will be expanded to support reviewed, permission-scoped action execution
-
 export interface ActionContext {
-  actionId: string
+  projectId: string
   bobbinId: string
-  entityRef?: string
-  parameters: Record<string, unknown>
-  permissions: string[]
+  actionId: string
+  viewId?: string
+  userId?: string
+  entityId?: string
 }
 
 export interface ActionResult {
@@ -15,26 +13,52 @@ export interface ActionResult {
   error?: string
 }
 
-/**
- * Stub for action execution
- * Will be expanded to support workflows and external connectors
- */
-export class ActionRuntime {
-  constructor(private context: ActionContext) {}
+export interface ActionLogFn {
+  (payload: unknown, message?: string): void
+}
 
-  async execute(): Promise<ActionResult> {
-    // P1: Stub implementation
-    return {
-      success: true,
-      data: { message: 'Action runtime not yet implemented' }
-    }
+export interface ActionLogger {
+  info: ActionLogFn
+  warn: ActionLogFn
+  error: ActionLogFn
+}
+
+export interface ActionRuntimeHost {
+  log: ActionLogger
+  hasPermission(permission: string): boolean
+}
+
+export type ActionHandler<TParams extends Record<string, unknown> = Record<string, unknown>> = (
+  params: TParams,
+  context: ActionContext,
+  runtime: ActionRuntimeHost
+) => Promise<ActionResult>
+
+export interface ActionModule {
+  actions?: Record<string, ActionHandler>
+  [handlerName: string]: unknown
+}
+
+class NoopLogger implements ActionLogger {
+  info(): void {}
+  warn(): void {}
+  error(): void {}
+}
+
+export class ActionRuntime implements ActionRuntimeHost {
+  readonly log: ActionLogger
+  private readonly permissions: Set<string>
+
+  constructor(options: { permissions?: string[]; log?: ActionLogger } = {}) {
+    this.permissions = new Set(options.permissions ?? [])
+    this.log = options.log ?? new NoopLogger()
   }
 
   hasPermission(permission: string): boolean {
-    return this.context.permissions.includes(permission)
+    return this.permissions.has(permission)
   }
 }
 
-export function createActionRuntime(context: ActionContext): ActionRuntime {
-  return new ActionRuntime(context)
+export function createActionRuntime(options?: { permissions?: string[]; log?: ActionLogger }): ActionRuntime {
+  return new ActionRuntime(options)
 }

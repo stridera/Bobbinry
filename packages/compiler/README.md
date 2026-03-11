@@ -76,7 +76,7 @@ import { ManifestCompiler } from '@bobbinry/compiler';
 const compiler = new ManifestCompiler();
 
 // Compile a manifest file
-const result = await compiler.compile('./manuscript.manifest.yaml');
+const result = await compiler.compile('./bobbins/manuscript/manifest.yaml');
 
 // Access generated migrations
 console.log(result.migrations);

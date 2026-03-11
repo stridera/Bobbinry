@@ -5,21 +5,7 @@
  * They are invoked by the API when the bobbin receives action requests via the message bus.
  */
 
-import type { FastifyInstance } from 'fastify'
-
-export interface ActionContext {
-  projectId: string
-  bobbinId: string
-  viewId?: string
-  userId?: string
-  entityId?: string
-}
-
-export interface ActionResult {
-  success: boolean
-  data?: any
-  error?: string
-}
+import type { ActionContext, ActionResult, ActionRuntimeHost } from '@bobbinry/action-runtime'
 
 // Re-export sync service functions
 import {
@@ -71,7 +57,7 @@ async function createDbCallbacks() {
 export async function initiateDriveOAuth(
   params: Record<string, unknown>,
   context: ActionContext,
-  fastify: FastifyInstance
+  runtime: ActionRuntimeHost
 ): Promise<ActionResult> {
   try {
     const { env } = await import('../../../apps/api/src/lib/env')
@@ -83,7 +69,7 @@ export async function initiateDriveOAuth(
     const url = `${env.API_ORIGIN}/api/backups/google-drive/authorize`
     return { success: true, data: { url } }
   } catch (error) {
-    fastify.log.error({ error }, 'initiateDriveOAuth action failed')
+    runtime.log.error({ error }, 'initiateDriveOAuth action failed')
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -102,7 +88,7 @@ export async function syncToDrive(
     force?: boolean
   },
   context: ActionContext,
-  fastify: FastifyInstance
+  runtime: ActionRuntimeHost
 ): Promise<ActionResult> {
   try {
     const { db, projectDestinations, eq, persistToken, deactivateDestination } = await createDbCallbacks()
@@ -152,7 +138,7 @@ export async function syncToDrive(
     }
 
     const result = await syncChapterToGoogleDrive(
-      chapterContent, destination, existingFileId, fastify.log, persistToken, deactivateDestination
+      chapterContent, destination, existingFileId, runtime.log, persistToken, deactivateDestination
     )
 
     await db
@@ -186,7 +172,7 @@ export async function syncToDrive(
       error: result.error
     }
   } catch (error) {
-    fastify.log.error({ error }, 'syncToDrive action failed')
+    runtime.log.error({ error }, 'syncToDrive action failed')
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
   }
 }
@@ -202,7 +188,7 @@ export async function syncAllChapters(
     publishedOnly?: boolean
   },
   context: ActionContext,
-  fastify: FastifyInstance
+  runtime: ActionRuntimeHost
 ): Promise<ActionResult> {
   try {
     const { db, projectDestinations, eq, persistToken, deactivateDestination } = await createDbCallbacks()
@@ -258,7 +244,7 @@ export async function syncAllChapters(
     }))
 
     const { succeeded, failed, results } = await batchSyncChapters(
-      chapterContents, destination, syncLogs, fastify.log, persistToken, deactivateDestination
+      chapterContents, destination, syncLogs, runtime.log, persistToken, deactivateDestination
     )
 
     for (const { chapterId, result } of results) {
@@ -294,7 +280,7 @@ export async function syncAllChapters(
 
     return { success: true, data: { succeeded, failed, total: chapters.length } }
   } catch (error) {
-    fastify.log.error({ error }, 'syncAllChapters action failed')
+    runtime.log.error({ error }, 'syncAllChapters action failed')
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
   }
 }
@@ -306,7 +292,7 @@ export async function syncAllChapters(
 export async function testConnection(
   params: { destinationId: string },
   context: ActionContext,
-  fastify: FastifyInstance
+  runtime: ActionRuntimeHost
 ): Promise<ActionResult> {
   try {
     const { db, projectDestinations, eq } = await createDbCallbacks()
@@ -347,21 +333,18 @@ export async function testConnection(
 
     return { success: true, data: { message: 'Connection successful', user: about.user } }
   } catch (error) {
-    fastify.log.error({ error }, 'testConnection action failed')
+    runtime.log.error({ error }, 'testConnection action failed')
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
   }
 }
 
+export const syncChapterToDrive = syncToDrive
+export const testDriveConnection = testConnection
+
 // Action registry
 export const actions = {
-  initiate_drive_oauth: initiateDriveOAuth,
+  authorize_drive: initiateDriveOAuth,
   sync_to_drive: syncToDrive,
-  sync_all_chapters: syncAllChapters,
-  test_connection: testConnection
+  test_connection: testConnection,
+  manual_sync_all: syncAllChapters
 }
-
-export type ActionHandler = (
-  params: any,
-  context: ActionContext,
-  fastify: FastifyInstance
-) => Promise<ActionResult>

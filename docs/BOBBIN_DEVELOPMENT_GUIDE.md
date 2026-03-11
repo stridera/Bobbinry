@@ -1,413 +1,326 @@
 # Bobbin Development Guide
 
-A comprehensive guide for building bobbins for the Bobbinry platform.
+This is the source of truth for building bobbins in this repo.
 
-## Table of Contents
-1. [Bobbin Types](#bobbin-types)
-2. [Quick Start](#quick-start)
-3. [Manifest Structure](#manifest-structure)
-4. [Theming Best Practices](#theming-best-practices)
-5. [Message Bus Communication](#message-bus-communication)
-6. [Entity Data Access](#entity-data-access)
-7. [View Development](#view-development)
-8. [Testing](#testing)
+The current model is simple:
 
-## Bobbin Types
+- Bobbins are native React/TypeScript packages checked into `bobbins/<id>/`
+- Every bobbin is reviewed through a PR before it ships
+- `bobbins/<id>/manifest.yaml` is the only canonical manifest path
+- Panels, views, actions, and external access must follow the same baseline so new bobbins are good examples by default
 
-Bobbins fall into four categories based on their purpose:
+## What a Bobbin Is
 
-### Workspace Bobbins
-Add tools to the writing environment. These are project-scoped and installed per-project.
+A bobbin is a reviewed package that extends the shell with one or more of:
 
-Examples: `manuscript`, `entities`, `notes`, `corkboard`, `timeline`, `goals`
+- data collections
+- native views
+- shell panels
+- custom server actions
+- publishing or backup capabilities
 
-### Publisher Bobbins
-Distribute content to readers. Use `capabilities.publishable: true`.
+Good examples in the repo:
 
-Examples: `web-publisher`, `smart-publisher`
+- `entities`, `notes`, `goals`: project-scoped workspace bobbins
+- `dictionary-panel`: minimal native right-panel example
+- `google-drive-backup`: external backup bobbin with reviewed server actions
+- `web-publisher`: publishing bobbin with multiple panels and custom actions
 
-### Backup Bobbins
-Sync project content to external storage. Use `capabilities.backup: true`. Installed per-user (not per-project) — once connected, all projects are backed up by default. Users can opt individual projects out. Contribute panels to the `shell.projectBackup` slot.
+## Required Layout
 
-Examples: `google-drive-backup`
+Every bobbin should use this shape:
 
-```yaml
-# Minimal backup bobbin manifest
-id: my-backup
-name: My Backup Service
-version: 1.0.0
-author: Your Name
-description: Back up projects to My Service
-
-capabilities:
-  external: true
-  backup: true
-  customViews: true
-
-external:
-  endpoints:
-    - id: backup-api
-      url: https://api.example.com/v1/backups
-      method: POST
-      description: Upload project backup snapshots
-  permissions:
-    - endpoint: api.example.com/v1
-      reason: Send encrypted project backups to the configured storage provider
-      required: true
-
-extensions:
-  contributions:
-    - slot: shell.projectBackup
-      type: panel
-      id: status-panel
-      title: "My Backup"
-      entry: panels/status
-```
-
-### Reader Bobbins
-Enhance the reading experience. Installed per-user via reader-bobbins settings. Use `capabilities.readerBobbinType`.
-
-Examples: text-to-speech, translation, annotations
-
-## Quick Start
-
-### Project Structure
-
-```
+```text
 bobbins/my-bobbin/
-├── manifest.yaml           # Bobbin configuration
-├── package.json           # Dependencies
-├── tsconfig.json          # TypeScript config
+├── manifest.yaml
+├── package.json
+├── tsconfig.json
 ├── src/
-│   ├── index.ts          # Entry point (for native views)
-│   ├── views/            # Native React views
-│   │   └── my-view.tsx
-│   └── panels/           # Native React panels
-│       └── my-panel.tsx
-└── dist/                 # Compiled output
+│   ├── views/
+│   └── panels/
+└── actions/
+    └── index.ts
 ```
 
-### Execution Modes
+Notes:
 
-Current bobbins run in native mode:
-- Views are React components rendered directly in the shell
-- Full access to shell's React context (theme, extensions, etc.)
-- Type-safe with TypeScript
-- Faster performance
+- `actions/index.ts` is only needed when the manifest declares custom actions
+- `src/views/*` and `src/panels/*` should use kebab-case file names
+- contribution entries in the manifest point to `views/...` or `panels/...` without file extensions
+- do not add root-level `bobbins/<id>.manifest.yaml` files
 
-## Manifest Structure
+## Manifest Rules
+
+Every manifest must include:
+
+- `id`, `name`, `version`, `author`, `description`, `tags`, `license`
+- `capabilities`
+- `compatibility.minShellVersion`
+
+Use `custom` actions only for server-executed handlers. If an action is purely local UI state, do not model it as a custom server action.
 
 ```yaml
 id: my-bobbin
 name: My Bobbin
 version: 1.0.0
-author: Your Name
-description: What this bobbin does
+author: Bobbins Core
+description: Example bobbin
+tags: [example]
+license: MIT
+
 capabilities:
-  customViews: true        # Can define custom views
+  customViews: true
+  external: false
 
-# If you enable capabilities.external: true, you must also add:
-# external:
-#   endpoints: [...]
-#   permissions: [...]
+extensions:
+  contributions:
+    - slot: shell.rightPanel
+      type: panel
+      id: my-bobbin-summary
+      title: "Summary"
+      entry: panels/summary
 
-data:
-  collections:
-    - name: MyEntity
-      fields:
-        - { name: title, type: text, required: true }
-        - { name: content, type: markdown }
-
-ui:
-  views:
-    - id: my-view
-      name: My View
-      type: editor
-      source: MyEntity
+compatibility:
+  minShellVersion: 1.0.0
 ```
 
-## Theming Best Practices
+## Panels
 
-### For Native React Views
+Panels are the most common bobbin extension surface. They should feel like they belong to the shell.
 
-Always use Tailwind classes with dark mode variants:
+### Supported Slots
 
-```tsx
-import { useTheme } from '@/contexts/ThemeContext'
+Use these slots intentionally:
 
-export default function MyView() {
-  const { theme } = useTheme()
+- `shell.leftPanel`: navigation, entity trees, section lists
+- `shell.rightPanel`: inspectors, context-aware tools, lightweight detail panels
+- `shell.projectBackup`: project backup status and controls
+- `shell.publishDashboard`: publishing and analytics surfaces
+- `shell.editorFooter`: compact editor-adjacent tools
 
-  return (
-    <div className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100">
-      <header className="border-b border-gray-200 dark:border-gray-700 p-4">
-        <h1 className="text-xl font-semibold">My View</h1>
-      </header>
+### Panel Pattern
 
-      <button className="px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded hover:bg-blue-700 dark:hover:bg-blue-600">
-        Action
-      </button>
-    </div>
-  )
-}
-```
+Every panel should cover the same states:
 
-**Common Pattern:**
-```tsx
-// Backgrounds
-className="bg-white dark:bg-gray-900"
-className="bg-gray-50 dark:bg-gray-800"
+- loading
+- empty
+- populated
+- error
 
-// Text
-className="text-gray-900 dark:text-gray-100"
-className="text-gray-600 dark:text-gray-400"
+Every panel should also have:
 
-// Borders
-className="border-gray-200 dark:border-gray-700"
-className="border-gray-300 dark:border-gray-600"
+- a clear title
+- one primary action at most
+- compact spacing
+- light and dark theme support
 
-// Interactive elements
-className="hover:bg-gray-100 dark:hover:bg-gray-700"
-className="bg-blue-600 dark:bg-blue-700"
-```
+Use existing bobbins as visual references:
 
-### External Access Rules
+- `entities` navigation and preview panels
+- `notes` navigation and chapter notes panels
+- `goals` progress panel
 
-If a bobbin calls third-party services:
+Avoid:
 
-1. Set `capabilities.external: true`
-2. Declare every host under `external.endpoints`
-3. Add a user-facing reason for each permission under `external.permissions`
-4. Prefer server/API routes for sensitive tokens and OAuth flows
+- hard-coded dark-only styling
+- bespoke sidebars that ignore shell spacing and borders
+- custom transport logic inside the panel
+- directly mutating unrelated shell state
 
-## Message Bus Communication
+## Views
 
-The shell exposes shared native event patterns for bobbin-to-bobbin communication.
-
-### Sending Messages (Native Views)
+Views should use the SDK for project context and entity access.
 
 ```tsx
-window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
-  detail: {
-    entityType: 'content',
-    entityId: 'scene-123',
-    bobbinId: 'my-bobbin',
-    metadata: { view: 'editor' }
-  }
-}))
-```
-
-### Receiving Messages
-
-```tsx
-import { useMessageBus } from '@bobbinry/sdk'
-
-useMessageBus('manuscript.editor.selection.v1', (message) => {
-  const text = message.data?.text
-  if (text) {
-    updateDisplay(text)
-  }
-})
-```
-
-### Common Events
-
-- `bobbinry:navigate` - Route to a new entity/view
-- `bobbinry:view-context-change` - Active view context changed
-- `bobbinry:entity-updated` - Entity metadata changed in-place
-- `manuscript.editor.selection.v1` - Editor selection changed
-
-## Entity Data Access
-
-Use the SDK's EntityAPI for CRUD operations:
-
-```tsx
+import { useEffect, useState } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
 
-export default function MyView({ sdk, projectId }: { sdk: BobbinrySDK; projectId: string }) {
-  const [items, setItems] = useState([])
+export default function ExampleView({
+  sdk,
+  projectId,
+}: {
+  sdk: BobbinrySDK
+  projectId: string
+}) {
+  const [items, setItems] = useState<any[]>([])
 
-  // Set project context
   useEffect(() => {
     sdk.setProject(projectId)
-  }, [projectId])
+  }, [sdk, projectId])
 
-  // Query entities
   useEffect(() => {
-    async function loadItems() {
-      const result = await sdk.entities.query({
-        collection: 'my_entities',
-        limit: 50,
-        sort: [{ field: 'created_at', direction: 'desc' }]
-      })
+    async function load() {
+      const result = await sdk.entities.query({ collection: 'items', limit: 50 })
       setItems(result.data)
     }
-    loadItems()
-  }, [])
 
-  // Create entity
-  const createItem = async (data) => {
-    const newItem = await sdk.entities.create('my_entities', {
-      title: data.title,
-      content: data.content
-    })
-    setItems([...items, newItem])
-  }
+    load()
+  }, [sdk])
 
-  // Update entity
-  const updateItem = async (id, data) => {
-    const updated = await sdk.entities.update('my_entities', id, data)
-    setItems(items.map(item => item.id === id ? updated : item))
-  }
-
-  // Delete entity
-  const deleteItem = async (id) => {
-    await sdk.entities.delete('my_entities', id)
-    setItems(items.filter(item => item.id !== id))
-  }
-
-  return <div>...</div>
+  return <div>{items.length} items</div>
 }
 ```
 
-## View Development
+Use the SDK for:
 
-### Native React View Template
+- entity CRUD
+- navigation
+- shell notifications
+- message bus subscriptions
+
+Do not:
+
+- hand-roll `postMessage`
+- reach into shell internals from a view
+- use raw `dangerouslySetInnerHTML` for content data
+
+## Notifications
+
+There are two supported notification patterns.
+
+### 1. Local UI Feedback
+
+Use inline success/error banners or local toast components inside the panel or view when the feedback is only relevant to the current surface.
+
+Examples:
+
+- `google-drive-backup` panel status messages
+- `web-publisher` publish manager result messages
+
+### 2. Shell-Level Toasts
+
+Use the SDK when the user should see feedback outside the current component.
 
 ```tsx
-import { useState, useEffect } from 'react'
-import type { BobbinrySDK } from '@bobbinry/sdk'
+await sdk.shell.showNotification('Saved note', 'success')
+await sdk.shell.showNotification('Backup failed', 'error')
+```
 
-interface MyViewProps {
-  projectId: string
-  bobbinId: string
-  viewId: string
-  sdk: BobbinrySDK
-  entityType?: string
-  entityId?: string
-  metadata?: Record<string, any>
+Use shell notifications for:
+
+- save success
+- failed actions
+- background work completion
+
+Do not use bobbin views to create persistent in-app notification records directly. Persistent notifications are a server/domain concern handled in API jobs and routes.
+
+## Server Actions
+
+Custom server actions are declared in the manifest and implemented in `actions/index.ts`.
+
+Manifest:
+
+```yaml
+interactions:
+  actions:
+    - id: sync_to_drive
+      name: Sync to Drive
+      type: custom
+      handler: syncChapterToDrive
+      description: Upload the latest chapter content
+```
+
+Action module:
+
+```ts
+import type { ActionHandler } from '@bobbinry/action-runtime'
+
+export const syncChapterToDrive: ActionHandler = async (params, context, runtime) => {
+  runtime.log.info({ actionId: context.actionId }, 'Running action')
+  return { success: true }
 }
 
-export default function MyView({ sdk, projectId, entityId }: MyViewProps) {
-  const [loading, setLoading] = useState(true)
-  const [data, setData] = useState(null)
-
-  useEffect(() => {
-    sdk.setProject(projectId)
-    loadData()
-  }, [projectId, entityId])
-
-  async function loadData() {
-    try {
-      if (entityId) {
-        const entity = await sdk.entities.get('my_collection', entityId)
-        setData(entity)
-      }
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  if (loading) {
-    return <div className="p-5 text-center">Loading...</div>
-  }
-
-  return (
-    <div className="flex flex-col h-full bg-white dark:bg-gray-900">
-      <header className="border-b border-gray-200 dark:border-gray-700 p-4">
-        <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-          My View
-        </h1>
-      </header>
-
-      <main className="flex-1 overflow-auto p-4">
-        {/* Your content here */}
-      </main>
-    </div>
-  )
+export const actions = {
+  sync_to_drive: syncChapterToDrive,
 }
 ```
 
-### Native Panel Event Pattern
+Rules:
 
-```tsx
-import { useMessageBus } from '@bobbinry/sdk'
+- every `type: custom` action must declare `handler`
+- the handler must exist in `actions/index.ts`
+- the API only runs custom actions declared in the installed bobbin manifest
+- action handlers receive `ActionContext` and `ActionRuntimeHost`
+- do not accept `FastifyInstance` in bobbin action handlers
 
-export default function MyPanel() {
-  const { latestMessage } = useMessageBus('manuscript.editor.selection.v1')
+Current reviewed bobbins may lazily import `apps/api` modules from `actions/index.ts` when they need DB or service access. Keep those imports inside action code only, not in views or panels.
 
-  return (
-    <section className="p-4">
-      <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-        My Panel
-      </h2>
-      <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-        {latestMessage?.payload?.selectedText || 'Select text in the editor to see updates here.'}
-      </p>
-    </section>
-  )
-}
+## External Services
+
+If a bobbin talks to third-party services:
+
+1. set `capabilities.external: true`
+2. declare every endpoint in `external.endpoints`
+3. add a user-facing reason in `external.permissions`
+4. keep OAuth tokens and secrets on the server side
+
+Example:
+
+```yaml
+capabilities:
+  external: true
+
+external:
+  endpoints:
+    - id: drive_files_create
+      url: https://www.googleapis.com/drive/v3/files
+      method: POST
+      description: Create or upload Google Drive files
+  permissions:
+    - endpoint: googleapis.com/drive
+      reason: Sync chapters to Google Drive folders
+      required: true
 ```
 
-## Testing
+Do not:
 
-### Native View Tests
+- hard-code undeclared third-party URLs in bobbin code
+- put access tokens in panel state unless the API explicitly returned a safe short-lived token
+- render untrusted HTML from external services without sanitizing it first
 
-```tsx
-import { render, screen } from '@testing-library/react'
-import { describe, it, expect, vi } from 'vitest'
-import MyView from '../views/my-view'
+## Theming and UX
 
-describe('MyView', () => {
-  it('renders correctly', () => {
-    const mockSDK = {
-      setProject: vi.fn(),
-      entities: {
-        query: vi.fn().mockResolvedValue({ data: [], total: 0 })
-      }
-    }
+All bobbins must support the shell’s light and dark themes.
 
-    render(
-      <MyView
-        sdk={mockSDK}
-        projectId="test-project"
-        bobbinId="my-bobbin"
-        viewId="my-view"
-      />
-    )
+Baseline expectations:
 
-    expect(screen.getByText('My View')).toBeInTheDocument()
-  })
-})
+- `bg-white dark:bg-gray-900`
+- `text-gray-900 dark:text-gray-100`
+- `border-gray-200 dark:border-gray-700`
+- hover and focus states in both themes
+- clear empty/loading/error handling
+
+Use shared shell spacing and panel density. Do not create a totally different visual language unless the bobbin is intentionally a full-screen product surface.
+
+## Developer Checklist
+
+Before opening a PR, make sure:
+
+- `manifest.yaml` is in `bobbins/<id>/manifest.yaml`
+- manifest version is bumped if the manifest changed
+- panel IDs are namespaced and entries resolve to real files
+- custom actions declare handlers and those handlers exist
+- external URLs are declared in the manifest
+- light/dark states both work
+- loading, empty, and error states exist
+- `bun run lint:bobbins` passes
+
+Recommended verification:
+
+```bash
+bun run lint:bobbins
+bun --cwd packages/compiler test -- manifest-validation
+bun --cwd apps/shell typecheck
+bun --cwd apps/api typecheck
 ```
 
-## Reference Implementations
+## What to Copy
 
-- **Manuscript Bobbin** (`bobbins/manuscript/`) - Complex native views with editor and outline
-- **Dictionary Panel** (`bobbins/dictionary-panel/`) - Simple native panel consuming editor selection events
+If you are creating a new bobbin, start from the closest real example:
 
-## Best Practices
+- navigation and side-panel chrome: `entities`, `notes`
+- compact dashboard/status panel: `goals`, `dictionary-panel`
+- external integration and server actions: `google-drive-backup`
+- multi-panel publishing workflow: `web-publisher`
 
-1. **Always handle both light and dark themes** - Use Tailwind dark: variants or CSS variables
-2. **Use TypeScript** - Provides better DX and catches errors early
-3. **Follow the message format** - Include source, target, and type in all messages
-4. **Handle loading states** - Show feedback while data is loading
-5. **Clean up listeners** - Remove event listeners when components unmount
-6. **Test your views** - Write unit tests for critical functionality
-7. **Document your manifest** - Add comments explaining custom fields
-8. **Use semantic versioning** - Follow semver for bobbin versions
-
-## Common Pitfalls
-
-- ❌ Forgetting to call `sdk.setProject()` before entity operations
-- ❌ Recreating transport or event plumbing instead of using the SDK hooks
-- ❌ Reimplementing message transport instead of using `useMessageBus` or `bobbinry:*` events
-- ❌ Using inline styles instead of Tailwind classes
-- ❌ Not cleaning up event listeners
-- ❌ Hardcoding light-mode colors
-
-## Getting Help
-
-- Check existing bobbins for examples
-- Read the architecture docs in `docs/`
-- Ask questions in GitHub issues
+If an example and this guide disagree, update the example or update this guide in the same PR. The guide should stay aligned with shipped bobbins.

@@ -87,6 +87,51 @@ describe('Manifest Validation', () => {
       expect(result.valid).toBe(false)
       expect(result.errors.some(err => err.includes('pattern'))).toBe(true)
     })
+
+    it('should reject custom actions without handlers', () => {
+      const invalidManifest = {
+        id: 'test-bobbin',
+        name: 'Test Bobbin',
+        version: '1.0.0',
+        capabilities: {},
+        interactions: {
+          actions: [
+            {
+              id: 'publish_chapter',
+              name: 'Publish Chapter',
+              type: 'custom'
+            }
+          ]
+        }
+      }
+
+      const result = compiler.validateManifestWithDetails(invalidManifest as any)
+      expect(result.valid).toBe(false)
+      expect(result.errors).toContain("action 'publish_chapter': custom actions require a handler")
+    })
+
+    it('should reject non-custom actions that declare handlers', () => {
+      const invalidManifest = {
+        id: 'test-bobbin',
+        name: 'Test Bobbin',
+        version: '1.0.0',
+        capabilities: {},
+        interactions: {
+          actions: [
+            {
+              id: 'publish_chapter',
+              name: 'Publish Chapter',
+              type: 'publish',
+              handler: 'publishChapter'
+            }
+          ]
+        }
+      }
+
+      const result = compiler.validateManifestWithDetails(invalidManifest as any)
+      expect(result.valid).toBe(false)
+      expect(result.errors).toContain("action 'publish_chapter': only custom actions may declare a handler")
+    })
   })
 
   describe('Example Manifests', () => {
@@ -100,11 +145,11 @@ describe('Manifest Validation', () => {
       }
     })
 
-    it('should validate manuscript.manifest.yaml', () => {
-      const manifestPath = path.join(manifestsDir, 'manuscript.manifest.yaml')
-      
+    it('should validate manuscript/manifest.yaml', () => {
+      const manifestPath = path.join(manifestsDir, 'manuscript', 'manifest.yaml')
+
       if (!fs.existsSync(manifestPath)) {
-        console.warn('manuscript.manifest.yaml not found, skipping test')
+        console.warn('manuscript/manifest.yaml not found, skipping test')
         return
       }
 
@@ -118,11 +163,11 @@ describe('Manifest Validation', () => {
       expect(result.valid).toBe(true)
     })
 
-    it('should validate corkboard.manifest.yaml', () => {
-      const manifestPath = path.join(manifestsDir, 'corkboard.manifest.yaml')
-      
+    it('should validate corkboard/manifest.yaml', () => {
+      const manifestPath = path.join(manifestsDir, 'corkboard', 'manifest.yaml')
+
       if (!fs.existsSync(manifestPath)) {
-        console.warn('corkboard.manifest.yaml not found, skipping test')
+        console.warn('corkboard/manifest.yaml not found, skipping test')
         return
       }
 
@@ -142,7 +187,7 @@ describe('Manifest Validation', () => {
         return
       }
 
-      // Collect all manifests: root-level .manifest.yaml and subdirectory manifest.yaml
+      // Collect canonical manifests from bobbin directories only.
       const entries = fs.readdirSync(manifestsDir, { withFileTypes: true })
       const manifestPaths: { label: string; filePath: string }[] = []
 
@@ -152,8 +197,6 @@ describe('Manifest Validation', () => {
           if (fs.existsSync(subManifest)) {
             manifestPaths.push({ label: `${entry.name}/manifest.yaml`, filePath: subManifest })
           }
-        } else if (entry.name.endsWith('.manifest.yaml') || entry.name.endsWith('.manifest.json')) {
-          manifestPaths.push({ label: entry.name, filePath: path.join(manifestsDir, entry.name) })
         }
       }
 
@@ -189,9 +232,7 @@ describe('Manifest Validation', () => {
 
       for (const dir of bobbinDirs) {
         const subManifest = path.join(manifestsDir, dir.name, 'manifest.yaml')
-        const rootManifest = path.join(manifestsDir, `${dir.name}.manifest.yaml`)
-
-        if (!fs.existsSync(subManifest) && !fs.existsSync(rootManifest)) {
+        if (!fs.existsSync(subManifest)) {
           missing.push(dir.name)
         }
       }
@@ -199,7 +240,7 @@ describe('Manifest Validation', () => {
       if (missing.length > 0) {
         console.error(
           `Bobbin directories without manifest files: ${missing.join(', ')}. ` +
-          `Each bobbin must have either bobbins/<name>.manifest.yaml or bobbins/<name>/manifest.yaml`
+          `Each bobbin must have bobbins/<name>/manifest.yaml`
         )
       }
       expect(missing).toEqual([])

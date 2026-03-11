@@ -1,6 +1,6 @@
 id: smart-publisher
 name: Smart Publisher
-version: "0.1.0"
+version: "0.1.1"
 description: >
   Automated rolling release publisher. Configure release frequency,
   tier-based delays, and a release queue. Chapters are published
@@ -59,7 +59,7 @@ interactions:
       target: ReleaseQueue
     - id: process_releases
       name: Process Releases
-      type: custom
+      type: publish
 
   triggers:
     - id: release_check

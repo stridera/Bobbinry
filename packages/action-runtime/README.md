@@ -1,6 +1,6 @@
 # @bobbinry/action-runtime
 
-Action runtime stubs for workflows and external integrations in Bobbinry.
+Shared action contracts for reviewed bobbin actions in Bobbinry.
 
 ## Purpose
 
@@ -8,10 +8,10 @@ This package provides the starting point for executing bobbin-defined actions. I
 
 ## Features
 
-- **Permission-Scoped Execution**: Runtime hooks for reviewed bobbin actions
-- **Workflow Support**: Enable complex multi-step workflows within bobbins
-- **External Integrations**: Secure interface for connecting to external services
-- **Type Safety**: Full TypeScript support with shared types from `@bobbinry/types`
+- **Shared Contracts**: One handler/context/runtime interface for API and bobbins
+- **Permission Hooks**: Explicit runtime permission checks for server-executed actions
+- **Structured Logging**: Host-provided logger instead of direct framework instances
+- **Type Safety**: Full TypeScript support with shared action types
 
 ## Development
 
@@ -44,25 +44,25 @@ src/
 ## Usage
 
 ```typescript
-import { ActionRuntime } from '@bobbinry/action-runtime';
+import type { ActionHandler } from '@bobbinry/action-runtime';
 
-const runtime = new ActionRuntime({
-  actionId: 'sync',
-  bobbinId: 'google-drive-backup',
-  parameters: {},
-  permissions: ['external.write']
-});
+export const syncToDrive: ActionHandler = async (params, context, runtime) => {
+  runtime.log.info({ actionId: context.actionId }, 'Running drive sync');
 
-// Execute an action
-const result = await runtime.execute();
+  if (!runtime.hasPermission('external.write')) {
+    return { success: false, error: 'Missing permission' };
+  }
+
+  return { success: true, data: { synced: true } };
+};
 ```
 
 ## Integration
 
 This package is used by:
-- **Compiler**: For generating executable action code
-- **Shell**: For running bobbin actions in the UI
-- **API**: For server-side action execution
+- **Compiler**: Manifest validation for custom action handlers
+- **API**: Server-side action loading and execution
+- **Bobbins**: Action modules that export reviewed handlers
 
 ## Contributing
 

@@ -48,11 +48,8 @@ async function main() {
     const stat = await import('fs/promises').then(fs => fs.stat(dirPath)).catch(() => null)
     if (!stat?.isDirectory()) continue
 
-    // Check for manifest.yaml inside the directory, or <dir>.manifest.yaml at root level
-    let manifestPath = join(BOBBINS_DIR, dir, 'manifest.yaml')
-    if (!await fileExists(manifestPath)) {
-      manifestPath = join(BOBBINS_DIR, `${dir}.manifest.yaml`)
-    }
+    // Canonical manifest location for bobbin workspace packages.
+    const manifestPath = join(BOBBINS_DIR, dir, 'manifest.yaml')
     const pkgJsonPath = join(BOBBINS_DIR, dir, 'package.json')
 
     // Must have both a manifest and a package.json (workspace package)

@@ -29,6 +29,7 @@
       "dependencies": {
         "@aws-sdk/client-s3": "^3.1005.0",
         "@aws-sdk/s3-request-presigner": "^3.1005.0",
+        "@bobbinry/action-runtime": "workspace:*",
         "@bobbinry/compiler": "workspace:*",
         "@fastify/cors": "^11.1.0",
         "@fastify/helmet": "^13.0.2",
@@ -214,6 +215,7 @@
       "name": "@bobbinry/google-drive-backup",
       "version": "0.1.0",
       "dependencies": {
+        "@bobbinry/action-runtime": "workspace:*",
         "@bobbinry/sdk": "workspace:*",
       },
       "devDependencies": {
@@ -334,6 +336,7 @@
       "name": "@bobbinry/web-publisher",
       "version": "0.1.0",
       "dependencies": {
+        "@bobbinry/action-runtime": "workspace:*",
         "@bobbinry/sdk": "workspace:*",
       },
       "devDependencies": {

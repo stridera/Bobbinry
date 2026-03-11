@@ -93,7 +93,10 @@ export function ProjectPickerPopover({ bobbin, onClose }: ProjectPickerModalProp
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ manifestPath: `bobbins/${bobbin.id}.manifest.yaml` })
+          body: JSON.stringify({
+            manifestContent: bobbin.manifestContent,
+            manifestType: 'yaml',
+          })
         }
       )
 

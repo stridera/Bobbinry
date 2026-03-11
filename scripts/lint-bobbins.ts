@@ -309,6 +309,74 @@ function checkNativeOnlyRuntime(ctx: BobbinContext): Diagnostic[] {
   return diags;
 }
 
+function checkCustomActionContract(ctx: BobbinContext): Diagnostic[] {
+  if (!ctx.manifest?.interactions?.actions) return [];
+
+  const diags: Diagnostic[] = [];
+  const actions = ctx.manifest.interactions.actions.filter((action: any) => action?.type === "custom");
+  const nonCustomWithHandler = ctx.manifest.interactions.actions.filter((action: any) => action?.type !== "custom" && action?.handler);
+  const actionModuleCandidates = [
+    path.join(ctx.dirPath, "actions", "index.ts"),
+    path.join(ctx.dirPath, "src", "actions", "index.ts"),
+  ];
+  const actionModulePath = actionModuleCandidates.find((candidate) => fs.existsSync(candidate));
+
+  for (const action of actions) {
+    if (!action.handler || !String(action.handler).trim()) {
+      diags.push({
+        rule: "custom-action-contract",
+        message: `custom action '${action.id}' is missing a handler`,
+        severity: "error",
+      });
+    }
+  }
+
+  for (const action of nonCustomWithHandler) {
+    diags.push({
+      rule: "custom-action-contract",
+      message: `non-custom action '${action.id}' should not declare a handler`,
+      severity: "error",
+    });
+  }
+
+  if (actions.length === 0) {
+    return diags;
+  }
+
+  if (!actionModulePath) {
+    diags.push({
+      rule: "custom-action-contract",
+      message: "custom actions are declared but no actions/index.ts module exists",
+      severity: "error",
+    });
+    return diags;
+  }
+
+  const actionModule = fs.readFileSync(actionModulePath, "utf8");
+  for (const action of actions) {
+    const handlerName = String(action.handler || "");
+    if (!handlerName) continue;
+
+    if (!new RegExp(`\\b${handlerName}\\b`).test(actionModule)) {
+      diags.push({
+        rule: "custom-action-contract",
+        message: `handler '${handlerName}' for action '${action.id}' is not referenced in ${path.relative(ctx.dirPath, actionModulePath)}`,
+        severity: "error",
+      });
+    }
+  }
+
+  if (actionModule.includes("FastifyInstance")) {
+    diags.push({
+      rule: "custom-action-runtime-host",
+      message: `${path.relative(ctx.dirPath, actionModulePath)} imports FastifyInstance; use @bobbinry/action-runtime instead`,
+      severity: "error",
+    });
+  }
+
+  return diags;
+}
+
 function checkCompatibilityPresent(ctx: BobbinContext): Diagnostic[] {
   if (!ctx.manifest) return [];
   if (!ctx.manifest.compatibility?.minShellVersion) {
@@ -721,6 +789,7 @@ const perBobbinRules = [
   checkCapabilitiesPresent,
   checkExternalCapabilityConsistency,
   checkNativeOnlyRuntime,
+  checkCustomActionContract,
   checkCompatibilityPresent,
   checkPkgExists,
   checkPkgNameMatches,

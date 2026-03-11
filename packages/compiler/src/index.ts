@@ -102,6 +102,34 @@ function validateExternalAccess(manifest: Manifest): string[] {
   return errors
 }
 
+function validateCustomActions(manifest: Manifest): string[] {
+  const errors: string[] = []
+  const actions = manifest.interactions?.actions || []
+  const handlerNamePattern = /^[A-Za-z_$][A-Za-z0-9_$]*$/
+
+  for (const action of actions) {
+    const label = `action '${action.id}'`
+
+    if (action.type === 'custom') {
+      if (!action.handler || !String(action.handler).trim()) {
+        errors.push(`${label}: custom actions require a handler`)
+        continue
+      }
+
+      if (!handlerNamePattern.test(action.handler)) {
+        errors.push(`${label}: handler '${action.handler}' is not a valid exported function name`)
+      }
+      continue
+    }
+
+    if (action.handler) {
+      errors.push(`${label}: only custom actions may declare a handler`)
+    }
+  }
+
+  return errors
+}
+
 export class ManifestCompiler {
   constructor(private options: CompilerOptions) {
     // TODO: Use options for future compiler configuration
@@ -179,7 +207,10 @@ export class ManifestCompiler {
         return { valid: false, errors }
       }
 
-      const semanticErrors = validateExternalAccess(manifest)
+      const semanticErrors = [
+        ...validateExternalAccess(manifest),
+        ...validateCustomActions(manifest)
+      ]
       if (semanticErrors.length > 0) {
         return { valid: false, errors: semanticErrors }
       }

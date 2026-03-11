@@ -15,6 +15,19 @@ import * as fs from 'fs/promises'
 // Invalidated on server restart (which happens on every deploy).
 const manifestCache = new Map<string, Record<string, any>>()
 const PROJECT_ROOT = path.resolve(__dirname, '../../../..')
+const BOBBINS_DIR = path.resolve(PROJECT_ROOT, 'bobbins')
+
+export function getCanonicalManifestPath(bobbinId: string): string {
+  return path.resolve(BOBBINS_DIR, bobbinId, 'manifest.yaml')
+}
+
+export function normalizeManifestPathInput(manifestPath: string): string {
+  const legacyMatch = manifestPath.match(/^bobbins\/([a-z0-9-]+)\.manifest\.ya?ml$/i)
+  if (legacyMatch) {
+    return `bobbins/${legacyMatch[1]}/manifest.yaml`
+  }
+  return manifestPath
+}
 
 export async function loadDiskManifests(bobbinIds: string[]): Promise<Map<string, Record<string, any>>> {
   const uncached = bobbinIds.filter(id => !manifestCache.has(id))
@@ -22,7 +35,7 @@ export async function loadDiskManifests(bobbinIds: string[]): Promise<Map<string
   if (uncached.length > 0) {
     const results = await Promise.allSettled(
       uncached.map(async (bobbinId) => {
-        const manifestPath = path.resolve(PROJECT_ROOT, `bobbins/${bobbinId}/manifest.yaml`)
+        const manifestPath = getCanonicalManifestPath(bobbinId)
         const content = await fs.readFile(manifestPath, 'utf-8')
         return { bobbinId, manifest: parseYAML(content) }
       })
@@ -50,8 +63,7 @@ export async function loadDiskManifests(bobbinIds: string[]): Promise<Map<string
  * Used at startup and by consumers that iterate all bobbins without knowing IDs upfront.
  */
 export async function loadAllDiskManifests(): Promise<Map<string, Record<string, any>>> {
-  const bobbinsDir = path.resolve(PROJECT_ROOT, 'bobbins')
-  const entries = await fs.readdir(bobbinsDir, { withFileTypes: true })
+  const entries = await fs.readdir(BOBBINS_DIR, { withFileTypes: true })
   const bobbinIds = entries.filter(e => e.isDirectory()).map(e => e.name)
   return loadDiskManifests(bobbinIds)
 }

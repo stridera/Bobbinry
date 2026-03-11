@@ -29,7 +29,7 @@ Views are UI components that display and edit entities:
 Each view declares which entity types it can handle:
 
 ```yaml
-# manuscript.manifest.yaml
+# bobbins/manuscript/manifest.yaml
 ui:
   views:
     - id: outline

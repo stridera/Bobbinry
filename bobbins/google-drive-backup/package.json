@@ -12,6 +12,7 @@
     "typecheck": "echo 'consumed as source by shell'"
   },
   "dependencies": {
+    "@bobbinry/action-runtime": "workspace:*",
     "@bobbinry/sdk": "workspace:*"
   },
   "peerDependencies": {

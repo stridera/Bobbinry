@@ -148,7 +148,7 @@ docker exec -i $(docker ps -q -f name=postgres) psql -U bobbinry -d bobbinry -c 
 curl -X POST http://localhost:4000/api/projects/PROJECT_ID/bobbins/install \
   -H "Content-Type: application/json" \
   -d '{
-    "manifestPath": "bobbins/manuscript.manifest.yaml"
+    "manifestPath": "bobbins/manuscript/manifest.yaml"
   }'
 ```
 
@@ -435,11 +435,11 @@ curl -X POST http://localhost:4000/api/projects \
 # Install same bobbin twice in quick succession
 curl -X POST http://localhost:4000/api/projects/PROJECT_ID/bobbins/install \
   -H "Content-Type: application/json" \
-  -d '{"manifestPath": "bobbins/manuscript.manifest.yaml"}' &
+  -d '{"manifestPath": "bobbins/manuscript/manifest.yaml"}' &
 
 curl -X POST http://localhost:4000/api/projects/PROJECT_ID/bobbins/install \
   -H "Content-Type: application/json" \
-  -d '{"manifestPath": "bobbins/manuscript.manifest.yaml"}' &
+  -d '{"manifestPath": "bobbins/manuscript/manifest.yaml"}' &
 ```
 
 **Expected Results:**
@@ -531,7 +531,7 @@ curl -X POST http://localhost:4000/api/projects/PROJECT_ID/bobbins/install \
 **Symptoms:** Installation fails, errors in console
 
 **Solutions:**
-1. Check manifest file exists: `bobbins/manuscript.manifest.yaml`
+1. Check manifest file exists: `bobbins/manuscript/manifest.yaml`
 2. Verify API is running on port 4000
 3. Check database `bobbins_installed` table
 4. Review API logs: Check background process output
