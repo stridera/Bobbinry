@@ -8,6 +8,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
+import { apiFetchLocal } from '../lib/api'
+import { formatReadTime, formatCompactNumber } from '../lib/format'
 
 interface PublishManagerPanelProps {
   projectId: string
@@ -40,31 +42,6 @@ interface ChapterEntity {
   id: string
   title?: string
   order?: number
-}
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
-
-async function apiFetchLocal(path: string, token: string, init?: RequestInit) {
-  return fetch(`${API_URL}${path}`, {
-    ...init,
-    headers: {
-      ...init?.headers,
-      Authorization: `Bearer ${token}`,
-    },
-  })
-}
-
-function formatReadTime(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`
-  const minutes = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  return secs > 0 ? `${minutes}m ${secs}s` : `${minutes}m`
-}
-
-function formatCompactNumber(n: number): string {
-  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`
-  return n.toLocaleString()
 }
 
 function timeAgo(dateStr: string): string {
@@ -202,7 +179,7 @@ export default function PublishManagerPanel(props: PublishManagerPanelProps) {
     .sort((a, b) => new Date(b.publishedAt!).getTime() - new Date(a.publishedAt!).getTime())[0]
 
   // Chapters to display in the table
-  const publishedChaptersForTable = showAllChapters ? chaptersWithStats : chaptersWithStats.slice(0, 5)
+  const visibleChapters = showAllChapters ? chaptersWithStats : chaptersWithStats.slice(0, 5)
   const hasMore = chaptersWithStats.length > 5
 
   // If nothing is published yet, show a simpler prompt
@@ -360,7 +337,7 @@ export default function PublishManagerPanel(props: PublishManagerPanelProps) {
             Chapter Performance
           </h5>
           <div className="space-y-1">
-            {publishedChaptersForTable.map((chapter, idx) => {
+            {visibleChapters.map((chapter, idx) => {
               const barWidth = chapter.viewCount > 0 ? (chapter.viewCount / maxViews) * 100 : 0
               const isPublished = chapter.publishStatus === 'published'
               const isSelected = selectedChapterId === chapter.id

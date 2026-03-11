@@ -1060,59 +1060,55 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
     try {
       const { chapterId } = request.params
 
-      // Device distribution
-      const deviceRows = await db
-        .select({
-          deviceType: chapterViews.deviceType,
-          count: sql<number>`count(*)::int`
-        })
-        .from(chapterViews)
-        .where(eq(chapterViews.chapterId, chapterId))
-        .groupBy(chapterViews.deviceType)
+      const progressBucket = sql`CASE
+        WHEN ${chapterViews.completedAt} IS NOT NULL THEN 'completed'
+        WHEN ${chapterViews.lastPositionPercent} >= 75 THEN '75-100'
+        WHEN ${chapterViews.lastPositionPercent} >= 50 THEN '50-75'
+        WHEN ${chapterViews.lastPositionPercent} >= 25 THEN '25-50'
+        ELSE '0-25'
+      END`
+
+      // Run all three aggregations concurrently
+      const [deviceRows, progressRows, referrerRows] = await Promise.all([
+        db
+          .select({
+            deviceType: chapterViews.deviceType,
+            count: sql<number>`count(*)::int`
+          })
+          .from(chapterViews)
+          .where(eq(chapterViews.chapterId, chapterId))
+          .groupBy(chapterViews.deviceType),
+
+        db
+          .select({
+            bucket: sql<string>`${progressBucket}`,
+            count: sql<number>`count(*)::int`
+          })
+          .from(chapterViews)
+          .where(eq(chapterViews.chapterId, chapterId))
+          .groupBy(progressBucket),
+
+        db
+          .select({
+            referrer: chapterViews.referrer,
+            count: sql<number>`count(*)::int`
+          })
+          .from(chapterViews)
+          .where(and(eq(chapterViews.chapterId, chapterId), sql`${chapterViews.referrer} IS NOT NULL`))
+          .groupBy(chapterViews.referrer)
+          .orderBy(sql`count(*) DESC`)
+          .limit(5),
+      ])
 
       const devices: Record<string, number> = {}
       for (const row of deviceRows) {
         devices[row.deviceType || 'unknown'] = row.count
       }
 
-      // Reading progress buckets
-      const progressRows = await db
-        .select({
-          bucket: sql<string>`CASE
-            WHEN ${chapterViews.completedAt} IS NOT NULL THEN 'completed'
-            WHEN ${chapterViews.lastPositionPercent} >= 75 THEN '75-100'
-            WHEN ${chapterViews.lastPositionPercent} >= 50 THEN '50-75'
-            WHEN ${chapterViews.lastPositionPercent} >= 25 THEN '25-50'
-            ELSE '0-25'
-          END`,
-          count: sql<number>`count(*)::int`
-        })
-        .from(chapterViews)
-        .where(eq(chapterViews.chapterId, chapterId))
-        .groupBy(sql`CASE
-          WHEN ${chapterViews.completedAt} IS NOT NULL THEN 'completed'
-          WHEN ${chapterViews.lastPositionPercent} >= 75 THEN '75-100'
-          WHEN ${chapterViews.lastPositionPercent} >= 50 THEN '50-75'
-          WHEN ${chapterViews.lastPositionPercent} >= 25 THEN '25-50'
-          ELSE '0-25'
-        END`)
-
       const progress: Record<string, number> = { '0-25': 0, '25-50': 0, '50-75': 0, '75-100': 0, completed: 0 }
       for (const row of progressRows) {
         progress[row.bucket] = row.count
       }
-
-      // Top 5 referrers
-      const referrerRows = await db
-        .select({
-          referrer: chapterViews.referrer,
-          count: sql<number>`count(*)::int`
-        })
-        .from(chapterViews)
-        .where(and(eq(chapterViews.chapterId, chapterId), sql`${chapterViews.referrer} IS NOT NULL`))
-        .groupBy(chapterViews.referrer)
-        .orderBy(sql`count(*) DESC`)
-        .limit(5)
 
       const referrers = referrerRows.map(r => ({ referrer: r.referrer || 'direct', count: r.count }))
 

@@ -317,15 +317,19 @@ export default function ReleaseQueuePanel(props: ReleaseQueuePanelProps) {
       </div>
 
       {/* Notes for held items */}
-      {heldItems.filter(i => i.notes).length > 0 && (
-        <div className="pt-1 border-t border-gray-100 dark:border-gray-800">
-          {heldItems.filter(i => i.notes).map(item => (
-            <p key={item.id} className="text-[11px] text-gray-400 dark:text-gray-500 italic px-2 py-0.5">
-              {item.chapterTitle}: {item.notes}
-            </p>
-          ))}
-        </div>
-      )}
+      {(() => {
+        const heldWithNotes = heldItems.filter(i => i.notes)
+        if (heldWithNotes.length === 0) return null
+        return (
+          <div className="pt-1 border-t border-gray-100 dark:border-gray-800">
+            {heldWithNotes.map(item => (
+              <p key={item.id} className="text-[11px] text-gray-400 dark:text-gray-500 italic px-2 py-0.5">
+                {item.chapterTitle}: {item.notes}
+              </p>
+            ))}
+          </div>
+        )
+      })()}
     </div>
   )
 }

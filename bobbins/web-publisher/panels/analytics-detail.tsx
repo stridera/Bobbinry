@@ -9,6 +9,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
+import { apiFetchLocal } from '../lib/api'
+import { formatReadTime } from '../lib/format'
 
 interface AnalyticsDetailProps {
   projectId: string
@@ -35,21 +37,6 @@ interface AnalyticsBreakdown {
   devices: Record<string, number>
   progress: Record<string, number>
   referrers: Array<{ referrer: string; count: number }>
-}
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
-
-async function apiFetchLocal(path: string, token: string) {
-  return fetch(`${API_URL}${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-}
-
-function formatReadTime(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`
-  const minutes = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  return secs > 0 ? `${minutes}m ${secs}s` : `${minutes}m`
 }
 
 function HorizontalBar({ value, max, color, label, count }: {

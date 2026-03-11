@@ -19,7 +19,7 @@ export interface NativeViewModule {
 }
 
 export interface LoadedNativeView {
-  component: ComponentType<any>
+  component: ComponentType<any> | null
   bobbinId: string
   viewId: string
   metadata: {
@@ -49,7 +49,7 @@ import { NATIVE_VIEW_MAP } from './native-view-map.generated'
 export async function loadNativeView(
   bobbinId: string,
   viewPath: string
-): Promise<ComponentType<any>> {
+): Promise<ComponentType<any> | null> {
   const viewKey = `${bobbinId}.${viewPath}`
   
   try {
@@ -73,7 +73,7 @@ export async function loadNativeView(
     console.warn(
       `[native-view-loader] View ${viewKey} not found in NATIVE_VIEW_MAP (bobbin: ${bobbinId}). Skipping.`
     )
-    return null as any
+    return null
   } catch (error) {
     // If the error is about missing default export, re-throw as-is
     if (error instanceof Error && error.message.includes('does not have a default export')) {
@@ -138,7 +138,7 @@ export async function loadNativeViewWithMetadata(
 export function createComponentLoader(
   bobbinId: string,
   viewPath: string
-): () => Promise<ComponentType<any>> {
+): () => Promise<ComponentType<any> | null> {
   return () => loadNativeView(bobbinId, viewPath)
 }
 

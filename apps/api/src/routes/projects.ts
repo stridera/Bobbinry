@@ -3,7 +3,7 @@ import { parse as parseYAML } from 'yaml'
 import * as path from 'path'
 import { db } from '../db/connection'
 import { projects, bobbinsInstalled, entities } from '../db/schema'
-import { eq, and, count } from 'drizzle-orm'
+import { eq, and, count, inArray } from 'drizzle-orm'
 import { ManifestCompiler } from '@bobbinry/compiler'
 import { requireAuth, requireProjectOwnership, requireVerified } from '../middleware/auth'
 import { getUserMembershipTier, getProjectLimit, getUserBadges } from '../lib/membership'
@@ -386,11 +386,9 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
         const staleIds = staleInstalls.map(i => i.bobbinId)
         fastify.log.info(`[bobbins] Auto-uninstalling stale bobbins from project ${projectId}: ${staleIds.join(', ')}`)
         // Fire-and-forget cleanup — don't block the response
-        Promise.all(
-          staleInstalls.map(i =>
-            db.delete(bobbinsInstalled).where(eq(bobbinsInstalled.id, i.id))
-          )
-        ).catch(err => fastify.log.error(err, 'Failed to auto-uninstall stale bobbins'))
+        db.delete(bobbinsInstalled)
+          .where(inArray(bobbinsInstalled.id, staleInstalls.map(i => i.id)))
+          .catch(err => fastify.log.error(err, 'Failed to auto-uninstall stale bobbins'))
       }
 
       for (const install of liveInstalls) {
