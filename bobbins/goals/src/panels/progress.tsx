@@ -88,18 +88,18 @@ export default function ProgressPanel({ context }: ProgressPanelProps) {
   }
 
   return (
-    <div className="h-full flex flex-col bg-gray-800">
+    <div className="h-full flex flex-col bg-white dark:bg-gray-800">
       <PanelActions>
         <button
           onClick={openDashboard}
-          className="text-xs text-gray-400 hover:text-gray-200"
+          className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
           title="Open Dashboard"
         >
           📊
         </button>
         <button
           onClick={loadData}
-          className="text-xs text-gray-400 hover:text-gray-200"
+          className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
           title="Refresh"
         >
           ↻
@@ -108,13 +108,13 @@ export default function ProgressPanel({ context }: ProgressPanelProps) {
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {/* Streak */}
-        <div className="bg-gray-700/50 rounded-lg p-3 text-center">
+        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 text-center border border-gray-200 dark:border-gray-700/50">
           <div className="text-2xl font-bold text-orange-400">{streak?.current_streak || 0}</div>
           <div className="text-xs text-gray-400">Day Streak</div>
         </div>
 
         {/* Today's Words */}
-        <div className="bg-gray-700/50 rounded-lg p-3 text-center">
+        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 text-center border border-gray-200 dark:border-gray-700/50">
           <div className="text-xl font-bold text-blue-400">{todayWords.toLocaleString()}</div>
           <div className="text-xs text-gray-400">Words Today</div>
         </div>
@@ -122,22 +122,22 @@ export default function ProgressPanel({ context }: ProgressPanelProps) {
         {/* Active Goals */}
         {goals.length > 0 && (
           <div className="space-y-2">
-            <div className="text-xs text-gray-400 uppercase tracking-wide">Active Goals</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Active Goals</div>
             {goals.map(goal => {
               const progress = goal.target_count > 0
                 ? Math.min(100, Math.round(((goal.current_count || 0) / goal.target_count) * 100))
                 : 0
 
               return (
-                <div key={goal.id} className="bg-gray-700/50 rounded-lg p-2">
-                  <div className="text-xs text-gray-200 truncate mb-1">{goal.name}</div>
-                  <div className="w-full bg-gray-600 rounded-full h-2">
+                <div key={goal.id} className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2 border border-gray-200 dark:border-gray-700/50">
+                  <div className="text-xs text-gray-800 dark:text-gray-200 truncate mb-1">{goal.name}</div>
+                  <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2">
                     <div
                       className="bg-blue-500 h-2 rounded-full transition-all"
                       style={{ width: `${progress}%` }}
                     />
                   </div>
-                  <div className="text-[10px] text-gray-400 mt-0.5 text-right">{progress}%</div>
+                  <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 text-right">{progress}%</div>
                 </div>
               )
             })}

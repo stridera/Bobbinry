@@ -156,6 +156,32 @@ function checkCapabilitiesPresent(ctx: BobbinContext): Diagnostic[] {
   return [];
 }
 
+function checkNativeOnlyRuntime(ctx: BobbinContext): Diagnostic[] {
+  if (!ctx.manifest) return [];
+
+  const diags: Diagnostic[] = [];
+  if (ctx.manifest.execution?.mode === "sandboxed") {
+    diags.push({
+      rule: "native-only-runtime",
+      message: "sandboxed execution mode is no longer supported; use native components",
+      severity: "error",
+    });
+  }
+
+  const contributions = ctx.manifest.extensions?.contributions || [];
+  for (const contribution of contributions) {
+    if (typeof contribution.entry === "string" && contribution.entry.endsWith(".html")) {
+      diags.push({
+        rule: "native-only-runtime",
+        message: `contribution '${contribution.id}' points to an .html entry; use a native panel/view component instead`,
+        severity: "error",
+      });
+    }
+  }
+
+  return diags;
+}
+
 function checkCompatibilityPresent(ctx: BobbinContext): Diagnostic[] {
   if (!ctx.manifest) return [];
   if (!ctx.manifest.compatibility?.minShellVersion) {
@@ -219,6 +245,33 @@ function checkPkgHasTypes(ctx: BobbinContext): Diagnostic[] {
     return [{ rule: "pkg-has-types", message: "missing types field", severity: "warning" }];
   }
   return [];
+}
+
+function checkUnsafePatterns(ctx: BobbinContext): Diagnostic[] {
+  const diags: Diagnostic[] = [];
+  for (const file of ctx.files) {
+    if (!/\.(ts|tsx|js|jsx|html)$/.test(file)) continue;
+
+    const content = fs.readFileSync(path.join(ctx.dirPath, file), "utf8");
+
+    if (content.includes("postMessage(") && content.includes(", '*'")) {
+      diags.push({
+        rule: "no-wildcard-postmessage",
+        message: `${file} uses postMessage with wildcard targetOrigin`,
+        severity: "warning",
+      });
+    }
+
+    if (content.includes("dangerouslySetInnerHTML={{ __html:")) {
+      diags.push({
+        rule: "sanitized-html-only",
+        message: `${file} uses raw dangerouslySetInnerHTML instead of the shared sanitizer helper`,
+        severity: "warning",
+      });
+    }
+  }
+
+  return diags;
 }
 
 function checkPkgReactVersion(ctx: BobbinContext): Diagnostic[] {
@@ -507,12 +560,14 @@ const perBobbinRules = [
   checkNameTitleCase,
   checkAuthorConsistent,
   checkCapabilitiesPresent,
+  checkNativeOnlyRuntime,
   checkCompatibilityPresent,
   checkPkgExists,
   checkPkgNameMatches,
   checkPkgHasExports,
   checkPkgMainSrc,
   checkPkgHasTypes,
+  checkUnsafePatterns,
   checkPkgReactVersion,
   checkPkgHasScripts,
   checkViewsInViews,

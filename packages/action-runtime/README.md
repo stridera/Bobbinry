@@ -1,14 +1,14 @@
 # @bobbinry/action-runtime
 
-Sandboxed action SDK for workflows and external integrations in Bobbinry.
+Action runtime stubs for workflows and external integrations in Bobbinry.
 
 ## Purpose
 
-This package provides a secure runtime environment for executing user-defined actions within bobbins. It enables bobbins to define custom workflows, integrations with external services, and automated behaviors while maintaining security through sandboxing.
+This package provides the starting point for executing bobbin-defined actions. It is intended to grow into a permission-scoped runtime for workflows, integrations, and automation.
 
 ## Features
 
-- **Sandboxed Execution**: Safe execution environment for user-defined actions
+- **Permission-Scoped Execution**: Runtime hooks for reviewed bobbin actions
 - **Workflow Support**: Enable complex multi-step workflows within bobbins
 - **External Integrations**: Secure interface for connecting to external services
 - **Type Safety**: Full TypeScript support with shared types from `@bobbinry/types`
@@ -37,7 +37,7 @@ bun test
 src/
 ├── index.ts          # Main exports
 ├── runtime.ts        # Core runtime logic
-├── sandbox.ts        # Sandboxing utilities
+├── runtime.ts        # Future runtime utilities
 └── types.ts          # Runtime-specific types
 ```
 
@@ -47,12 +47,14 @@ src/
 import { ActionRuntime } from '@bobbinry/action-runtime';
 
 const runtime = new ActionRuntime({
-  sandboxed: true,
-  timeout: 30000
+  actionId: 'sync',
+  bobbinId: 'google-drive-backup',
+  parameters: {},
+  permissions: ['external.write']
 });
 
-// Execute an action safely
-const result = await runtime.execute(actionDefinition, context);
+// Execute an action
+const result = await runtime.execute();
 ```
 
 ## Integration
@@ -67,4 +69,4 @@ This package is used by:
 1. Follow the existing TypeScript patterns
 2. Add tests for new functionality
 3. Update type definitions as needed
-4. Ensure sandbox security is maintained
+4. Keep permission boundaries explicit in the runtime API

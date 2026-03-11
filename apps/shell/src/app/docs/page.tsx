@@ -102,7 +102,7 @@ node scripts/create-bobbin.js`}</code>
 │   ├── views/          # React views (native mode)
 │   └── panels/         # React panels (native mode)
 └── dist/
-    └── views/          # HTML/JS views (sandboxed mode)`}</code>
+    └── views/          # Native React views`}</code>
           </pre>
           <p className="text-gray-600 dark:text-gray-400 mb-4">
             The <code className="text-sm bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">manifest.yaml</code> defines your bobbin&apos;s identity, data collections, and UI views:
@@ -115,9 +115,6 @@ author: Your Name
 description: What this bobbin does
 capabilities:
   customViews: true
-execution:
-  mode: native            # or 'sandboxed'
-
 data:
   collections:
     - name: MyEntity
@@ -149,11 +146,11 @@ ui:
               },
               {
                 title: 'Execution Modes',
-                description: 'Native mode renders React directly in the shell for full performance. Sandboxed mode runs in an iframe for isolation. Choose native for complex UIs, sandboxed for simple panels.',
+                description: 'Bobbins render as native React components inside the shell. Use the existing panel and view patterns as the baseline for new bobbins.',
               },
               {
                 title: 'Message Bus',
-                description: 'Views communicate via a message bus using postMessage. Broadcast events to other bobbins, react to entity changes, and coordinate across views.',
+                description: 'Views communicate through the shared SDK and workspace events. Use the built-in hooks instead of wiring transport yourself.',
               },
             ].map((concept) => (
               <div
@@ -199,7 +196,7 @@ ui:
             </table>
           </div>
           <p className="text-gray-500 dark:text-gray-500 text-sm mt-3">
-            Messages are sent via <code className="text-sm bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">window.postMessage()</code> with <code className="text-sm bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">type</code>, <code className="text-sm bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">source</code>, <code className="text-sm bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">target</code>, and <code className="text-sm bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">payload</code> fields.
+            For cross-bobbin coordination, prefer the SDK helpers such as <code className="text-sm bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">useMessageBus()</code> and <code className="text-sm bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">sdk.bus.emit()</code>.
           </p>
         </section>
 

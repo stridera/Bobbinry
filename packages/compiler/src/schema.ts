@@ -277,6 +277,22 @@ export const manifestSchema = {
         }
       }
     },
+    "execution": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "const": "native",
+          "description": "Reviewed bobbins run as native components"
+        },
+        "signature": {
+          "type": "string",
+          "description": "Optional development signature for native bobbins"
+        }
+      },
+      "required": ["mode"],
+      "additionalProperties": false
+    },
     "compatibility": {
       "type": "object",
       "properties": {

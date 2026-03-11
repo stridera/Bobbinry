@@ -151,18 +151,18 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   }
 
   return (
-    <div className="h-full flex flex-col bg-gray-800">
+    <div className="h-full flex flex-col bg-white dark:bg-gray-800">
       <PanelActions>
         <button
           onClick={createTimeline}
-          className="text-lg leading-none text-gray-400 hover:text-gray-200 w-6 h-6 flex items-center justify-center"
+          className="text-lg leading-none text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 w-6 h-6 flex items-center justify-center"
           title="New Timeline"
         >
           +
         </button>
         <button
           onClick={loadData}
-          className="text-xs text-gray-400 hover:text-gray-200"
+          className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
           title="Refresh"
         >
           ↻
@@ -171,11 +171,11 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
 
       <div className="flex-1 overflow-y-auto">
         {timelines.length === 0 ? (
-          <div className="p-4 text-center text-sm text-gray-400">
+          <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
             <div className="mb-3">No timelines yet</div>
             <button
               onClick={createTimeline}
-              className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 rounded"
+              className="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded"
             >
               Create Your First Timeline
             </button>
@@ -189,7 +189,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
             return (
               <div
                 key={timeline.id}
-                className={`px-3 py-2 cursor-pointer hover:bg-gray-700 border-b border-gray-700/50 ${isSelected ? 'bg-gray-700' : ''}`}
+                className={`px-3 py-2 cursor-pointer border-b border-gray-200 dark:border-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 ${isSelected ? 'bg-gray-100 dark:bg-gray-700' : ''}`}
                 onClick={() => handleTimelineClick(timeline)}
                 onContextMenu={(e) => { e.preventDefault(); handleDelete(timeline.id) }}
               >
@@ -209,11 +209,11 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
                       }}
                       autoFocus
                       onFocus={(e) => e.target.select()}
-                      className="flex-1 px-1 py-0.5 bg-gray-800 border border-gray-600 rounded text-gray-100 text-sm"
+                      className="flex-1 px-1 py-0.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-gray-100 text-sm"
                       onClick={(e) => e.stopPropagation()}
                     />
                   ) : (
-                    <span className="flex-1 text-sm text-gray-200 truncate">{timeline.name}</span>
+                    <span className="flex-1 text-sm text-gray-800 dark:text-gray-200 truncate">{timeline.name}</span>
                   )}
                   <span className="text-xs text-gray-500">{count}</span>
                 </div>

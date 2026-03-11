@@ -74,25 +74,15 @@ bobbins/my-bobbin/
 │   └── panels/           # Native React panels
 │       └── my-panel.tsx
 └── dist/                 # Compiled output
-    └── views/            # Sandboxed HTML/JS views
-        └── my-view.html
 ```
 
 ### Execution Modes
 
-Bobbins can run in two modes:
-
-**Native Mode** (Recommended for complex UIs):
+Current bobbins run in native mode:
 - Views are React components rendered directly in the shell
 - Full access to shell's React context (theme, extensions, etc.)
 - Type-safe with TypeScript
 - Faster performance
-
-**Sandboxed Mode** (For simple panels or security isolation):
-- Views are HTML/JS loaded in iframes
-- Isolated from shell
-- Communication via postMessage
-- Good for simple panels or untrusted code
 
 ## Manifest Structure
 
@@ -104,9 +94,6 @@ author: Your Name
 description: What this bobbin does
 capabilities:
   customViews: true        # Can define custom views
-execution:
-  mode: native             # or 'sandboxed'
-  signature: dev_mode_skip
 
 data:
   collections:
@@ -213,71 +200,40 @@ window.addEventListener('message', (event) => {
 
 ## Message Bus Communication
 
-The message bus allows views and panels to communicate.
-
-### Message Format
-
-All messages follow this structure:
-
-```typescript
-interface Message {
-  type: string        // Message type (e.g., 'bus:event', 'shell:theme')
-  source: string      // Sender ID (e.g., 'manuscript.editor')
-  target: string      // Recipient ID or '*' for broadcast
-  topic?: string      // Optional topic for bus events
-  payload?: any       // Message data
-}
-```
+The shell exposes shared native event patterns for bobbin-to-bobbin communication.
 
 ### Sending Messages (Native Views)
 
 ```tsx
-import type { BobbinrySDK } from '@bobbinry/sdk'
-
-export default function EditorView({ sdk }: { sdk: BobbinrySDK }) {
-  const handleSelection = (text: string) => {
-    // Broadcast a selection event
-    window.postMessage({
-      type: 'bus:event',
-      source: 'my-bobbin.editor',
-      target: '*',
-      topic: 'my-bobbin.selection.v1',
-      payload: { text, length: text.length }
-    }, '*')
+window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
+  detail: {
+    entityType: 'content',
+    entityId: 'scene-123',
+    bobbinId: 'my-bobbin',
+    metadata: { view: 'editor' }
   }
-
-  return <div>...</div>
-}
+}))
 ```
 
-### Receiving Messages (Sandboxed Views)
+### Receiving Messages
 
-```javascript
-window.addEventListener('message', (event) => {
-  const msg = event.data
+```tsx
+import { useMessageBus } from '@bobbinry/sdk'
 
-  // Handle theme changes
-  if (msg.type === 'shell:theme') {
-    applyTheme(msg.theme)
-    return
-  }
-
-  // Handle bus events
-  if (msg.type === 'bus:event' && msg.topic === 'my-bobbin.selection.v1') {
-    const { text, length } = msg.payload
+useMessageBus('manuscript.editor.selection.v1', (message) => {
+  const text = message.data?.text
+  if (text) {
     updateDisplay(text)
   }
 })
 ```
 
-### Common Message Types
+### Common Events
 
-- `shell:theme` - Theme changed (light/dark)
-- `bus:event` - Generic event with topic
-- `view:ready` - View finished loading
-- `entity:updated` - Entity was modified
-- `entity:created` - Entity was created
-- `entity:deleted` - Entity was deleted
+- `bobbinry:navigate` - Route to a new entity/view
+- `bobbinry:view-context-change` - Active view context changed
+- `bobbinry:entity-updated` - Entity metadata changed in-place
+- `manuscript.editor.selection.v1` - Editor selection changed
 
 ## Entity Data Access
 
@@ -390,58 +346,25 @@ export default function MyView({ sdk, projectId, entityId }: MyViewProps) {
 }
 ```
 
-### Sandboxed HTML View Template
+### Native Panel Event Pattern
 
-```html
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>My View</title>
-  <link rel="stylesheet" href="style.css">
-</head>
-<body class="light">
-  <header>
-    <h1>My Panel</h1>
-  </header>
-  <main id="content">
-    <p id="status">Ready</p>
-  </main>
+```tsx
+import { useMessageBus } from '@bobbinry/sdk'
 
-  <script type="module">
-    // Initialize theme
-    document.body.classList.add('light')
+export default function MyPanel() {
+  const { latestMessage } = useMessageBus('manuscript.editor.selection.v1')
 
-    // Listen for messages
-    window.addEventListener('message', (event) => {
-      const msg = event.data
-
-      // Handle theme
-      if (msg.type === 'shell:theme') {
-        document.body.classList.remove('light', 'dark')
-        document.body.classList.add(msg.theme)
-        return
-      }
-
-      // Handle events
-      if (msg.type === 'bus:event') {
-        handleEvent(msg.topic, msg.payload)
-      }
-    })
-
-    function handleEvent(topic, payload) {
-      const status = document.getElementById('status')
-      status.textContent = `Received: ${topic}`
-    }
-
-    // Announce ready
-    parent.postMessage({
-      type: 'view:ready',
-      id: 'my-bobbin.my-view'
-    }, '*')
-  </script>
-</body>
-</html>
+  return (
+    <section className="p-4">
+      <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+        My Panel
+      </h2>
+      <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+        {latestMessage?.payload?.selectedText || 'Select text in the editor to see updates here.'}
+      </p>
+    </section>
+  )
+}
 ```
 
 ## Testing
@@ -479,8 +402,7 @@ describe('MyView', () => {
 ## Reference Implementations
 
 - **Manuscript Bobbin** (`bobbins/manuscript/`) - Complex native views with editor and outline
-- **Dictionary Panel** (`bobbins/dictionary-panel/`) - Simple sandboxed HTML panel
-- **Debugger** (`bobbins/debugger/`) - Sandboxed panel with message bus integration
+- **Dictionary Panel** (`bobbins/dictionary-panel/`) - Simple native panel consuming editor selection events
 
 ## Best Practices
 
@@ -496,8 +418,8 @@ describe('MyView', () => {
 ## Common Pitfalls
 
 - ❌ Forgetting to call `sdk.setProject()` before entity operations
-- ❌ Not handling theme changes in sandboxed views
-- ❌ Missing `source` and `target` fields in messages
+- ❌ Recreating transport or event plumbing instead of using the SDK hooks
+- ❌ Reimplementing message transport instead of using `useMessageBus` or `bobbinry:*` events
 - ❌ Using inline styles instead of Tailwind classes
 - ❌ Not cleaning up event listeners
 - ❌ Hardcoding light-mode colors

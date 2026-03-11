@@ -16,6 +16,7 @@
     "@auth/core": "^0.40.0",
     "@bobbinry/cat": "workspace:*",
     "@bobbinry/corkboard": "workspace:*",
+    "@bobbinry/dictionary-panel": "workspace:*",
     "@bobbinry/entities": "workspace:*",
     "@bobbinry/goals": "workspace:*",
     "@bobbinry/google-drive-backup": "workspace:*",

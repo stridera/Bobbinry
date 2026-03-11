@@ -70,6 +70,7 @@
         "@auth/core": "^0.40.0",
         "@bobbinry/cat": "workspace:*",
         "@bobbinry/corkboard": "workspace:*",
+        "@bobbinry/dictionary-panel": "workspace:*",
         "@bobbinry/entities": "workspace:*",
         "@bobbinry/goals": "workspace:*",
         "@bobbinry/google-drive-backup": "workspace:*",
@@ -151,13 +152,19 @@
         "react": "^19.0.0",
       },
     },
-    "bobbins/debugger": {
-      "name": "@bobbinry/debugger",
-      "version": "1.0.0",
-    },
     "bobbins/dictionary-panel": {
       "name": "@bobbinry/dictionary-panel",
-      "version": "1.0.0",
+      "version": "1.1.0",
+      "dependencies": {
+        "@bobbinry/sdk": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/react": "^19.2.14",
+        "typescript": "6.0.0-beta",
+      },
+      "peerDependencies": {
+        "react": "^19.0.0",
+      },
     },
     "bobbins/entities": {
       "name": "@bobbinry/entities",
@@ -438,18 +445,6 @@
         "react-dom": "^19.0.0",
       },
     },
-    "packages/view-sdk": {
-      "name": "@bobbinry/view-sdk",
-      "version": "1.0.0",
-      "dependencies": {
-        "@bobbinry/event-bus": "workspace:*",
-        "@bobbinry/types": "workspace:*",
-      },
-      "devDependencies": {
-        "@types/node": "^20.19.17",
-        "typescript": "6.0.0-beta",
-      },
-    },
   },
   "overrides": {
     "@types/react": "^19.2.14",
@@ -637,8 +632,6 @@
 
     "@bobbinry/corkboard": ["@bobbinry/corkboard@workspace:bobbins/corkboard"],
 
-    "@bobbinry/debugger": ["@bobbinry/debugger@workspace:bobbins/debugger"],
-
     "@bobbinry/dictionary-panel": ["@bobbinry/dictionary-panel@workspace:bobbins/dictionary-panel"],
 
     "@bobbinry/entities": ["@bobbinry/entities@workspace:bobbins/entities"],
@@ -666,8 +659,6 @@
     "@bobbinry/types": ["@bobbinry/types@workspace:packages/types"],
 
     "@bobbinry/ui-components": ["@bobbinry/ui-components@workspace:packages/ui-components"],
-
-    "@bobbinry/view-sdk": ["@bobbinry/view-sdk@workspace:packages/view-sdk"],
 
     "@bobbinry/web-publisher": ["@bobbinry/web-publisher@workspace:bobbins/web-publisher"],
 
@@ -2679,8 +2670,6 @@
 
     "@bobbinry/sdk/@types/node": ["@types/node@20.19.33", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-Rs1bVAIdBs5gbTIKza/tgpMuG1k3U/UMJLWecIMxNdJFDMzcM5LOiLVRYh3PilWEYDIeUDv7bpiHPLPsbydGcw=="],
 
-    "@bobbinry/view-sdk/@types/node": ["@types/node@20.19.33", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-Rs1bVAIdBs5gbTIKza/tgpMuG1k3U/UMJLWecIMxNdJFDMzcM5LOiLVRYh3PilWEYDIeUDv7bpiHPLPsbydGcw=="],
-
     "@esbuild-kit/core-utils/source-map-support": ["source-map-support@0.5.21", "", { "dependencies": { "buffer-from": "^1.0.0", "source-map": "^0.6.0" } }, "sha512-uBHU3L3czsIyYXKX88fdrGovxdSCoTGDRZ6SYXtSRxLZUzHg5P/66Ht6uoUlHu9EZod+inXhKo3qQgwXUT/y1w=="],
 
     "@eslint-community/eslint-utils/eslint-visitor-keys": ["eslint-visitor-keys@3.4.3", "", {}, "sha512-wpc+LXeiyiisxPlEkUzU6svyS1frIO3Mgxj1fdy7Pm8Ygzguax2N3Fa/D/ag1WqbOprdI+uY6wMUl8/a2G+iag=="],
@@ -2926,8 +2915,6 @@
     "@bobbinry/event-bus/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
 
     "@bobbinry/sdk/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
-
-    "@bobbinry/view-sdk/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
 
     "@eslint/eslintrc/ajv/json-schema-traverse": ["json-schema-traverse@0.4.1", "", {}, "sha512-xbbCH5dCYU5T8LcEhhuh7HJ88HXuW3qsI3Y0zOZFKfZEHcpWiHU/Jxzk629Brsab/mMiHQti9wMP+845RPe3Vg=="],
 

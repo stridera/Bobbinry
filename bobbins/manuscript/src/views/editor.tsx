@@ -41,6 +41,18 @@ interface DraftEntry {
   timestamp: number
 }
 
+function getParentOrigin(): string {
+  if (typeof window === 'undefined') {
+    return '*'
+  }
+
+  try {
+    return document.referrer ? new URL(document.referrer).origin : window.location.origin
+  } catch {
+    return window.location.origin
+  }
+}
+
 function getDraftKey(entityId: string): string {
   return `${DRAFT_PREFIX}${entityId}`
 }
@@ -440,7 +452,7 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
               metadata: {
                 timestamp: Date.now()
               }
-            }, '*')
+            }, getParentOrigin())
           }
         }
       }, 300) // 300ms debounce

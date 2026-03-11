@@ -1,5 +1,25 @@
 declare const process: { env: Record<string, string | undefined> }
 
+function getCurrentOrigin(): string {
+  if (typeof window === 'undefined') {
+    return '*'
+  }
+
+  return window.location.origin
+}
+
+function getParentOrigin(): string {
+  if (typeof window === 'undefined') {
+    return '*'
+  }
+
+  try {
+    return document.referrer ? new URL(document.referrer).origin : window.location.origin
+  } catch {
+    return window.location.origin
+  }
+}
+
 // API client for communicating with the Bobbinry API
 export class BobbinryAPI {
   private baseURL: string
@@ -103,6 +123,10 @@ export class MessageBus {
   private setupWindowListener() {
     if (typeof window !== 'undefined') {
       window.addEventListener('message', (event) => {
+        if (event.origin !== getCurrentOrigin()) {
+          return
+        }
+
         if (this.isValidMessage(event.data)) {
           this.handleMessage(event.data)
         }
@@ -157,10 +181,10 @@ export class MessageBus {
     if (typeof window !== 'undefined') {
       // Post to parent window (for iframe communication)
       if (window.parent !== window) {
-        window.parent.postMessage(message, '*')
+        window.parent.postMessage(message, getParentOrigin())
       }
       // Post to current window (for same-window communication)
-      window.postMessage(message, '*')
+      window.postMessage(message, getCurrentOrigin())
     }
   }
 
@@ -366,6 +390,12 @@ export class ShellAPI {
     if (typeof window === 'undefined') return
 
     window.addEventListener('message', (event) => {
+      const isTrustedSameWindowMessage = event.source === window && event.origin === getCurrentOrigin()
+      const isTrustedParentMessage = event.source === window.parent && event.origin === getParentOrigin()
+      if (!isTrustedSameWindowMessage && !isTrustedParentMessage) {
+        return
+      }
+
       const msg = event.data
 
       // Handle new message envelope format
@@ -398,7 +428,7 @@ export class ShellAPI {
         source: 'sdk',
         timestamp: Date.now()
       }
-    }, '*')
+    }, getParentOrigin())
   }
 
   private notifyListeners() {
@@ -767,6 +797,7 @@ export {
 
 // Panel actions portal
 export { PanelActionsProvider, PanelActions } from './panel-actions'
+export { escapePlainText, getSanitizedHtmlProps, sanitizeHtml } from './html'
 
 // Convenience exports
 export * from '@bobbinry/types'

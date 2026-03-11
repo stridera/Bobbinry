@@ -224,7 +224,7 @@ export default function ChapterNotesPanel({ context }: ChapterNotesPanelProps) {
 
   if (!activeChapter) {
     return (
-      <div className="h-full flex flex-col bg-gray-800">
+      <div className="h-full flex flex-col bg-white dark:bg-gray-800">
         <PanelActions>
           <span className="text-xs text-gray-500">Chapter Notes</span>
         </PanelActions>
@@ -239,18 +239,18 @@ export default function ChapterNotesPanel({ context }: ChapterNotesPanelProps) {
   }
 
   return (
-    <div className="h-full flex flex-col bg-gray-800">
+    <div className="h-full flex flex-col bg-white dark:bg-gray-800">
       <PanelActions>
         <button
           onClick={createChapterNote}
-          className="text-lg leading-none text-gray-400 hover:text-gray-200 w-6 h-6 flex items-center justify-center"
+          className="text-lg leading-none text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 w-6 h-6 flex items-center justify-center"
           title="New chapter note"
         >
           +
         </button>
         <button
           onClick={loadChapterNotes}
-          className="text-xs text-gray-400 hover:text-gray-200"
+          className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
           title="Refresh"
         >
           ↻
@@ -258,9 +258,9 @@ export default function ChapterNotesPanel({ context }: ChapterNotesPanelProps) {
       </PanelActions>
 
       {/* Chapter indicator */}
-      <div className="px-3 py-1.5 border-b border-gray-700 bg-gray-750">
+      <div className="px-3 py-1.5 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-750">
         <div className="text-[10px] uppercase tracking-wide text-gray-500">Chapter</div>
-        <div className="text-xs text-gray-300 truncate">{activeChapter.label}</div>
+        <div className="text-xs text-gray-700 dark:text-gray-300 truncate">{activeChapter.label}</div>
       </div>
 
       {/* Notes list */}
@@ -270,11 +270,11 @@ export default function ChapterNotesPanel({ context }: ChapterNotesPanelProps) {
             <div className="animate-pulse">Loading...</div>
           </div>
         ) : notes.length === 0 ? (
-          <div className="p-4 text-center text-sm text-gray-400">
+          <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
             <div className="mb-3">No notes for this chapter</div>
             <button
               onClick={createChapterNote}
-              className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-gray-200 rounded"
+              className="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded"
             >
               Add a Note
             </button>
@@ -283,7 +283,7 @@ export default function ChapterNotesPanel({ context }: ChapterNotesPanelProps) {
           notes.map((note: any) => (
             <div
               key={note.id}
-              className={`px-3 py-2 cursor-pointer hover:bg-gray-700 border-b border-gray-700/50 group ${selectedNoteId === note.id ? 'bg-gray-700' : ''}`}
+              className={`px-3 py-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 border-b border-gray-200 dark:border-gray-700/50 group ${selectedNoteId === note.id ? 'bg-gray-100 dark:bg-gray-700' : ''}`}
               onClick={() => handleNoteClick(note)}
               onContextMenu={(e) => { e.preventDefault(); handleDelete(note.id) }}
             >
@@ -301,15 +301,15 @@ export default function ChapterNotesPanel({ context }: ChapterNotesPanelProps) {
                     }}
                     autoFocus
                     onFocus={(e) => e.target.select()}
-                    className="flex-1 px-1 py-0.5 bg-gray-800 border border-gray-600 rounded text-gray-100 text-sm"
+                    className="flex-1 px-1 py-0.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-gray-100 text-sm"
                     onClick={(e) => e.stopPropagation()}
                   />
                 ) : (
-                  <span className="flex-1 text-sm text-gray-200 truncate">{note.title || 'Untitled'}</span>
+                  <span className="flex-1 text-sm text-gray-800 dark:text-gray-200 truncate">{note.title || 'Untitled'}</span>
                 )}
                 <button
                   onClick={(e) => { e.stopPropagation(); handleUnlink(note.id) }}
-                  className="text-xs text-gray-500 hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity"
                   title="Unlink from chapter"
                 >
                   ✕
@@ -323,7 +323,7 @@ export default function ChapterNotesPanel({ context }: ChapterNotesPanelProps) {
               {note.tags && note.tags.length > 0 && (
                 <div className="flex gap-1 mt-1">
                   {note.tags.slice(0, 3).map((tag: string, i: number) => (
-                    <span key={i} className="text-[10px] px-1.5 py-0.5 bg-gray-700 text-gray-400 rounded">{tag}</span>
+                    <span key={i} className="text-[10px] px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded">{tag}</span>
                   ))}
                 </div>
               )}

@@ -204,6 +204,11 @@ export function useManifestExtensions() {
         const { loadNativeView } = require('../lib/native-view-loader')
 
         for (const contribution of manifest.extensions.contributions) {
+          if (typeof contribution.entry === 'string' && contribution.entry.endsWith('.html')) {
+            console.warn(`[ExtensionProvider] Skipping unsupported legacy HTML contribution: ${bobbinId}.${contribution.entry}`)
+            continue
+          }
+
           console.log('[ExtensionProvider] Registering extension:', contribution.id, 'slot:', contribution.slot)
           extensionRegistry.registerExtension(bobbinId, contribution)
 

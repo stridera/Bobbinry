@@ -137,8 +137,8 @@
       "required": ["mode"],
       "properties": {
         "mode": {
-          "enum": ["native", "sandboxed"],
-          "description": "Execution mode - native for first-party bobbins, sandboxed for third-party"
+          "enum": ["native"],
+          "description": "Execution mode - reviewed bobbins run as native components"
         },
         "signature": {
           "type": "string",

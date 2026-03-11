@@ -1,5 +1,5 @@
 // Action Runtime SDK - P1 implementation stubs
-// This will be expanded to support sandboxed action execution
+// This will be expanded to support reviewed, permission-scoped action execution
 
 export interface ActionContext {
   actionId: string
@@ -16,7 +16,7 @@ export interface ActionResult {
 }
 
 /**
- * Stub for sandboxed action execution
+ * Stub for action execution
  * Will be expanded to support workflows and external connectors
  */
 export class ActionRuntime {

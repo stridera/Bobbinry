@@ -30,7 +30,7 @@ The goal: empower creators to tailor their writing or worldbuilding environment 
 ### External Access
 - External‑capable bobbins must declare endpoints, scopes, and permissions in their manifest.
 - User consent required at install time (OAuth‑style prompts).
-- Sandbox execution ensures outbound requests are restricted and logged.
+- Repo review plus explicit permission declarations ensure outbound requests are restricted and logged.
 - First‑party examples: “Word Count API (NaNoWriMo),” “Notify (Twitter/Slack).”
 
 ### AI Bobbins
@@ -61,13 +61,13 @@ The goal: empower creators to tailor their writing or worldbuilding environment 
 
 ### 5. External Access Policy
 - **Default deny**: bobbins cannot access the internet unless explicitly declared and approved by the user.  
-- External‑access bobbins run in isolated sandboxes with logs and revocable permissions.
+- External‑access bobbins are reviewed in-repo and operate behind declared capabilities, logs, and revocable permissions.
 
 ### 6. View Extensibility
 - Three levels:
   - **Compose**: arrange built‑in widgets declaratively.
-  - **Extend**: build novel layouts with the View SDK (sandboxed).
-  - **Embed**: ship micro‑frontends (strict sandbox + review).
+  - **Extend**: build novel layouts as native bobbin views and panels.
+  - **Embed**: ship richer native experiences that still follow the shared shell patterns.
 
 ### 7. Open vs Closed
 - **Open source core**: the shell and SDK are free to run locally or self‑host.  

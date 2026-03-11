@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
+import { getSanitizedHtmlProps } from '@bobbinry/sdk'
 import { config } from '@/lib/config'
 import { ReaderNav } from '@/components/ReaderNav'
 import { ExtensionSlot } from '@/components/ExtensionSlot'
@@ -648,7 +649,7 @@ export default function ChapterReaderPage() {
 
         <div
           className={`${FONT_SIZES[fontSize]} prose ${proseClass} max-w-none`}
-          dangerouslySetInnerHTML={{ __html: chapter.content || '' }}
+          dangerouslySetInnerHTML={getSanitizedHtmlProps(chapter.content)}
         />
 
         {/* Reactions — only show if user is signed in or there are existing reactions */}

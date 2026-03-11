@@ -68,23 +68,20 @@ pnpm --filter api test:watch
 
 ### 1. API Integration Tests (`bobbin-lifecycle.test.ts`)
 
-Tests database operations and security boundaries.
+Tests database operations and manifest/runtime guardrails.
 
 **Covers:**
-- ✅ Bobbin installation (first-party vs external)
+- ✅ Bobbin installation
 - ✅ Entity CRUD operations
 - ✅ Project isolation
 - ✅ Security boundaries (manifest can't override config)
 - ✅ Data structure consistency (no nested `.data`)
-- ✅ Admin trust level upgrades
+- ✅ Approved bobbin registration
 
 **Key Scenarios:**
 ```typescript
-// First-party bobbin with native execution
-it('should install first-party bobbin with native execution')
-
-// External bobbin defaults to sandboxed
-it('should install external bobbin with sandboxed execution by default')
+// Approved bobbin installation
+it('should install reviewed bobbin with native execution')
 
 // Manifest security
 it('should not allow manifest to override execution mode')
@@ -97,14 +94,12 @@ it('should maintain entity data structure (not nested in .data)')
 
 ### 2. View Rendering Tests (`view-rendering.test.tsx`)
 
-Tests view loading in native and sandboxed modes.
+Tests native view loading and registration.
 
 **Covers:**
 - ✅ Native view rendering as React components
-- ✅ Sandboxed view rendering in iframes
 - ✅ Props passing to native views
-- ✅ Sandbox restrictions on iframes
-- ✅ Execution mode routing
+- ✅ Native view routing
 - ✅ View registry operations
 - ✅ Loading states
 - ✅ Error boundaries
@@ -115,24 +110,18 @@ Tests view loading in native and sandboxed modes.
 it('should load native view as React component')
 it('should pass props correctly to native view')
 
-// Sandboxed rendering
-it('should load sandboxed view in iframe')
-it('should apply sandbox restrictions to iframe')
-
 // Routing
 it('should route native bobbins to NativeViewRenderer')
-it('should route sandboxed bobbins to SandboxedViewRenderer')
 ```
 
 ---
 
 ### 3. Message Passing Tests (`message-passing.test.tsx`)
 
-Tests SDK communication between shell and views.
+Tests SDK communication between native shell views.
 
 **Covers:**
 - ✅ Native view SDK calls (query, create, update, delete)
-- ✅ Sandboxed view postMessage communication
 - ✅ Capability enforcement
 - ✅ Event bus (emit/on/off)
 - ✅ Event cleanup on unmount
@@ -145,9 +134,8 @@ it('should allow native view to query entities via SDK')
 it('should allow native view to create entities via SDK')
 it('should handle API errors gracefully')
 
-// Sandboxed SDK
-it('should use postMessage for sandboxed view communication')
-it('should enforce capability restrictions for sandboxed views')
+// SDK guardrails
+it('should enforce capability restrictions for bobbins')
 
 // Event bus
 it('should allow views to emit custom events')
@@ -270,10 +258,10 @@ const createMockSDK = (): BobbinrySDK => ({
 // Manifest cannot override execution mode
 const [installation] = await db.insert(bobbinsInstalled).values({
   manifestJson: { execution: { mode: 'native' } } // ← Ignored
-  // executionMode not set → uses default
+  executionMode: 'native'
 }).returning()
 
-expect(installation.executionMode).toBe('sandboxed') // ✅ Default
+expect(installation.executionMode).toBe('native')
 ```
 
 ### Data Structure Assertions
@@ -298,15 +286,6 @@ render(<ViewRenderer viewId="manuscript.outline" ... />)
 await waitFor(() => {
   expect(screen.getByTestId('native-view')).toBeInTheDocument()
   expect(screen.queryByTagName('iframe')).not.toBeInTheDocument()
-})
-
-// Sandboxed view renders in iframe
-render(<ViewRenderer viewId="external.widget" ... />)
-
-await waitFor(() => {
-  const iframe = screen.getByTitle(/widget/i)
-  expect(iframe).toBeInTheDocument()
-  expect(iframe.tagName).toBe('IFRAME')
 })
 ```
 
@@ -413,7 +392,7 @@ it('should complete full workflow', async () => {
 The test suite ensures:
 - ✅ **Security**: Manifests can't override trust decisions
 - ✅ **Type Safety**: Compile-time checks for data access
-- ✅ **Execution Modes**: Native and sandboxed views work correctly
+- ✅ **Execution Model**: Native bobbin views work correctly
 - ✅ **Data Integrity**: Entities maintain correct structure
-- ✅ **Message Passing**: SDK communication works in both modes
+- ✅ **Message Passing**: SDK communication works across native bobbins
 - ✅ **Workflows**: Complete user scenarios function end-to-end

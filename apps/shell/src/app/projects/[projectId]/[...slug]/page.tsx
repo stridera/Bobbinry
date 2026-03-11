@@ -17,7 +17,7 @@ interface InstalledBobbin {
     name: string
     description?: string
     execution?: {
-      mode: 'native' | 'sandboxed'
+      mode: 'native'
     }
     ui?: {
       views?: Array<{

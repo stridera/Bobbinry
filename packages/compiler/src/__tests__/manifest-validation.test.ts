@@ -207,22 +207,6 @@ describe('Manifest Validation', () => {
   })
 
   describe('Execution Mode Validation', () => {
-    it('should accept manifest with sandboxed execution mode', () => {
-      const manifest = {
-        id: 'test-bobbin',
-        name: 'Test Bobbin',
-        version: '1.0.0',
-        capabilities: {},
-        execution: {
-          mode: 'sandboxed'
-        }
-      }
-
-      const result = compiler.validateManifestWithDetails(manifest as any)
-      expect(result.valid).toBe(true)
-      expect(result.errors).toHaveLength(0)
-    })
-
     it('should accept manifest with native execution mode and signature', () => {
       const manifest = {
         id: 'test-bobbin',
@@ -278,7 +262,7 @@ describe('Manifest Validation', () => {
       expect(result.errors.length).toBeGreaterThan(0)
     })
 
-    it('should default to sandboxed when execution field is omitted', () => {
+    it('should allow manifest with omitted execution field', () => {
       const manifest = {
         id: 'test-bobbin',
         name: 'Test Bobbin',

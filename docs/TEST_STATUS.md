@@ -17,7 +17,7 @@ All API tests passing:
 #### Passing Test Suites:
 - ✅ View Registry (100%)
 - ✅ Native View Loader (100%)
-- ✅ Execution Modes (100%)
+- ✅ Execution Model (100%)
 - ✅ Component Tests (100%)
 
 #### Partially Passing:
@@ -32,7 +32,7 @@ All API tests passing:
 ## Known Issues
 
 ### 1. Message Passing Tests (5 failures)
-**Issue**: Tests expect simple event emitter pattern, but MessageBus is designed for iframe postMessage
+**Issue**: Tests expect a simpler event-emitter pattern than the current MessageBus API exposes
 **Root Cause**: SDK MessageBus API mismatch
 - Tests use: `sdk.messageBus.on('custom:event', handler)`
 - Handler expects: `{ data: 'test' }`
@@ -47,8 +47,8 @@ All API tests passing:
 - should allow views to emit custom events
 - should allow views to listen for events
 - should cleanup event listeners on unmount
-- should use postMessage for sandboxed view communication
-- should enforce capability restrictions for sandboxed views
+- should use the shared MessageBus protocol consistently
+- should enforce capability restrictions for bobbins
 
 ### 2. Async Loading Test (1 failure)
 **Issue**: Component never loads in test
@@ -102,7 +102,7 @@ pnpm --filter shell test -- message-passing
 1. ✅ Added ErrorBoundary to NativeViewRenderer
 2. ✅ Fixed SDK constructor calls (createBobbinrySDK → new BobbinrySDK)
 3. ✅ Updated MessageBus API usage (sdk.views → sdk.messageBus)
-4. ✅ Fixed sandbox restriction test expectations
+4. ✅ Fixed native permission restriction test expectations
 5. ✅ Fixed jest.clearAllMocks() compatibility
 6. ✅ Improved from 65/78 to 71/78 passing
 

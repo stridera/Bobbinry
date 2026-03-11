@@ -16,6 +16,7 @@
  */
 
 import { useState, useRef, useCallback } from 'react'
+import { getSanitizedHtmlProps } from '@bobbinry/sdk'
 import type { FieldDefinition, FieldType } from '../types'
 import { useUpload } from './UploadContext'
 
@@ -444,7 +445,7 @@ function ReadonlyFieldDisplay({ field, value }: { field: FieldDefinition, value:
       return (
         <div
           className="prose dark:prose-invert prose-sm max-w-none"
-          dangerouslySetInnerHTML={{ __html: value }}
+          dangerouslySetInnerHTML={getSanitizedHtmlProps(value)}
         />
       )
 

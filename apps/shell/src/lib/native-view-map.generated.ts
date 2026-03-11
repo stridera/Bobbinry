@@ -12,6 +12,7 @@ export const NATIVE_VIEW_MAP: Record<string, () => Promise<any>> = {
   'smart-publisher.release-manager': () => import('@bobbinry/smart-publisher/views/release-manager'),
   'smart-publisher.release-config': () => import('@bobbinry/smart-publisher/views/release-config'),
   'smart-publisher.panels/release-queue': () => import('@bobbinry/smart-publisher/panels/release-queue'),
+  'dictionary-panel.panels/dictionary-panel': () => import('@bobbinry/dictionary-panel/panels/dictionary-panel'),
   'manuscript.outline': () => import('@bobbinry/manuscript/views/outline'),
   'manuscript.editor': () => import('@bobbinry/manuscript/views/editor'),
   'manuscript.panels/navigation': () => import('@bobbinry/manuscript/panels/navigation'),

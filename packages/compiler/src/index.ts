@@ -206,7 +206,7 @@ export class ManifestCompiler {
 
       // Extension registration happens at runtime in the shell
       // The manifest is stored and the shell will:
-      // 1. Load the extension component (native or sandboxed)
+      // 1. Load the extension component
       // 2. Register it with the ExtensionRegistry
       // 3. Subscribe to relevant pub/sub topics
       // 4. Evaluate 'when' conditions for visibility

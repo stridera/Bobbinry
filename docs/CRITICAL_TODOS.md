@@ -137,9 +137,9 @@ async function getPendingChanges() {
 
 Some TODOs need architectural decisions:
 
-1. **Sandboxed Views in ViewRouter** (apps/shell/src/components/ViewRouter.tsx:160)
-   - Current: "TODO: Handle sandboxed views with iframe"
-   - Decision: Keep existing SandboxedViewRenderer or integrate into ViewRouter?
+1. **Legacy ViewRouter Cleanup** (apps/shell/src/components/ViewRouter.tsx)
+   - Current: Remove any stale iframe-era assumptions
+   - Decision: Keep ViewRouter native-only and delete remaining dead branches
 
 2. **Theme Management** (apps/shell/src/services/BobbinBridge.ts:476)
    - Current: Hardcoded theme

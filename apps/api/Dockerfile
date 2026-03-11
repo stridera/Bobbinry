@@ -23,12 +23,10 @@ COPY packages/sdk/package.json packages/sdk/
 COPY packages/types/package.json packages/types/
 COPY packages/ui/package.json packages/ui/
 COPY packages/ui-components/package.json packages/ui-components/
-COPY packages/view-sdk/package.json packages/view-sdk/
 
 # Bobbins
 COPY bobbins/cat/package.json bobbins/cat/
 COPY bobbins/corkboard/package.json bobbins/corkboard/
-COPY bobbins/debugger/package.json bobbins/debugger/
 COPY bobbins/dictionary-panel/package.json bobbins/dictionary-panel/
 COPY bobbins/entities/package.json bobbins/entities/
 COPY bobbins/goals/package.json bobbins/goals/

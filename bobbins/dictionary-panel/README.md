@@ -1,8 +1,8 @@
-# Dictionary Panel (Sample)
+# Dictionary Panel
 
-Listens to `manuscript.editor.selection.v1` and shows a definition from a local lexicon.
-No external network calls.
+Native right-side panel that listens to `manuscript.editor.selection.v1` and
+shows a definition plus thesaurus results for the selected word.
 
-- Contributes a right-side panel via `shell.rightPanel`.
-- Subscribes to selection events with sensitivity `medium`.
-- Uses the View SDK (postMessage) to receive bus events.
+- Contributes a native panel via `shell.rightPanel`.
+- Uses the shared Bobbinry SDK message-bus hook to observe editor selections.
+- Looks up definitions via Free Dictionary API and synonyms/antonyms via Datamuse.

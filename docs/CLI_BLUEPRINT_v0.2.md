@@ -1,6 +1,8 @@
-`# Bobbinry — CLI Build Blueprint (v0.2)
+# Bobbinry — CLI Build Blueprint (v0.2)
 
-> **Purpose:** Updated, actionable plan your CLI can follow to scaffold the Bobbinry project with the latest decisions: **offline‑first v1**, **local pub/sub (LEB)**, **extensions/slots**, **manifest v0.2**, and the **tiered storage compiler**. As before: generate structure and stubs only — no app logic beyond a walking skeleton.
+> **Status:** Historical blueprint. This document predates the move to reviewed native-only bobbins and should not be treated as the current runtime contract.
+>
+> **Purpose:** Updated, actionable plan your CLI can follow to scaffold the Bobbinry project with the latest decisions at the time: **offline‑first v1**, **local pub/sub (LEB)**, **extensions/slots**, **manifest v0.2**, and the **tiered storage compiler**. As before: generate structure and stubs only — no app logic beyond a walking skeleton.
 
 ---
 
@@ -16,7 +18,7 @@
   - ✅ **Extensions**: slot‑based contributions (toolbar, right panel, badges, etc.).
   - ✅ **Manifest v0.2** (offline/pubsub/extensions/augmentations).
   - ✅ **Tiered storage**: JSONB by default; promotion to physical tables when hot.
-  - ✅ **Native vs Sandboxed execution**: First-party bobbins load natively; third-party bobbins run sandboxed.
+  - ✅ **Native execution**: reviewed bobbins load natively inside the shell.
   - 🟨 **PEH (Project Event Hub)** server fan‑out is P1 (scaffold optional).
   - 🟨 **Action Runner + Connectors** scaffold present; workflows first, code later.
 
@@ -24,7 +26,7 @@
 1) Create a project; install **Manuscript** bobbin (native execution).
 2) Compiler validates manifest **v0.2**, generates entity map (Tier 1 JSONB).
 3) Shell renders Outline + Editor natively (SSR-capable); **offline** editing (Scene.body w/ text deltas).
-4) **LEB** publishes selection + wordcount; **Dictionary Panel** extension (sandboxed) consumes selection in the **right panel**.
+4) **LEB** publishes selection + wordcount; **Dictionary Panel** extension consumes selection in the **right panel**.
 5) Snapshot Publish → static bundle artifact (preview URL).
 
 ---
@@ -35,7 +37,7 @@
 - **Monorepo:** pnpm + Turborepo
 - **Frontend (Shell):** React + Next.js (App Router, SSR/SSG), TipTap editor
 - **Offline:** Service Worker + IndexedDB (Dexie) + optimistic queue; CRDT later
-- **LEB:** In‑memory event bus + `postMessage` bridge to sandboxed views
+- **LEB:** In‑memory event bus for native bobbin coordination
 - **Backend (API):** Node.js + Fastify (REST), Zod for contracts
 - **DB:** PostgreSQL + Drizzle ORM (SQL‑forward)
 - **Search:** Postgres FTS (upgrade path to Meilisearch later)
@@ -62,7 +64,6 @@ bobbinry/
     types/                 # Shared types + manifest.schema.json (v0.2)
     compiler/              # Manifest parser, diff, migrations, entity map
     sdk/                   # Shell ↔ API helpers, entity access, auth
-    view-sdk/              # PostMessage bridge for sandboxed views/panels
     event-bus/             # LEB implementation + topic registry
     ui/                    # Shared components (cards, board, inspector)
     connectors/            # (P1) First‑party connectors (drive, webhook)

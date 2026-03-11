@@ -139,7 +139,7 @@ function App() {
 
 ### ViewRenderer
 
-Renders bobbin views in sandboxed iframes:
+Renders bobbin views as native React components inside the shell:
 
 ```typescript
 import { ViewRenderer } from '@/components/ViewRenderer';
@@ -184,13 +184,13 @@ const sdk = new BobbinrySDK({
   wsUrl: process.env.NEXT_PUBLIC_WS_URL
 });
 
-// Handle view messages
-sdk.on('view.message', (message) => {
+// Handle workspace events
+sdk.bus.on('manuscript.editor.selection.v1', (message) => {
   handleViewMessage(message);
 });
 
-// Send data to views
-sdk.broadcast('shell.data.updated', updatedData);
+// Send data to other bobbins
+sdk.bus.emit('shell.data.updated', updatedData);
 ```
 
 ## State Management
