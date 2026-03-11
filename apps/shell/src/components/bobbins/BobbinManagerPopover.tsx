@@ -94,7 +94,10 @@ export function BobbinManagerPopover({ projectId, installedBobbins, onOpenFullMa
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ manifestPath: `bobbins/${bobbin.id}.manifest.yaml` }),
+          body: JSON.stringify({
+            manifestContent: bobbin.manifestContent,
+            manifestType: 'yaml',
+          }),
         }
       )
       if (!response.ok) {

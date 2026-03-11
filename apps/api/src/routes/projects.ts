@@ -265,7 +265,8 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
           bobbin: {
             id: manifest.id,
             name: manifest.name,
-            version: manifest.version
+            version: manifest.version,
+            external: !!manifest.capabilities?.external
           },
           compilation: {
             migrations: result.migrations,
@@ -332,7 +333,8 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
           bobbin: {
             id: manifest.id,
             name: manifest.name,
-            version: manifest.version
+            version: manifest.version,
+            external: !!manifest.capabilities?.external
           },
           installation: {
             id: installation.id,

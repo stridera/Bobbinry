@@ -44,6 +44,17 @@ capabilities:
   backup: true
   customViews: true
 
+external:
+  endpoints:
+    - id: backup-api
+      url: https://api.example.com/v1/backups
+      method: POST
+      description: Upload project backup snapshots
+  permissions:
+    - endpoint: api.example.com/v1
+      reason: Send encrypted project backups to the configured storage provider
+      required: true
+
 extensions:
   contributions:
     - slot: shell.projectBackup
@@ -94,6 +105,11 @@ author: Your Name
 description: What this bobbin does
 capabilities:
   customViews: true        # Can define custom views
+
+# If you enable capabilities.external: true, you must also add:
+# external:
+#   endpoints: [...]
+#   permissions: [...]
 
 data:
   collections:
@@ -155,48 +171,14 @@ className="hover:bg-gray-100 dark:hover:bg-gray-700"
 className="bg-blue-600 dark:bg-blue-700"
 ```
 
-### For Sandboxed HTML Views
+### External Access Rules
 
-Use CSS variables that respond to theme messages:
+If a bobbin calls third-party services:
 
-```css
-/* style.css */
-body.light {
-  --bg-primary: #ffffff;
-  --bg-secondary: #f3f4f6;
-  --text-primary: #1f2937;
-  --text-secondary: #6b7280;
-  --border-color: #e5e7eb;
-}
-
-body.dark {
-  --bg-primary: #0b0b0c;
-  --bg-secondary: #1a1a1b;
-  --text-primary: #e7e7ea;
-  --text-secondary: #9a9aa1;
-  --border-color: #2a2a2e;
-}
-
-body {
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  transition: background-color 0.2s, color 0.2s;
-}
-```
-
-```javascript
-// view.js
-// Set initial theme
-document.body.classList.add('light')
-
-// Listen for theme changes from shell
-window.addEventListener('message', (event) => {
-  if (event.data.type === 'shell:theme') {
-    document.body.classList.remove('light', 'dark')
-    document.body.classList.add(event.data.theme)
-  }
-})
-```
+1. Set `capabilities.external: true`
+2. Declare every host under `external.endpoints`
+3. Add a user-facing reason for each permission under `external.permissions`
+4. Prefer server/API routes for sensitive tokens and OAuth flows
 
 ## Message Bus Communication
 

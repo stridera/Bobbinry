@@ -280,14 +280,9 @@ export default function DictionaryPanel() {
               )}
             </div>
 
-            <a
-              href="https://www.datamuse.com/api/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex text-xs text-blue-600 dark:text-blue-400 hover:underline"
-            >
+            <p className="text-xs text-gray-500 dark:text-gray-400">
               Source: Datamuse API
-            </a>
+            </p>
           </div>
         )}
       </div>

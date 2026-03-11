@@ -50,10 +50,15 @@ export function BobbinCard({ bobbin, onViewDetails, actionSlot }: BobbinCardProp
         <div className="px-5 py-3 border-t border-gray-100 dark:border-gray-800">
           <div className="flex flex-wrap gap-3 text-xs text-gray-600 dark:text-gray-400">
             {bobbin.capabilities.publishable && <span>Publishable</span>}
-            {bobbin.capabilities.external && <span>External</span>}
+            {bobbin.capabilities.external && <span>External Access</span>}
             {bobbin.capabilities.ai && <span>AI</span>}
             {bobbin.capabilities.customViews && <span>Custom Views</span>}
           </div>
+          {bobbin.capabilities.external && bobbin.externalAccess && (
+            <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+              Uses {bobbin.externalAccess.hosts.length || bobbin.externalAccess.permissions.length} external service{(bobbin.externalAccess.hosts.length || bobbin.externalAccess.permissions.length) === 1 ? '' : 's'}.
+            </p>
+          )}
         </div>
       )}
 

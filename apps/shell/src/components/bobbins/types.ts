@@ -12,6 +12,15 @@ export interface BobbinMetadata {
     ai?: boolean
     customViews?: boolean
   }
+  externalAccess?: {
+    authType?: string
+    hosts: string[]
+    permissions: Array<{
+      endpoint: string
+      reason: string
+      required: boolean
+    }>
+  }
   slots?: string[]
   manifestContent: string
   isInstalled: boolean

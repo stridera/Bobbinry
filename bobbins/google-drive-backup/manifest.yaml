@@ -1,6 +1,6 @@
 id: google-drive-backup
 name: Google Drive Backup
-version: 1.0.0
+version: 1.0.1
 author: Bobbins Core
 description: Automatically back up all your projects to Google Drive
 tags: [backup, integration, cloud-storage, automation]
@@ -149,8 +149,12 @@ external:
       url: https://www.googleapis.com/drive/v3/files/*
       method: PUT
       description: Update existing files in Google Drive
+    - id: drive_files_upload
+      url: https://www.googleapis.com/upload/drive/v3/files
+      method: POST
+      description: Upload file contents to Google Drive
     - id: oauth_token
-      url: https://www.googleapis.com/oauth2/v4/token
+      url: https://oauth2.googleapis.com/token
       method: POST
       description: Exchange authorization code for access token
   auth:
@@ -164,7 +168,7 @@ external:
     - endpoint: googleapis.com/drive
       reason: Sync chapters to Google Drive folders
       required: true
-    - endpoint: googleapis.com/oauth2
+    - endpoint: oauth2.googleapis.com
       reason: Authenticate with Google OAuth
       required: true
 

@@ -211,7 +211,7 @@ export type ViewType =
   | 'map'       // Geographic map
   | 'chart'     // Data visualization
   | 'form'      // Data entry form
-  | 'custom'    // Custom iframe view
+  | 'custom'    // Custom native view
 
 export interface ViewLayout {
   columns?: ViewColumn[]

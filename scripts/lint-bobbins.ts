@@ -78,6 +78,56 @@ function listFilesRecursive(dir: string, base: string = ""): string[] {
   return results;
 }
 
+function normalizeExternalTarget(value: string): string {
+  return value
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/\/+$/, "")
+    .toLowerCase();
+}
+
+function getManifestExternalTargets(manifest: Record<string, any> | null): string[] {
+  if (!manifest?.external?.endpoints) return [];
+  return manifest.external.endpoints.flatMap((endpoint: any) => {
+    try {
+      const url = new URL(String(endpoint.url));
+      return [normalizeExternalTarget(`${url.hostname}${url.pathname}`)];
+    } catch {
+      return [];
+    }
+  });
+}
+
+function getDeclaredPermissionTargets(manifest: Record<string, any> | null): string[] {
+  if (!manifest?.external?.permissions) return [];
+  return manifest.external.permissions
+    .map((permission: any) => normalizeExternalTarget(String(permission.endpoint || "")))
+    .filter(Boolean);
+}
+
+function extractExternalUrls(content: string): string[] {
+  return Array.from(content.matchAll(/https?:\/\/[^\s"'`)>]+/g), (match) => match[0]!);
+}
+
+function parseExternalUrlTarget(rawUrl: string): string | null {
+  try {
+    const sanitized = rawUrl.replace(/\$\{[^}]+\}/g, "");
+    const parsed = new URL(sanitized);
+    return normalizeExternalTarget(`${parsed.hostname}${parsed.pathname}`);
+  } catch {
+    return null;
+  }
+}
+
+function isLocalDevelopmentUrl(rawUrl: string): boolean {
+  try {
+    const parsed = new URL(rawUrl);
+    return parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+  } catch {
+    return false;
+  }
+}
+
 // --- Rule implementations ---
 
 function checkManifestExists(ctx: BobbinContext): Diagnostic[] {
@@ -154,6 +204,83 @@ function checkCapabilitiesPresent(ctx: BobbinContext): Diagnostic[] {
     return [{ rule: "capabilities-present", message: "missing capabilities block", severity: "warning" }];
   }
   return [];
+}
+
+function checkExternalCapabilityConsistency(ctx: BobbinContext): Diagnostic[] {
+  if (!ctx.manifest) return [];
+
+  const diags: Diagnostic[] = [];
+  const externalEnabled = ctx.manifest.capabilities?.external === true;
+  const externalConfig = ctx.manifest.external ?? null;
+  const endpoints = externalConfig?.endpoints || [];
+  const permissions = externalConfig?.permissions || [];
+  const hasExternalConfig = !!(externalConfig && (endpoints.length > 0 || permissions.length > 0 || externalConfig.auth));
+
+  if (externalEnabled && !hasExternalConfig) {
+    diags.push({
+      rule: "external-capability-consistent",
+      message: "capabilities.external is true but external endpoints/permissions are missing",
+      severity: "error",
+    });
+    return diags;
+  }
+
+  if (!externalEnabled && hasExternalConfig) {
+    diags.push({
+      rule: "external-capability-consistent",
+      message: "external config is present but capabilities.external is not enabled",
+      severity: "error",
+    });
+  }
+
+  if (!hasExternalConfig) {
+    return diags;
+  }
+
+  if (endpoints.length === 0) {
+    diags.push({
+      rule: "external-capability-consistent",
+      message: "external access requires at least one declared endpoint",
+      severity: "error",
+    });
+  }
+
+  if (permissions.length === 0) {
+    diags.push({
+      rule: "external-capability-consistent",
+      message: "external access requires at least one declared permission reason",
+      severity: "error",
+    });
+  }
+
+  const endpointTargets = getManifestExternalTargets(ctx.manifest);
+  for (const permission of permissions) {
+    const endpoint = normalizeExternalTarget(String(permission.endpoint || ""));
+    if (!endpoint) {
+      diags.push({
+        rule: "external-capability-consistent",
+        message: "external permission endpoint must not be empty",
+        severity: "error",
+      });
+      continue;
+    }
+    if (!permission.reason || !String(permission.reason).trim()) {
+      diags.push({
+        rule: "external-capability-consistent",
+        message: `external permission '${permission.endpoint}' is missing a user-facing reason`,
+        severity: "error",
+      });
+    }
+    if (endpointTargets.length > 0 && !endpointTargets.some((target) => target.startsWith(endpoint) || endpoint.startsWith(target))) {
+      diags.push({
+        rule: "external-capability-consistent",
+        message: `external permission '${permission.endpoint}' does not match any declared endpoint`,
+        severity: "error",
+      });
+    }
+  }
+
+  return diags;
 }
 
 function checkNativeOnlyRuntime(ctx: BobbinContext): Diagnostic[] {
@@ -249,6 +376,9 @@ function checkPkgHasTypes(ctx: BobbinContext): Diagnostic[] {
 
 function checkUnsafePatterns(ctx: BobbinContext): Diagnostic[] {
   const diags: Diagnostic[] = [];
+  const endpointTargets = getManifestExternalTargets(ctx.manifest);
+  const permissionTargets = getDeclaredPermissionTargets(ctx.manifest);
+  const externalEnabled = ctx.manifest?.capabilities?.external === true;
   for (const file of ctx.files) {
     if (!/\.(ts|tsx|js|jsx|html)$/.test(file)) continue;
 
@@ -268,6 +398,35 @@ function checkUnsafePatterns(ctx: BobbinContext): Diagnostic[] {
         message: `${file} uses raw dangerouslySetInnerHTML instead of the shared sanitizer helper`,
         severity: "warning",
       });
+    }
+
+    for (const rawUrl of extractExternalUrls(content)) {
+      if (isLocalDevelopmentUrl(rawUrl)) continue;
+
+      const normalized = parseExternalUrlTarget(rawUrl);
+      if (!normalized) {
+        continue;
+      }
+
+      if (!externalEnabled) {
+        diags.push({
+          rule: "external-access-declared",
+          message: `${file} references external URL '${rawUrl}' but capabilities.external is not enabled`,
+          severity: "error",
+        });
+        continue;
+      }
+
+      const declared = endpointTargets.some((target) => target.startsWith(normalized) || normalized.startsWith(target))
+        || permissionTargets.some((target) => target.startsWith(normalized) || normalized.startsWith(target));
+
+      if (!declared) {
+        diags.push({
+          rule: "external-access-declared",
+          message: `${file} references external URL '${rawUrl}' that is not declared in manifest.external`,
+          severity: "error",
+        });
+      }
     }
   }
 
@@ -560,6 +719,7 @@ const perBobbinRules = [
   checkNameTitleCase,
   checkAuthorConsistent,
   checkCapabilitiesPresent,
+  checkExternalCapabilityConsistency,
   checkNativeOnlyRuntime,
   checkCompatibilityPresent,
   checkPkgExists,

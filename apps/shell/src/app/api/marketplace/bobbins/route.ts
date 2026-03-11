@@ -3,13 +3,28 @@ import fs from 'fs'
 import path from 'path'
 import yaml from 'yaml'
 
+function getHostFromUrl(rawUrl: string): string | null {
+  try {
+    return new URL(rawUrl).host
+  } catch {
+    return null
+  }
+}
+
 export async function GET() {
   try {
     // Path to bobbins directory (relative to project root)
     const bobbinsDir = path.join(process.cwd(), '../../bobbins')
 
     // Read all manifest files in the bobbins directory
-    const entries = fs.readdirSync(bobbinsDir, { withFileTypes: true })
+    const entries = fs
+      .readdirSync(bobbinsDir, { withFileTypes: true })
+      .sort((a, b) => {
+        if (a.isDirectory() !== b.isDirectory()) {
+          return a.isDirectory() ? -1 : 1
+        }
+        return a.name.localeCompare(b.name)
+      })
 
     const bobbins = []
     const seenIds = new Set<string>()
@@ -51,6 +66,12 @@ export async function GET() {
           }
 
           // Create metadata object with full manifest content
+          const hosts = Array.from(new Set(
+            (manifest.external?.endpoints || [])
+              .map((endpoint: any) => getHostFromUrl(String(endpoint.url || '')))
+              .filter(Boolean)
+          )) as string[]
+
           const bobbinMeta = {
             id: manifest.id,
             name: manifest.name,
@@ -60,6 +81,15 @@ export async function GET() {
             tags: manifest.tags || [],
             license: manifest.license,
             capabilities: manifest.capabilities || {},
+            externalAccess: manifest.capabilities?.external ? {
+              authType: manifest.external?.auth?.type,
+              hosts,
+              permissions: (manifest.external?.permissions || []).map((permission: any) => ({
+                endpoint: permission.endpoint || '',
+                reason: permission.reason || '',
+                required: permission.required !== false,
+              })),
+            } : undefined,
             execution: manifest.execution,
             slots,
             manifestContent: content // Include the full YAML content

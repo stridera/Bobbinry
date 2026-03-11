@@ -21,6 +21,87 @@ export interface ValidationResult {
   errors: string[]
 }
 
+function normalizeEndpointPrefix(value: string): string {
+  return value
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/\/+$/, '')
+    .toLowerCase()
+}
+
+function getExternalEndpointTargets(manifest: Manifest): string[] {
+  return (manifest.external?.endpoints || [])
+    .map((endpoint) => {
+      try {
+        const parsed = new URL(endpoint.url)
+        return normalizeEndpointPrefix(`${parsed.hostname}${parsed.pathname}`)
+      } catch {
+        return ''
+      }
+    })
+    .filter(Boolean)
+}
+
+function validateExternalAccess(manifest: Manifest): string[] {
+  const errors: string[] = []
+  const externalEnabled = manifest.capabilities?.external === true
+  const externalConfig = manifest.external ?? null
+  const endpoints = externalConfig?.endpoints || []
+  const permissions = externalConfig?.permissions || []
+  const hasExternalConfig = !!(externalConfig && (endpoints.length > 0 || permissions.length > 0 || externalConfig.auth))
+
+  if (externalEnabled && !hasExternalConfig) {
+    errors.push('external-capability: capabilities.external is true but external endpoints/permissions are missing')
+    return errors
+  }
+
+  if (!externalEnabled && hasExternalConfig) {
+    errors.push('external-capability: external config is present but capabilities.external is not enabled')
+  }
+
+  if (!hasExternalConfig) {
+    return errors
+  }
+
+  if (endpoints.length === 0) {
+    errors.push('external-endpoints: external access requires at least one declared endpoint')
+  }
+
+  if (permissions.length === 0) {
+    errors.push('external-permissions: external access requires at least one declared permission reason')
+  }
+
+  const endpointTargets = getExternalEndpointTargets(manifest)
+
+  for (const endpoint of endpoints) {
+    try {
+      const parsed = new URL(endpoint.url)
+      const isLocalhost = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1'
+      if (parsed.protocol !== 'https:' && !isLocalhost) {
+        errors.push(`external-endpoints: endpoint '${endpoint.id}' must use https`)
+      }
+    } catch {
+      errors.push(`external-endpoints: endpoint '${endpoint.id}' has an invalid url`)
+    }
+  }
+
+  for (const permission of permissions) {
+    const target = normalizeEndpointPrefix(permission.endpoint)
+    if (!target) {
+      errors.push('external-permissions: permission endpoint must not be empty')
+      continue
+    }
+    if (!permission.reason || !String(permission.reason).trim()) {
+      errors.push(`external-permissions: permission '${permission.endpoint}' is missing a user-facing reason`)
+    }
+    if (endpointTargets.length > 0 && !endpointTargets.some((endpointTarget) => endpointTarget.startsWith(target) || target.startsWith(endpointTarget))) {
+      errors.push(`external-permissions: permission '${permission.endpoint}' does not match any declared external endpoint`)
+    }
+  }
+
+  return errors
+}
+
 export class ManifestCompiler {
   constructor(private options: CompilerOptions) {
     // TODO: Use options for future compiler configuration
@@ -96,6 +177,11 @@ export class ManifestCompiler {
         ) || ['Unknown validation error']
 
         return { valid: false, errors }
+      }
+
+      const semanticErrors = validateExternalAccess(manifest)
+      if (semanticErrors.length > 0) {
+        return { valid: false, errors: semanticErrors }
       }
 
       return { valid: true, errors: [] }

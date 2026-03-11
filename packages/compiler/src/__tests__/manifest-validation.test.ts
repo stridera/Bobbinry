@@ -273,6 +273,52 @@ describe('Manifest Validation', () => {
       const result = compiler.validateManifestWithDetails(manifest as any)
       expect(result.valid).toBe(true)
     })
+
+    it('should reject external capability without external config', () => {
+      const manifest = {
+        id: 'external-bobbin',
+        name: 'External Bobbin',
+        version: '1.0.0',
+        capabilities: {
+          external: true
+        }
+      }
+
+      const result = compiler.validateManifestWithDetails(manifest as any)
+      expect(result.valid).toBe(false)
+      expect(result.errors).toContain('external-capability: capabilities.external is true but external endpoints/permissions are missing')
+    })
+
+    it('should reject external config when external capability is disabled', () => {
+      const manifest = {
+        id: 'mismatch-bobbin',
+        name: 'Mismatch Bobbin',
+        version: '1.0.0',
+        capabilities: {
+          external: false
+        },
+        external: {
+          endpoints: [
+            {
+              id: 'dictionary',
+              url: 'https://api.example.com/v1/lookup',
+              method: 'GET'
+            }
+          ],
+          permissions: [
+            {
+              endpoint: 'api.example.com/v1',
+              reason: 'Look up words',
+              required: true
+            }
+          ]
+        }
+      }
+
+      const result = compiler.validateManifestWithDetails(manifest as any)
+      expect(result.valid).toBe(false)
+      expect(result.errors).toContain('external-capability: external config is present but capabilities.external is not enabled')
+    })
   })
 
   describe('Compilation Process', () => {

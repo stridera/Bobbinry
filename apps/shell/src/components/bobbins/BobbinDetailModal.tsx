@@ -71,6 +71,42 @@ export function BobbinDetailModal({ bobbin, onClose, actionSlot }: BobbinDetailM
             </div>
           )}
 
+          {bobbin.capabilities.external && bobbin.externalAccess && (
+            <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/30">
+              <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-100 mb-2">External Access</h3>
+              {bobbin.externalAccess.hosts.length > 0 && (
+                <div className="mb-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-amber-800 dark:text-amber-200 mb-2">Services</p>
+                  <div className="flex flex-wrap gap-2">
+                    {bobbin.externalAccess.hosts.map(host => (
+                      <span key={host} className="px-2.5 py-1 rounded-full bg-white/80 dark:bg-amber-950/60 text-xs text-amber-900 dark:text-amber-100 border border-amber-200 dark:border-amber-900/60">
+                        {host}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {bobbin.externalAccess.permissions.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium uppercase tracking-wide text-amber-800 dark:text-amber-200">Requested Permissions</p>
+                  <ul className="space-y-2">
+                    {bobbin.externalAccess.permissions.map(permission => (
+                      <li key={`${permission.endpoint}-${permission.reason}`} className="text-sm text-amber-950 dark:text-amber-50">
+                        <span className="font-medium">{permission.endpoint}</span>
+                        <span className="text-amber-800 dark:text-amber-200">: {permission.reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {bobbin.externalAccess.authType && (
+                <p className="mt-3 text-xs text-amber-800 dark:text-amber-200">
+                  Auth flow: <span className="font-medium">{bobbin.externalAccess.authType}</span>
+                </p>
+              )}
+            </div>
+          )}
+
           {bobbin.isInstalled && (
             <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
               <p className="text-green-800 dark:text-green-300 text-sm">

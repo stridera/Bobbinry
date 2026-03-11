@@ -1,6 +1,6 @@
 id: cat
 name: Cat Companion
-version: 1.0.0
+version: 1.0.1
 author: Bobbinry Team
 description: A morale-boosting writing companion that rewards you with cat images every 1,000 words and plays meow sounds when you type "cat" or "meow"
 tags:
@@ -11,7 +11,7 @@ license: Apache-2.0
 
 capabilities:
   publishable: false
-  external: false
+  external: true
   ai: false
   customViews: false
 extensions:
@@ -30,3 +30,14 @@ compatibility:
 
 data:
   collections: []
+
+external:
+  endpoints:
+    - id: cat-images
+      url: https://api.thecatapi.com/v1/images/search
+      method: GET
+      description: Fetch reward cat images for writing milestones
+  permissions:
+    - endpoint: api.thecatapi.com/v1
+      reason: Load celebratory cat images when the writer hits milestones
+      required: true

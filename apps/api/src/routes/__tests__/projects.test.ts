@@ -152,5 +152,29 @@ describe('Projects API', () => {
       // nonexistent path outside bobbins/ returns 403 (access denied)
       expect(response.statusCode).toBe(403)
     })
+
+    it('should reject external bobbins without declared external permissions', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/projects/${testProject.id}/bobbins/install`,
+        headers: { authorization: `Bearer ${authToken}` },
+        payload: {
+          manifestContent: JSON.stringify({
+            id: 'unsafe-external',
+            name: 'Unsafe External',
+            version: '1.0.0',
+            capabilities: {
+              external: true
+            }
+          }),
+          manifestType: 'json'
+        }
+      })
+
+      expect(response.statusCode).toBe(400)
+      const result = JSON.parse(response.payload)
+      expect(result.error).toBe('Manifest compilation failed')
+      expect(result.details).toContain('Manifest validation failed')
+    })
   })
 })

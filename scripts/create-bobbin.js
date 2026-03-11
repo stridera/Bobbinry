@@ -113,6 +113,9 @@ capabilities:
   ai: false
   customViews: true
 
+# If you enable external: true, also add an external: block that declares
+# every third-party endpoint and the user-facing permission reason.
+
 execution:
   mode: native
   signature: dev_mode_skip

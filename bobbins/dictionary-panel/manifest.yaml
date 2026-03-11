@@ -1,6 +1,6 @@
 id: dictionary-panel
 name: Dictionary Panel
-version: 1.1.0
+version: 1.2.0
 author: "Bobbins Samples"
 description: "Right-side panel with dictionary definitions and thesaurus. Looks up selected words via Free Dictionary API and Datamuse."
 tags: [panel, dictionary, thesaurus, pubsub]
@@ -20,3 +20,20 @@ extensions:
         inView: project
 data:
   collections: []
+external:
+  endpoints:
+    - id: dictionary
+      url: https://api.dictionaryapi.dev/api/v2/entries/en/example
+      method: GET
+      description: Look up dictionary definitions for the selected word
+    - id: synonyms
+      url: https://api.datamuse.com/words
+      method: GET
+      description: Retrieve synonyms and antonyms for the selected word
+  permissions:
+    - endpoint: api.dictionaryapi.dev/api/v2/entries
+      reason: Fetch dictionary definitions for the selected word
+      required: true
+    - endpoint: api.datamuse.com/words
+      reason: Fetch related words for thesaurus suggestions
+      required: true
