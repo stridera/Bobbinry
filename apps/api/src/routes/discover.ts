@@ -10,7 +10,7 @@ import {
   siteMemberships,
   userBadges,
 } from '../db/schema'
-import { eq, and, or, ilike, sql, desc, asc, count, countDistinct } from 'drizzle-orm'
+import { eq, and, or, ilike, sql, desc, asc, count, countDistinct, isNull } from 'drizzle-orm'
 
 const discoverPlugin: FastifyPluginAsync = async (fastify) => {
 
@@ -36,10 +36,11 @@ const discoverPlugin: FastifyPluginAsync = async (fastify) => {
       const limit = Math.min(Math.max(parseInt(limitStr) || 20, 1), 50)
       const offset = Math.max(parseInt(offsetStr) || 0, 0)
 
-      // Build base conditions: only live-published, non-archived projects
+      // Build base conditions: only live-published, non-archived, non-deleted projects
       const baseConditions = and(
         eq(projectPublishConfig.publishingMode, 'live'),
-        eq(projects.isArchived, false)
+        eq(projects.isArchived, false),
+        isNull(projects.deletedAt)
       )
 
       // Search condition
@@ -225,7 +226,8 @@ const discoverPlugin: FastifyPluginAsync = async (fastify) => {
         .innerJoin(projectPublishConfig, eq(projectPublishConfig.projectId, projects.id))
         .where(and(
           eq(projectPublishConfig.publishingMode, 'live'),
-          eq(projects.isArchived, false)
+          eq(projects.isArchived, false),
+          isNull(projects.deletedAt)
         ))
         .as('published_authors')
 
@@ -270,7 +272,8 @@ const discoverPlugin: FastifyPluginAsync = async (fastify) => {
         .innerJoin(projectPublishConfig, eq(projectPublishConfig.projectId, projects.id))
         .where(and(
           eq(projectPublishConfig.publishingMode, 'live'),
-          eq(projects.isArchived, false)
+          eq(projects.isArchived, false),
+          isNull(projects.deletedAt)
         ))
         .groupBy(projects.ownerId)
         .as('published_counts')
@@ -375,6 +378,7 @@ const discoverPlugin: FastifyPluginAsync = async (fastify) => {
       const conditions = and(
         eq(projectPublishConfig.publishingMode, 'live'),
         eq(projects.isArchived, false),
+        isNull(projects.deletedAt),
         category ? eq(contentTags.tagCategory, category) : undefined
       )
 

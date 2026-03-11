@@ -7,6 +7,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
 import { SiteNav } from '@/components/SiteNav'
+import { ConfirmModal } from '@/components/ConfirmModal'
 
 interface SubscriptionTier {
   id: string
@@ -80,6 +81,9 @@ function MonetizationContent() {
   // Tier editing
   const [editingTier, setEditingTier] = useState<(typeof emptyTier & { id?: string }) | null>(null)
   const [benefitInput, setBenefitInput] = useState('')
+
+  // Tier deletion
+  const [deletingTier, setDeletingTier] = useState<SubscriptionTier | null>(null)
 
   // Discount code editing
   const [showCodeForm, setShowCodeForm] = useState(false)
@@ -220,7 +224,7 @@ function MonetizationContent() {
 
   const deleteTier = async (tierId: string) => {
     if (!session?.apiToken || !session?.user?.id) return
-    if (!confirm('Delete this tier? Active subscribers will keep their access until their period ends.')) return
+    setSaving(true)
     try {
       await apiFetch(
         `/api/users/${session.user.id}/subscription-tiers/${tierId}`,
@@ -230,6 +234,9 @@ function MonetizationContent() {
       await loadData()
     } catch {
       setError('Failed to delete tier')
+    } finally {
+      setSaving(false)
+      setDeletingTier(null)
     }
   }
 
@@ -475,7 +482,7 @@ function MonetizationContent() {
                     Edit
                   </button>
                   <button
-                    onClick={() => deleteTier(tier.id)}
+                    onClick={() => setDeletingTier(tier)}
                     className="text-sm text-red-600 dark:text-red-400 hover:underline"
                   >
                     Delete
@@ -717,6 +724,17 @@ function MonetizationContent() {
           )}
         </div>
       </div>
+
+      <ConfirmModal
+        open={!!deletingTier}
+        title="Delete Tier"
+        description={deletingTier ? `Delete "${deletingTier.name}"? Active subscribers will keep their access until their current period ends.` : ''}
+        confirmLabel="Delete Tier"
+        variant="danger"
+        loading={saving}
+        onConfirm={() => deletingTier && deleteTier(deletingTier.id)}
+        onCancel={() => setDeletingTier(null)}
+      />
     </div>
   )
 }

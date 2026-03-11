@@ -820,7 +820,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
     try {
       const { slug } = request.params
 
-      // Look up by shortUrl or slugPrefix in publish config
+      // Look up by shortUrl or slugPrefix in publish config (exclude trashed)
       const [project] = await db
         .select({
           id: projects.id,
@@ -832,7 +832,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           createdAt: projects.createdAt
         })
         .from(projects)
-        .where(eq(projects.shortUrl, slug))
+        .where(and(eq(projects.shortUrl, slug), isNull(projects.deletedAt)))
         .limit(1)
 
       if (!project) {
@@ -849,7 +849,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           })
           .from(projects)
           .innerJoin(projectPublishConfig, eq(projectPublishConfig.projectId, projects.id))
-          .where(eq(projectPublishConfig.slugPrefix, slug))
+          .where(and(eq(projectPublishConfig.slugPrefix, slug), isNull(projects.deletedAt)))
           .limit(1)
 
         if (!configMatch) {
@@ -925,7 +925,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         .from(projects)
         .leftJoin(userProfiles, eq(userProfiles.userId, projects.ownerId))
         .leftJoin(users, eq(users.id, projects.ownerId))
-        .where(inArray(projects.shortUrl, slugs))
+        .where(and(inArray(projects.shortUrl, slugs), isNull(projects.deletedAt)))
 
       const results = projectRows
         .filter((row) => Boolean(row.shortUrl))
@@ -1007,7 +1007,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(404).send({ error: 'Author not found', correlationId })
       }
 
-      // Find project by owner + shortUrl
+      // Find project by owner + shortUrl (exclude trashed)
       const [project] = await db
         .select({
           id: projects.id,
@@ -1021,7 +1021,8 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         .from(projects)
         .where(and(
           eq(projects.ownerId, author.userId),
-          eq(projects.shortUrl, projectSlug)
+          eq(projects.shortUrl, projectSlug),
+          isNull(projects.deletedAt)
         ))
         .limit(1)
 
@@ -1111,7 +1112,8 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         .where(and(
           eq(projects.ownerId, author.userId),
           eq(projectPublishConfig.publishingMode, 'live'),
-          sql`${projects.shortUrl} IS NOT NULL`
+          sql`${projects.shortUrl} IS NOT NULL`,
+          isNull(projects.deletedAt)
         ))
         .orderBy(desc(projects.createdAt))
 

@@ -1,7 +1,7 @@
 import { FastifyPluginAsync } from 'fastify'
 import { db } from '../db/connection'
 import { projectFollows, projects, subscriptions, users, userNotificationPreferences, notifications } from '../db/schema'
-import { eq, and, count } from 'drizzle-orm'
+import { eq, and, count, isNull } from 'drizzle-orm'
 import { requireAuth, optionalAuth, requireVerified } from '../middleware/auth'
 import { sendNewFollowerEmail } from '../lib/email'
 
@@ -25,11 +25,11 @@ const projectFollowsPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Invalid project ID format' })
       }
 
-      // Verify project exists and user doesn't own it
+      // Verify project exists (not trashed) and user doesn't own it
       const [project] = await db
         .select({ ownerId: projects.ownerId })
         .from(projects)
-        .where(eq(projects.id, projectId))
+        .where(and(eq(projects.id, projectId), isNull(projects.deletedAt)))
         .limit(1)
 
       if (!project) {
@@ -121,7 +121,7 @@ const projectFollowsPlugin: FastifyPluginAsync = async (fastify) => {
       const [project] = await db
         .select({ ownerId: projects.ownerId })
         .from(projects)
-        .where(eq(projects.id, projectId))
+        .where(and(eq(projects.id, projectId), isNull(projects.deletedAt)))
         .limit(1)
 
       if (project) {

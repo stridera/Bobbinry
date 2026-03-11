@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { SiteNav } from '@/components/SiteNav'
@@ -87,6 +87,7 @@ interface DashboardData {
 
 export default function ProjectDashboardPage() {
   const params = useParams()
+  const router = useRouter()
   const { data: session } = useSession()
   const projectId = params.projectId as string
 
@@ -252,6 +253,7 @@ export default function ProjectDashboardPage() {
               bobbins: prev.bobbins.filter(b => b.id !== bobbinId)
             } : prev)
           }}
+          onDelete={() => router.push('/dashboard')}
         />
       </div>
     </div>

@@ -9,7 +9,7 @@ import { FastifyRequest, FastifyReply } from 'fastify'
 import * as jose from 'jose'
 import { db } from '../db/connection'
 import { users, projects } from '../db/schema'
-import { eq } from 'drizzle-orm'
+import { eq, and, isNull, isNotNull } from 'drizzle-orm'
 import { getUserBadges } from '../lib/membership'
 
 // User context attached to authenticated requests
@@ -245,32 +245,31 @@ export async function optionalAuth(
 }
 
 /**
- * Project ownership authorization helper
- *
- * Verifies the authenticated user owns the specified project.
- * Must be called after requireAuth middleware.
+ * Internal helper for project ownership checks.
+ * @param deletedOnly - if true, matches only trashed projects; if false, only active ones.
  */
-export async function requireProjectOwnership(
+async function checkProjectOwnership(
   request: FastifyRequest,
   reply: FastifyReply,
-  projectId: string
+  projectId: string,
+  deletedOnly: boolean
 ): Promise<boolean> {
   if (!request.user) {
     reply.status(401).send({ error: 'Authentication required' })
     return false
   }
 
-  // Validate UUID format
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   if (!uuidRegex.test(projectId)) {
     reply.status(400).send({ error: 'Invalid project ID format' })
     return false
   }
 
+  const deletedFilter = deletedOnly ? isNotNull(projects.deletedAt) : isNull(projects.deletedAt)
   const [project] = await db
     .select({ ownerId: projects.ownerId })
     .from(projects)
-    .where(eq(projects.id, projectId))
+    .where(and(eq(projects.id, projectId), deletedFilter))
     .limit(1)
 
   if (!project) {
@@ -287,6 +286,24 @@ export async function requireProjectOwnership(
   }
 
   return true
+}
+
+/** Verifies the authenticated user owns the specified active (non-trashed) project. */
+export async function requireProjectOwnership(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  projectId: string
+): Promise<boolean> {
+  return checkProjectOwnership(request, reply, projectId, false)
+}
+
+/** Same as requireProjectOwnership but only matches trashed (soft-deleted) projects. */
+export async function requireDeletedProjectOwnership(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  projectId: string
+): Promise<boolean> {
+  return checkProjectOwnership(request, reply, projectId, true)
 }
 
 /**

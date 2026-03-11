@@ -8,20 +8,22 @@
 import { FastifyPluginAsync } from 'fastify'
 import { db } from '../db/connection'
 import { projectCollections, projectCollectionMemberships, projects } from '../db/schema'
-import { eq, and, desc, sql } from 'drizzle-orm'
+import { eq, and, desc, sql, isNull, isNotNull } from 'drizzle-orm'
 import { randomBytes } from 'crypto'
 import { requireAuth } from '../middleware/auth'
 
-/** Verify the authenticated user owns a collection. Returns the collection or sends 403/404. */
-async function requireCollectionOwnership(
+/** Internal helper for collection ownership checks. */
+async function checkCollectionOwnership(
   request: import('fastify').FastifyRequest,
   reply: import('fastify').FastifyReply,
-  collectionId: string
+  collectionId: string,
+  deletedOnly: boolean
 ): Promise<typeof projectCollections.$inferSelect | null> {
+  const deletedFilter = deletedOnly ? isNotNull(projectCollections.deletedAt) : isNull(projectCollections.deletedAt)
   const [collection] = await db
     .select()
     .from(projectCollections)
-    .where(eq(projectCollections.id, collectionId))
+    .where(and(eq(projectCollections.id, collectionId), deletedFilter))
     .limit(1)
 
   if (!collection) {
@@ -35,6 +37,24 @@ async function requireCollectionOwnership(
   }
 
   return collection
+}
+
+/** Verify the authenticated user owns a non-deleted collection. */
+function requireCollectionOwnership(
+  request: import('fastify').FastifyRequest,
+  reply: import('fastify').FastifyReply,
+  collectionId: string
+) {
+  return checkCollectionOwnership(request, reply, collectionId, false)
+}
+
+/** Verify the authenticated user owns a soft-deleted collection. Used for restore/permanent-delete. */
+function requireDeletedCollectionOwnership(
+  request: import('fastify').FastifyRequest,
+  reply: import('fastify').FastifyReply,
+  collectionId: string
+) {
+  return checkCollectionOwnership(request, reply, collectionId, true)
 }
 
 const collectionsPlugin: FastifyPluginAsync = async (fastify) => {
@@ -71,7 +91,7 @@ const collectionsPlugin: FastifyPluginAsync = async (fastify) => {
           projectCollectionMemberships,
           eq(projectCollections.id, projectCollectionMemberships.collectionId)
         )
-        .where(eq(projectCollections.userId, userId))
+        .where(and(eq(projectCollections.userId, userId), isNull(projectCollections.deletedAt)))
         .groupBy(projectCollections.id)
         .orderBy(desc(projectCollections.updatedAt))
 
@@ -138,7 +158,7 @@ const collectionsPlugin: FastifyPluginAsync = async (fastify) => {
       const [collection] = await db
         .select()
         .from(projectCollections)
-        .where(eq(projectCollections.id, collectionId))
+        .where(and(eq(projectCollections.id, collectionId), isNull(projectCollections.deletedAt)))
         .limit(1)
 
       if (!collection) {
@@ -198,7 +218,7 @@ const collectionsPlugin: FastifyPluginAsync = async (fastify) => {
   })
 
   /**
-   * Delete collection (keeps projects intact)
+   * Soft-delete collection (moves to trash)
    * DELETE /collections/:collectionId
    */
   fastify.delete<{
@@ -214,15 +234,73 @@ const collectionsPlugin: FastifyPluginAsync = async (fastify) => {
       const owned = await requireCollectionOwnership(request, reply, collectionId)
       if (!owned) return
 
-      // Delete collection (cascade will remove memberships)
       await db
-        .delete(projectCollections)
+        .update(projectCollections)
+        .set({ deletedAt: new Date(), updatedAt: new Date() })
         .where(eq(projectCollections.id, collectionId))
 
       return reply.status(204).send()
     } catch (error) {
       fastify.log.error({ error }, 'Failed to delete collection')
       return reply.status(500).send({ error: 'Failed to delete collection' })
+    }
+  })
+
+  /**
+   * Restore collection from trash
+   * PUT /collections/:collectionId/restore
+   */
+  fastify.put<{
+    Params: {
+      collectionId: string
+    }
+  }>('/collections/:collectionId/restore', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    try {
+      const { collectionId } = request.params
+
+      const owned = await requireDeletedCollectionOwnership(request, reply, collectionId)
+      if (!owned) return
+
+      const [collection] = await db
+        .update(projectCollections)
+        .set({ deletedAt: null, updatedAt: new Date() })
+        .where(eq(projectCollections.id, collectionId))
+        .returning()
+
+      return reply.send({ collection })
+    } catch (error) {
+      fastify.log.error({ error }, 'Failed to restore collection')
+      return reply.status(500).send({ error: 'Failed to restore collection' })
+    }
+  })
+
+  /**
+   * Permanently delete collection (hard delete)
+   * DELETE /collections/:collectionId/permanent
+   */
+  fastify.delete<{
+    Params: {
+      collectionId: string
+    }
+  }>('/collections/:collectionId/permanent', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    try {
+      const { collectionId } = request.params
+
+      const owned = await requireDeletedCollectionOwnership(request, reply, collectionId)
+      if (!owned) return
+
+      await db
+        .delete(projectCollections)
+        .where(eq(projectCollections.id, collectionId))
+
+      return reply.status(204).send()
+    } catch (error) {
+      fastify.log.error({ error }, 'Failed to permanently delete collection')
+      return reply.status(500).send({ error: 'Failed to permanently delete collection' })
     }
   })
 

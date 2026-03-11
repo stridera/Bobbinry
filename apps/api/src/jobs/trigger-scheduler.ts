@@ -12,6 +12,7 @@ import { db } from '../db/connection'
 import { bobbinsInstalled, entities, projectDestinations } from '../db/schema'
 import { eq, and, gt } from 'drizzle-orm'
 import { processEmbargoReleases, initTierDispatch } from './tier-dispatch'
+import { processTrashPurge } from './trash-purge'
 import { loadDiskManifests } from '../lib/disk-manifests'
 
 /** Sync frequency to milliseconds lookup for backup bobbins */
@@ -260,11 +261,18 @@ export function startTriggerScheduler(): void {
 
   async function tick() {
     const { installed, diskManifests } = await getInstalledBobbins()
-    await Promise.allSettled([
+    const tasks: Promise<any>[] = [
       processScheduleTriggers(installed, diskManifests),
       processBackupSync(installed, diskManifests),
       processEmbargoReleases(),
-    ])
+    ]
+
+    // Run trash purge hourly (at minute 0)
+    if (new Date().getUTCMinutes() === 0) {
+      tasks.push(processTrashPurge())
+    }
+
+    await Promise.allSettled(tasks)
   }
 
   intervalId = setInterval(tick, 60 * 1000)

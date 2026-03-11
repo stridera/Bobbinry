@@ -85,6 +85,13 @@
       "when": 1773811200000,
       "tag": "0012_remove_sandbox_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1773984000000,
+      "tag": "0013_add_soft_delete",
+      "breakpoints": true
     }
   ]
 }

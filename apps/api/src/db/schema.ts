@@ -508,11 +508,13 @@ export const projectCollections = pgTable('project_collections', {
   coverImage: varchar('cover_image', { length: 500 }),
   colorTheme: varchar('color_theme', { length: 20 }),
   isPublic: boolean('is_public').default(false).notNull(),
+  deletedAt: timestamp('deleted_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull()
 }, (table) => ({
   userIdx: index('project_collections_user_idx').on(table.userId),
-  shortUrlIdx: index('project_collections_short_url_idx').on(table.shortUrl)
+  shortUrlIdx: index('project_collections_short_url_idx').on(table.shortUrl),
+  deletedIdx: index('project_collections_deleted_idx').on(table.userId, table.deletedAt)
 }))
 
 // Project collection memberships - many-to-many relationship between projects and collections
@@ -539,11 +541,13 @@ export const projects = pgTable('projects', {
   shortUrlClaimedAt: timestamp('short_url_claimed_at'),
   isArchived: boolean('is_archived').default(false).notNull(),
   archivedAt: timestamp('archived_at'),
+  deletedAt: timestamp('deleted_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull()
 }, (table) => ({
   ownerArchivedIdx: index('projects_owner_archived_idx').on(table.ownerId, table.isArchived),
-  shortUrlIdx: index('projects_short_url_idx').on(table.shortUrl)
+  shortUrlIdx: index('projects_short_url_idx').on(table.shortUrl),
+  deletedIdx: index('projects_owner_deleted_idx').on(table.ownerId, table.deletedAt)
 }))
 
 // Project memberships - user access to projects

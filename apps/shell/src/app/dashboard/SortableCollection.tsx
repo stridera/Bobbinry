@@ -8,6 +8,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
+import { ConfirmModal } from '@/components/ConfirmModal'
 import {
   DndContext,
   closestCenter,
@@ -56,6 +57,7 @@ export function SortableCollection({ collection, onReorder, onDeleteCollection, 
   const [projects, setProjects] = useState(collection.projects)
   const [isDragging, setIsDragging] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sync local drag state with parent prop
@@ -115,6 +117,7 @@ export function SortableCollection({ collection, onReorder, onDeleteCollection, 
   }
 
   return (
+    <>
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
       <div className="flex items-center justify-between mb-4">
         <div>
@@ -155,14 +158,12 @@ export function SortableCollection({ collection, onReorder, onDeleteCollection, 
                   <div className="border-t border-gray-100 dark:border-gray-700 my-1" />
                   <button
                     onClick={() => {
-                      if (confirm(`Delete "${collection.name}"? Projects will not be deleted.`)) {
-                        onDeleteCollection(collection.id)
-                      }
                       setMenuOpen(false)
+                      setShowDeleteConfirm(true)
                     }}
                     className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
                   >
-                    Delete Collection
+                    Move to Trash
                   </button>
                 </div>
               )}
@@ -193,5 +194,21 @@ export function SortableCollection({ collection, onReorder, onDeleteCollection, 
         </SortableContext>
       </DndContext>
     </div>
+
+    {onDeleteCollection && (
+      <ConfirmModal
+        open={showDeleteConfirm}
+        title="Move to Trash"
+        description={`"${collection.name}" will be moved to trash. Projects inside will not be deleted. Auto-deletes after 30 days.`}
+        confirmLabel="Move to Trash"
+        variant="danger"
+        onConfirm={() => {
+          setShowDeleteConfirm(false)
+          onDeleteCollection(collection.id)
+        }}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
+    )}
+    </>
   )
 }

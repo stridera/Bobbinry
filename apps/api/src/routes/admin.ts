@@ -7,7 +7,7 @@
 import { FastifyPluginAsync } from 'fastify'
 import { db } from '../db/connection'
 import { users, projects, userBadges, userProfiles, siteMemberships } from '../db/schema'
-import { eq, sql, ilike, or, and, count, desc } from 'drizzle-orm'
+import { eq, sql, ilike, or, and, count, desc, isNull } from 'drizzle-orm'
 import { requireAuth, requireOwner } from '../middleware/auth'
 
 const adminPlugin: FastifyPluginAsync = async (fastify) => {
@@ -22,7 +22,7 @@ const adminPlugin: FastifyPluginAsync = async (fastify) => {
   }, async (_request, reply) => {
     const [[userCount], [projectCount], [signups7d], [signups30d], badgeCounts] = await Promise.all([
       db.select({ count: count() }).from(users),
-      db.select({ count: count() }).from(projects),
+      db.select({ count: count() }).from(projects).where(isNull(projects.deletedAt)),
       db.select({ count: count() }).from(users)
         .where(sql`${users.createdAt} > NOW() - INTERVAL '7 days'`),
       db.select({ count: count() }).from(users)

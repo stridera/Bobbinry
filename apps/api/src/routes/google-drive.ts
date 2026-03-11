@@ -8,7 +8,7 @@
 
 import { FastifyPluginAsync } from 'fastify'
 import * as jose from 'jose'
-import { eq, and, sql } from 'drizzle-orm'
+import { eq, and, sql, isNull } from 'drizzle-orm'
 import { db } from '../db/connection'
 import { projectDestinations, projects, userBobbinsInstalled, entities } from '../db/schema'
 import { requireAuth } from '../middleware/auth'
@@ -247,7 +247,7 @@ const googleDrivePlugin: FastifyPluginAsync = async (fastify) => {
           isArchived: projects.isArchived,
         })
         .from(projects)
-        .where(eq(projects.ownerId, userId))
+        .where(and(eq(projects.ownerId, userId), isNull(projects.deletedAt)))
 
       const activeProjects = userProjects.filter(p => !p.isArchived)
 
@@ -330,7 +330,7 @@ const googleDrivePlugin: FastifyPluginAsync = async (fastify) => {
       const userProjects = await db
         .select({ id: projects.id })
         .from(projects)
-        .where(eq(projects.ownerId, userId))
+        .where(and(eq(projects.ownerId, userId), isNull(projects.deletedAt)))
 
       const projectIds = userProjects.map(p => p.id)
       if (projectIds.length > 0) {
@@ -363,7 +363,7 @@ const googleDrivePlugin: FastifyPluginAsync = async (fastify) => {
       const [project] = await db
         .select({ id: projects.id, name: projects.name, userId: projects.ownerId })
         .from(projects)
-        .where(and(eq(projects.id, projectId), eq(projects.ownerId, userId)))
+        .where(and(eq(projects.id, projectId), eq(projects.ownerId, userId), isNull(projects.deletedAt)))
         .limit(1)
 
       if (!project) {
@@ -509,7 +509,7 @@ const googleDrivePlugin: FastifyPluginAsync = async (fastify) => {
       const [project] = await db
         .select({ id: projects.id, userId: projects.ownerId })
         .from(projects)
-        .where(and(eq(projects.id, projectId), eq(projects.ownerId, userId)))
+        .where(and(eq(projects.id, projectId), eq(projects.ownerId, userId), isNull(projects.deletedAt)))
         .limit(1)
 
       if (!project) {
@@ -569,7 +569,7 @@ const googleDrivePlugin: FastifyPluginAsync = async (fastify) => {
       const userProjects = await db
         .select({ id: projects.id, name: projects.name })
         .from(projects)
-        .where(and(eq(projects.ownerId, userId), eq(projects.isArchived, false)))
+        .where(and(eq(projects.ownerId, userId), eq(projects.isArchived, false), isNull(projects.deletedAt)))
 
       // Filter out opted-out projects
       const projectIds = userProjects.map(p => p.id)

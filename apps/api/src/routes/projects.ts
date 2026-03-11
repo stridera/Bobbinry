@@ -3,7 +3,7 @@ import { parse as parseYAML } from 'yaml'
 import * as path from 'path'
 import { db } from '../db/connection'
 import { projects, bobbinsInstalled, entities } from '../db/schema'
-import { eq, and, count, inArray } from 'drizzle-orm'
+import { eq, and, count, inArray, isNull } from 'drizzle-orm'
 import { ManifestCompiler } from '@bobbinry/compiler'
 import { requireAuth, requireProjectOwnership, requireVerified } from '../middleware/auth'
 import { getUserMembershipTier, getProjectLimit, getUserBadges } from '../lib/membership'
@@ -40,7 +40,8 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
           .from(projects)
           .where(and(
             eq(projects.ownerId, user.id),
-            eq(projects.isArchived, false)
+            eq(projects.isArchived, false),
+            isNull(projects.deletedAt)
           ))
 
         if ((projectCount?.count ?? 0) >= limit) {
@@ -81,11 +82,11 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
     try {
       const user = request.user!
 
-      // Only return projects owned by the authenticated user
+      // Only return projects owned by the authenticated user (exclude trashed)
       const projectList = await db
         .select()
         .from(projects)
-        .where(eq(projects.ownerId, user.id))
+        .where(and(eq(projects.ownerId, user.id), isNull(projects.deletedAt)))
 
       return reply.status(200).send(projectList)
     } catch (error) {

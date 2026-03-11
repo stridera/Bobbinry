@@ -13,9 +13,9 @@ import {
   projectCollectionMemberships,
   userProfiles
 } from '../db/schema'
-import { eq, and, ne, desc, sql, inArray } from 'drizzle-orm'
+import { eq, and, ne, desc, sql, inArray, isNull, isNotNull } from 'drizzle-orm'
 import { randomBytes } from 'crypto'
-import { requireAuth, requireProjectOwnership } from '../middleware/auth'
+import { requireAuth, requireProjectOwnership, requireDeletedProjectOwnership } from '../middleware/auth'
 
 const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
   /**
@@ -49,7 +49,7 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
           eq(projectCollectionMemberships.collectionId, projectCollections.id)
         )
         .$dynamic()
-        .where(eq(projects.ownerId, userId))
+        .where(and(eq(projects.ownerId, userId), isNull(projects.deletedAt)))
 
       // Filter archived if needed
       if (includeArchived === 'false') {
@@ -77,11 +77,11 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
     try {
       const userId = request.user!.id
 
-      // Get all user's collections
+      // Get all user's collections (exclude trashed)
       const collections = await db
         .select()
         .from(projectCollections)
-        .where(eq(projectCollections.userId, userId))
+        .where(and(eq(projectCollections.userId, userId), isNull(projectCollections.deletedAt)))
         .orderBy(desc(projectCollections.updatedAt))
 
       // Get all user's projects with their collection memberships
@@ -98,7 +98,8 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
         )
         .where(and(
           eq(projects.ownerId, userId),
-          eq(projects.isArchived, false)
+          eq(projects.isArchived, false),
+          isNull(projects.deletedAt)
         ))
 
       // Group projects by collection
@@ -141,11 +142,11 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
       const userId = request.user!.id
       const { limit = '50' } = request.query
 
-      // Get user's project IDs
+      // Get user's project IDs (exclude trashed)
       const userProjects = await db
         .select({ id: projects.id })
         .from(projects)
-        .where(eq(projects.ownerId, userId))
+        .where(and(eq(projects.ownerId, userId), isNull(projects.deletedAt)))
 
       const projectIds = userProjects.map(p => p.id)
 
@@ -188,28 +189,41 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
     try {
       const userId = request.user!.id
 
-      // Get project count
+      // Get project count (exclude trashed)
       const [projectStats] = await db
         .select({
           total: sql<string>`COUNT(*)::text`,
           archived: sql<string>`COUNT(CASE WHEN ${projects.isArchived} THEN 1 END)::text`
         })
         .from(projects)
-        .where(eq(projects.ownerId, userId))
+        .where(and(eq(projects.ownerId, userId), isNull(projects.deletedAt)))
 
-      // Get collection count
+      // Get collection count (exclude trashed)
       const [collectionStats] = await db
         .select({
           total: sql<string>`COUNT(*)::text`
         })
         .from(projectCollections)
-        .where(eq(projectCollections.userId, userId))
+        .where(and(eq(projectCollections.userId, userId), isNull(projectCollections.deletedAt)))
 
-      // Get user's project IDs for entity stats
+      // Get trashed items count
+      const [[trashedProjectCount], [trashedCollectionCount]] = await Promise.all([
+        db.select({ count: sql<number>`COUNT(*)::int` })
+          .from(projects)
+          .where(and(eq(projects.ownerId, userId), isNotNull(projects.deletedAt))),
+        db.select({ count: sql<number>`COUNT(*)::int` })
+          .from(projectCollections)
+          .where(and(eq(projectCollections.userId, userId), isNotNull(projectCollections.deletedAt)))
+      ])
+      const trashedStats = {
+        total: String((trashedProjectCount?.count || 0) + (trashedCollectionCount?.count || 0))
+      }
+
+      // Get user's project IDs for entity stats (exclude trashed)
       const userProjects = await db
         .select({ id: projects.id })
         .from(projects)
-        .where(eq(projects.ownerId, userId))
+        .where(and(eq(projects.ownerId, userId), isNull(projects.deletedAt)))
 
       const projectIds = userProjects.map(p => p.id)
 
@@ -240,6 +254,9 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
           },
           entities: {
             total: entityStats?.total || '0'
+          },
+          trashed: {
+            total: trashedStats?.total || '0'
           }
         }
       })
@@ -481,6 +498,144 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
   })
 
   /**
+   * Soft-delete a project (move to trash)
+   * DELETE /projects/:projectId
+   */
+  fastify.delete<{
+    Params: {
+      projectId: string
+    }
+  }>('/projects/:projectId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    try {
+      const { projectId } = request.params
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
+
+      await db
+        .update(projects)
+        .set({ deletedAt: new Date(), updatedAt: new Date() })
+        .where(eq(projects.id, projectId))
+
+      return reply.status(204).send()
+    } catch (error) {
+      fastify.log.error({ error }, 'Failed to delete project')
+      return reply.status(500).send({ error: 'Failed to delete project' })
+    }
+  })
+
+  /**
+   * Restore a project from trash
+   * PUT /projects/:projectId/restore
+   */
+  fastify.put<{
+    Params: {
+      projectId: string
+    }
+  }>('/projects/:projectId/restore', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    try {
+      const { projectId } = request.params
+      const hasAccess = await requireDeletedProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
+
+      const [project] = await db
+        .update(projects)
+        .set({ deletedAt: null, updatedAt: new Date() })
+        .where(eq(projects.id, projectId))
+        .returning()
+
+      return reply.send({ project })
+    } catch (error) {
+      fastify.log.error({ error }, 'Failed to restore project')
+      return reply.status(500).send({ error: 'Failed to restore project' })
+    }
+  })
+
+  /**
+   * Permanently delete a project (hard delete, cascades)
+   * DELETE /projects/:projectId/permanent
+   */
+  fastify.delete<{
+    Params: {
+      projectId: string
+    }
+  }>('/projects/:projectId/permanent', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    try {
+      const { projectId } = request.params
+      const hasAccess = await requireDeletedProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
+
+      await db
+        .delete(projects)
+        .where(eq(projects.id, projectId))
+
+      return reply.status(204).send()
+    } catch (error) {
+      fastify.log.error({ error }, 'Failed to permanently delete project')
+      return reply.status(500).send({ error: 'Failed to permanently delete project' })
+    }
+  })
+
+  /**
+   * List trashed projects and collections
+   * GET /users/me/trash
+   */
+  fastify.get('/users/me/trash', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    try {
+      const userId = request.user!.id
+
+      const [trashedProjects, trashedCollections] = await Promise.all([
+        db
+          .select({
+            id: projects.id,
+            name: projects.name,
+            description: projects.description,
+            coverImage: projects.coverImage,
+            deletedAt: projects.deletedAt
+          })
+          .from(projects)
+          .where(and(eq(projects.ownerId, userId), isNotNull(projects.deletedAt)))
+          .orderBy(desc(projects.deletedAt)),
+        db
+          .select({
+            id: projectCollections.id,
+            name: projectCollections.name,
+            description: projectCollections.description,
+            deletedAt: projectCollections.deletedAt
+          })
+          .from(projectCollections)
+          .where(and(eq(projectCollections.userId, userId), isNotNull(projectCollections.deletedAt)))
+          .orderBy(desc(projectCollections.deletedAt))
+      ])
+
+      const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
+
+      return reply.send({
+        projects: trashedProjects.map(p => ({
+          ...p,
+          type: 'project' as const,
+          autoDeleteAt: new Date(p.deletedAt!.getTime() + THIRTY_DAYS_MS)
+        })),
+        collections: trashedCollections.map(c => ({
+          ...c,
+          type: 'collection' as const,
+          autoDeleteAt: new Date(c.deletedAt!.getTime() + THIRTY_DAYS_MS)
+        }))
+      })
+    } catch (error) {
+      fastify.log.error({ error }, 'Failed to list trash')
+      return reply.status(500).send({ error: 'Failed to list trash' })
+    }
+  })
+
+  /**
    * Resolve project short URL (redirect)
    * GET /p/:shortUrl
    */
@@ -501,7 +656,7 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
         })
         .from(projects)
         .leftJoin(userProfiles, eq(userProfiles.userId, projects.ownerId))
-        .where(eq(projects.shortUrl, shortUrl))
+        .where(and(eq(projects.shortUrl, shortUrl), isNull(projects.deletedAt)))
         .limit(1)
 
       if (!result) {
@@ -534,7 +689,7 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
       const [collection] = await db
         .select()
         .from(projectCollections)
-        .where(eq(projectCollections.shortUrl, shortUrl))
+        .where(and(eq(projectCollections.shortUrl, shortUrl), isNull(projectCollections.deletedAt)))
         .limit(1)
 
       if (!collection) {
