@@ -13,7 +13,6 @@ import { ChapterOverview } from './components/dashboard/ChapterOverview'
 import { ScheduledReleases } from './components/dashboard/ScheduledReleases'
 import { PublishingSettings } from './components/dashboard/PublishingSettings'
 import { ProjectManagement } from './components/dashboard/ProjectManagement'
-import { BackupStatus } from './components/dashboard/BackupStatus'
 
 interface Tag {
   id: string
@@ -236,8 +235,6 @@ export default function ProjectDashboardPage() {
             setData(prev => prev ? { ...prev, publishConfig: config } : prev)
           }}
         />
-
-        <BackupStatus projectId={projectId} />
 
         <ProjectManagement
           projectId={projectId}
