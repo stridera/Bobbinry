@@ -128,6 +128,7 @@ export const userFollowers = pgTable('user_followers', {
 export const projectFollows = pgTable('project_follows', {
   followerId: uuid('follower_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  muted: boolean('muted').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull()
 }, (table) => ({
   followerIdx: index('project_follows_follower_idx').on(table.followerId),

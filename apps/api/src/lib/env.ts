@@ -76,7 +76,7 @@ export function validateEnv(): EnvConfig {
     S3_ACCESS_KEY: process.env.S3_ACCESS_KEY || 'admin',
     S3_SECRET_KEY: process.env.S3_SECRET_KEY || 'adminadmin',
     RESEND_API_KEY: process.env.RESEND_API_KEY,
-    EMAIL_FROM: process.env.EMAIL_FROM || 'noreply@bobbinry.com',
+    EMAIL_FROM: process.env.EMAIL_FROM || 'Bobbinry <noreply@bobbinry.com>',
     GOOGLE_ID: process.env.GOOGLE_ID,
     GOOGLE_SECRET: process.env.GOOGLE_SECRET,
   }

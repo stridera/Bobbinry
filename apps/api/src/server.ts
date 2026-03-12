@@ -151,7 +151,7 @@ export function build(opts = {}): FastifyInstance {
       ? [env.WEB_ORIGIN]
       : [env.WEB_ORIGIN],
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Correlation-ID']
   })
 

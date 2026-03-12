@@ -1,8 +1,8 @@
 import { FastifyPluginAsync } from 'fastify'
 import { db } from '../db/connection'
-import { projectFollows, projects, subscriptions, users, userNotificationPreferences, notifications } from '../db/schema'
+import { projectFollows, projects, subscriptions, users, userNotificationPreferences, notifications, userProfiles } from '../db/schema'
 import { eq, and, count, isNull } from 'drizzle-orm'
-import { requireAuth, optionalAuth, requireVerified } from '../middleware/auth'
+import { requireAuth, optionalAuth, requireVerified, requireSelf } from '../middleware/auth'
 import { sendNewFollowerEmail } from '../lib/email'
 
 function isValidUUID(uuid: string): boolean {
@@ -90,7 +90,7 @@ const projectFollowsPlugin: FastifyPluginAsync = async (fastify) => {
             },
           })
 
-          await sendNewFollowerEmail(owner.email, follower?.name || 'Someone', proj.name)
+          await sendNewFollowerEmail(owner.email, follower?.name || 'Someone', proj.name, project.ownerId)
         }
       })().catch(err => {
         fastify.log.warn({ err, projectId }, 'Failed to send new follower notification')
@@ -179,9 +179,10 @@ const projectFollowsPlugin: FastifyPluginAsync = async (fastify) => {
 
       // Check if current user is following
       let isFollowing = false
+      let muted = false
       if (request.user) {
         const [existing] = await db
-          .select()
+          .select({ muted: projectFollows.muted })
           .from(projectFollows)
           .where(and(
             eq(projectFollows.followerId, request.user.id),
@@ -189,12 +190,93 @@ const projectFollowsPlugin: FastifyPluginAsync = async (fastify) => {
           ))
           .limit(1)
         isFollowing = !!existing
+        muted = existing?.muted ?? false
       }
 
-      return reply.status(200).send({ isFollowing, followerCount })
+      return reply.status(200).send({ isFollowing, followerCount, muted })
     } catch (error) {
       fastify.log.error(error)
       return reply.status(500).send({ error: 'Failed to get follow status' })
+    }
+  })
+  // PATCH /projects/:projectId/follow — toggle mute on a follow
+  fastify.patch<{
+    Params: { projectId: string }
+    Body: { muted: boolean }
+  }>('/projects/:projectId/follow', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    try {
+      const { projectId } = request.params
+      const userId = request.user!.id
+      const { muted } = request.body || {}
+
+      if (!isValidUUID(projectId)) {
+        return reply.status(400).send({ error: 'Invalid project ID format' })
+      }
+
+      if (typeof muted !== 'boolean') {
+        return reply.status(400).send({ error: 'muted must be a boolean' })
+      }
+
+      // Verify user is following
+      const [existing] = await db
+        .select()
+        .from(projectFollows)
+        .where(and(
+          eq(projectFollows.followerId, userId),
+          eq(projectFollows.projectId, projectId)
+        ))
+        .limit(1)
+
+      if (!existing) {
+        return reply.status(404).send({ error: 'Not following this project' })
+      }
+
+      await db
+        .update(projectFollows)
+        .set({ muted })
+        .where(and(
+          eq(projectFollows.followerId, userId),
+          eq(projectFollows.projectId, projectId)
+        ))
+
+      return reply.status(200).send({ success: true, muted })
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.status(500).send({ error: 'Failed to update follow' })
+    }
+  })
+
+  // GET /users/:userId/follows — list projects user follows
+  fastify.get<{
+    Params: { userId: string }
+  }>('/users/:userId/follows', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    try {
+      const { userId } = request.params
+
+      if (!requireSelf(request, reply, userId)) return
+
+      const follows = await db
+        .select({
+          projectId: projectFollows.projectId,
+          muted: projectFollows.muted,
+          createdAt: projectFollows.createdAt,
+          projectName: projects.name,
+          projectShortUrl: projects.shortUrl,
+          authorUsername: userProfiles.username,
+        })
+        .from(projectFollows)
+        .innerJoin(projects, eq(projects.id, projectFollows.projectId))
+        .leftJoin(userProfiles, eq(userProfiles.userId, projects.ownerId))
+        .where(eq(projectFollows.followerId, userId))
+
+      return reply.status(200).send({ follows })
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.status(500).send({ error: 'Failed to fetch follows' })
     }
   })
 }

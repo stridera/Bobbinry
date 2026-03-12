@@ -92,6 +92,13 @@
       "when": 1773984000000,
       "tag": "0013_add_soft_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1774156800000,
+      "tag": "0014_add_project_follow_muted",
+      "breakpoints": true
     }
   ]
 }
