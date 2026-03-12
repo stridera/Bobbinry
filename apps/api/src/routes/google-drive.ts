@@ -407,7 +407,7 @@ const googleDrivePlugin: FastifyPluginAsync = async (fastify) => {
       // Sync all chapters
       const bobbinId = 'google-drive-backup'
       const { syncChapterToGoogleDrive } = await import(
-        `../../../../bobbins/${bobbinId}/actions/sync-service`
+        `../../../../bobbins/${bobbinId}/dist/actions/sync-service`
       )
 
       const chapters = await db
@@ -613,7 +613,7 @@ const googleDrivePlugin: FastifyPluginAsync = async (fastify) => {
 
         const bobbinId = 'google-drive-backup'
         const { syncChapterToGoogleDrive } = await import(
-          `../../../../bobbins/${bobbinId}/actions/sync-service`
+          `../../../../bobbins/${bobbinId}/dist/actions/sync-service`
         )
 
         const chapters = await db

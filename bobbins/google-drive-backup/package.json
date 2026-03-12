@@ -7,7 +7,7 @@
     "./panels/drive-sync": "./panels/drive-sync.tsx"
   },
   "scripts": {
-    "build": "echo 'consumed as source by shell'",
+    "build": "tsc -p tsconfig.actions.json",
     "dev": "echo 'consumed as source by shell'",
     "typecheck": "echo 'consumed as source by shell'"
   },
