@@ -604,24 +604,48 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
         .where(eq(projectPublishConfig.projectId, projectId))
         .limit(1)
 
+      let config
+      let statusCode = 200
+
       if (existing) {
-        // Update
         const [updated] = await db
           .update(projectPublishConfig)
           .set({ ...updates, updatedAt: new Date() })
           .where(eq(projectPublishConfig.projectId, projectId))
           .returning()
-
-        return reply.send({ config: updated, correlationId })
+        config = updated
       } else {
-        // Insert
         const [created] = await db
           .insert(projectPublishConfig)
           .values({ projectId, ...updates })
           .returning()
-
-        return reply.status(201).send({ config: created, correlationId })
+        config = created
+        statusCode = 201
       }
+
+      // When auto-release is enabled, schedule any complete chapters that aren't scheduled yet
+      if (config?.autoReleaseEnabled && config.releaseFrequency && config.releaseFrequency !== 'manual') {
+        try {
+          const completeChapters = await db
+            .select({ chapterId: chapterPublications.chapterId, publishedVersion: chapterPublications.publishedVersion })
+            .from(chapterPublications)
+            .where(and(
+              eq(chapterPublications.projectId, projectId),
+              eq(chapterPublications.publishStatus, 'complete')
+            ))
+
+          for (const chapter of completeChapters) {
+            const slot = await getNextAvailableReleaseSlot(projectId, { excludeChapterId: chapter.chapterId })
+            if (slot) {
+              await upsertScheduledChapterPublication(projectId, chapter.chapterId, slot, chapter.publishedVersion || '1.0')
+            }
+          }
+        } catch (scheduleError) {
+          fastify.log.warn({ err: scheduleError, projectId }, 'Failed to auto-schedule complete chapters after config update')
+        }
+      }
+
+      return reply.status(statusCode).send({ config, correlationId })
     } catch (error) {
       fastify.log.error({ error, correlationId }, 'Failed to update publish config')
       return reply.status(500).send({ error: 'Failed to update publish config', correlationId })
