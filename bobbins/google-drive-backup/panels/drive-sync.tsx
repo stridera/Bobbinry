@@ -12,6 +12,18 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
+import {
+  PanelActionButton,
+  PanelBody,
+  PanelCard,
+  PanelEmptyState,
+  PanelFrame,
+  PanelHeader,
+  PanelLoadingState,
+  PanelMessage,
+  PanelPill,
+  PanelSectionTitle,
+} from '@bobbinry/sdk'
 
 interface DriveSyncPanelProps {
   projectId: string
@@ -135,14 +147,7 @@ export default function DriveSyncPanel(props: DriveSyncPanelProps) {
   }
 
   if (loading) {
-    return (
-      <div className="px-5 py-4">
-        <div className="animate-pulse space-y-2">
-          <div className="h-4 bg-gray-100 dark:bg-gray-800 rounded w-32" />
-          <div className="h-8 bg-gray-100 dark:bg-gray-800 rounded" />
-        </div>
-      </div>
-    )
+    return <PanelLoadingState label="Loading backup status…" />
   }
 
   const connected = status?.connection?.connected
@@ -151,32 +156,21 @@ export default function DriveSyncPanel(props: DriveSyncPanelProps) {
   // Not connected — show connect button
   if (!connected) {
     return (
-      <div className="px-5 py-4 space-y-3">
+      <PanelFrame>
         <Header />
-
-        {message && (
-          <div className="p-2 rounded text-xs bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400">
-            {message.text}
-          </div>
-        )}
-
-        <div className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg space-y-2">
-          <div className="flex items-center gap-2 text-xs">
-            <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
-            <span className="text-gray-500 dark:text-gray-400">Not connected</span>
-          </div>
-          <p className="text-xs text-gray-400 dark:text-gray-500">
-            Connect Google Drive to automatically back up all your projects. Set up once, and every project is covered.
-          </p>
-        </div>
-
-        <button
-          onClick={handleConnect}
-          className="w-full px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors"
-        >
-          Connect Google Drive
-        </button>
-      </div>
+        <PanelBody className="space-y-3">
+          {message ? <PanelMessage tone="error">{message.text}</PanelMessage> : null}
+          <PanelEmptyState
+            title="Google Drive not connected"
+            description="Connect once to back up every project, then opt individual projects in or out."
+            action={
+              <PanelActionButton tone="primary" onClick={handleConnect}>
+                Connect Google Drive
+              </PanelActionButton>
+            }
+          />
+        </PanelBody>
+      </PanelFrame>
     )
   }
 
@@ -187,116 +181,99 @@ export default function DriveSyncPanel(props: DriveSyncPanelProps) {
   // Error state
   if (lastSyncError && projectData?.lastSyncStatus === 'failed') {
     return (
-      <div className="px-5 py-4 space-y-3">
+      <PanelFrame>
         <Header />
-        <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg space-y-2">
-          <div className="flex items-center gap-2 text-xs">
-            <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-            <span className="text-red-700 dark:text-red-400 font-medium">Sync Error</span>
-          </div>
-          <p className="text-xs text-red-600 dark:text-red-400">{lastSyncError}</p>
-        </div>
-        <button
-          onClick={handleSyncNow}
-          disabled={syncing}
-          className="w-full px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
-        >
-          {syncing ? 'Syncing...' : 'Retry Sync'}
-        </button>
-      </div>
+        <PanelBody className="space-y-3">
+          <PanelMessage tone="error">{lastSyncError}</PanelMessage>
+          <PanelActionButton tone="primary" onClick={handleSyncNow} disabled={syncing} className="w-full">
+            {syncing ? 'Syncing…' : 'Retry Sync'}
+          </PanelActionButton>
+        </PanelBody>
+      </PanelFrame>
     )
   }
 
   return (
-    <div className="px-5 py-4 space-y-3">
+    <PanelFrame>
       <Header />
+      <PanelBody className="space-y-3">
+        {message ? (
+          <PanelMessage tone={message.type === 'success' ? 'success' : 'error'}>
+            {message.text}
+          </PanelMessage>
+        ) : null}
 
-      {message && (
-        <div
-          className={`p-2 rounded text-xs ${
-            message.type === 'success'
-              ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
-              : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'
-          }`}
-        >
-          {message.text}
-        </div>
-      )}
-
-      <div className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs">
-            <span className={`w-1.5 h-1.5 rounded-full ${isBackedUp ? 'bg-green-500' : 'bg-gray-400'}`} />
-            <span className={`font-medium ${isBackedUp ? 'text-green-700 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>
-              {isBackedUp ? 'Backup Active' : 'Backup Disabled'}
-            </span>
-            {status?.connection?.driveEmail && (
-              <span className="text-gray-400 dark:text-gray-500">({status.connection.driveEmail})</span>
-            )}
+        <PanelCard className="space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <PanelPill className={isBackedUp ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' : ''}>
+                  {isBackedUp ? 'Backup Active' : 'Backup Disabled'}
+                </PanelPill>
+                {status?.connection?.driveEmail ? (
+                  <span className="truncate text-xs text-gray-500 dark:text-gray-400">{status.connection.driveEmail}</span>
+                ) : null}
+              </div>
+              {status?.connection?.rootFolderName ? (
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  Folder: <span className="font-medium text-gray-700 dark:text-gray-300">{status.connection.rootFolderName}</span>
+                </p>
+              ) : null}
+              {projectData?.lastSyncedAt ? (
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Last sync {new Date(projectData.lastSyncedAt).toLocaleString()}
+                </p>
+              ) : null}
+            </div>
+            <div className="flex flex-col gap-2">
+              {isBackedUp ? (
+                <PanelActionButton tone="primary" onClick={handleSyncNow} disabled={syncing}>
+                  {syncing ? 'Syncing…' : 'Sync now'}
+                </PanelActionButton>
+              ) : null}
+              <PanelActionButton onClick={() => handleToggle(!isBackedUp)}>
+                {isBackedUp ? 'Disable' : 'Enable'}
+              </PanelActionButton>
+            </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            {isBackedUp && (
-              <button
-                onClick={handleSyncNow}
-                disabled={syncing}
-                className="px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
-              >
-                {syncing ? 'Syncing...' : 'Sync Now'}
-              </button>
-            )}
-            <button
-              onClick={() => handleToggle(!isBackedUp)}
-              className={`px-2.5 py-1 text-xs font-medium rounded transition-colors ${
-                isBackedUp
-                  ? 'text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-                  : 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/10'
-              }`}
-            >
-              {isBackedUp ? 'Opt Out' : 'Enable'}
-            </button>
+        </PanelCard>
+
+        <div className="space-y-2">
+          <PanelSectionTitle>Backup Snapshot</PanelSectionTitle>
+          <div className="grid grid-cols-2 gap-3">
+            <PanelCard>
+              <div className="text-lg font-semibold text-gray-900 dark:text-gray-100">{projectData?.chapterCount || 0}</div>
+              <div className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Chapters</div>
+            </PanelCard>
+            <PanelCard>
+              <div className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                {status?.projects?.filter(p => p.isBackedUp).length || 0}
+              </div>
+              <div className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Active projects</div>
+            </PanelCard>
           </div>
         </div>
-        {status?.connection?.rootFolderName && (
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            Folder: <span className="font-medium text-gray-700 dark:text-gray-300">{status.connection.rootFolderName}</span>
-          </p>
-        )}
-        {projectData?.lastSyncedAt && (
-          <p className="text-xs text-gray-400 dark:text-gray-500">
-            Last sync: {new Date(projectData.lastSyncedAt).toLocaleString()}
-            {projectData.lastSyncStatus && (
-              <span
-                className={`ml-1.5 ${
-                  projectData.lastSyncStatus === 'success'
-                    ? 'text-green-600 dark:text-green-400'
-                    : projectData.lastSyncStatus === 'failed'
-                      ? 'text-red-600 dark:text-red-400'
-                      : 'text-yellow-600 dark:text-yellow-400'
-                }`}
-              >
-                ({projectData.lastSyncStatus})
-              </span>
-            )}
-          </p>
-        )}
-      </div>
 
-      <p className="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">
-        One-way backup sync. Content in Drive is auto-updated — edits made in Drive will be overwritten.
-      </p>
-    </div>
+        <p className="text-[10px] leading-tight text-gray-400 dark:text-gray-500">
+          One-way backup sync. Content in Drive is auto-updated, and edits made in Drive will be overwritten.
+        </p>
+      </PanelBody>
+    </PanelFrame>
   )
 }
 
 function Header() {
   return (
-    <div className="flex items-center justify-between">
-      <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2">
-        <svg className="w-4 h-4 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-        </svg>
-        Google Drive Backup
-      </h4>
-    </div>
+    <PanelHeader
+      title="Google Drive Backup"
+      description="Automatic project backup with per-project opt-in control."
+      badge={
+        <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300">
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+          </svg>
+        </span>
+      }
+    />
   )
 }

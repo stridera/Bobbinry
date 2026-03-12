@@ -1,5 +1,17 @@
 import { useState, useEffect, useMemo } from 'react'
-import { BobbinrySDK, PanelActions } from '@bobbinry/sdk'
+import {
+  BobbinrySDK,
+  PanelActions,
+  PanelActionButton,
+  PanelBody,
+  PanelEmptyState,
+  PanelFrame,
+  PanelIconButton,
+  PanelLoadingState,
+  PanelMessage,
+  PanelPill,
+  PanelSectionTitle,
+} from '@bobbinry/sdk'
 
 interface NavigationPanelProps {
   context?: {
@@ -13,6 +25,7 @@ interface NavigationPanelProps {
 export default function NavigationPanel({ context }: NavigationPanelProps) {
   const [relationships, setRelationships] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [selectedType, setSelectedType] = useState<string | null>(null)
 
   const [sdk] = useState(() => new BobbinrySDK('relationships'))
@@ -37,10 +50,12 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   async function loadData() {
     try {
       setLoading(true)
+      setError(null)
       const res = await sdk.entities.query({ collection: 'relationships', limit: 1000 })
       setRelationships((res.data as any[]) || [])
     } catch (error) {
       console.error('[Relationships Navigation] Failed to load:', error)
+      setError('Failed to load relationships.')
     } finally {
       setLoading(false)
     }
@@ -58,6 +73,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   const types = useMemo(() => Array.from(typeCounts.keys()).sort(), [typeCounts])
 
   function openGraph(type?: string) {
+    setSelectedType(type || null)
     window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
       detail: {
         entityType: 'relationships',
@@ -91,92 +107,103 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   }
 
   if (loading) {
-    return (
-      <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
-        <div className="animate-pulse">Loading...</div>
-      </div>
-    )
+    return <PanelLoadingState label="Loading relationships…" />
   }
 
   if (!projectId) {
-    return (
-      <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
-        No project selected
-      </div>
-    )
+    return <PanelEmptyState title="No project selected" description="Open a project to browse relationship maps and types." />
   }
 
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-gray-800">
+    <PanelFrame>
       <PanelActions>
-        <button
+        <PanelIconButton
           onClick={() => openEditor()}
-          className="text-lg leading-none text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 w-6 h-6 flex items-center justify-center"
           title="New Relationship"
         >
-          +
-        </button>
-        <button
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 5v14M5 12h14" />
+          </svg>
+        </PanelIconButton>
+        <PanelIconButton
           onClick={loadData}
-          className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
           title="Refresh"
         >
-          ↻
-        </button>
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 4v6h6M20 20v-6h-6" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M20 9a8 8 0 00-13.66-4.95L4 10M4 15a8 8 0 0013.66 4.95L20 14" />
+          </svg>
+        </PanelIconButton>
       </PanelActions>
 
-      <div className="flex-1 overflow-y-auto">
-        {/* Quick Views */}
-        <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
-          <div className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Views</div>
-          <button
-            onClick={() => openGraph()}
-            className="w-full text-left px-2 py-1.5 text-sm text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-2"
-          >
-            <span>🕸️</span> Graph View
-          </button>
-          <button
-            onClick={openMatrix}
-            className="w-full text-left px-2 py-1.5 text-sm text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-2"
-          >
-            <span>📊</span> Matrix View
-          </button>
+      <PanelBody className="space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <PanelSectionTitle>Relationship Maps</PanelSectionTitle>
+          <PanelPill>{relationships.length} links</PanelPill>
         </div>
 
-        {/* Relationship Types */}
-        <div className="px-3 py-2">
-          <div className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Types</div>
+        {error ? <PanelMessage tone="error">{error}</PanelMessage> : null}
+
+        <div className="space-y-2">
+          <PanelSectionTitle>Views</PanelSectionTitle>
+          <div className="space-y-1">
+            <button
+              onClick={() => openGraph()}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-gray-800 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+            >
+              <svg className="h-4 w-4 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M8 8h.01M16 8h.01M12 12h.01M8 16h.01M16 16h.01M7 7l10 10M17 7L7 17" />
+              </svg>
+              Graph view
+            </button>
+            <button
+              onClick={openMatrix}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-gray-800 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+            >
+              <svg className="h-4 w-4 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 6h16M4 12h16M4 18h16M8 4v16M16 4v16" />
+              </svg>
+              Matrix view
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <PanelSectionTitle>Types</PanelSectionTitle>
           {types.length === 0 ? (
-            <div className="text-center text-sm text-gray-500 dark:text-gray-400 py-4">
-              <div className="mb-2">No relationships yet</div>
-              <button
-                onClick={() => openEditor()}
-                className="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded"
-              >
-                Create First Relationship
-              </button>
-            </div>
+            <PanelEmptyState
+              title="No relationships yet"
+              description="Create a relationship to see type-based navigation here."
+              action={
+                <PanelActionButton onClick={() => openEditor()} tone="primary">
+                  Create relationship
+                </PanelActionButton>
+              }
+            />
           ) : (
-            types.map(type => (
-              <button
-                key={type}
-                onClick={() => openGraph(type)}
-                className={`w-full text-left px-2 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center justify-between ${selectedType === type ? 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white' : 'text-gray-800 dark:text-gray-200'}`}
-              >
-                <span className="truncate capitalize">{type}</span>
-                <span className="text-xs text-gray-500">{typeCounts.get(type)}</span>
-              </button>
-            ))
+            <div className="space-y-1">
+              {types.map(type => (
+                <button
+                  key={type}
+                  onClick={() => openGraph(type)}
+                  className={`flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-sm transition-colors ${
+                    selectedType === type
+                      ? 'bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white'
+                      : 'text-gray-800 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  <span className="truncate capitalize">{type}</span>
+                  <PanelPill>{typeCounts.get(type)}</PanelPill>
+                </button>
+              ))}
+            </div>
           )}
         </div>
 
-        {/* Summary */}
-        <div className="px-3 py-2 border-t border-gray-200 dark:border-gray-700 mt-auto">
-          <div className="text-xs text-gray-500 dark:text-gray-500">
-            {relationships.length} relationship{relationships.length !== 1 ? 's' : ''} · {types.length} type{types.length !== 1 ? 's' : ''}
-          </div>
+        <div className="border-t border-gray-200 pt-3 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
+          {relationships.length} relationship{relationships.length !== 1 ? 's' : ''} · {types.length} type{types.length !== 1 ? 's' : ''}
         </div>
-      </div>
-    </div>
+      </PanelBody>
+    </PanelFrame>
   )
 }

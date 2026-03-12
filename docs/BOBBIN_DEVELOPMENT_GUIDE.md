@@ -114,6 +114,20 @@ Every panel should also have:
 - compact spacing
 - light and dark theme support
 
+Use the shared SDK primitives for new panel work:
+
+- `PanelFrame` for the outer container
+- `PanelBody` for the scrollable content region
+- `PanelLoadingState`, `PanelEmptyState`, and `PanelMessage` for standard states
+- `PanelSectionTitle`, `PanelCard`, `PanelPill`, `PanelActionButton`, and `PanelIconButton` for internal structure and controls
+
+Important:
+
+- For `shell.leftPanel` and `shell.rightPanel`, the shell already renders the docked panel title bar from the manifest contribution title.
+- Do not add a second full-width bobbin header inside those docked panels.
+- Use the panel body for content sections, badges, and inline context instead.
+- Reserve `PanelHeader` for inline or standalone surfaces where the shell is not already providing the outer header chrome.
+
 Use existing bobbins as visual references:
 
 - `entities` navigation and preview panels
@@ -123,6 +137,7 @@ Use existing bobbins as visual references:
 Avoid:
 
 - hard-coded dark-only styling
+- duplicate headers inside docked shell panels
 - bespoke sidebars that ignore shell spacing and borders
 - custom transport logic inside the panel
 - directly mutating unrelated shell state

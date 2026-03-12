@@ -8,7 +8,18 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { PanelActions } from '@bobbinry/sdk'
+import {
+  PanelActions,
+  PanelActionButton,
+  PanelBody,
+  PanelCard,
+  PanelEmptyState,
+  PanelFrame,
+  PanelLoadingState,
+  PanelMessage,
+  PanelPill,
+  PanelSectionTitle,
+} from '@bobbinry/sdk'
 
 interface ChapterPublishProps {
   projectId: string
@@ -57,12 +68,14 @@ export default function ChapterPublishPanel(props: ChapterPublishProps) {
   const [projectInfo, setProjectInfo] = useState<ProjectInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [actionInProgress, setActionInProgress] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const loadData = useCallback(async () => {
     if (!projectId || !apiToken) return
     setLoading(true)
 
     try {
+      setError(null)
       const projRes = await apiFetchLocal(`/api/projects/${projectId}`, apiToken)
       if (projRes.ok) {
         const data = await projRes.json()
@@ -98,6 +111,7 @@ export default function ChapterPublishPanel(props: ChapterPublishProps) {
       }
     } catch (err) {
       console.error('ChapterPublishPanel: Failed to load data', err)
+      setError('Failed to load publishing status')
     } finally {
       setLoading(false)
     }
@@ -149,7 +163,7 @@ export default function ChapterPublishPanel(props: ChapterPublishProps) {
   const isPublished = publication?.publishStatus === 'published'
 
   return (
-    <div className="p-3 space-y-4">
+    <PanelFrame>
       <PanelActions>
         <a
           href="/publish"
@@ -159,98 +173,73 @@ export default function ChapterPublishPanel(props: ChapterPublishProps) {
         </a>
       </PanelActions>
 
-      {loading ? (
-        <div className="py-4 text-center">
-          <span className="text-xs text-gray-400 dark:text-gray-500">Loading...</span>
+      <PanelBody className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <PanelSectionTitle>Chapter Status</PanelSectionTitle>
+          {isProjectPublished ? <PanelPill className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">Live</PanelPill> : null}
         </div>
-      ) : !isProjectPublished ? (
-        <div className="space-y-3">
-          <div className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-              This project is not published yet. Enable publishing from the Publisher Dashboard first.
-            </p>
-            <a
-              href="/publish"
-              className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
-            >
-              Go to Publisher Dashboard
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </a>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {/* Project status */}
-          <div className="flex items-center gap-2 text-xs">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-            <span className="text-gray-600 dark:text-gray-400">Project is live</span>
-          </div>
 
-          {/* Chapter publish status */}
-          {entityId ? (
-            <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-              <div className="px-3 py-2.5 bg-gray-50 dark:bg-gray-800/50">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                    Chapter Status
-                  </span>
-                  {isPublished ? (
-                    <span className="inline-flex items-center gap-1 text-xs text-green-700 dark:text-green-400">
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                      Published
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
-                      Draft
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className="px-3 py-3">
-                {isPublished ? (
-                  <div className="space-y-2">
-                    {publication?.publishedAt && (
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Published {new Date(publication.publishedAt).toLocaleDateString()}
-                      </p>
-                    )}
-                    {publication?.viewCount !== undefined && publication.viewCount > 0 && (
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {publication.viewCount} view{publication.viewCount !== 1 ? 's' : ''}
-                      </p>
-                    )}
-                    <button
-                      onClick={unpublishChapter}
-                      disabled={actionInProgress}
-                      className="w-full px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors disabled:opacity-50"
-                    >
-                      {actionInProgress ? 'Updating...' : 'Unpublish Chapter'}
-                    </button>
+        {loading ? (
+          <PanelLoadingState label="Loading publish status…" />
+        ) : !isProjectPublished ? (
+          <PanelEmptyState
+            title="Project is not published"
+            description="Enable publishing from the dashboard before you publish individual chapters."
+            action={
+              <a
+                href="/publish"
+                className="inline-flex items-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-700 dark:border-blue-500 dark:bg-blue-600 dark:hover:bg-blue-500"
+              >
+                Open dashboard
+              </a>
+            }
+          />
+        ) : (
+          <>
+            {error ? <PanelMessage tone="error">{error}</PanelMessage> : null}
+            <div className="space-y-2">
+              <PanelSectionTitle>Chapter Status</PanelSectionTitle>
+              {entityId ? (
+                <PanelCard className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Selected chapter</span>
+                    <PanelPill className={isPublished ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' : ''}>
+                      {isPublished ? 'Published' : 'Draft'}
+                    </PanelPill>
                   </div>
-                ) : (
-                  <button
-                    onClick={publishChapter}
-                    disabled={actionInProgress}
-                    className="w-full px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700 transition-colors disabled:opacity-50"
-                  >
-                    {actionInProgress ? 'Publishing...' : 'Publish Chapter'}
-                  </button>
-                )}
-              </div>
+
+                  {publication?.publishedAt ? (
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Published {new Date(publication.publishedAt).toLocaleDateString()}
+                    </p>
+                  ) : null}
+
+                  {publication?.viewCount !== undefined && publication.viewCount > 0 ? (
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {publication.viewCount} view{publication.viewCount !== 1 ? 's' : ''}
+                    </p>
+                  ) : null}
+
+                  {isPublished ? (
+                    <PanelActionButton tone="danger" onClick={unpublishChapter} disabled={actionInProgress} className="w-full">
+                      {actionInProgress ? 'Updating…' : 'Unpublish Chapter'}
+                    </PanelActionButton>
+                  ) : (
+                    <PanelActionButton tone="primary" onClick={publishChapter} disabled={actionInProgress} className="w-full">
+                      {actionInProgress ? 'Publishing…' : 'Publish Chapter'}
+                    </PanelActionButton>
+                  )}
+                </PanelCard>
+              ) : (
+                <PanelEmptyState
+                  title="No chapter selected"
+                  description="Select a chapter in the manuscript to manage its publish status here."
+                />
+              )}
             </div>
-          ) : (
-            <div className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                Select a chapter to manage its publish status.
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+          </>
+        )}
+      </PanelBody>
+    </PanelFrame>
   )
 }

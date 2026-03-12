@@ -8,6 +8,15 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
+import {
+  PanelActionButton,
+  PanelCard,
+  PanelEmptyState,
+  PanelLoadingState,
+  PanelMessage,
+  PanelPill,
+  PanelSectionTitle,
+} from '@bobbinry/sdk'
 import { apiFetchLocal } from '../lib/api'
 import { formatReadTime, formatCompactNumber } from '../lib/format'
 
@@ -79,6 +88,7 @@ export default function PublishManagerPanel(props: PublishManagerPanelProps) {
 
   const [chaptersWithStats, setChaptersWithStats] = useState<ChapterWithStats[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [showAllChapters, setShowAllChapters] = useState(false)
 
   const loadData = useCallback(async () => {
@@ -86,6 +96,7 @@ export default function PublishManagerPanel(props: PublishManagerPanelProps) {
     setLoading(true)
 
     try {
+      setError(null)
       const [chapRes, pubRes] = await Promise.all([
         apiFetchLocal(`/api/collections/content/entities?projectId=${projectId}`, apiToken),
         apiFetchLocal(`/api/projects/${projectId}/publications?status=all`, apiToken),
@@ -126,6 +137,7 @@ export default function PublishManagerPanel(props: PublishManagerPanelProps) {
       setChaptersWithStats(merged)
     } catch (err) {
       console.error('PublishManagerPanel: Failed to load data', err)
+      setError('Failed to load publishing analytics.')
     } finally {
       setLoading(false)
     }
@@ -138,19 +150,21 @@ export default function PublishManagerPanel(props: PublishManagerPanelProps) {
   if (loading) {
     return (
       <div className="px-5 py-4">
-        <div className="space-y-3">
-          <div className="h-4 w-40 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-16 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse" />
-            ))}
-          </div>
-        </div>
+        <PanelLoadingState label="Loading publishing analytics…" />
       </div>
     )
   }
 
-  if (chaptersWithStats.length === 0) return null
+  if (chaptersWithStats.length === 0) {
+    return (
+      <div className="px-5 py-4">
+        <PanelEmptyState
+          title="No chapter data yet"
+          description="Add chapters to this project to see publishing progress and audience metrics."
+        />
+      </div>
+    )
+  }
 
   const published = chaptersWithStats.filter(c => c.publishStatus === 'published')
   const drafts = chaptersWithStats.filter(c => c.publishStatus === 'draft')
@@ -185,10 +199,11 @@ export default function PublishManagerPanel(props: PublishManagerPanelProps) {
   // If nothing is published yet, show a simpler prompt
   if (publishedCount === 0) {
     return (
-      <div className="px-5 py-4">
-        <div className="flex items-center gap-3 py-2">
-          <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0">
-            <svg className="w-4 h-4 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="space-y-3 px-5 py-4">
+        {error ? <PanelMessage tone="error">{error}</PanelMessage> : null}
+        <PanelCard className="flex items-center gap-3">
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800">
+            <svg className="h-4 w-4 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
           </div>
@@ -203,28 +218,26 @@ export default function PublishManagerPanel(props: PublishManagerPanelProps) {
               }
             </p>
           </div>
-        </div>
+        </PanelCard>
       </div>
     )
   }
 
   return (
     <div className="px-5 py-4 space-y-4">
-      {/* Section label */}
-      <div className="flex items-center justify-between">
-        <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-          Publishing Analytics
-        </h4>
+      {error ? <PanelMessage tone="error">{error}</PanelMessage> : null}
+
+      <div className="flex items-center justify-between gap-3">
+        <PanelSectionTitle>Publishing Analytics</PanelSectionTitle>
         {lastPublished?.publishedAt && (
-          <span className="text-[11px] text-gray-400 dark:text-gray-500">
+          <PanelPill className="bg-transparent px-0 text-gray-400 dark:bg-transparent dark:text-gray-500">
             Last published {timeAgo(lastPublished.publishedAt)}
-          </span>
+          </PanelPill>
         )}
       </div>
 
-      {/* Stats row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+        <PanelCard>
           <div className="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums leading-tight">
             {formatCompactNumber(totalViews)}
           </div>
@@ -234,38 +247,37 @@ export default function PublishManagerPanel(props: PublishManagerPanelProps) {
               <span className="text-gray-400 dark:text-gray-500"> ({formatCompactNumber(totalUniqueViews)} unique)</span>
             )}
           </div>
-        </div>
+        </PanelCard>
 
-        <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+        <PanelCard>
           <div className="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums leading-tight">
             {formatCompactNumber(totalCompletions)}
           </div>
           <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
             completions
           </div>
-        </div>
+        </PanelCard>
 
-        <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+        <PanelCard>
           <div className="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums leading-tight">
             {completionRate}%
           </div>
           <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
             finish rate
           </div>
-        </div>
+        </PanelCard>
 
-        <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+        <PanelCard>
           <div className="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums leading-tight">
             {avgReadTime > 0 ? formatReadTime(avgReadTime) : '-'}
           </div>
           <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
             avg read time
           </div>
-        </div>
+        </PanelCard>
       </div>
 
-      {/* Publication progress bar */}
-      <div>
+      <PanelCard className="space-y-2">
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-[11px] text-gray-500 dark:text-gray-400">
             {publishedCount}/{totalChapters} chapters published
@@ -305,11 +317,10 @@ export default function PublishManagerPanel(props: PublishManagerPanelProps) {
             />
           )}
         </div>
-      </div>
+      </PanelCard>
 
-      {/* Top chapter callout */}
       {topChapter && topChapter.viewCount > 0 && (
-        <div className="flex items-center gap-3 py-2 px-3 bg-green-50/50 dark:bg-green-900/10 border border-green-100 dark:border-green-800/30 rounded-lg">
+        <PanelCard className="flex items-center gap-3 border-green-100 bg-green-50/50 dark:border-green-800/30 dark:bg-green-900/10">
           <div className="w-6 h-6 rounded-md bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
             <svg className="w-3.5 h-3.5 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
@@ -327,15 +338,12 @@ export default function PublishManagerPanel(props: PublishManagerPanelProps) {
               )}
             </p>
           </div>
-        </div>
+        </PanelCard>
       )}
 
-      {/* Per-chapter performance */}
       {published.length > 0 && (
         <div>
-          <h5 className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
-            Chapter Performance
-          </h5>
+          <PanelSectionTitle>Chapter Performance</PanelSectionTitle>
           <div className="space-y-1">
             {visibleChapters.map((chapter, idx) => {
               const barWidth = chapter.viewCount > 0 ? (chapter.viewCount / maxViews) * 100 : 0
@@ -391,15 +399,15 @@ export default function PublishManagerPanel(props: PublishManagerPanelProps) {
 
           {/* Show more / less toggle */}
           {hasMore && (
-            <button
+            <PanelActionButton
               onClick={() => setShowAllChapters(!showAllChapters)}
-              className="mt-1 px-2 py-1 text-[11px] text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+              className="mt-2"
             >
               {showAllChapters
                 ? 'Show less'
                 : `Show all ${totalChapters} chapters`
               }
-            </button>
+            </PanelActionButton>
           )}
         </div>
       )}

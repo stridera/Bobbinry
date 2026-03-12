@@ -1,5 +1,17 @@
 import { useState, useEffect, useMemo } from 'react'
-import { BobbinrySDK, PanelActions } from '@bobbinry/sdk'
+import {
+  BobbinrySDK,
+  PanelActions,
+  PanelActionButton,
+  PanelBody,
+  PanelEmptyState,
+  PanelFrame,
+  PanelIconButton,
+  PanelLoadingState,
+  PanelMessage,
+  PanelPill,
+  PanelSectionTitle,
+} from '@bobbinry/sdk'
 
 interface NavigationPanelProps {
   context?: {
@@ -14,6 +26,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   const [timelines, setTimelines] = useState<any[]>([])
   const [eventCounts, setEventCounts] = useState<Map<string, number>>(new Map())
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [selectedTimelineId, setSelectedTimelineId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingValue, setEditingValue] = useState('')
@@ -51,6 +64,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   async function loadData() {
     try {
       setLoading(true)
+      setError(null)
       const [timelinesRes, eventsRes] = await Promise.all([
         sdk.entities.query({ collection: 'timelines', limit: 1000 }),
         sdk.entities.query({ collection: 'timeline_events', limit: 1000 })
@@ -70,6 +84,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
       setEventCounts(counts)
     } catch (error) {
       console.error('[Timeline Navigation] Failed to load:', error)
+      setError('Failed to load timelines.')
     } finally {
       setLoading(false)
     }
@@ -135,51 +150,56 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   }
 
   if (loading) {
-    return (
-      <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
-        <div className="animate-pulse">Loading...</div>
-      </div>
-    )
+    return <PanelLoadingState label="Loading timelines…" />
   }
 
   if (!projectId) {
-    return (
-      <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
-        No project selected
-      </div>
-    )
+    return <PanelEmptyState title="No project selected" description="Open a project to browse timeline collections." />
   }
 
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-gray-800">
+    <PanelFrame>
       <PanelActions>
-        <button
+        <PanelIconButton
           onClick={createTimeline}
-          className="text-lg leading-none text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 w-6 h-6 flex items-center justify-center"
           title="New Timeline"
         >
-          +
-        </button>
-        <button
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 5v14M5 12h14" />
+          </svg>
+        </PanelIconButton>
+        <PanelIconButton
           onClick={loadData}
-          className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
           title="Refresh"
         >
-          ↻
-        </button>
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 4v6h6M20 20v-6h-6" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M20 9a8 8 0 00-13.66-4.95L4 10M4 15a8 8 0 0013.66 4.95L20 14" />
+          </svg>
+        </PanelIconButton>
       </PanelActions>
 
-      <div className="flex-1 overflow-y-auto">
+      <PanelBody className="space-y-3" padded={false}>
+        <div className="flex items-center justify-between gap-3 px-3 pt-3">
+          <PanelSectionTitle>Timeline Collections</PanelSectionTitle>
+          <PanelPill>{timelines.length} total</PanelPill>
+        </div>
+
+        {error ? <PanelMessage tone="error">{error}</PanelMessage> : null}
+
         {timelines.length === 0 ? (
-          <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
-            <div className="mb-3">No timelines yet</div>
-            <button
-              onClick={createTimeline}
-              className="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded"
-            >
-              Create Your First Timeline
-            </button>
-          </div>
+          <PanelEmptyState
+            title="No timelines yet"
+            description="Create a timeline to organize events and chronology."
+            action={
+              <PanelActionButton
+                onClick={createTimeline}
+                tone="primary"
+              >
+                Create timeline
+              </PanelActionButton>
+            }
+          />
         ) : (
           timelines.map(timeline => {
             const isSelected = selectedTimelineId === timeline.id
@@ -189,13 +209,15 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
             return (
               <div
                 key={timeline.id}
-                className={`px-3 py-2 cursor-pointer border-b border-gray-200 dark:border-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 ${isSelected ? 'bg-gray-100 dark:bg-gray-700' : ''}`}
+                className={`cursor-pointer border-b border-gray-200 px-3 py-2 dark:border-gray-700/50 ${
+                  isSelected ? 'bg-gray-100 dark:bg-gray-700' : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
                 onClick={() => handleTimelineClick(timeline)}
                 onContextMenu={(e) => { e.preventDefault(); handleDelete(timeline.id) }}
               >
                 <div className="flex items-center gap-2">
                   {timeline.color && (
-                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: timeline.color }} />
+                    <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: timeline.color }} />
                   )}
                   {isEditing ? (
                     <input
@@ -209,22 +231,24 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
                       }}
                       autoFocus
                       onFocus={(e) => e.target.select()}
-                      className="flex-1 px-1 py-0.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-gray-100 text-sm"
+                      className="flex-1 rounded border border-gray-300 bg-white px-1 py-0.5 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
                       onClick={(e) => e.stopPropagation()}
                     />
                   ) : (
-                    <span className="flex-1 text-sm text-gray-800 dark:text-gray-200 truncate">{timeline.name}</span>
+                    <span className="flex-1 truncate text-sm text-gray-800 dark:text-gray-200">{timeline.name}</span>
                   )}
-                  <span className="text-xs text-gray-500">{count}</span>
+                  <PanelPill>{count}</PanelPill>
                 </div>
                 {timeline.scale && (
-                  <span className="text-[10px] text-gray-500 ml-4">{timeline.scale}</span>
+                  <div className="mt-1 pl-4 text-[11px] uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                    {timeline.scale}
+                  </div>
                 )}
               </div>
             )
           })
         )}
-      </div>
-    </div>
+      </PanelBody>
+    </PanelFrame>
   )
 }

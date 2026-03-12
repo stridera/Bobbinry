@@ -797,6 +797,19 @@ export {
 
 // Panel actions portal
 export { PanelActionsProvider, PanelActions } from './panel-actions'
+export {
+  PanelActionButton,
+  PanelBody,
+  PanelCard,
+  PanelEmptyState,
+  PanelFrame,
+  PanelHeader,
+  PanelIconButton,
+  PanelLoadingState,
+  PanelMessage,
+  PanelPill,
+  PanelSectionTitle
+} from './panel-ui'
 export { escapePlainText, getSanitizedHtmlProps, sanitizeHtml } from './html'
 
 // Convenience exports

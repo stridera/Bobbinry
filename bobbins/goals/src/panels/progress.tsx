@@ -1,5 +1,16 @@
 import { useState, useEffect, useMemo } from 'react'
-import { BobbinrySDK, PanelActions } from '@bobbinry/sdk'
+import {
+  BobbinrySDK,
+  PanelActions,
+  PanelBody,
+  PanelCard,
+  PanelEmptyState,
+  PanelFrame,
+  PanelIconButton,
+  PanelLoadingState,
+  PanelPill,
+  PanelSectionTitle,
+} from '@bobbinry/sdk'
 
 interface ProgressPanelProps {
   context?: {
@@ -15,6 +26,7 @@ export default function ProgressPanel({ context }: ProgressPanelProps) {
   const [streak, setStreak] = useState<any | null>(null)
   const [todayWords, setTodayWords] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const [sdk] = useState(() => new BobbinrySDK('goals'))
   const projectId = useMemo(() => context?.projectId || context?.currentProject, [context?.projectId, context?.currentProject])
@@ -37,6 +49,7 @@ export default function ProgressPanel({ context }: ProgressPanelProps) {
   async function loadData() {
     try {
       setLoading(true)
+      setError(null)
       const [goalsRes, sessionsRes, streaksRes] = await Promise.all([
         sdk.entities.query({ collection: 'goals', limit: 100 }),
         sdk.entities.query({ collection: 'writing_sessions', limit: 1000 }),
@@ -55,6 +68,7 @@ export default function ProgressPanel({ context }: ProgressPanelProps) {
       setStreak(streakData[0] || null)
     } catch (err) {
       console.error('[Progress Panel] Failed to load:', err)
+      setError('Failed to load progress')
     } finally {
       setLoading(false)
     }
@@ -72,84 +86,92 @@ export default function ProgressPanel({ context }: ProgressPanelProps) {
   }
 
   if (loading) {
-    return (
-      <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
-        <div className="animate-pulse">Loading...</div>
-      </div>
-    )
+    return <PanelLoadingState label="Loading progress…" />
   }
 
   if (!projectId) {
-    return (
-      <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
-        No project selected
-      </div>
-    )
+    return <PanelEmptyState title="No project selected" description="Open a project to see writing goals and streaks." />
   }
 
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-gray-800">
+    <PanelFrame>
       <PanelActions>
-        <button
+        <PanelIconButton
           onClick={openDashboard}
-          className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-          title="Open Dashboard"
+          title="Open goals dashboard"
         >
-          📊
-        </button>
-        <button
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 19h16M7 15l3-3 3 2 4-6" />
+          </svg>
+        </PanelIconButton>
+        <PanelIconButton
           onClick={loadData}
-          className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
           title="Refresh"
         >
-          ↻
-        </button>
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 4v6h6M20 20v-6h-6" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M20 9a8 8 0 00-13.66-4.95L4 10M4 15a8 8 0 0013.66 4.95L20 14" />
+          </svg>
+        </PanelIconButton>
       </PanelActions>
 
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        {/* Streak */}
-        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 text-center border border-gray-200 dark:border-gray-700/50">
-          <div className="text-2xl font-bold text-orange-400">{streak?.current_streak || 0}</div>
-          <div className="text-xs text-gray-400">Day Streak</div>
+      <PanelBody className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <PanelSectionTitle>Overview</PanelSectionTitle>
+          <PanelPill>{goals.length} active</PanelPill>
         </div>
 
-        {/* Today's Words */}
-        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 text-center border border-gray-200 dark:border-gray-700/50">
-          <div className="text-xl font-bold text-blue-400">{todayWords.toLocaleString()}</div>
-          <div className="text-xs text-gray-400">Words Today</div>
+        {error ? (
+          <PanelCard className="text-xs text-red-700 dark:text-red-300">{error}</PanelCard>
+        ) : null}
+
+        <div className="grid grid-cols-2 gap-3">
+          <PanelCard className="text-center">
+            <div className="text-2xl font-semibold text-amber-500">{streak?.current_streak || 0}</div>
+            <div className="mt-1 text-[11px] uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Day streak</div>
+          </PanelCard>
+          <PanelCard className="text-center">
+            <div className="text-2xl font-semibold text-blue-600 dark:text-blue-400">{todayWords.toLocaleString()}</div>
+            <div className="mt-1 text-[11px] uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Words today</div>
+          </PanelCard>
         </div>
 
-        {/* Active Goals */}
-        {goals.length > 0 && (
-          <div className="space-y-2">
-            <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Active Goals</div>
-            {goals.map(goal => {
+        <div className="space-y-2">
+          <PanelSectionTitle>Active Goals</PanelSectionTitle>
+          {goals.length === 0 ? (
+            <PanelEmptyState
+              title="No active goals"
+              description="Create a goal in the dashboard to track progress here."
+            />
+          ) : (
+            goals.map(goal => {
               const progress = goal.target_count > 0
                 ? Math.min(100, Math.round(((goal.current_count || 0) / goal.target_count) * 100))
                 : 0
 
               return (
-                <div key={goal.id} className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2 border border-gray-200 dark:border-gray-700/50">
-                  <div className="text-xs text-gray-800 dark:text-gray-200 truncate mb-1">{goal.name}</div>
-                  <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2">
+                <PanelCard key={goal.id} className="space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">{goal.name}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {(goal.current_count || 0).toLocaleString()} / {(goal.target_count || 0).toLocaleString()}
+                      </div>
+                    </div>
+                    <PanelPill>{progress}%</PanelPill>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
                     <div
-                      className="bg-blue-500 h-2 rounded-full transition-all"
+                      className="h-full rounded-full bg-blue-600 transition-all dark:bg-blue-400"
                       style={{ width: `${progress}%` }}
                     />
                   </div>
-                  <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 text-right">{progress}%</div>
-                </div>
+                </PanelCard>
               )
-            })}
-          </div>
-        )}
-
-        {goals.length === 0 && (
-          <div className="text-center text-xs text-gray-500 py-2">
-            No active goals
-          </div>
-        )}
-      </div>
-    </div>
+            })
+          )}
+        </div>
+      </PanelBody>
+    </PanelFrame>
   )
 }

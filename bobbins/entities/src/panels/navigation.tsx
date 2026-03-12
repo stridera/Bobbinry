@@ -6,7 +6,17 @@
  */
 
 import { useState, useEffect } from 'react'
-import { PanelActions } from '@bobbinry/sdk'
+import {
+  PanelActions,
+  PanelBody,
+  PanelCard,
+  PanelEmptyState,
+  PanelFrame,
+  PanelIconButton,
+  PanelLoadingState,
+  PanelPill,
+  PanelSectionTitle,
+} from '@bobbinry/sdk'
 import type { EntityTypeDefinition } from '../types'
 
 interface NavigationViewProps {
@@ -194,50 +204,54 @@ export default function NavigationView({ context }: NavigationViewProps) {
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full p-4">
-        <div className="text-sm text-gray-600 dark:text-gray-400">Loading...</div>
-      </div>
-    )
+    return <PanelLoadingState label="Loading entity types…" />
   }
 
   if (error) {
     return (
-      <div className="p-4">
-        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded">
-          <p className="text-xs text-red-700 dark:text-red-300 font-medium mb-1">Error</p>
-          <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
-        </div>
-      </div>
+      <PanelFrame>
+        <PanelBody>
+          <PanelSectionTitle>Entity Types</PanelSectionTitle>
+          <PanelCard className="text-xs text-red-700 dark:text-red-300">{error}</PanelCard>
+        </PanelBody>
+      </PanelFrame>
     )
   }
 
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-gray-800">
+    <PanelFrame>
       <PanelActions>
-        <button
+        <PanelIconButton
           onClick={handleConfigClick}
-          className="text-lg leading-none text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 w-6 h-6 flex items-center justify-center"
           title="Create new entity type"
         >
-          +
-        </button>
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 5v14M5 12h14" />
+          </svg>
+        </PanelIconButton>
       </PanelActions>
 
-      {/* Entity Type List */}
-      <div className="flex-1 overflow-y-auto">
+      <PanelBody className="space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <PanelSectionTitle>Entity Types</PanelSectionTitle>
+          <PanelPill>{entityTypes.length} types</PanelPill>
+        </div>
         {entityTypes.length === 0 ? (
-          <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
-            <div className="mb-3">No entity types yet</div>
-            <button
-              onClick={handleConfigClick}
-              className="px-3 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded"
-            >
-              Create Your First Entity Type
-            </button>
-          </div>
+          <PanelEmptyState
+            title="No entity types yet"
+            description="Create your first type to start building characters, places, items, or lore."
+            action={
+              <button
+                onClick={handleConfigClick}
+                className="rounded-md border border-blue-600 bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-700 dark:border-blue-500 dark:bg-blue-600 dark:hover:bg-blue-500"
+              >
+                Create entity type
+              </button>
+            }
+          />
         ) : (
-          entityTypes.map(type => {
+          <PanelCard className="px-0 py-1">
+            {entityTypes.map(type => {
             const typeId = getTypeId(type)
             const isExpanded = expandedTypes.has(typeId)
             const entities = typeEntities[typeId] || []
@@ -247,7 +261,7 @@ export default function NavigationView({ context }: NavigationViewProps) {
               <div key={type.id}>
                 {/* Type row */}
                 <div
-                  className="pr-2 py-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 text-sm flex items-center gap-1.5"
+                  className="flex cursor-pointer items-center gap-1.5 py-1 pr-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                   style={{ paddingLeft: '8px' }}
                   onClick={() => toggleType(typeId)}
                 >
@@ -258,26 +272,22 @@ export default function NavigationView({ context }: NavigationViewProps) {
                   </span>
                   <span className="flex-shrink-0">{type.icon}</span>
                   <span className="flex-1 text-gray-800 dark:text-gray-200 truncate">{type.label}</span>
-                  <span className="text-xs text-gray-500 flex-shrink-0 mr-1">
-                    {counts[typeId] || 0}
-                  </span>
-                  <button
+                  <PanelPill className="mr-1">{counts[typeId] || 0}</PanelPill>
+                  <PanelIconButton
                     onClick={(e) => { e.stopPropagation(); handleNewEntity(type) }}
-                    className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-200 w-5 h-5 flex items-center justify-center flex-shrink-0"
                     title={`New ${type.label}`}
                   >
-                    +
-                  </button>
+                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 5v14M5 12h14" />
+                    </svg>
+                  </PanelIconButton>
                 </div>
 
                 {/* Expanded entity list */}
                 {isExpanded && (
                   <div>
                     {isLoadingType ? (
-                      <div
-                        className="py-1 text-xs text-gray-400 dark:text-gray-500"
-                        style={{ paddingLeft: `${16 + 8}px` }}
-                      >
+                      <div className="py-1 text-xs text-gray-400 dark:text-gray-500" style={{ paddingLeft: `${16 + 8}px` }}>
                         Loading...
                       </div>
                     ) : entities.length === 0 ? (
@@ -291,7 +301,7 @@ export default function NavigationView({ context }: NavigationViewProps) {
                       entities.map((entity: any) => (
                         <div
                           key={entity.id}
-                          className="group pr-2 py-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 text-sm flex items-center gap-1.5"
+                          className="group flex cursor-pointer items-center gap-1.5 py-1 pr-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                           style={{ paddingLeft: `${16 + 8}px` }}
                           onClick={() => handleEntityClick(entity, type)}
                         >
@@ -299,13 +309,16 @@ export default function NavigationView({ context }: NavigationViewProps) {
                           <span className="flex-1 text-gray-700 dark:text-gray-300 truncate">
                             {entity.name || 'Untitled'}
                           </span>
-                          <button
+                          <PanelIconButton
                             onClick={(e) => handleEntityPreview(e, entity, type)}
-                            className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-200 w-5 h-5 flex items-center justify-center flex-shrink-0 transition-opacity"
+                            className="h-5 w-5 opacity-0 transition-opacity group-hover:opacity-100"
                             title={`Preview ${entity.name || 'entity'}`}
                           >
-                            ⊞
-                          </button>
+                            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 3h6m0 0v6m0-6L10 14" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 7H7a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-2" />
+                            </svg>
+                          </PanelIconButton>
                         </div>
                       ))
                     )}
@@ -313,9 +326,10 @@ export default function NavigationView({ context }: NavigationViewProps) {
                 )}
               </div>
             )
-          })
+          })}
+          </PanelCard>
         )}
-      </div>
-    </div>
+      </PanelBody>
+    </PanelFrame>
   )
 }

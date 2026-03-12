@@ -9,6 +9,15 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
+import {
+  PanelActionButton,
+  PanelCard,
+  PanelEmptyState,
+  PanelLoadingState,
+  PanelMessage,
+  PanelPill,
+  PanelSectionTitle,
+} from '@bobbinry/sdk'
 
 interface ReleaseQueuePanelProps {
   projectId: string
@@ -74,11 +83,13 @@ export default function ReleaseQueuePanel(props: ReleaseQueuePanelProps) {
   const [items, setItems] = useState<QueueItem[]>([])
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const loadQueue = useCallback(async () => {
     if (!projectId || !apiToken) return
     setLoading(true)
     try {
+      setError(null)
       const res = await apiFetchLocal(
         `/api/collections/ReleaseQueue/entities?projectId=${projectId}`,
         apiToken
@@ -100,6 +111,7 @@ export default function ReleaseQueuePanel(props: ReleaseQueuePanelProps) {
       }
     } catch (err) {
       console.error('ReleaseQueuePanel: Failed to load queue', err)
+      setError('Failed to load the release queue.')
     } finally {
       setLoading(false)
     }
@@ -142,34 +154,19 @@ export default function ReleaseQueuePanel(props: ReleaseQueuePanelProps) {
   if (loading) {
     return (
       <div className="px-5 py-4">
-        <div className="h-4 w-32 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+        <PanelLoadingState label="Loading release queue…" />
       </div>
     )
   }
 
-  // Empty state — explain what the release queue is
   if (items.length === 0) {
     return (
       <div className="px-5 py-4">
-        <div className="flex items-start gap-3">
-          <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-900/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-            <svg className="w-4 h-4 text-purple-500 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <div>
-            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              Release Queue
-            </h4>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
-              Schedule chapters for automatic release on a cadence. Add chapters to the queue from the project editor,
-              and they'll be published in order based on your release schedule.
-            </p>
-            <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1.5">
-              No chapters queued yet
-            </p>
-          </div>
-        </div>
+        {error ? <PanelMessage tone="error">{error}</PanelMessage> : null}
+        <PanelEmptyState
+          title="Release queue"
+          description="Schedule chapters for automatic release on a cadence. Add chapters from the editor and they will publish in order."
+        />
       </div>
     )
   }
@@ -185,36 +182,30 @@ export default function ReleaseQueuePanel(props: ReleaseQueuePanelProps) {
 
   return (
     <div className="px-5 py-4 space-y-3">
-      {/* Header with summary */}
+      {error ? <PanelMessage tone="error">{error}</PanelMessage> : null}
+
       <div className="flex items-center justify-between">
-        <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
-          <svg className="w-3.5 h-3.5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="flex items-center gap-2">
+          <PanelSectionTitle>Release Queue</PanelSectionTitle>
+          <svg className="h-3.5 w-3.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          Release Queue
-        </h4>
+        </div>
         <div className="flex items-center gap-2 text-[11px]">
           {pendingItems.length > 0 && (
-            <span className="text-gray-500 dark:text-gray-400">
-              {pendingItems.length} pending
-            </span>
+            <PanelPill>{pendingItems.length} pending</PanelPill>
           )}
           {heldItems.length > 0 && (
-            <span className="text-red-600 dark:text-red-400 font-medium">
-              {heldItems.length} held
-            </span>
+            <PanelPill className="bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300">{heldItems.length} held</PanelPill>
           )}
           {releasedItems.length > 0 && (
-            <span className="text-green-600 dark:text-green-400">
-              {releasedItems.length} released
-            </span>
+            <PanelPill className="bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-300">{releasedItems.length} released</PanelPill>
           )}
         </div>
       </div>
 
-      {/* Next up callout */}
       {nextUp && (
-        <div className="flex items-center gap-3 px-3 py-2.5 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800/30 rounded-lg">
+        <PanelCard className="flex items-center gap-3 border-blue-100 bg-blue-50/50 dark:border-blue-800/30 dark:bg-blue-900/10">
           <div className="w-5 h-5 rounded-md bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
             <svg className="w-3 h-3 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
@@ -233,12 +224,11 @@ export default function ReleaseQueuePanel(props: ReleaseQueuePanelProps) {
           >
             Hold
           </button>
-        </div>
+        </PanelCard>
       )}
 
-      {/* Authorization needed */}
       {needsAuth.length > 0 && (
-        <div className="px-3 py-2 bg-yellow-50/50 dark:bg-yellow-900/10 border border-yellow-100 dark:border-yellow-800/30 rounded-lg">
+        <PanelCard className="border-yellow-100 bg-yellow-50/50 dark:border-yellow-800/30 dark:bg-yellow-900/10">
           <p className="text-[11px] text-yellow-700 dark:text-yellow-400 font-medium mb-1.5">
             {needsAuth.length} chapter{needsAuth.length !== 1 ? 's' : ''} awaiting authorization
           </p>
@@ -258,10 +248,9 @@ export default function ReleaseQueuePanel(props: ReleaseQueuePanelProps) {
               </div>
             ))}
           </div>
-        </div>
+        </PanelCard>
       )}
 
-      {/* Queue list */}
       <div className="space-y-0.5">
         {items.map((item, idx) => {
           const config = STATUS_CONFIG[item.status] ?? DEFAULT_STATUS
@@ -321,7 +310,7 @@ export default function ReleaseQueuePanel(props: ReleaseQueuePanelProps) {
         const heldWithNotes = heldItems.filter(i => i.notes)
         if (heldWithNotes.length === 0) return null
         return (
-          <div className="pt-1 border-t border-gray-100 dark:border-gray-800">
+          <div className="border-t border-gray-100 pt-1 dark:border-gray-800">
             {heldWithNotes.map(item => (
               <p key={item.id} className="text-[11px] text-gray-400 dark:text-gray-500 italic px-2 py-0.5">
                 {item.chapterTitle}: {item.notes}

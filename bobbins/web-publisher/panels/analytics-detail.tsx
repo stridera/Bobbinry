@@ -9,6 +9,14 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
+import {
+  PanelCard,
+  PanelEmptyState,
+  PanelLoadingState,
+  PanelMessage,
+  PanelPill,
+  PanelSectionTitle,
+} from '@bobbinry/sdk'
 import { apiFetchLocal } from '../lib/api'
 import { formatReadTime } from '../lib/format'
 
@@ -112,12 +120,14 @@ export default function AnalyticsDetailPanel(props: AnalyticsDetailProps) {
   const [analytics, setAnalytics] = useState<ChapterAnalytics | null>(null)
   const [breakdown, setBreakdown] = useState<AnalyticsBreakdown | null>(null)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const loadData = useCallback(async () => {
     if (!projectId || !apiToken || !selectedChapterId) return
     setLoading(true)
 
     try {
+      setError(null)
       const [analyticsRes, breakdownRes] = await Promise.all([
         apiFetchLocal(`/api/projects/${projectId}/chapters/${selectedChapterId}/analytics`, apiToken),
         apiFetchLocal(`/api/projects/${projectId}/chapters/${selectedChapterId}/analytics/breakdown`, apiToken),
@@ -134,6 +144,7 @@ export default function AnalyticsDetailPanel(props: AnalyticsDetailProps) {
       }
     } catch (err) {
       console.error('AnalyticsDetailPanel: Failed to load data', err)
+      setError('Failed to load chapter analytics.')
     } finally {
       setLoading(false)
     }
@@ -151,9 +162,10 @@ export default function AnalyticsDetailPanel(props: AnalyticsDetailProps) {
   if (!selectedChapterId) {
     return (
       <div className="px-5 py-4">
-        <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-2">
-          Click a chapter above for detailed analytics
-        </p>
+        <PanelEmptyState
+          title="Select a chapter"
+          description="Choose a chapter above to inspect reader behavior and traffic sources."
+        />
       </div>
     )
   }
@@ -161,15 +173,7 @@ export default function AnalyticsDetailPanel(props: AnalyticsDetailProps) {
   if (loading) {
     return (
       <div className="px-5 py-4">
-        <div className="space-y-3 animate-pulse">
-          <div className="h-3 w-32 bg-gray-100 dark:bg-gray-800 rounded" />
-          <div className="grid grid-cols-5 gap-2">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="h-12 bg-gray-100 dark:bg-gray-800 rounded-lg" />
-            ))}
-          </div>
-          <div className="h-20 bg-gray-100 dark:bg-gray-800 rounded-lg" />
-        </div>
+        <PanelLoadingState label="Loading chapter analytics…" />
       </div>
     )
   }
@@ -202,67 +206,59 @@ export default function AnalyticsDetailPanel(props: AnalyticsDetailProps) {
 
   return (
     <div className="px-5 py-4 space-y-4 border-t border-gray-100 dark:border-gray-800">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-          Chapter Analytics
-        </h4>
+      {error ? <PanelMessage tone="error">{error}</PanelMessage> : null}
+
+      <div className="flex items-center justify-between gap-3">
+        <PanelSectionTitle>Chapter Analytics</PanelSectionTitle>
         {publishedDate && (
-          <span className="text-[11px] text-gray-400 dark:text-gray-500">
+          <PanelPill className="bg-transparent px-0 text-gray-400 dark:bg-transparent dark:text-gray-500">
             Published {publishedDate}
-          </span>
+          </PanelPill>
         )}
       </div>
 
-      {/* Stats row */}
       <div className="grid grid-cols-5 gap-2">
-        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-2.5 border border-gray-100 dark:border-gray-700/50">
+        <PanelCard className="p-2.5">
           <div className="text-base font-semibold text-gray-900 dark:text-gray-100 tabular-nums leading-tight">
             {analytics.totalViews?.toLocaleString() ?? 0}
           </div>
           <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">views</div>
-        </div>
-        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-2.5 border border-gray-100 dark:border-gray-700/50">
+        </PanelCard>
+        <PanelCard className="p-2.5">
           <div className="text-base font-semibold text-gray-900 dark:text-gray-100 tabular-nums leading-tight">
             {analytics.uniqueReaders?.toLocaleString() ?? 0}
           </div>
           <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">readers</div>
-        </div>
-        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-2.5 border border-gray-100 dark:border-gray-700/50">
+        </PanelCard>
+        <PanelCard className="p-2.5">
           <div className="text-base font-semibold text-gray-900 dark:text-gray-100 tabular-nums leading-tight">
             {analytics.completions?.toLocaleString() ?? 0}
           </div>
           <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">completions</div>
-        </div>
-        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-2.5 border border-gray-100 dark:border-gray-700/50">
+        </PanelCard>
+        <PanelCard className="p-2.5">
           <div className="text-base font-semibold text-gray-900 dark:text-gray-100 tabular-nums leading-tight">
             {analytics.completionRate ?? 0}%
           </div>
           <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">finish rate</div>
-        </div>
-        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-2.5 border border-gray-100 dark:border-gray-700/50">
+        </PanelCard>
+        <PanelCard className="p-2.5">
           <div className="text-base font-semibold text-gray-900 dark:text-gray-100 tabular-nums leading-tight">
             {analytics.avgReadTimeSeconds ? formatReadTime(analytics.avgReadTimeSeconds) : '-'}
           </div>
           <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">avg time</div>
-        </div>
+        </PanelCard>
       </div>
 
       {breakdown && (
         <div className="grid grid-cols-2 gap-4">
-          {/* Device breakdown */}
           <div>
-            <h5 className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
-              Devices
-            </h5>
+            <PanelSectionTitle>Devices</PanelSectionTitle>
             <DeviceBar devices={breakdown.devices} />
           </div>
 
-          {/* Reading progress */}
           <div>
-            <h5 className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
-              Reading Progress
-            </h5>
+            <PanelSectionTitle>Reading Progress</PanelSectionTitle>
             <div className="space-y-0.5">
               {['0-25', '25-50', '50-75', '75-100', 'completed'].map(bucket => (
                 <HorizontalBar
@@ -279,12 +275,9 @@ export default function AnalyticsDetailPanel(props: AnalyticsDetailProps) {
         </div>
       )}
 
-      {/* Referrers */}
       {breakdown && breakdown.referrers.length > 0 && (
         <div>
-          <h5 className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">
-            Top Referrers
-          </h5>
+          <PanelSectionTitle>Top Referrers</PanelSectionTitle>
           <div className="space-y-1">
             {breakdown.referrers.map((r, i) => (
               <div key={i} className="flex items-center justify-between py-0.5">
