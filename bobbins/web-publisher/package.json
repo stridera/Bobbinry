@@ -1,13 +1,15 @@
 {
   "name": "@bobbinry/web-publisher",
-  "version": "0.1.0",
-  "description": "Web Publisher bobbin - manual and scheduled chapter publishing",
+  "version": "1.1.0",
+  "description": "Web Publisher bobbin - chapter publishing, analytics, and release automation",
   "main": "views/publish-manager.tsx",
   "exports": {
     "./views/publish-manager": "./views/publish-manager.tsx",
+    "./views/release-config": "./views/release-config.tsx",
     "./panels/chapter-publish": "./panels/chapter-publish.tsx",
     "./panels/publish-manager": "./panels/publish-manager.tsx",
-    "./panels/analytics-detail": "./panels/analytics-detail.tsx"
+    "./panels/analytics-detail": "./panels/analytics-detail.tsx",
+    "./panels/scheduled-releases": "./panels/scheduled-releases.tsx"
   },
   "scripts": {
     "build": "echo 'consumed as source by shell'",

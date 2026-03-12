@@ -37,7 +37,7 @@ const templates: Template[] = [
     id: 'serial-fiction',
     name: 'Serial Fiction',
     description: 'Web publishing toolkit with Manuscript, Corkboard, and publishing bobbins',
-    bobbins: ['manuscript', 'corkboard', 'smart-publisher', 'web-publisher'],
+    bobbins: ['manuscript', 'corkboard', 'web-publisher'],
   }
 ]
 

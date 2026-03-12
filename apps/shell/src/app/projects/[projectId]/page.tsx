@@ -232,9 +232,8 @@ export default function ProjectDashboardPage() {
         <PublishingSettings
           projectId={projectId}
           config={data.publishConfig}
-          onUpdate={(config) => {
-            setData(prev => prev ? { ...prev, publishConfig: config } : prev)
-          }}
+          authorUsername={data.authorUsername}
+          readerSlug={data.project.shortUrl}
         />
 
         <ProjectManagement

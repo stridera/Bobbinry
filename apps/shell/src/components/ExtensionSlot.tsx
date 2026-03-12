@@ -40,7 +40,8 @@ const PanelContent = memo(function PanelContent({
   )
 }, (prevProps, nextProps) => {
   return prevProps.extension.id === nextProps.extension.id &&
-         prevProps.extension.component === nextProps.extension.component
+         prevProps.extension.component === nextProps.extension.component &&
+         prevProps.context === nextProps.context
 })
 
 export function ExtensionSlot({
@@ -97,6 +98,8 @@ export function ExtensionSlot({
     }))
   }, [extensions, context])
 
+  const slot = useMemo(() => extensionRegistry.getSlot(slotId), [slotId])
+
   if (!isHydrated) {
     if (fallback === null) return null
     return (
@@ -137,7 +140,12 @@ export function ExtensionSlot({
   // Use ResizablePanelStack for all extensions (single or multiple)
   return (
     <div className={className}>
-      <ResizablePanelStack panels={panels} slotId={slotId} singlePanel={extensions.length === 1} />
+      <ResizablePanelStack
+        panels={panels}
+        slotId={slotId}
+        singlePanel={extensions.length === 1}
+        {...(slot?.maxContributions !== undefined ? { defaultVisibleCount: slot.maxContributions } : {})}
+      />
     </div>
   )
 }

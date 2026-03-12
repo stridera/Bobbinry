@@ -127,6 +127,10 @@ Important:
 - Do not add a second full-width bobbin header inside those docked panels.
 - Use the panel body for content sections, badges, and inline context instead.
 - Reserve `PanelHeader` for inline or standalone surfaces where the shell is not already providing the outer header chrome.
+- Docked panels can be shown or hidden by the user from the shell panel menu, so do not assume your panel is always visible.
+- Treat `shell.leftPanel` as project-scoped by default.
+- Treat `shell.rightPanel` as content-scoped by default: it should usually react to the currently open chapter, selected entity, selected text, or active editor context.
+- If a right-panel bobbin is not content-scoped, it should be a deliberate exception tied to the active writing session, not a general project dashboard duplicated in the sidebar.
 
 Use existing bobbins as visual references:
 
@@ -138,6 +142,7 @@ Avoid:
 
 - hard-coded dark-only styling
 - duplicate headers inside docked shell panels
+- project-level dashboards in `shell.rightPanel` when a chapter- or selection-scoped design would fit better
 - bespoke sidebars that ignore shell spacing and borders
 - custom transport logic inside the panel
 - directly mutating unrelated shell state

@@ -1,14 +1,17 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { SiteNav } from '@/components/SiteNav'
 import { SkeletonList } from '@/components/LoadingState'
 import { EmptyState } from '@/components/EmptyState'
-import { ExtensionSlot } from '@/components/ExtensionSlot'
-import { useManifestExtensions } from '@/components/ExtensionProvider'
 import { config } from '@/lib/config'
 import { apiFetch } from '@/lib/api'
+import { BobbinrySDK } from '@bobbinry/sdk'
+import PublishManagerPanel from '@bobbinry/web-publisher/panels/publish-manager'
+import ScheduledReleasesPanel from '@bobbinry/web-publisher/panels/scheduled-releases'
+import ReleaseConfig from '@bobbinry/web-publisher/views/release-config'
 
 interface User {
   id: string
@@ -29,9 +32,7 @@ interface Project {
 interface Chapter {
   id: string
   title?: string
-  type?: string
   order?: number
-  status?: string
 }
 
 interface ChapterPublication {
@@ -41,7 +42,85 @@ interface ChapterPublication {
   viewCount?: number
 }
 
+function PublisherWorkspace({
+  projectId,
+  apiToken,
+  selectedChapterId,
+  onSelectChapter,
+  refreshKey,
+}: {
+  projectId: string
+  apiToken: string
+  selectedChapterId: string | null
+  onSelectChapter: (chapterId: string | null) => void
+  refreshKey: number
+}) {
+  const [sdk] = useState(() => new BobbinrySDK('web-publisher'))
+
+  useEffect(() => {
+    sdk.setProject(projectId)
+    sdk.api.setAuthToken(apiToken)
+  }, [sdk, projectId, apiToken])
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_360px]">
+      <div className="space-y-4">
+        <section className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+          <div className="border-b border-gray-100 px-5 py-4 dark:border-gray-800">
+            <h4 className="font-display text-base font-semibold text-gray-900 dark:text-gray-100">
+              Project publishing overview
+            </h4>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              Project-wide reach, completion, and publishing progress at a glance.
+            </p>
+          </div>
+          <PublishManagerPanel
+            projectId={projectId}
+            apiToken={apiToken}
+            refreshKey={refreshKey}
+            mode="overview"
+          />
+        </section>
+
+        <section className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+          <div className="border-b border-gray-100 px-5 py-4 dark:border-gray-800">
+            <h4 className="font-display text-base font-semibold text-gray-900 dark:text-gray-100">
+              Published chapters
+            </h4>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              Select a published chapter to inspect its audience, completion, and reading behavior.
+            </p>
+          </div>
+          <PublishManagerPanel
+            projectId={projectId}
+            apiToken={apiToken}
+            refreshKey={refreshKey}
+            selectedChapterId={selectedChapterId}
+            onSelectChapter={onSelectChapter}
+            mode="chapters"
+          />
+        </section>
+
+        <section className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+          <ScheduledReleasesPanel
+            projectId={projectId}
+            apiToken={apiToken}
+            refreshKey={refreshKey}
+          />
+        </section>
+      </div>
+
+      <div className="space-y-4">
+        <section className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+          <ReleaseConfig sdk={sdk} projectId={projectId} />
+        </section>
+      </div>
+    </div>
+  )
+}
+
 export function PublishDashboard({ user, apiToken }: { user: User; apiToken: string }) {
+  const searchParams = useSearchParams()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [actionInProgress, setActionInProgress] = useState<string | null>(null)
@@ -55,69 +134,8 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null)
   const [slugChecking, setSlugChecking] = useState<Record<string, boolean>>({})
   const [username, setUsername] = useState<string>('')
-  const loadedBobbinProjectsRef = useRef<Set<string>>(new Set())
-  // Always have an author identifier for URLs — username if set, otherwise user ID
+
   const authorId = username || user.id
-
-  const { registerManifestExtensions } = useManifestExtensions()
-
-  const loadProjects = useCallback(async () => {
-    try {
-      const res = await apiFetch('/api/users/me/projects/grouped', apiToken)
-      if (res.ok) {
-        const data = await res.json()
-        const allProjects: Project[] = [
-          ...(data.uncategorized || []),
-          ...(data.collections || []).flatMap((c: any) => c.projects || []),
-        ]
-        const activeProjects = allProjects.filter(p => !p.isArchived)
-        setProjects(activeProjects)
-
-        // Pre-load publication counts for published projects
-        const published = activeProjects.filter(p => p.shortUrl)
-        const pubResults = await Promise.allSettled(
-          published.map(p =>
-            apiFetch(`/api/projects/${p.id}/publications?status=all`, apiToken)
-              .then(r => r.json())
-              .then(data => ({ projectId: p.id, publications: data.publications || [] }))
-          )
-        )
-        const pubMap: Record<string, Record<string, ChapterPublication>> = {}
-        for (const result of pubResults) {
-          if (result.status === 'fulfilled') {
-            const { projectId, publications: pubs } = result.value
-            pubMap[projectId] = {}
-            for (const pub of pubs) {
-              pubMap[projectId][pub.chapterId] = pub
-            }
-          }
-        }
-        setPublications(prev => ({ ...prev, ...pubMap }))
-      }
-    } catch (err) {
-      console.error('Failed to load projects:', err)
-    } finally {
-      setLoading(false)
-    }
-  }, [apiToken])
-
-  // Load user profile for default slug generation
-  useEffect(() => {
-    const loadProfile = async () => {
-      try {
-        const res = await apiFetch(`/api/users/${user.id}/profile`, apiToken)
-        if (res.ok) {
-          const data = await res.json()
-          setUsername(data.profile?.username || '')
-        }
-      } catch {}
-    }
-    loadProfile()
-  }, [user.id, apiToken])
-
-  useEffect(() => {
-    loadProjects()
-  }, [loadProjects])
 
   const slugify = (text: string) =>
     text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
@@ -126,105 +144,162 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
     return slugify(projectName)
   }
 
-  const checkSlugAvailability = async (slug: string) => {
-    if (!slug || slug.length < 2) {
-      setSlugAvailability(prev => ({ ...prev, [slug]: null }))
+  const loadProjects = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/users/me/projects/grouped', apiToken)
+      if (res.ok) {
+        const data = await res.json()
+        const allProjects: Project[] = [
+          ...(data.uncategorized || []),
+          ...(data.collections || []).flatMap((collection: any) => collection.projects || []),
+        ]
+        const activeProjects = allProjects.filter((project) => !project.isArchived)
+        setProjects(activeProjects)
+
+        const published = activeProjects.filter((project) => project.shortUrl)
+        const pubResults = await Promise.allSettled(
+          published.map((project) =>
+            apiFetch(`/api/projects/${project.id}/publications?status=all`, apiToken)
+              .then((response) => response.json())
+              .then((data) => ({ projectId: project.id, publications: data.publications || [] }))
+          )
+        )
+
+        const pubMap: Record<string, Record<string, ChapterPublication>> = {}
+        for (const result of pubResults) {
+          if (result.status === 'fulfilled') {
+            const { projectId, publications: projectPublications } = result.value
+            pubMap[projectId] = {}
+            for (const publication of projectPublications) {
+              pubMap[projectId][publication.chapterId] = publication
+            }
+          }
+        }
+
+        setPublications((current) => ({ ...current, ...pubMap }))
+      }
+    } catch (err) {
+      console.error('Failed to load projects:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [apiToken])
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const response = await apiFetch(`/api/users/${user.id}/profile`, apiToken)
+        if (response.ok) {
+          const data = await response.json()
+          setUsername(data.profile?.username || '')
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    void loadProfile()
+  }, [user.id, apiToken])
+
+  useEffect(() => {
+    void loadProjects()
+  }, [loadProjects])
+
+  const loadProjectChapters = useCallback(async (projectId: string) => {
+    try {
+      const [chaptersRes, publicationsRes] = await Promise.all([
+        apiFetch(`/api/collections/content/entities?projectId=${projectId}`, apiToken),
+        apiFetch(`/api/projects/${projectId}/publications?status=all`, apiToken),
+      ])
+
+      let chapterList: Chapter[] = []
+      if (chaptersRes.ok) {
+        const data = await chaptersRes.json()
+        chapterList = (data.entities || []).sort(
+          (a: Chapter, b: Chapter) => (a.order ?? 0) - (b.order ?? 0)
+        )
+        setChapters((current) => ({ ...current, [projectId]: chapterList }))
+      }
+
+      if (publicationsRes.ok) {
+        const data = await publicationsRes.json()
+        const projectPublications: Record<string, ChapterPublication> = {}
+        for (const publication of data.publications || []) {
+          projectPublications[publication.chapterId] = publication
+        }
+        setPublications((current) => ({ ...current, [projectId]: projectPublications }))
+      }
+
+      return chapterList
+    } catch (err) {
+      console.error('Failed to load project publishing data:', err)
+      return []
+    }
+  }, [apiToken])
+
+  const expandProject = useCallback(async (projectId: string, preferredChapterId?: string | null) => {
+    setExpandedProject(projectId)
+    const chapterList = await loadProjectChapters(projectId)
+    const nextSelected = preferredChapterId || chapterList[0]?.id || null
+    setSelectedChapterId(nextSelected)
+  }, [loadProjectChapters])
+
+  useEffect(() => {
+    if (loading) return
+
+    const projectId = searchParams.get('project')
+    if (!projectId) return
+    if (!projects.some((project) => project.id === projectId)) return
+    if (expandedProject === projectId) return
+
+    void expandProject(projectId, searchParams.get('chapter'))
+  }, [loading, projects, expandedProject, searchParams, expandProject])
+
+  const toggleProjectExpansion = async (projectId: string) => {
+    if (expandedProject === projectId) {
+      setExpandedProject(null)
+      setSelectedChapterId(null)
       return
     }
-    setSlugChecking(prev => ({ ...prev, [slug]: true }))
+
+    await expandProject(projectId)
+  }
+
+  const checkSlugAvailability = async (slug: string) => {
+    if (!slug || slug.length < 2) {
+      setSlugAvailability((current) => ({ ...current, [slug]: null }))
+      return
+    }
+
+    setSlugChecking((current) => ({ ...current, [slug]: true }))
     try {
-      const res = await fetch(`${config.apiUrl}/api/short-urls/check`, {
+      const response = await fetch(`${config.apiUrl}/api/short-urls/check`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ shortUrl: slug, type: 'project' }),
       })
-      if (res.ok) {
-        const data = await res.json()
-        setSlugAvailability(prev => ({ ...prev, [slug]: data.available }))
-      }
-    } catch {} finally {
-      setSlugChecking(prev => ({ ...prev, [slug]: false }))
-    }
-  }
 
-  const loadChapters = async (projectId: string) => {
-    try {
-      const res = await apiFetch(
-        `/api/collections/content/entities?projectId=${projectId}`,
-        apiToken
-      )
-      if (res.ok) {
-        const data = await res.json()
-        const chapterList = (data.entities || [])
-          .sort((a: Chapter, b: Chapter) => (a.order ?? 0) - (b.order ?? 0))
-        setChapters(prev => ({ ...prev, [projectId]: chapterList }))
-      }
-    } catch (err) {
-      console.error('Failed to load chapters:', err)
-    }
-
-    // Load publication statuses
-    try {
-      const res = await apiFetch(
-        `/api/projects/${projectId}/publications?status=all`,
-        apiToken
-      )
-      if (res.ok) {
-        const data = await res.json()
-        const pubMap: Record<string, ChapterPublication> = {}
-        for (const pub of (data.publications || [])) {
-          pubMap[pub.chapterId] = pub
-        }
-        setPublications(prev => ({ ...prev, [projectId]: pubMap }))
+      if (response.ok) {
+        const data = await response.json()
+        setSlugAvailability((current) => ({ ...current, [slug]: data.available }))
       }
     } catch {
-      // Publications endpoint might return empty for new projects
-      setPublications(prev => ({ ...prev, [projectId]: {} }))
-    }
-  }
-
-  const loadBobbinsForProject = useCallback(async (projectId: string) => {
-    if (loadedBobbinProjectsRef.current.has(projectId)) return
-    try {
-      const res = await apiFetch(`/api/projects/${projectId}/bobbins`, apiToken)
-      if (res.ok) {
-        const data = await res.json()
-        const bobbins = data.bobbins || []
-        for (const bobbin of bobbins) {
-          if (bobbin.manifest) {
-            registerManifestExtensions(bobbin.id, bobbin.manifest)
-          }
-        }
-        loadedBobbinProjectsRef.current.add(projectId)
-      }
-    } catch (err) {
-      console.error('Failed to load bobbins for project:', projectId, err)
-    }
-  }, [apiToken, registerManifestExtensions])
-
-  const toggleProjectExpansion = (projectId: string) => {
-    if (expandedProject === projectId) {
-      setExpandedProject(null)
-      setSelectedChapterId(null)
-    } else {
-      setExpandedProject(projectId)
-      if (!chapters[projectId]) {
-        loadChapters(projectId)
-      }
-      loadBobbinsForProject(projectId)
+      // ignore
+    } finally {
+      setSlugChecking((current) => ({ ...current, [slug]: false }))
     }
   }
 
   const enablePublishing = async (projectId: string) => {
-    const project = projects.find(p => p.id === projectId)
+    const project = projects.find((item) => item.id === projectId)
     if (!project) return
 
     setActionInProgress(projectId)
     setMessage(null)
+
     try {
       const customUrl = slugInputs[projectId] || generateDefaultSlug(project.name)
 
-      // 1. Claim a short URL
       const urlRes = await apiFetch(`/api/projects/${projectId}/short-url`, apiToken, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -236,19 +311,18 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
         throw new Error(errData.error || 'Failed to claim publishing URL')
       }
 
-      // 2. Set publishing mode to live
       await apiFetch(`/api/projects/${projectId}/publish-config`, apiToken, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ publishingMode: 'live', defaultVisibility: 'public' }),
       })
 
-      setMessage({ type: 'success', text: 'Publishing enabled! Now publish your chapters below.' })
+      setMessage({
+        type: 'success',
+        text: 'Publishing enabled. Set your release cadence and select a chapter to manage publishing.',
+      })
       await loadProjects()
-
-      // Auto-expand to show chapters
-      setExpandedProject(projectId)
-      loadChapters(projectId)
+      await expandProject(projectId)
     } catch (err) {
       setMessage({
         type: 'error',
@@ -262,6 +336,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
   const disablePublishing = async (projectId: string) => {
     setActionInProgress(projectId)
     setMessage(null)
+
     try {
       await apiFetch(`/api/projects/${projectId}/publish-config`, apiToken, {
         method: 'PUT',
@@ -275,6 +350,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
 
       setMessage({ type: 'success', text: 'Publishing disabled.' })
       setExpandedProject(null)
+      setSelectedChapterId(null)
       await loadProjects()
     } catch (err) {
       setMessage({
@@ -286,94 +362,20 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
     }
   }
 
-  const publishAllChapters = async (projectId: string) => {
-    const projectChapters = chapters[projectId]
-    if (!projectChapters || projectChapters.length === 0) return
-
-    setActionInProgress(`${projectId}-publish-all`)
-    setMessage(null)
-    try {
-      let successCount = 0
-      for (const chapter of projectChapters) {
-        try {
-          const res = await apiFetch(
-            `/api/projects/${projectId}/chapters/${chapter.id}/publish`,
-            apiToken,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ publishStatus: 'published' }),
-            }
-          )
-          if (res.ok) successCount++
-        } catch {}
-      }
-      setMessage({
-        type: 'success',
-        text: `Published ${successCount} of ${projectChapters.length} chapters!`,
-      })
-      await loadChapters(projectId)
-      setPublishRefreshKey(k => k + 1)
-    } catch {
-      setMessage({ type: 'error', text: 'Failed to publish chapters' })
-    } finally {
-      setActionInProgress(null)
-    }
-  }
-
-  const chapterAction = async (
-    projectId: string,
-    chapterId: string,
-    action: string,
-    errorText: string,
-    init?: RequestInit
-  ) => {
-    setActionInProgress(`${projectId}-${chapterId}`)
-    try {
-      await apiFetch(
-        `/api/projects/${projectId}/chapters/${chapterId}/${action}`,
-        apiToken,
-        init ?? { method: 'POST' }
-      )
-      await loadChapters(projectId)
-      setPublishRefreshKey(k => k + 1)
-    } catch {
-      setMessage({ type: 'error', text: errorText })
-    } finally {
-      setActionInProgress(null)
-    }
-  }
-
-  const publishChapter = (projectId: string, chapterId: string) =>
-    chapterAction(projectId, chapterId, 'publish', 'Failed to publish chapter', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ publishStatus: 'published' }),
-    })
-
-  const markChapterComplete = (projectId: string, chapterId: string) =>
-    chapterAction(projectId, chapterId, 'complete', 'Failed to mark chapter complete')
-
-  const markChapterDraft = (projectId: string, chapterId: string) =>
-    chapterAction(projectId, chapterId, 'revert-to-draft', 'Failed to revert chapter to draft')
-
-  const unpublishChapter = (projectId: string, chapterId: string) =>
-    chapterAction(projectId, chapterId, 'unpublish', 'Failed to unpublish chapter')
-
-  const publishedProjects = projects.filter(p => p.shortUrl)
-  const draftProjects = projects.filter(p => !p.shortUrl)
+  const publishedProjects = projects.filter((project) => project.shortUrl)
+  const draftProjects = projects.filter((project) => !project.shortUrl)
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
         <SiteNav />
-        <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 animate-pulse">
-            <div className="h-7 bg-gray-100 dark:bg-gray-700 rounded w-48 mb-2" />
-            <div className="h-4 bg-gray-100 dark:bg-gray-700 rounded w-72" />
+        <header className="border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+          <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 animate-pulse">
+            <div className="mb-2 h-7 w-48 rounded bg-gray-100 dark:bg-gray-700" />
+            <div className="h-4 w-72 rounded bg-gray-100 dark:bg-gray-700" />
           </div>
         </header>
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
           <SkeletonList count={3} />
         </div>
       </div>
@@ -384,23 +386,22 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       <SiteNav />
 
-      {/* Header */}
-      <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
-          <div className="flex items-center justify-between">
+      <header className="border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+        <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+          <div className="flex items-center justify-between gap-4">
             <div>
               <h1 className="font-display text-2xl font-bold text-gray-900 dark:text-gray-100">
-                Publisher Dashboard
+                Publisher
               </h1>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                Manage which projects and chapters are published
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Set project cadence, manage release order, and handle chapter publishing from one workspace.
               </p>
             </div>
             <Link
               href="/settings/monetization"
-              className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors flex items-center gap-1.5"
+              className="flex items-center gap-1.5 text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               Monetization
@@ -409,24 +410,23 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
         </div>
       </header>
 
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-        {/* Message */}
-        {message && (
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+        {message ? (
           <div
-            className={`mb-6 p-4 rounded-lg text-sm ${
+            className={`mb-6 rounded-lg border p-4 text-sm ${
               message.type === 'success'
-                ? 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-300 border border-green-200 dark:border-green-800'
-                : 'bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300 border border-red-200 dark:border-red-800'
+                ? 'border-green-200 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300'
+                : 'border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300'
             }`}
           >
             {message.text}
           </div>
-        )}
+        ) : null}
 
         {projects.length === 0 ? (
           <EmptyState
             icon={
-              <svg className="w-12 h-12 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-12 w-12 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
               </svg>
             }
@@ -436,260 +436,110 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
           />
         ) : (
           <div className="space-y-8">
-            {/* Published Projects */}
-            {publishedProjects.length > 0 && (
+            {publishedProjects.length > 0 ? (
               <section>
-                <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-green-500" />
-                  Published ({publishedProjects.length})
+                <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  <span className="h-2 w-2 rounded-full bg-green-500" />
+                  Live projects ({publishedProjects.length})
                 </h2>
-                <div className="space-y-3">
-                  {publishedProjects.map(project => {
+                <div className="space-y-4">
+                  {publishedProjects.map((project) => {
                     const isExpanded = expandedProject === project.id
                     const projectChapters = chapters[project.id] || []
-                    const projectPubs = publications[project.id] || {}
-                    const publishedCount = Object.values(projectPubs).filter(
-                      p => p.publishStatus === 'published'
+                    const projectPublications = publications[project.id] || {}
+                    const publishedCount = Object.values(projectPublications).filter(
+                      (publication) => publication.publishStatus === 'published'
                     ).length
 
                     return (
                       <div
                         key={project.id}
-                        className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden"
+                        className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900"
                       >
-                        {/* Project header row */}
                         <div className="p-5">
                           <div className="flex items-start justify-between gap-4">
                             <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2 mb-1">
-                                <h3 className="font-display font-semibold text-gray-900 dark:text-gray-100 truncate">
+                              <div className="mb-2 flex items-center gap-2">
+                                <h3 className="truncate font-display text-lg font-semibold text-gray-900 dark:text-gray-100">
                                   {project.name}
                                 </h3>
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 flex-shrink-0">
+                                <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
                                   Live
                                 </span>
                               </div>
-                              {project.description && (
-                                <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-1 mb-2">
+                              {project.description ? (
+                                <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
                                   {project.description}
                                 </p>
-                              )}
-                              <div className="flex items-center gap-4 text-sm">
+                              ) : null}
+
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
                                 <div className="flex items-center gap-2">
-                                  <span className="text-gray-400 dark:text-gray-500">URL:</span>
+                                  <span className="text-gray-400 dark:text-gray-500">URL</span>
                                   <Link
                                     href={`/read/${authorId}/${project.shortUrl}`}
-                                    className="text-blue-600 dark:text-blue-400 hover:underline font-mono text-xs"
+                                    className="font-mono text-xs text-blue-600 hover:underline dark:text-blue-400"
                                   >
                                     /read/{authorId}/{project.shortUrl}
                                   </Link>
                                 </div>
-                                <span className="text-gray-300 dark:text-gray-700">|</span>
-                                <span className="text-gray-500 dark:text-gray-400 text-xs">
-                                  {publishedCount} chapter{publishedCount !== 1 ? 's' : ''} published
+                                <span className="text-xs text-gray-500 dark:text-gray-400">
+                                  {publishedCount} published
+                                  {projectChapters.length > 0 ? ` · ${projectChapters.length} total chapters` : ''}
                                 </span>
                               </div>
                             </div>
-                            <div className="flex items-center gap-2 flex-shrink-0">
+
+                            <div className="flex flex-wrap items-center justify-end gap-2">
                               <button
-                                onClick={() => toggleProjectExpansion(project.id)}
-                                className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors flex items-center gap-1.5"
+                                onClick={() => void toggleProjectExpansion(project.id)}
+                                className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
                               >
-                                <svg
-                                  className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                                  fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                                >
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                </svg>
-                                Chapters
+                                {isExpanded ? 'Hide workspace' : 'Manage publishing'}
                               </button>
                               <Link
                                 href={`/projects/${project.id}`}
-                                className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                                className="rounded-md bg-gray-100 px-3 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
                               >
-                                Dashboard
+                                Project dashboard
                               </Link>
                               <button
                                 onClick={() => disablePublishing(project.id)}
                                 disabled={actionInProgress === project.id}
-                                className="px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-md transition-colors disabled:opacity-50"
+                                className="rounded-md px-3 py-1.5 text-sm text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-900/10"
                               >
-                                {actionInProgress === project.id ? 'Unpublishing...' : 'Unpublish'}
+                                {actionInProgress === project.id ? 'Disabling...' : 'Disable'}
                               </button>
                             </div>
                           </div>
                         </div>
 
-                        {/* Expanded chapter list */}
-                        {isExpanded && (
-                          <div className="border-t border-gray-100 dark:border-gray-800">
-                            {/* Chapter controls */}
-                            <div className="px-5 py-3 bg-gray-50 dark:bg-gray-800/50 flex items-center justify-between">
-                              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Chapters ({projectChapters.length})
-                              </span>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  onClick={() => publishAllChapters(project.id)}
-                                  disabled={actionInProgress?.startsWith(project.id) || projectChapters.length === 0}
-                                  className="px-3 py-1.5 text-xs bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 font-medium"
-                                >
-                                  {actionInProgress === `${project.id}-publish-all`
-                                    ? 'Publishing...'
-                                    : 'Publish All Chapters'}
-                                </button>
-                              </div>
-                            </div>
-
-                            {/* Chapter list */}
-                            {projectChapters.length === 0 ? (
-                              <div className="px-5 py-8 text-center">
-                                <p className="text-sm text-gray-400 dark:text-gray-500">
-                                  No chapters yet. Open the project editor to start writing.
-                                </p>
-                                <Link
-                                  href={`/projects/${project.id}/write`}
-                                  className="inline-block mt-2 text-sm text-blue-600 dark:text-blue-400 hover:underline"
-                                >
-                                  Open Editor
-                                </Link>
-                              </div>
-                            ) : (
-                              <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                                {projectChapters.map((chapter, idx) => {
-                                  const pub = projectPubs[chapter.id]
-                                  const status = pub?.publishStatus || 'draft'
-                                  const isPublished = status === 'published'
-                                  const isComplete = status === 'complete'
-                                  const chapterTitle = chapter.title || `Chapter ${idx + 1}`
-                                  const isChapterLoading = actionInProgress === `${project.id}-${chapter.id}`
-
-                                  return (
-                                    <div
-                                      key={chapter.id}
-                                      className="px-5 py-3 flex items-center justify-between gap-3"
-                                    >
-                                      <div className="flex items-center gap-3 min-w-0">
-                                        <span className="text-xs text-gray-400 dark:text-gray-500 w-6 text-right flex-shrink-0">
-                                          {idx + 1}
-                                        </span>
-                                        <span className="text-sm text-gray-900 dark:text-gray-100 truncate">
-                                          {chapterTitle}
-                                        </span>
-                                        {isPublished && (
-                                          <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-green-500" title="Published" />
-                                        )}
-                                        {isComplete && (
-                                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 flex-shrink-0">
-                                            Complete
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="flex items-center gap-2 flex-shrink-0">
-                                        {project.shortUrl && (
-                                          <a
-                                            href={`/read/${authorId}/${project.shortUrl}/${chapter.id}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors"
-                                            title="Preview as reader"
-                                          >
-                                            Preview
-                                          </a>
-                                        )}
-                                        {pub?.publishedAt && (
-                                          <span className="text-xs text-gray-400 dark:text-gray-500">
-                                            {new Date(pub.publishedAt).toLocaleDateString()}
-                                          </span>
-                                        )}
-                                        {isPublished ? (
-                                          <button
-                                            onClick={() => unpublishChapter(project.id, chapter.id)}
-                                            disabled={isChapterLoading}
-                                            className="px-2.5 py-1 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors disabled:opacity-50"
-                                          >
-                                            {isChapterLoading ? '...' : 'Unpublish'}
-                                          </button>
-                                        ) : isComplete ? (
-                                          <>
-                                            <button
-                                              onClick={() => publishChapter(project.id, chapter.id)}
-                                              disabled={isChapterLoading}
-                                              className="px-2.5 py-1 text-xs text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors disabled:opacity-50"
-                                            >
-                                              {isChapterLoading ? '...' : 'Publish'}
-                                            </button>
-                                            <button
-                                              onClick={() => markChapterDraft(project.id, chapter.id)}
-                                              disabled={isChapterLoading}
-                                              className="px-2.5 py-1 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors disabled:opacity-50"
-                                            >
-                                              Revert
-                                            </button>
-                                          </>
-                                        ) : (
-                                          <>
-                                            <button
-                                              onClick={() => markChapterComplete(project.id, chapter.id)}
-                                              disabled={isChapterLoading}
-                                              className="px-2.5 py-1 text-xs text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors disabled:opacity-50"
-                                            >
-                                              {isChapterLoading ? '...' : 'Mark Complete'}
-                                            </button>
-                                            <button
-                                              onClick={() => publishChapter(project.id, chapter.id)}
-                                              disabled={isChapterLoading}
-                                              className="px-2.5 py-1 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors disabled:opacity-50"
-                                              title="Skip to publish"
-                                            >
-                                              Publish
-                                            </button>
-                                          </>
-                                        )}
-                                      </div>
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                            )}
-
-                            {/* Bobbin-contributed publishing panels grouped by category */}
-                            {loadedBobbinProjectsRef.current.has(project.id) && (
-                              <div className="border-t border-gray-100 dark:border-gray-800">
-                                {/* Audience publishers (prominent) */}
-                                <ExtensionSlot
-                                  slotId="shell.publishDashboard"
-                                  context={{
-                                    projectId: project.id,
-                                    apiToken,
-                                    publisherCategory: 'audience',
-                                    refreshKey: publishRefreshKey,
-                                    selectedChapterId,
-                                    onSelectChapter: setSelectedChapterId,
-                                  }}
-                                  layout="inline"
-                                  fallback={null}
-                                />
-                              </div>
-                            )}
+                        {isExpanded ? (
+                          <div className="border-t border-gray-100 bg-gray-50/60 px-5 py-5 dark:border-gray-800 dark:bg-gray-950/30">
+                            <PublisherWorkspace
+                              projectId={project.id}
+                              apiToken={apiToken}
+                              selectedChapterId={selectedChapterId}
+                              onSelectChapter={setSelectedChapterId}
+                              refreshKey={publishRefreshKey}
+                            />
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     )
                   })}
                 </div>
               </section>
-            )}
+            ) : null}
 
-            {/* Draft Projects */}
-            {draftProjects.length > 0 && (
+            {draftProjects.length > 0 ? (
               <section>
-                <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-gray-400 dark:bg-gray-600" />
-                  Not Published ({draftProjects.length})
+                <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  <span className="h-2 w-2 rounded-full bg-gray-400 dark:bg-gray-600" />
+                  Not yet published ({draftProjects.length})
                 </h2>
                 <div className="space-y-3">
-                  {draftProjects.map(project => {
+                  {draftProjects.map((project) => {
                     const currentSlug = slugInputs[project.id] ?? generateDefaultSlug(project.name)
                     const availability = slugAvailability[currentSlug]
                     const checking = slugChecking[currentSlug]
@@ -697,56 +547,58 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
                     return (
                       <div
                         key={project.id}
-                        className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-5"
+                        className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900"
                       >
                         <div className="flex items-start justify-between gap-4">
                           <div className="min-w-0 flex-1">
-                            <h3 className="font-display font-semibold text-gray-900 dark:text-gray-100 truncate mb-1">
+                            <h3 className="mb-1 truncate font-display font-semibold text-gray-900 dark:text-gray-100">
                               {project.name}
                             </h3>
-                            {project.description && (
-                              <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-1 mb-3">
+                            {project.description ? (
+                              <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
                                 {project.description}
                               </p>
-                            )}
-                            {/* Slug picker */}
+                            ) : null}
                             <div className="flex items-center gap-2">
-                              <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0 font-mono">/read/{authorId}/</span>
+                              <span className="flex-shrink-0 font-mono text-xs text-gray-400 dark:text-gray-500">
+                                /read/{authorId}/
+                              </span>
                               <input
                                 type="text"
                                 value={currentSlug}
-                                onChange={e => {
-                                  const val = slugify(e.target.value)
-                                  setSlugInputs(prev => ({ ...prev, [project.id]: val }))
+                                onChange={(event) => {
+                                  const nextValue = slugify(event.target.value)
+                                  setSlugInputs((current) => ({ ...current, [project.id]: nextValue }))
                                 }}
-                                onBlur={() => checkSlugAvailability(currentSlug)}
+                                onBlur={() => void checkSlugAvailability(currentSlug)}
                                 placeholder={generateDefaultSlug(project.name)}
-                                className="flex-1 max-w-xs px-2.5 py-1.5 text-xs font-mono border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                className="max-w-xs flex-1 rounded border border-gray-200 bg-gray-50 px-2.5 py-1.5 font-mono text-xs text-gray-900 focus:border-transparent focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
                               />
-                              {checking && (
+                              {checking ? (
                                 <span className="text-xs text-gray-400">checking...</span>
-                              )}
-                              {!checking && availability === true && (
+                              ) : null}
+                              {!checking && availability === true ? (
                                 <span className="text-xs text-green-600 dark:text-green-400">available</span>
-                              )}
-                              {!checking && availability === false && (
+                              ) : null}
+                              {!checking && availability === false ? (
                                 <span className="text-xs text-red-600 dark:text-red-400">taken</span>
-                              )}
+                              ) : null}
                             </div>
                           </div>
-                          <div className="flex items-center gap-2 flex-shrink-0">
+
+                          <div className="flex items-center gap-2">
                             <Link
                               href={`/projects/${project.id}`}
-                              className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                              className="rounded-md bg-gray-100 px-3 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
                             >
-                              Dashboard
+                              Project dashboard
                             </Link>
                             <button
                               onClick={() => enablePublishing(project.id)}
                               disabled={actionInProgress === project.id || availability === false}
-                              className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 font-medium"
+                              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
                             >
-                              {actionInProgress === project.id ? 'Publishing...' : 'Publish'}
+                              {actionInProgress === project.id ? 'Enabling...' : 'Set up publishing'}
                             </button>
                           </div>
                         </div>
@@ -755,39 +607,17 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
                   })}
                 </div>
               </section>
-            )}
+            ) : null}
 
-            {/* Help section */}
-            <section className="bg-blue-50/50 dark:bg-blue-950/10 border border-blue-100 dark:border-blue-900/30 rounded-lg p-6">
-              <h3 className="font-display font-semibold text-gray-900 dark:text-gray-100 mb-2">
-                How publishing works
+            <section className="rounded-xl border border-blue-100 bg-blue-50/60 p-6 dark:border-blue-900/30 dark:bg-blue-950/10">
+              <h3 className="font-display font-semibold text-gray-900 dark:text-gray-100">
+                Publishing model
               </h3>
-              <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-500 mt-0.5">1.</span>
-                  <span><strong>Choose a slug</strong> for your public URL (e.g. /read/your-name/my-story) and click Publish.</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-500 mt-0.5">2.</span>
-                  <span><strong>Publish your chapters</strong> using "Publish All Chapters" or toggle individual chapters on/off.</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-500 mt-0.5">3.</span>
-                  <span><strong>Exclude chapters</strong> like brainstorm notes by leaving them as draft or unpublishing them later.</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-500 mt-0.5">4.</span>
-                  <span><strong>Optionally set up monetization</strong> with subscription tiers if you want to offer paid content.</span>
-                </li>
+              <ul className="mt-3 space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                <li>Set project cadence here. This is the only place to control automatic release timing.</li>
+                <li>Select a chapter from the performance list to open chapter-specific publish and schedule controls.</li>
+                <li>Use the project dashboard for writing and metadata. Use the Publisher for release workflow.</li>
               </ul>
-              <div className="mt-4 flex items-center gap-4">
-                <Link
-                  href="/settings/monetization"
-                  className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-                >
-                  Set up monetization
-                </Link>
-              </div>
             </section>
           </div>
         )}

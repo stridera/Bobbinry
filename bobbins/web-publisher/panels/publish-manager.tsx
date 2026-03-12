@@ -19,6 +19,8 @@ import {
 } from '@bobbinry/sdk'
 import { apiFetchLocal } from '../lib/api'
 import { formatReadTime, formatCompactNumber } from '../lib/format'
+import { formatRelativeTime } from '../lib/time'
+import AnalyticsDetailPanel from './analytics-detail'
 
 interface PublishManagerPanelProps {
   projectId: string
@@ -26,12 +28,14 @@ interface PublishManagerPanelProps {
   refreshKey?: number
   selectedChapterId?: string | null
   onSelectChapter?: (chapterId: string | null) => void
+  mode?: 'full' | 'overview' | 'chapters'
   context?: {
     projectId: string
     apiToken?: string
     refreshKey?: number
     selectedChapterId?: string | null
     onSelectChapter?: (chapterId: string | null) => void
+    mode?: 'full' | 'overview' | 'chapters'
   }
 }
 
@@ -53,20 +57,6 @@ interface ChapterEntity {
   order?: number
 }
 
-function timeAgo(dateStr: string): string {
-  const now = Date.now()
-  const then = new Date(dateStr).getTime()
-  const diff = now - then
-  const minutes = Math.floor(diff / 60000)
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}d ago`
-  const months = Math.floor(days / 30)
-  return `${months}mo ago`
-}
-
 interface ChapterWithStats {
   id: string
   title: string
@@ -85,6 +75,9 @@ export default function PublishManagerPanel(props: PublishManagerPanelProps) {
   const refreshKey = props.refreshKey ?? props.context?.refreshKey ?? 0
   const selectedChapterId = props.selectedChapterId ?? props.context?.selectedChapterId
   const onSelectChapter = props.onSelectChapter || props.context?.onSelectChapter
+  const mode = props.mode || props.context?.mode || 'full'
+  const showOverview = mode !== 'chapters'
+  const showChapters = mode !== 'overview'
 
   const [chaptersWithStats, setChaptersWithStats] = useState<ChapterWithStats[]>([])
   const [loading, setLoading] = useState(true)
@@ -184,20 +177,30 @@ export default function PublishManagerPanel(props: PublishManagerPanelProps) {
 
   const maxViews = Math.max(...chaptersWithStats.map(c => c.viewCount), 1)
 
-  // Most popular published chapter
-  const topChapter = [...published].sort((a, b) => b.viewCount - a.viewCount)[0]
-
   // Most recently published
   const lastPublished = [...published]
     .filter(c => c.publishedAt)
     .sort((a, b) => new Date(b.publishedAt!).getTime() - new Date(a.publishedAt!).getTime())[0]
 
   // Chapters to display in the table
-  const visibleChapters = showAllChapters ? chaptersWithStats : chaptersWithStats.slice(0, 5)
-  const hasMore = chaptersWithStats.length > 5
+  const chapterList = showChapters ? published : chaptersWithStats
+  const visibleChapters = showAllChapters ? chapterList : chapterList.slice(0, 5)
+  const hasMore = chapterList.length > 5
 
   // If nothing is published yet, show a simpler prompt
   if (publishedCount === 0) {
+    if (mode === 'chapters') {
+      return (
+        <div className="px-5 py-4">
+          {error ? <PanelMessage tone="error">{error}</PanelMessage> : null}
+          <PanelEmptyState
+            title="No published chapters yet"
+            description="Publish a chapter to see chapter-by-chapter performance here."
+          />
+        </div>
+      )
+    }
+
     return (
       <div className="space-y-3 px-5 py-4">
         {error ? <PanelMessage tone="error">{error}</PanelMessage> : null}
@@ -227,123 +230,105 @@ export default function PublishManagerPanel(props: PublishManagerPanelProps) {
     <div className="px-5 py-4 space-y-4">
       {error ? <PanelMessage tone="error">{error}</PanelMessage> : null}
 
-      <div className="flex items-center justify-between gap-3">
-        <PanelSectionTitle>Publishing Analytics</PanelSectionTitle>
-        {lastPublished?.publishedAt && (
-          <PanelPill className="bg-transparent px-0 text-gray-400 dark:bg-transparent dark:text-gray-500">
-            Last published {timeAgo(lastPublished.publishedAt)}
-          </PanelPill>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <PanelCard>
-          <div className="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums leading-tight">
-            {formatCompactNumber(totalViews)}
-          </div>
-          <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-            total views
-            {totalUniqueViews > 0 && totalUniqueViews !== totalViews && (
-              <span className="text-gray-400 dark:text-gray-500"> ({formatCompactNumber(totalUniqueViews)} unique)</span>
+      {showOverview ? (
+        <>
+          <div className="flex items-center justify-between gap-3">
+            <PanelSectionTitle>Publishing Overview</PanelSectionTitle>
+            {lastPublished?.publishedAt && (
+              <PanelPill className="bg-transparent px-0 text-gray-400 dark:bg-transparent dark:text-gray-500">
+                Last published {formatRelativeTime(lastPublished.publishedAt, 'local')}
+              </PanelPill>
             )}
           </div>
-        </PanelCard>
 
-        <PanelCard>
-          <div className="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums leading-tight">
-            {formatCompactNumber(totalCompletions)}
-          </div>
-          <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-            completions
-          </div>
-        </PanelCard>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <PanelCard>
+              <div className="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums leading-tight">
+                {formatCompactNumber(totalViews)}
+              </div>
+              <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                total views
+                {totalUniqueViews > 0 && totalUniqueViews !== totalViews && (
+                  <span className="text-gray-400 dark:text-gray-500"> ({formatCompactNumber(totalUniqueViews)} unique)</span>
+                )}
+              </div>
+            </PanelCard>
 
-        <PanelCard>
-          <div className="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums leading-tight">
-            {completionRate}%
-          </div>
-          <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-            finish rate
-          </div>
-        </PanelCard>
+            <PanelCard>
+              <div className="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums leading-tight">
+                {formatCompactNumber(totalCompletions)}
+              </div>
+              <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                completions
+              </div>
+            </PanelCard>
 
-        <PanelCard>
-          <div className="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums leading-tight">
-            {avgReadTime > 0 ? formatReadTime(avgReadTime) : '-'}
-          </div>
-          <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-            avg read time
-          </div>
-        </PanelCard>
-      </div>
+            <PanelCard>
+              <div className="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums leading-tight">
+                {completionRate}%
+              </div>
+              <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                finish rate
+              </div>
+            </PanelCard>
 
-      <PanelCard className="space-y-2">
-        <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[11px] text-gray-500 dark:text-gray-400">
-            {publishedCount}/{totalChapters} chapters published
-          </span>
-          <div className="flex items-center gap-3 text-[11px]">
-            {publishedCount > 0 && (
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-green-500" />
-                <span className="text-gray-500 dark:text-gray-400">{publishedCount}</span>
+            <PanelCard>
+              <div className="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums leading-tight">
+                {avgReadTime > 0 ? formatReadTime(avgReadTime) : '-'}
+              </div>
+              <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                avg read time
+              </div>
+            </PanelCard>
+          </div>
+
+          <PanelCard className="space-y-2">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                {publishedCount}/{totalChapters} chapters published
               </span>
-            )}
-            {complete.length > 0 && (
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-blue-400" />
-                <span className="text-gray-500 dark:text-gray-400">{complete.length}</span>
-              </span>
-            )}
-            {drafts.length > 0 && (
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600" />
-                <span className="text-gray-500 dark:text-gray-400">{drafts.length}</span>
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden flex">
-          {publishedCount > 0 && (
-            <div
-              className="h-full bg-green-500 rounded-full transition-all duration-500"
-              style={{ width: `${(publishedCount / totalChapters) * 100}%` }}
-            />
-          )}
-          {complete.length > 0 && (
-            <div
-              className="h-full bg-blue-400 transition-all duration-500"
-              style={{ width: `${(complete.length / totalChapters) * 100}%` }}
-            />
-          )}
-        </div>
-      </PanelCard>
-
-      {topChapter && topChapter.viewCount > 0 && (
-        <PanelCard className="flex items-center gap-3 border-green-100 bg-green-50/50 dark:border-green-800/30 dark:bg-green-900/10">
-          <div className="w-6 h-6 rounded-md bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
-            <svg className="w-3.5 h-3.5 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-            </svg>
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs text-gray-700 dark:text-gray-300">
-              <span className="font-medium truncate">{topChapter.title}</span>
-              {' '}is your most-read chapter
-            </p>
-            <p className="text-[11px] text-gray-500 dark:text-gray-400">
-              {topChapter.viewCount.toLocaleString()} view{topChapter.viewCount !== 1 ? 's' : ''}
-              {topChapter.completionCount > 0 && (
-                <span> &middot; {topChapter.completionCount} completion{topChapter.completionCount !== 1 ? 's' : ''}</span>
+              <div className="flex items-center gap-3 text-[11px]">
+                {publishedCount > 0 && (
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-green-500" />
+                    <span className="text-gray-500 dark:text-gray-400">{publishedCount}</span>
+                  </span>
+                )}
+                {complete.length > 0 && (
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-blue-400" />
+                    <span className="text-gray-500 dark:text-gray-400">{complete.length}</span>
+                  </span>
+                )}
+                {drafts.length > 0 && (
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600" />
+                    <span className="text-gray-500 dark:text-gray-400">{drafts.length}</span>
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden flex">
+              {publishedCount > 0 && (
+                <div
+                  className="h-full bg-green-500 rounded-full transition-all duration-500"
+                  style={{ width: `${(publishedCount / totalChapters) * 100}%` }}
+                />
               )}
-            </p>
-          </div>
-        </PanelCard>
-      )}
+              {complete.length > 0 && (
+                <div
+                  className="h-full bg-blue-400 transition-all duration-500"
+                  style={{ width: `${(complete.length / totalChapters) * 100}%` }}
+                />
+              )}
+            </div>
+          </PanelCard>
+        </>
+      ) : null}
 
-      {published.length > 0 && (
+      {showChapters && published.length > 0 ? (
         <div>
-          <PanelSectionTitle>Chapter Performance</PanelSectionTitle>
+          <PanelSectionTitle>Published chapters</PanelSectionTitle>
           <div className="space-y-1">
             {visibleChapters.map((chapter, idx) => {
               const barWidth = chapter.viewCount > 0 ? (chapter.viewCount / maxViews) * 100 : 0
@@ -351,47 +336,57 @@ export default function PublishManagerPanel(props: PublishManagerPanelProps) {
               const isSelected = selectedChapterId === chapter.id
 
               return (
-                <div
-                  key={chapter.id}
-                  onClick={() => onSelectChapter?.(isSelected ? null : chapter.id)}
-                  className={`group flex items-center gap-3 py-1.5 px-2 rounded transition-colors ${
-                    onSelectChapter ? 'cursor-pointer' : ''
-                  } ${
-                    isSelected
-                      ? 'bg-teal-50 dark:bg-teal-900/15 border-l-2 border-teal-500 pl-1.5'
-                      : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
-                  }`}
-                >
-                  <span className="text-[11px] text-gray-400 dark:text-gray-500 w-5 text-right tabular-nums flex-shrink-0">
-                    {idx + 1}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-xs text-gray-800 dark:text-gray-200 truncate">
-                        {chapter.title}
-                      </span>
-                      {!isPublished && (
-                        <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">
-                          {chapter.publishStatus}
+                <div key={chapter.id} className="space-y-2">
+                  <div
+                    onClick={() => onSelectChapter?.(isSelected ? null : chapter.id)}
+                    className={`group flex items-center gap-3 py-1.5 px-2 rounded transition-colors ${
+                      onSelectChapter ? 'cursor-pointer' : ''
+                    } ${
+                      isSelected
+                        ? 'bg-teal-50 dark:bg-teal-900/15 border-l-2 border-teal-500 pl-1.5'
+                        : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                    }`}
+                  >
+                    <span className="text-[11px] text-gray-400 dark:text-gray-500 w-5 text-right tabular-nums flex-shrink-0">
+                      {idx + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-xs text-gray-800 dark:text-gray-200 truncate">
+                          {chapter.title}
                         </span>
-                      )}
+                        {!isPublished && (
+                          <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">
+                            {chapter.publishStatus}
+                          </span>
+                        )}
+                      </div>
+                      <div className="h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-blue-400 dark:bg-blue-500 rounded-full transition-all duration-300"
+                          style={{ width: `${barWidth}%` }}
+                        />
+                      </div>
                     </div>
-                    {/* View bar */}
-                    <div className="h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-blue-400 dark:bg-blue-500 rounded-full transition-all duration-300"
-                        style={{ width: `${barWidth}%` }}
+                    <div className="flex items-center gap-3 text-[11px] tabular-nums flex-shrink-0">
+                      <span className="text-gray-600 dark:text-gray-400 w-12 text-right">
+                        {chapter.viewCount > 0 ? chapter.viewCount.toLocaleString() : '-'}
+                      </span>
+                      <span className="text-gray-400 dark:text-gray-500 w-8 text-right opacity-0 group-hover:opacity-100 transition-opacity" title="Completions">
+                        {chapter.completionCount > 0 ? chapter.completionCount.toLocaleString() : ''}
+                      </span>
+                    </div>
+                  </div>
+
+                  {isSelected && projectId ? (
+                    <div className="ml-8 rounded-lg border border-gray-100 bg-gray-50/60 dark:border-gray-800 dark:bg-gray-900/20">
+                      <AnalyticsDetailPanel
+                        projectId={projectId}
+                        selectedChapterId={chapter.id}
+                        {...(apiToken ? { apiToken } : {})}
                       />
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3 text-[11px] tabular-nums flex-shrink-0">
-                    <span className="text-gray-600 dark:text-gray-400 w-12 text-right">
-                      {chapter.viewCount > 0 ? chapter.viewCount.toLocaleString() : '-'}
-                    </span>
-                    <span className="text-gray-400 dark:text-gray-500 w-8 text-right opacity-0 group-hover:opacity-100 transition-opacity" title="Completions">
-                      {chapter.completionCount > 0 ? chapter.completionCount.toLocaleString() : ''}
-                    </span>
-                  </div>
+                  ) : null}
                 </div>
               )
             })}
@@ -405,12 +400,12 @@ export default function PublishManagerPanel(props: PublishManagerPanelProps) {
             >
               {showAllChapters
                 ? 'Show less'
-                : `Show all ${totalChapters} chapters`
+                : `Show all ${chapterList.length} chapters`
               }
             </PanelActionButton>
           )}
         </div>
-      )}
+      ) : null}
     </div>
   )
 }

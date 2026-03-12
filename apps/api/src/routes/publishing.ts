@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { requireAuth, requireVerified } from '../middleware/auth'
+import { requireAuth, requireProjectOwnership, requireVerified } from '../middleware/auth'
 import { db } from '../db/connection'
 import {
   chapterPublications,
@@ -18,6 +18,14 @@ import {
 import { eq, and, desc, sql } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { serverEventBus, contentPublished, contentStatusChange } from '../lib/event-bus'
+import {
+  addDays,
+  getNextAvailableReleaseSlot,
+  getProjectReleaseSchedule,
+  getProjectTierDelayInfo,
+  shiftFollowingScheduledChaptersUp,
+  upsertScheduledChapterPublication
+} from '../lib/release-schedule'
 
 // ============================================
 // ACCESS CONTROL HELPERS
@@ -64,20 +72,13 @@ async function checkChapterAccess(
 
   // Anonymous users can only access fully public chapters
   if (!userId) {
-    // Check if embargo has passed
-    const [embargo] = await db
-      .select()
-      .from(embargoSchedules)
-      .where(and(eq(embargoSchedules.entityId, chapterId), eq(embargoSchedules.projectId, projectId)))
-      .limit(1)
-
-    if (embargo && embargo.publicReleaseDate) {
+    if (chapterPub.publicReleaseDate) {
       const now = new Date()
-      if (now < new Date(embargo.publicReleaseDate)) {
+      if (now < new Date(chapterPub.publicReleaseDate)) {
         return {
           canAccess: false,
           reason: 'Chapter is under embargo',
-          embargoUntil: new Date(embargo.publicReleaseDate)
+          embargoUntil: new Date(chapterPub.publicReleaseDate)
         }
       }
     }
@@ -132,7 +133,9 @@ async function checkChapterAccess(
 
   // Check active subscription
   const [subscription] = await db
-    .select()
+    .select({
+      chapterDelayDays: subscriptionTiers.chapterDelayDays
+    })
     .from(subscriptions)
     .innerJoin(subscriptionTiers, eq(subscriptions.tierId, subscriptionTiers.id))
     .where(
@@ -145,27 +148,16 @@ async function checkChapterAccess(
     .limit(1)
 
   if (subscription) {
-    // Check if embargo delay has passed for this tier
-    const [embargo] = await db
-      .select()
-      .from(embargoSchedules)
-      .where(and(eq(embargoSchedules.entityId, chapterId), eq(embargoSchedules.projectId, projectId)))
-      .limit(1)
+    if (chapterPub.publishedAt) {
+      const delayMs = (subscription.chapterDelayDays ?? 0) * 24 * 60 * 60 * 1000
+      const accessDate = new Date(chapterPub.publishedAt.getTime() + delayMs)
+      const now = new Date()
 
-    if (embargo && embargo.tierSchedules) {
-      const tierSchedules = embargo.tierSchedules as any[]
-      const tierSchedule = tierSchedules.find(
-        (ts) => ts.tierId === subscription.subscriptions.tierId
-      )
-
-      if (tierSchedule && tierSchedule.releaseDate) {
-        const now = new Date()
-        if (now < new Date(tierSchedule.releaseDate)) {
-          return {
-            canAccess: false,
-            reason: 'Chapter embargo for tier not yet lifted',
-            embargoUntil: new Date(tierSchedule.releaseDate)
-          }
+      if (now < accessDate) {
+        return {
+          canAccess: false,
+          reason: 'Chapter not yet available for your tier',
+          embargoUntil: accessDate
         }
       }
     }
@@ -174,19 +166,13 @@ async function checkChapterAccess(
   }
 
   // Check if chapter is public (embargo passed)
-  const [embargo] = await db
-    .select()
-    .from(embargoSchedules)
-    .where(and(eq(embargoSchedules.entityId, chapterId), eq(embargoSchedules.projectId, projectId)))
-    .limit(1)
-
-  if (embargo && embargo.publicReleaseDate) {
+  if (chapterPub.publicReleaseDate) {
     const now = new Date()
-    if (now < new Date(embargo.publicReleaseDate)) {
+    if (now < new Date(chapterPub.publicReleaseDate)) {
       return {
         canAccess: false,
         reason: 'Chapter is under embargo',
-        embargoUntil: new Date(embargo.publicReleaseDate)
+        embargoUntil: new Date(chapterPub.publicReleaseDate)
       }
     }
   }
@@ -211,6 +197,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       publishedVersion?: string
       firstPublishedAt?: string
       scheduledFor?: string
+      publishEarly?: boolean
     }
   }>('/projects/:projectId/chapters/:chapterId/publish', {
     preHandler: [requireAuth, requireVerified]
@@ -218,7 +205,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
     const correlationId = randomUUID()
     try {
       const { projectId, chapterId } = request.params
-      const { publishStatus, publishedVersion, firstPublishedAt } = request.body
+      const { publishStatus, publishedVersion, firstPublishedAt, scheduledFor, publishEarly } = request.body
 
       // Check if chapter exists
       const [chapter] = await db
@@ -240,6 +227,22 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
 
       const now = new Date()
       const version = publishedVersion || '1.0'
+      const scheduledDate = publishStatus === 'scheduled' && scheduledFor ? new Date(scheduledFor) : null
+      const baseReleaseDate = publishStatus === 'scheduled' && scheduledDate ? scheduledDate : now
+      const scheduledSlotBeingReleasedEarly =
+        publishStatus === 'published' &&
+        publishEarly &&
+        existing?.publishStatus === 'scheduled' &&
+        existing.publishedAt &&
+        existing.publishedAt.getTime() > now.getTime()
+          ? existing.publishedAt
+          : null
+      const { maxDelayDays } = await getProjectTierDelayInfo(projectId)
+      const publicReleaseDate = addDays(baseReleaseDate, maxDelayDays)
+
+      if (publishStatus === 'scheduled' && (!scheduledDate || Number.isNaN(scheduledDate.getTime()))) {
+        return reply.status(400).send({ error: 'scheduledFor is required for scheduled publication', correlationId })
+      }
 
       let publication
       let isNew = false
@@ -250,9 +253,10 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
           .update(chapterPublications)
           .set({
             publishStatus,
-            isPublished: publishStatus === 'published',
+            isPublished: publishStatus === 'published' || publishStatus === 'scheduled',
             publishedVersion: version,
-            publishedAt: publishStatus === 'published' ? now : null,
+            publishedAt: baseReleaseDate,
+            publicReleaseDate,
             lastPublishedAt: publishStatus === 'published' ? now : existing.lastPublishedAt,
             updatedAt: now
           })
@@ -267,10 +271,11 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
             projectId,
             chapterId,
             publishStatus,
-            isPublished: publishStatus === 'published',
+            isPublished: publishStatus === 'published' || publishStatus === 'scheduled',
             publishedVersion: version,
-            publishedAt: publishStatus === 'published' ? now : null,
-            firstPublishedAt: firstPublishedAt ? new Date(firstPublishedAt) : publishStatus === 'published' ? now : null,
+            publishedAt: baseReleaseDate,
+            publicReleaseDate,
+            firstPublishedAt: firstPublishedAt ? new Date(firstPublishedAt) : baseReleaseDate,
             lastPublishedAt: publishStatus === 'published' ? now : null
           })
           .returning()
@@ -292,6 +297,13 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
 
       // Emit content:published event
       if (publishStatus === 'published') {
+        if (scheduledSlotBeingReleasedEarly) {
+          const schedule = await getProjectReleaseSchedule(projectId)
+          if (schedule?.autoReleaseEnabled && schedule.releaseFrequency !== 'manual') {
+            await shiftFollowingScheduledChaptersUp(projectId, scheduledSlotBeingReleasedEarly, { excludeChapterId: chapterId })
+          }
+        }
+
         serverEventBus.fire(contentPublished(
           projectId, chapterId, chapter.lastEditedBy || 'system', true
         ))
@@ -318,6 +330,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
           publishStatus: 'draft',
           isPublished: false,
           publishedAt: null,
+          publicReleaseDate: null,
           updatedAt: new Date()
         })
         .where(and(eq(chapterPublications.chapterId, chapterId), eq(chapterPublications.projectId, projectId)))
@@ -388,6 +401,20 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
         isNew = true
       }
 
+      try {
+        const nextReleaseSlot = await getNextAvailableReleaseSlot(projectId, { excludeChapterId: chapterId })
+        if (nextReleaseSlot) {
+          const publishedVersion = publication?.publishedVersion || '1.0'
+          publication = await upsertScheduledChapterPublication(projectId, chapterId, nextReleaseSlot, publishedVersion)
+        }
+      } catch (scheduleError) {
+        fastify.log.warn({ err: scheduleError, projectId, chapterId }, 'Failed to auto-schedule completed chapter')
+      }
+
+      if (!publication) {
+        return reply.status(500).send({ error: 'Failed to update chapter status', correlationId })
+      }
+
       serverEventBus.fire(contentStatusChange(projectId, chapterId, chapter.lastEditedBy || 'system', 'complete'))
       return reply.status(isNew ? 201 : 200).send({ publication, correlationId })
     } catch (error) {
@@ -447,6 +474,29 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
+  // Preview the next auto-release slot for a chapter
+  fastify.get<{
+    Params: { projectId: string; chapterId: string }
+  }>('/projects/:projectId/chapters/:chapterId/next-release-slot', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const { projectId, chapterId } = request.params
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
+
+      const nextReleaseSlot = await getNextAvailableReleaseSlot(projectId, { excludeChapterId: chapterId })
+      return reply.send({
+        nextReleaseSlot,
+        correlationId,
+      })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to get next release slot')
+      return reply.status(500).send({ error: 'Failed to get next release slot', correlationId })
+    }
+  })
+
   // List all published chapters for a project
   fastify.get<{
     Params: { projectId: string }
@@ -481,10 +531,14 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   // Get project publish config
   fastify.get<{
     Params: { projectId: string }
-  }>('/projects/:projectId/publish-config', async (request, reply) => {
+  }>('/projects/:projectId/publish-config', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId } = request.params
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       const [config] = await db
         .select()
@@ -533,11 +587,15 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       enableReactions?: boolean
       moderationMode?: string
     }
-  }>('/projects/:projectId/publish-config', async (request, reply) => {
+  }>('/projects/:projectId/publish-config', {
+    preHandler: [requireAuth, requireVerified]
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId } = request.params
       const updates = request.body
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       // Check if config exists
       const [existing] = await db

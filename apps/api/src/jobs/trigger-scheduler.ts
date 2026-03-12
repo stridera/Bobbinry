@@ -9,11 +9,14 @@
  */
 
 import { db } from '../db/connection'
-import { bobbinsInstalled, entities, projectDestinations } from '../db/schema'
-import { eq, and, gt } from 'drizzle-orm'
+import { bobbinsInstalled, entities, projectDestinations, chapterPublications } from '../db/schema'
+import { eq, and, gt, lte } from 'drizzle-orm'
 import { processEmbargoReleases, initTierDispatch } from './tier-dispatch'
 import { processTrashPurge } from './trash-purge'
+import { createActionRuntime, type ActionHandler, type ActionModule } from '@bobbinry/action-runtime'
 import { loadDiskManifests } from '../lib/disk-manifests'
+import { getDeclaredCustomAction } from '../lib/bobbin-actions'
+import { serverEventBus, contentPublished } from '../lib/event-bus'
 
 /** Sync frequency to milliseconds lookup for backup bobbins */
 const SYNC_FREQUENCY_MS: Record<string, number> = {
@@ -25,8 +28,9 @@ const SYNC_FREQUENCY_MS: Record<string, number> = {
 
 interface ScheduleTrigger {
   event: 'schedule'
-  action: string
-  config: { cron: string }
+  action?: string
+  actions?: string[]
+  config?: { cron?: string }
   description?: string
 }
 
@@ -144,6 +148,7 @@ export async function processScheduleTriggers(
   diskManifests: Map<string, Record<string, any>>
 ): Promise<void> {
   const now = new Date()
+  const runtime = createActionRuntime()
 
   try {
     for (const bobbin of installed) {
@@ -154,21 +159,53 @@ export async function processScheduleTriggers(
 
       for (const trigger of interactions.triggers) {
         if (trigger.event !== 'schedule') continue
-        if (!trigger.config?.cron) continue
+        const cron = trigger.config?.cron
+        if (cron) {
+          if (!cronMatchesNow(cron, now)) continue
+        } else if (now.getUTCMinutes() % 15 !== 0) {
+          continue
+        }
 
-        if (!cronMatchesNow(trigger.config.cron, now)) continue
+        const actionIds = [
+          ...(trigger.action ? [trigger.action] : []),
+          ...((Array.isArray(trigger.actions) ? trigger.actions : []))
+        ]
 
-        // Find and invoke the handler
-        const handler = actionHandlers[bobbin.bobbinId]?.[trigger.action]
-        if (handler) {
-          try {
-            await handler(bobbin.projectId)
-            console.log(`[trigger-scheduler] Ran ${bobbin.bobbinId}.${trigger.action} for project ${bobbin.projectId}`)
-          } catch (err) {
-            console.error(`[trigger-scheduler] Failed ${bobbin.bobbinId}.${trigger.action} for project ${bobbin.projectId}:`, err)
+        for (const actionId of actionIds) {
+          const declaredAction = getDeclaredCustomAction(manifest, actionId)
+          if (!declaredAction) {
+            console.log(`[trigger-scheduler] Skipping ${bobbin.bobbinId}.${actionId}: not a declared custom action`)
+            continue
           }
-        } else {
-          console.log(`[trigger-scheduler] No handler registered for ${bobbin.bobbinId}.${trigger.action}`)
+
+          try {
+            const module = await import(`../../../../bobbins/${bobbin.bobbinId}/actions`) as ActionModule
+            const namedHandler = module[declaredAction.handler]
+            const registryHandler = module.actions?.[actionId]
+            const handler =
+              (typeof namedHandler === 'function' ? namedHandler : undefined)
+              ?? (typeof registryHandler === 'function' ? registryHandler : undefined)
+
+            if (!handler) {
+              console.log(`[trigger-scheduler] No custom handler export for ${bobbin.bobbinId}.${actionId}`)
+              continue
+            }
+
+            const result = await (handler as ActionHandler)({}, {
+              projectId: bobbin.projectId,
+              bobbinId: bobbin.bobbinId,
+              actionId
+            }, runtime)
+
+            if (!result.success) {
+              console.error(`[trigger-scheduler] ${bobbin.bobbinId}.${actionId} failed for project ${bobbin.projectId}: ${result.error || 'Unknown error'}`)
+              continue
+            }
+
+            console.log(`[trigger-scheduler] Ran ${bobbin.bobbinId}.${actionId} for project ${bobbin.projectId}`)
+          } catch (err) {
+            console.error(`[trigger-scheduler] Failed ${bobbin.bobbinId}.${actionId} for project ${bobbin.projectId}:`, err)
+          }
         }
       }
     }
@@ -245,6 +282,45 @@ export async function processBackupSync(
   }
 }
 
+export async function processScheduledReleases(): Promise<void> {
+  try {
+    const now = new Date()
+    const duePublications = await db
+      .select({
+        id: chapterPublications.id,
+        projectId: chapterPublications.projectId,
+        chapterId: chapterPublications.chapterId,
+      })
+      .from(chapterPublications)
+      .where(and(
+        eq(chapterPublications.publishStatus, 'scheduled'),
+        lte(chapterPublications.publishedAt, now)
+      ))
+
+    if (duePublications.length === 0) return
+
+    for (const publication of duePublications) {
+      await db
+        .update(chapterPublications)
+        .set({
+          publishStatus: 'published',
+          lastPublishedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(chapterPublications.id, publication.id))
+
+      serverEventBus.fire(contentPublished(
+        publication.projectId,
+        publication.chapterId,
+        'system',
+        true
+      ))
+    }
+  } catch (err) {
+    console.error('[trigger-scheduler] Failed to process scheduled releases:', err)
+  }
+}
+
 let intervalId: ReturnType<typeof setInterval> | null = null
 
 /**
@@ -264,6 +340,7 @@ export function startTriggerScheduler(): void {
     const tasks: Promise<any>[] = [
       processScheduleTriggers(installed, diskManifests),
       processBackupSync(installed, diskManifests),
+      processScheduledReleases(),
       processEmbargoReleases(),
     ]
 

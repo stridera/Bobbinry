@@ -35,7 +35,6 @@ COPY bobbins/hello-world/package.json bobbins/hello-world/
 COPY bobbins/manuscript/package.json bobbins/manuscript/
 COPY bobbins/notes/package.json bobbins/notes/
 COPY bobbins/relationships/package.json bobbins/relationships/
-COPY bobbins/smart-publisher/package.json bobbins/smart-publisher/
 COPY bobbins/timeline/package.json bobbins/timeline/
 COPY bobbins/web-publisher/package.json bobbins/web-publisher/
 

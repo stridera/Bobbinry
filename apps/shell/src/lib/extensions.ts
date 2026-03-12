@@ -214,11 +214,15 @@ class ExtensionRegistry {
       throw new Error(`Slot ${contribution.slot} does not support type ${contribution.type}`)
     }
 
-    // Check max contributions limit
+    // Slot maxContributions is treated as a shell UI preference for default visible panels,
+    // not a hard registration cap. Extra contributions should still register so users can
+    // choose which panels they want visible.
     if (slot.maxContributions) {
       const existingContributions = this.getExtensionsForSlot(contribution.slot)
       if (existingContributions.length >= slot.maxContributions) {
-        throw new Error(`Slot ${contribution.slot} has reached maximum contributions (${slot.maxContributions})`)
+        console.warn(
+          `[EXTENSIONS] Slot ${contribution.slot} exceeded preferred visible count (${slot.maxContributions}); contribution ${extensionId} will remain registerable and can be hidden by the shell UI.`
+        )
       }
     }
 

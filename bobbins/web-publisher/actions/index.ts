@@ -7,6 +7,38 @@
 
 import type { ActionContext, ActionResult, ActionRuntimeHost } from '@bobbinry/action-runtime'
 
+async function getMaxTierDelayDays(projectId: string): Promise<number> {
+  const { db } = await import('../../../apps/api/src/db/connection')
+  const { projects, subscriptionTiers } = await import('../../../apps/api/src/db/schema')
+  const { eq, and } = await import('drizzle-orm')
+
+  const [project] = await db
+    .select({ ownerId: projects.ownerId })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1)
+
+  if (!project) {
+    return 0
+  }
+
+  const tiers = await db
+    .select({ chapterDelayDays: subscriptionTiers.chapterDelayDays })
+    .from(subscriptionTiers)
+    .where(and(
+      eq(subscriptionTiers.authorId, project.ownerId),
+      eq(subscriptionTiers.isActive, true)
+    ))
+
+  return tiers.reduce((max, tier) => Math.max(max, tier.chapterDelayDays ?? 0), 0)
+}
+
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date)
+  next.setDate(next.getDate() + days)
+  return next
+}
+
 /**
  * Action: publishChapter
  * Make chapter available to readers based on access rules
@@ -39,6 +71,12 @@ export async function publishChapter(
       return { success: false, error: 'Chapter not found' }
     }
 
+    const publishedAt = new Date()
+    const maxDelayDays = await getMaxTierDelayDays(context.projectId)
+    const publicReleaseDate = embargoUntil
+      ? new Date(embargoUntil)
+      : addDays(publishedAt, maxDelayDays)
+
     // Create or update chapter publication record
     const [publication] = await db
       .insert(chapterPublications)
@@ -46,16 +84,16 @@ export async function publishChapter(
         chapterId,
         projectId: context.projectId,
         isPublished: true,
-        publishedAt: new Date(),
-        publicReleaseDate: embargoUntil ? new Date(embargoUntil) : new Date(),
+        publishedAt,
+        publicReleaseDate,
         viewCount: '0'
       })
       .onConflictDoUpdate({
         target: chapterPublications.chapterId,
         set: {
           isPublished: true,
-          publishedAt: new Date(),
-          publicReleaseDate: embargoUntil ? new Date(embargoUntil) : new Date(),
+          publishedAt,
+          publicReleaseDate,
           updatedAt: new Date()
         }
       })
@@ -71,81 +109,6 @@ export async function publishChapter(
     }
   } catch (error) {
     runtime.log.error({ error }, 'publishChapter action failed')
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    }
-  }
-}
-
-/**
- * Action: scheduleChapterRelease
- * Set future publish date with tier-based delays
- */
-export async function scheduleChapterRelease(
-  params: {
-    chapterId: string
-    releaseDate: string
-    tierSchedule?: Array<{ tierId: string; delayDays: number }>
-  },
-  context: ActionContext,
-  runtime: ActionRuntimeHost
-): Promise<ActionResult> {
-  try {
-    const { db } = await import('../../../apps/api/src/db/connection')
-    const { chapterPublications, embargoSchedules } = await import('../../../apps/api/src/db/schema')
-    const { eq } = await import('drizzle-orm')
-
-    const { chapterId, releaseDate, tierSchedule = [] } = params
-
-    // Create/update publication record with future date
-    const [publication] = await db
-      .insert(chapterPublications)
-      .values({
-        chapterId,
-        projectId: context.projectId,
-        isPublished: true,
-        publishedAt: new Date(),
-        publicReleaseDate: new Date(releaseDate),
-        viewCount: '0'
-      })
-      .onConflictDoUpdate({
-        target: chapterPublications.chapterId,
-        set: {
-          publicReleaseDate: new Date(releaseDate),
-          updatedAt: new Date()
-        }
-      })
-      .returning()
-
-    // Create embargo schedules for each tier
-    const embargoRecords = []
-    for (const tier of tierSchedule) {
-      const tierReleaseDate = new Date(releaseDate)
-      tierReleaseDate.setDate(tierReleaseDate.getDate() + tier.delayDays)
-
-      const [embargo] = await db
-        .insert(embargoSchedules)
-        .values({
-          chapterId,
-          tierId: tier.tierId,
-          releaseDate: tierReleaseDate
-        })
-        .returning()
-
-      embargoRecords.push(embargo)
-    }
-
-    return {
-      success: true,
-      data: {
-        publicationId: publication.id,
-        releaseDate: publication.publicReleaseDate,
-        embargoCount: embargoRecords.length
-      }
-    }
-  } catch (error) {
-    runtime.log.error({ error }, 'scheduleChapterRelease action failed')
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -550,7 +513,6 @@ export async function sendSubscriberAnnouncement(
 // Action registry - maps action IDs from manifest to handler functions
 export const actions = {
   publish_chapter: publishChapter,
-  schedule_release: scheduleChapterRelease,
   unpublish_chapter: unpublishChapter,
   track_view: trackChapterView,
   update_reading_progress: updateReaderProgress,

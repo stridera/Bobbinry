@@ -24,7 +24,6 @@
     "@bobbinry/notes": "workspace:*",
     "@bobbinry/relationships": "workspace:*",
     "@bobbinry/sdk": "workspace:*",
-    "@bobbinry/smart-publisher": "workspace:*",
     "@bobbinry/timeline": "workspace:*",
     "@bobbinry/types": "workspace:*",
     "@bobbinry/web-publisher": "workspace:*",

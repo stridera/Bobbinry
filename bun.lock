@@ -79,7 +79,6 @@
         "@bobbinry/notes": "workspace:*",
         "@bobbinry/relationships": "workspace:*",
         "@bobbinry/sdk": "workspace:*",
-        "@bobbinry/smart-publisher": "workspace:*",
         "@bobbinry/timeline": "workspace:*",
         "@bobbinry/types": "workspace:*",
         "@bobbinry/web-publisher": "workspace:*",
@@ -298,19 +297,6 @@
       "devDependencies": {
         "@types/react": "^19.2.14",
         "typescript": "6.0.0-beta",
-      },
-      "peerDependencies": {
-        "react": "^19.0.0",
-      },
-    },
-    "bobbins/smart-publisher": {
-      "name": "@bobbinry/smart-publisher",
-      "version": "0.1.0",
-      "dependencies": {
-        "@bobbinry/sdk": "workspace:*",
-      },
-      "devDependencies": {
-        "@types/react": "^19",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -654,8 +640,6 @@
     "@bobbinry/relationships": ["@bobbinry/relationships@workspace:bobbins/relationships"],
 
     "@bobbinry/sdk": ["@bobbinry/sdk@workspace:packages/sdk"],
-
-    "@bobbinry/smart-publisher": ["@bobbinry/smart-publisher@workspace:bobbins/smart-publisher"],
 
     "@bobbinry/timeline": ["@bobbinry/timeline@workspace:bobbins/timeline"],
 

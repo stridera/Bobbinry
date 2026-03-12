@@ -156,7 +156,9 @@ export function PanelActionButton({
         tones[tone],
         className
       )}
-    />
+    >
+      {children}
+    </button>
   )
 }
 

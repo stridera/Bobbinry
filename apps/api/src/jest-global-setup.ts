@@ -1,11 +1,14 @@
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
+import { execFileSync } from 'child_process'
 
 /**
  * Jest globalSetup — runs once before all test suites.
  * Verifies the test database exists and is reachable.
  */
 export default async function globalSetup() {
+  process.env.NODE_ENV = 'test'
+
   // Load .env the same way test-setup.ts does
   try {
     const envPath = resolve(__dirname, '../.env')
@@ -47,6 +50,7 @@ export default async function globalSetup() {
 
   const testUrl = parsed.toString()
   const testDbName = parsed.pathname.replace(/^\//, '')
+  process.env.DATABASE_URL = testUrl
 
   // Try to connect — dynamic import to avoid pulling in postgres at module level
   const { default: postgres } = await import('postgres')
@@ -76,4 +80,21 @@ export default async function globalSetup() {
   } finally {
     await sql.end()
   }
+
+  // Keep the disposable test database schema aligned with the current code.
+  // Use `push` instead of migrations because the test DB may be recreated or
+  // manually altered outside the migration journal.
+  execFileSync(
+    'bunx',
+    ['drizzle-kit', 'push', '--config', 'drizzle.config.ts', '--force'],
+    {
+      cwd: resolve(__dirname, '..'),
+      env: {
+        ...process.env,
+        NODE_ENV: 'test',
+        DATABASE_URL: testUrl,
+      },
+      stdio: 'inherit'
+    }
+  )
 }

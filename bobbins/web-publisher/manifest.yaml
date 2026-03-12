@@ -1,9 +1,9 @@
 id: web-publisher
 name: Web Publisher
-version: 1.0.0
+version: 1.1.0
 author: Bobbins Core
-description: Native on-platform reader with subscriptions, analytics, and engagement
-tags: [publishing, reader, monetization, analytics, community]
+description: Native publishing suite with reader delivery, analytics, and release automation
+tags: [publishing, reader, automation, scheduling, analytics, community]
 license: MIT
 
 capabilities:
@@ -21,18 +21,6 @@ extensions:
       priority: 5
       when:
         inView: project
-    - slot: shell.publishDashboard
-      type: panel
-      id: publish-manager
-      title: "Publish Manager"
-      entry: panels/publish-manager
-      priority: 10
-    - slot: shell.publishDashboard
-      type: panel
-      id: analytics-detail
-      title: "Analytics Detail"
-      entry: panels/analytics-detail
-      priority: 5
 
 data:
   collections:
@@ -79,6 +67,12 @@ data:
 
 ui:
   views:
+    - id: release-config
+      type: custom
+      source: views/release-config
+      name: Release Settings
+      description: Configure release frequency and scheduled release behavior
+
     - id: reader
       name: Reader
       type: custom
@@ -206,7 +200,7 @@ interactions:
       actions:
         - send_welcome_email
         - grant_access
-        
+
   actions:
     - id: publish_chapter
       name: Publish Chapter
@@ -214,13 +208,6 @@ interactions:
       target: Chapter
       handler: publishChapter
       description: Make chapter available to readers based on access rules
-      
-    - id: schedule_release
-      name: Schedule Release
-      type: custom
-      target: Chapter
-      handler: scheduleChapterRelease
-      description: Set future publish date with tier-based delays
       
     - id: unpublish_chapter
       name: Unpublish Chapter

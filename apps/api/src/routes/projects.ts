@@ -358,14 +358,40 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
           eq(bobbinsInstalled.enabled, true)
         ))
 
+      const legacySmartPublisher = installations.filter((install) => install.bobbinId === 'smart-publisher')
+      const currentWebPublisher = installations.find((install) => install.bobbinId === 'web-publisher')
+
+      if (legacySmartPublisher.length > 0) {
+        if (currentWebPublisher) {
+          await db.delete(bobbinsInstalled)
+            .where(inArray(bobbinsInstalled.id, legacySmartPublisher.map((install) => install.id)))
+        } else {
+          await db.update(bobbinsInstalled)
+            .set({
+              bobbinId: 'web-publisher'
+            })
+            .where(inArray(bobbinsInstalled.id, legacySmartPublisher.map((install) => install.id)))
+        }
+      }
+
+      const normalizedInstallations = legacySmartPublisher.length > 0
+        ? await db
+            .select()
+            .from(bobbinsInstalled)
+            .where(and(
+              eq(bobbinsInstalled.projectId, projectId),
+              eq(bobbinsInstalled.enabled, true)
+            ))
+        : installations
+
       // Read disk manifests concurrently, then check for upgrades
       const upgrades: UpgradeResult[] = []
-      const diskManifests = await loadDiskManifests(installations.map(i => i.bobbinId))
+      const diskManifests = await loadDiskManifests(normalizedInstallations.map(i => i.bobbinId))
 
       // Filter out bobbins that no longer exist on disk (renamed/removed).
       // Auto-uninstall stale records so they don't reappear.
-      const staleInstalls = installations.filter(i => !diskManifests.has(i.bobbinId))
-      const liveInstalls = installations.filter(i => diskManifests.has(i.bobbinId))
+      const staleInstalls = normalizedInstallations.filter(i => !diskManifests.has(i.bobbinId))
+      const liveInstalls = normalizedInstallations.filter(i => diskManifests.has(i.bobbinId))
 
       if (staleInstalls.length > 0) {
         const staleIds = staleInstalls.map(i => i.bobbinId)

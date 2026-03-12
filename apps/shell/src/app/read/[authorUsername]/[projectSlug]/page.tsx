@@ -460,9 +460,9 @@ function ProjectReadingContent() {
                       <span className="text-sm text-gray-400 dark:text-gray-500 w-8 text-right">{index + 1}</span>
                       <span className="text-gray-500 dark:text-gray-400">{chapter.title || 'Untitled'}</span>
                     </div>
-                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                    </svg>
+                    <span className="text-xs text-gray-400 dark:text-gray-500">
+                      {chapter.embargoUntil ? new Date(chapter.embargoUntil).toLocaleString() : 'Scheduled'}
+                    </span>
                   </div>
                 ) : (
                   <Link

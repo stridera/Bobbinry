@@ -19,6 +19,7 @@ import {
 } from '@bobbinry/sdk'
 import { apiFetchLocal } from '../lib/api'
 import { formatReadTime } from '../lib/format'
+import { formatDate } from '../lib/time'
 
 interface AnalyticsDetailProps {
   projectId: string
@@ -181,7 +182,7 @@ export default function AnalyticsDetailPanel(props: AnalyticsDetailProps) {
   if (!analytics) return null
 
   const publishedDate = analytics.firstPublishedAt
-    ? new Date(analytics.firstPublishedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+    ? formatDate(analytics.firstPublishedAt, 'local', { month: 'short', day: 'numeric', year: 'numeric' })
     : null
 
   const progressMax = breakdown
@@ -205,7 +206,7 @@ export default function AnalyticsDetailPanel(props: AnalyticsDetailProps) {
   }
 
   return (
-    <div className="px-5 py-4 space-y-4 border-t border-gray-100 dark:border-gray-800">
+    <div className="px-5 py-4 space-y-4">
       {error ? <PanelMessage tone="error">{error}</PanelMessage> : null}
 
       <div className="flex items-center justify-between gap-3">

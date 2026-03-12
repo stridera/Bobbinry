@@ -9,9 +9,6 @@
 export const NATIVE_VIEW_MAP: Record<string, () => Promise<any>> = {
   'cat.panels/cat-panel': () => import('@bobbinry/cat/panels/cat-panel'),
   'corkboard.board': () => import('@bobbinry/corkboard/views/board'),
-  'smart-publisher.release-manager': () => import('@bobbinry/smart-publisher/views/release-manager'),
-  'smart-publisher.release-config': () => import('@bobbinry/smart-publisher/views/release-config'),
-  'smart-publisher.panels/release-queue': () => import('@bobbinry/smart-publisher/panels/release-queue'),
   'dictionary-panel.panels/dictionary-panel': () => import('@bobbinry/dictionary-panel/panels/dictionary-panel'),
   'manuscript.outline': () => import('@bobbinry/manuscript/views/outline'),
   'manuscript.editor': () => import('@bobbinry/manuscript/views/editor'),
@@ -37,7 +34,6 @@ export const NATIVE_VIEW_MAP: Record<string, () => Promise<any>> = {
   'goals.dashboard': () => import('@bobbinry/goals/views/dashboard'),
   'goals.goal-editor': () => import('@bobbinry/goals/views/goal-editor'),
   'goals.panels/progress': () => import('@bobbinry/goals/panels/progress'),
+  'web-publisher.release-config': () => import('@bobbinry/web-publisher/views/release-config'),
   'web-publisher.panels/chapter-publish': () => import('@bobbinry/web-publisher/panels/chapter-publish'),
-  'web-publisher.panels/publish-manager': () => import('@bobbinry/web-publisher/panels/publish-manager'),
-  'web-publisher.panels/analytics-detail': () => import('@bobbinry/web-publisher/panels/analytics-detail'),
 }
