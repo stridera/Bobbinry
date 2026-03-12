@@ -471,6 +471,7 @@ export function ResizablePanelStack({
             </button>
           </div>
         ) : (
+          // eslint-disable-next-line react-hooks/refs -- getActionsRef is a stable ref-callback factory, not reading mutable state for render
           visiblePanels.map((item, index) => {
             const isCollapsed = panelState.collapsed[item.orderIndex]
             const heightPercent = visibleSizes[index] || 100 / visiblePanels.length
