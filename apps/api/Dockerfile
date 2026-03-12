@@ -51,7 +51,7 @@ COPY bobbins/ bobbins/
 COPY tsconfig.base.json ./
 
 # Build dependencies first, then API
-RUN npx turbo build --filter=api
+RUN npx turbo build --filter=api --filter=@bobbinry/google-drive-backup
 
 # ---- Runtime stage ----
 FROM node:22-slim AS runtime
