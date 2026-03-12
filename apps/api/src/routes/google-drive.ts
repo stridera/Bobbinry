@@ -442,7 +442,7 @@ const googleDrivePlugin: FastifyPluginAsync = async (fastify) => {
           {
             id: entity.id,
             title: data?.title || 'Untitled',
-            content: data?.content || '',
+            content: data?.body || data?.content || '',
             projectId: entity.projectId,
           },
           syncDestination,
@@ -644,7 +644,7 @@ const googleDrivePlugin: FastifyPluginAsync = async (fastify) => {
             {
               id: entity.id,
               title: data?.title || 'Untitled',
-              content: data?.content || '',
+              content: data?.body || data?.content || '',
               projectId: entity.projectId,
             },
             syncDestination,
