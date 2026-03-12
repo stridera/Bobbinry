@@ -55,7 +55,12 @@ function PublisherWorkspace({
   onSelectChapter: (chapterId: string | null) => void
   refreshKey: number
 }) {
-  const [sdk] = useState(() => new BobbinrySDK('web-publisher'))
+  const [sdk] = useState(() => {
+    const instance = new BobbinrySDK('web-publisher')
+    instance.setProject(projectId)
+    instance.api.setAuthToken(apiToken)
+    return instance
+  })
 
   useEffect(() => {
     sdk.setProject(projectId)
