@@ -61,6 +61,7 @@ export function build(opts = {}): FastifyInstance {
       }
     },
     genReqId: () => randomUUID(),
+    maxParamLength: 512,
     ...opts
   })
 
