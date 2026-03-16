@@ -22,7 +22,7 @@
     "status": "./dev-stop.sh --status",
     "create-bobbin": "node scripts/create-bobbin.js",
     "lint:bobbins": "bun scripts/lint-bobbins.ts",
-    "postinstall": "git config core.hooksPath .githooks"
+    "postinstall": "git config core.hooksPath .githooks 2>/dev/null || true"
   },
   "keywords": [
     "writing",
