@@ -6,6 +6,9 @@ import { env } from '../lib/env'
 // Connection configuration with security settings
 const connectionString = env.DATABASE_URL
 
+// Detect Neon pooler (transaction-mode PgBouncer) from the connection string
+const isPooledConnection = connectionString.includes('-pooler.')
+
 // Create postgres client with comprehensive security
 const client = postgres(connectionString, {
   // Connection pool settings
@@ -18,7 +21,8 @@ const client = postgres(connectionString, {
   ssl: process.env.NODE_ENV === 'production' ? 'require' : false,
 
   // Performance and reliability
-  prepare: true,              // Use prepared statements
+  // Prepared statements are incompatible with Neon's transaction-mode pooler
+  prepare: !isPooledConnection,
   transform: postgres.camel,  // Convert snake_case to camelCase
 
   // Logging and monitoring (only in development)

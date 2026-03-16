@@ -77,30 +77,30 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
     try {
       const userId = request.user!.id
 
-      // Get all user's collections (exclude trashed)
-      const collections = await db
-        .select()
-        .from(projectCollections)
-        .where(and(eq(projectCollections.userId, userId), isNull(projectCollections.deletedAt)))
-        .orderBy(desc(projectCollections.updatedAt))
-
-      // Get all user's projects with their collection memberships
-      const projectsWithCollections = await db
-        .select({
-          project: projects,
-          collectionId: projectCollectionMemberships.collectionId,
-          orderIndex: projectCollectionMemberships.orderIndex
-        })
-        .from(projects)
-        .leftJoin(
-          projectCollectionMemberships,
-          eq(projects.id, projectCollectionMemberships.projectId)
-        )
-        .where(and(
-          eq(projects.ownerId, userId),
-          eq(projects.isArchived, false),
-          isNull(projects.deletedAt)
-        ))
+      // Fetch collections and projects in parallel
+      const [collections, projectsWithCollections] = await Promise.all([
+        db
+          .select()
+          .from(projectCollections)
+          .where(and(eq(projectCollections.userId, userId), isNull(projectCollections.deletedAt)))
+          .orderBy(desc(projectCollections.updatedAt)),
+        db
+          .select({
+            project: projects,
+            collectionId: projectCollectionMemberships.collectionId,
+            orderIndex: projectCollectionMemberships.orderIndex
+          })
+          .from(projects)
+          .leftJoin(
+            projectCollectionMemberships,
+            eq(projects.id, projectCollectionMemberships.projectId)
+          )
+          .where(and(
+            eq(projects.ownerId, userId),
+            eq(projects.isArchived, false),
+            isNull(projects.deletedAt)
+          ))
+      ])
 
       // Group projects by collection
       const grouped: any = {
@@ -108,12 +108,8 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
           ...col,
           projects: projectsWithCollections
             .filter(p => p.collectionId === col.id)
+            .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
             .map(p => p.project)
-            .sort((a, b) => {
-              const aOrder = projectsWithCollections.find(p => p.project.id === a.id)?.orderIndex || 0
-              const bOrder = projectsWithCollections.find(p => p.project.id === b.id)?.orderIndex || 0
-              return aOrder - bOrder
-            })
         })),
         uncategorized: projectsWithCollections
           .filter(p => !p.collectionId)

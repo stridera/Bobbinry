@@ -27,6 +27,17 @@ interface DropTarget {
   position: 'before' | 'after' | 'inside'
 }
 
+function findNodeInTree(nodes: TreeNode[], nodeId: string): TreeNode | null {
+  for (const node of nodes) {
+    if (node.id === nodeId) return node
+    if (node.children) {
+      const found = findNodeInTree(node.children, nodeId)
+      if (found) return found
+    }
+  }
+  return null
+}
+
 /**
  * Navigation Panel for Manuscript bobbin
  * Displays hierarchical tree of containers and content with drag/drop reorder
@@ -145,6 +156,40 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     window.addEventListener('bobbinry:view-context-change', handleViewContextChange)
     return () => window.removeEventListener('bobbinry:view-context-change', handleViewContextChange)
   }, [])
+
+  // Global Alt+N shortcut to create new content
+  useEffect(() => {
+    function handleGlobalKeyDown(e: KeyboardEvent) {
+      if (e.altKey && !e.ctrlKey && !e.metaKey && e.key === 'n') {
+        e.preventDefault()
+
+        // Determine which container to create content in based on selection
+        const selected = selectedNodeIdRef.current
+        if (!selected) {
+          createContent(null)
+          return
+        }
+
+        const node = findNodeInTree(tree, selected)
+        if (!node) {
+          createContent(null)
+          return
+        }
+
+        if (node.nodeType === 'container') {
+          // Selected a container — create content inside it
+          createContent(selected)
+        } else {
+          // Selected content — create sibling in same container
+          const parentId = nodeParentMap.current.get(selected) ?? null
+          createContent(parentId)
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleGlobalKeyDown)
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
+  }, [tree])
 
   async function loadTree() {
     if (!sdk) return
@@ -832,7 +877,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
           <button
             onClick={() => setShowDropdown(!showDropdown)}
             className="text-lg leading-none text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 w-6 h-6 flex items-center justify-center"
-            title="Create new item"
+            title="Create new item (Alt+N)"
           >
             +
           </button>
