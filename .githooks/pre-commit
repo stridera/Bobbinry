@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Pre-commit checks — mirrors the /deploy skill checks.
+# Skip with: git commit --no-verify (use sparingly)
+
+echo "Running pre-commit checks..."
+
+echo "  [1/4] Schema drift check..."
+cd apps/api && bun run db:check-drift
+cd "$OLDPWD"
+
+echo "  [2/4] Lint..."
+bunx turbo lint db:check-drift
+
+echo "  [3/4] Bobbin lint..."
+bun run lint:bobbins
+
+echo "  [4/4] Typecheck..."
+bun run typecheck
+
+echo "All pre-commit checks passed."
