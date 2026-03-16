@@ -181,6 +181,34 @@
         "react": "^19.0.0",
       },
     },
+    "bobbins/discord-notifier": {
+      "name": "@bobbinry/discord-notifier",
+      "version": "1.0.0",
+      "dependencies": {
+        "@bobbinry/action-runtime": "workspace:*",
+        "@bobbinry/sdk": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/react": "^19",
+      },
+      "peerDependencies": {
+        "react": "^19.0.0",
+      },
+    },
+    "bobbins/discord-roles": {
+      "name": "@bobbinry/discord-roles",
+      "version": "1.0.0",
+      "dependencies": {
+        "@bobbinry/action-runtime": "workspace:*",
+        "@bobbinry/sdk": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/react": "^19",
+      },
+      "peerDependencies": {
+        "react": "^19.0.0",
+      },
+    },
     "bobbins/entities": {
       "name": "@bobbinry/entities",
       "version": "1.0.0",
@@ -639,6 +667,10 @@
     "@bobbinry/corkboard": ["@bobbinry/corkboard@workspace:bobbins/corkboard"],
 
     "@bobbinry/dictionary-panel": ["@bobbinry/dictionary-panel@workspace:bobbins/dictionary-panel"],
+
+    "@bobbinry/discord-notifier": ["@bobbinry/discord-notifier@workspace:bobbins/discord-notifier"],
+
+    "@bobbinry/discord-roles": ["@bobbinry/discord-roles@workspace:bobbins/discord-roles"],
 
     "@bobbinry/entities": ["@bobbinry/entities@workspace:bobbins/entities"],
 
