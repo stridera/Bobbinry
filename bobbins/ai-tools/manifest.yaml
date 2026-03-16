@@ -1,0 +1,59 @@
+id: ai-tools
+name: AI Tools
+version: 0.1.1
+author: Bobbins Core
+description: Analysis and suggestion tools for your writing. Provides synopsis suggestions and structured feedback — never writes or rewrites your content.
+tags: [ai, analysis, feedback, synopsis]
+license: MIT
+visibility: none  # Hidden from all users; owners bypass visibility restrictions
+
+capabilities:
+  external: true
+  ai: true
+  customViews: true
+
+extensions:
+  contributions:
+    - slot: shell.rightPanel
+      type: panel
+      id: ai-panel
+      title: "AI Tools"
+      entry: panels/ai-panel
+      priority: 3
+      when:
+        inView: project
+
+external:
+  endpoints:
+    - { id: anthropic_messages, url: https://api.anthropic.com/v1/messages, method: POST, description: Send prompts to Anthropic Claude models }
+    - { id: openai_completions, url: https://api.openai.com/v1/chat/completions, method: POST, description: Send prompts to OpenAI models }
+  permissions:
+    - endpoint: api.anthropic.com
+      reason: Generate synopsis suggestions and structured feedback via Claude
+      required: false
+    - endpoint: api.openai.com
+      reason: Generate synopsis suggestions and structured feedback via OpenAI
+      required: false
+
+interactions:
+  actions:
+    - id: generate_synopsis
+      name: Generate Synopsis
+      type: custom
+      handler: generateSynopsis
+      description: Generate a synopsis suggestion for a chapter
+    - id: generate_review
+      name: Generate Review
+      type: custom
+      handler: generateReview
+      description: Generate structured feedback for a chapter
+    - id: test_api_key
+      name: Test API Key
+      type: custom
+      handler: testApiKey
+      description: Validate an AI provider API key
+
+compatibility:
+  minShellVersion: 1.0.0
+  requiredBobbins:
+    - manuscript

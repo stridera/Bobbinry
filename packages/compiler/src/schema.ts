@@ -42,6 +42,11 @@ export const manifestSchema = {
     "license": {
       "type": "string"
     },
+    "visibility": {
+      "type": "string",
+      "enum": ["public", "none", "moderator"],
+      "description": "Controls who can see this bobbin in the marketplace. Owners bypass all restrictions."
+    },
     "capabilities": {
       "type": "object",
       "properties": {

@@ -18,6 +18,7 @@ export const NATIVE_VIEW_MAP: Record<string, () => Promise<any>> = {
   'notes.pinboard': () => import('@bobbinry/notes/views/pinboard'),
   'notes.panels/navigation': () => import('@bobbinry/notes/panels/navigation'),
   'notes.panels/chapter-notes': () => import('@bobbinry/notes/panels/chapter-notes'),
+  'ai-tools.panels/ai-panel': () => import('@bobbinry/ai-tools/panels/ai-panel'),
   'google-drive-backup.panels/drive-sync': () => import('@bobbinry/google-drive-backup/panels/drive-sync'),
   'entities.config': () => import('@bobbinry/entities/views/config'),
   'entities.entity-list': () => import('@bobbinry/entities/views/entity-list'),

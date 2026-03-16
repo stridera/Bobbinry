@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@auth/core": "^0.40.0",
+    "@bobbinry/ai-tools": "workspace:*",
     "@bobbinry/cat": "workspace:*",
     "@bobbinry/corkboard": "workspace:*",
     "@bobbinry/dictionary-panel": "workspace:*",

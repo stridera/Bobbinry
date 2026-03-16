@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 import yaml from 'yaml'
+import { auth } from '@/auth'
 
 function getHostFromUrl(rawUrl: string): string | null {
   try {
@@ -13,6 +14,13 @@ function getHostFromUrl(rawUrl: string): string | null {
 
 export async function GET() {
   try {
+    // Get session to check user badges for visibility gating.
+    // Badges are cached in the JWT with a 5-minute TTL — after adding a badge,
+    // the user may need to wait for the next refresh window to see gated bobbins.
+    const session = await auth()
+    const userBadges: string[] = (session?.user as any)?.badges || []
+    const isOwner = userBadges.includes('owner')
+
     // Path to bobbins directory (relative to project root)
     const bobbinsDir = path.join(process.cwd(), '../../bobbins')
 
@@ -48,6 +56,14 @@ export async function GET() {
           }
           seenIds.add(manifest.id)
 
+          // Visibility gating: filter bobbins based on visibility + user badges
+          // Default visibility is 'public'. Owners bypass all visibility restrictions.
+          const visibility = manifest.visibility || 'public'
+          if (!isOwner) {
+            if (visibility === 'none') continue
+            if (visibility === 'moderator') continue // future: check for moderator badge
+          }
+
           // Extract extension slots from manifest
           const slots: string[] = []
           if (manifest.extensions?.contributions) {
@@ -73,6 +89,7 @@ export async function GET() {
             description: manifest.description || '',
             tags: manifest.tags || [],
             license: manifest.license,
+            visibility,
             capabilities: manifest.capabilities || {},
             externalAccess: manifest.capabilities?.external ? {
               authType: manifest.external?.auth?.type,

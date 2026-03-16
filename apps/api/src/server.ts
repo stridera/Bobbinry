@@ -30,6 +30,7 @@ import { initNotificationHandlers } from './jobs/notification-handlers'
 import { getMetricsSnapshot, incrementCounter, observeTimingMs } from './lib/metrics'
 import { verifyInternalRequest } from './lib/internal-auth'
 import googleDrivePlugin from './routes/google-drive'
+import aiToolsPlugin from './routes/ai-tools'
 import { initDriveSyncHandler } from './jobs/drive-sync-handler'
 
 export function build(opts = {}): FastifyInstance {
@@ -225,6 +226,7 @@ export function build(opts = {}): FastifyInstance {
   server.register(notificationsPlugin, { prefix: '/api' })
   server.register(adminPlugin, { prefix: '/api' })
   server.register(googleDrivePlugin, { prefix: '/api' })
+  server.register(aiToolsPlugin, { prefix: '/api' })
 
   // Warm disk manifest cache, then start the trigger scheduler
   server.addHook('onReady', async () => {

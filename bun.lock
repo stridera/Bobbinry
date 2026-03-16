@@ -69,6 +69,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@auth/core": "^0.40.0",
+        "@bobbinry/ai-tools": "workspace:*",
         "@bobbinry/cat": "workspace:*",
         "@bobbinry/corkboard": "workspace:*",
         "@bobbinry/dictionary-panel": "workspace:*",
@@ -120,6 +121,20 @@
         "jest-environment-jsdom": "^29.7.0",
         "ts-jest": "^29.2.5",
         "typescript": "6.0.0-beta",
+      },
+    },
+    "bobbins/ai-tools": {
+      "name": "@bobbinry/ai-tools",
+      "version": "0.1.0",
+      "dependencies": {
+        "@bobbinry/action-runtime": "workspace:*",
+        "@bobbinry/sdk": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/react": "^19",
+      },
+      "peerDependencies": {
+        "react": "^19.0.0",
       },
     },
     "bobbins/cat": {
@@ -320,7 +335,7 @@
     },
     "bobbins/web-publisher": {
       "name": "@bobbinry/web-publisher",
-      "version": "0.1.0",
+      "version": "1.1.0",
       "dependencies": {
         "@bobbinry/action-runtime": "workspace:*",
         "@bobbinry/sdk": "workspace:*",
@@ -612,6 +627,8 @@
     "@bcoe/v8-coverage": ["@bcoe/v8-coverage@0.2.3", "", {}, "sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2nSUHW9tYpxWriPrWDASIxiaXax83REcLxuSdnGPZtw=="],
 
     "@bobbinry/action-runtime": ["@bobbinry/action-runtime@workspace:packages/action-runtime"],
+
+    "@bobbinry/ai-tools": ["@bobbinry/ai-tools@workspace:bobbins/ai-tools"],
 
     "@bobbinry/cat": ["@bobbinry/cat@workspace:bobbins/cat"],
 
