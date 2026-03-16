@@ -1,0 +1,53 @@
+id: discord-roles
+name: Discord Role Manager
+version: 1.0.0
+author: Bobbins Core
+description: Sync Discord server roles based on Bobbinry subscription tiers. Assign and remove roles automatically when subscriptions change.
+tags: [discord, roles, integration, subscriptions]
+license: MIT
+
+capabilities:
+  external: true
+  customViews: true
+
+extensions:
+  contributions:
+    - slot: shell.rightPanel
+      type: panel
+      id: discord-roles-settings
+      title: "Discord Roles"
+      entry: src/views/settings
+      priority: 9
+      when:
+        inView: project
+
+interactions:
+  actions:
+    - id: sync_roles
+      name: Sync All Roles
+      type: custom
+      handler: syncRoles
+      description: Bulk sync Discord roles for all subscribers
+    - id: sync_single_user
+      name: Sync User Role
+      type: custom
+      handler: syncSingleUser
+      description: Sync Discord role for a single subscriber
+    - id: test_connection
+      name: Test Bot Connection
+      type: custom
+      handler: testConnection
+      description: Verify Discord bot token and guild access
+
+external:
+  endpoints:
+    - { id: discord_guilds, url: "https://discord.com/api/v10/guilds/*", method: GET, description: Read guild info and members }
+    - { id: discord_roles_put, url: "https://discord.com/api/v10/guilds/*/members/*/roles/*", method: PUT, description: Assign role to guild member }
+    - { id: discord_roles_delete, url: "https://discord.com/api/v10/guilds/*/members/*/roles/*", method: DELETE, description: Remove role from guild member }
+  permissions:
+    - endpoint: discord.com
+      reason: Manage Discord server roles based on subscription tiers
+      required: true
+
+compatibility:
+  minShellVersion: 1.0.0

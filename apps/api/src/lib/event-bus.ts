@@ -9,6 +9,7 @@
  *   content:statusChange - Chapter marked complete/draft
  *   content:published  - Chapter publication status changed
  *   content:available  - Content available for a tier (smart publisher emits per tier)
+ *   subscription:changed - Subscription created, upgraded, downgraded, or canceled
  */
 
 export interface DomainEvent {
@@ -128,5 +129,21 @@ export function contentAvailable(projectId: string, entityId: string, tierId: st
     projectId,
     entityId,
     payload: { tierId, tierLevel }
+  }
+}
+
+export function subscriptionChanged(
+  authorId: string,
+  subscriberId: string,
+  tierId: string,
+  tierLevel: number,
+  action: 'created' | 'upgraded' | 'downgraded' | 'canceled'
+): DomainEvent {
+  return {
+    type: 'subscription:changed',
+    timestamp: new Date(),
+    projectId: '', // not project-scoped
+    userId: subscriberId,
+    payload: { authorId, subscriberId, tierId, tierLevel, action }
   }
 }

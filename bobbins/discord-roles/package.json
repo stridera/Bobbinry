@@ -1,0 +1,27 @@
+{
+  "name": "@bobbinry/discord-roles",
+  "version": "1.0.0",
+  "description": "Sync Discord server roles based on Bobbinry subscription tiers",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./views/*": "./src/views/*.tsx",
+    "./actions/*": "./actions/*.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.actions.json",
+    "dev": "echo 'consumed as source by shell'",
+    "typecheck": "echo 'consumed as source by shell'"
+  },
+  "dependencies": {
+    "@bobbinry/action-runtime": "workspace:*",
+    "@bobbinry/sdk": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19"
+  }
+}

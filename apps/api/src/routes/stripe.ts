@@ -13,6 +13,7 @@ import {
 } from '../db/schema'
 import { eq, and, sql } from 'drizzle-orm'
 import { requireAuth, requireSelf, requireVerified } from '../middleware/auth'
+import { serverEventBus, subscriptionChanged } from '../lib/event-bus'
 import { getStripe, createExpressAccount, createOnboardingLink } from '../lib/stripe'
 
 function isValidUUID(uuid: string): boolean {
@@ -692,6 +693,11 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription, fast
       stripeSubscriptionId: subscription.id
     })
 
+    // Emit subscription:changed event for Discord role sync, etc.
+    const [tier] = await db.select({ tierLevel: subscriptionTiers.tierLevel })
+      .from(subscriptionTiers).where(eq(subscriptionTiers.id, tierId)).limit(1)
+    serverEventBus.fire(subscriptionChanged(authorId, subscriberId, tierId, tier?.tierLevel ?? 0, 'created'))
+
     fastify.log.info({ subscriberId, authorId, tierId }, 'Subscription created from webhook')
   } catch (error) {
     fastify.log.error(error, 'Failed to handle subscription created')
@@ -717,6 +723,18 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription, fast
       updatedAt: new Date()
     }).where(eq(subscriptions.id, sub.id))
 
+    // Check for tier change (upgrade/downgrade) and emit event
+    const metadata = subscription.metadata || {}
+    const newTierId = metadata.bobbinry_tier_id
+    if (newTierId && newTierId !== sub.tierId) {
+      const [[oldTier], [newTier]] = await Promise.all([
+        db.select({ tierLevel: subscriptionTiers.tierLevel }).from(subscriptionTiers).where(eq(subscriptionTiers.id, sub.tierId)).limit(1),
+        db.select({ tierLevel: subscriptionTiers.tierLevel }).from(subscriptionTiers).where(eq(subscriptionTiers.id, newTierId)).limit(1),
+      ])
+      const action = (newTier?.tierLevel ?? 0) > (oldTier?.tierLevel ?? 0) ? 'upgraded' : 'downgraded'
+      serverEventBus.fire(subscriptionChanged(sub.authorId, sub.subscriberId, newTierId, newTier?.tierLevel ?? 0, action))
+    }
+
     fastify.log.info({ subscriptionId: sub.id, status: subscription.status }, 'Subscription updated')
   } catch (error) {
     fastify.log.error(error, 'Failed to handle subscription updated')
@@ -726,10 +744,21 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription, fast
 
 async function handleSubscriptionDeleted(subscription: Stripe.Subscription, fastify: FastifyInstance) {
   try {
+    // Fetch subscription before updating so we can emit the event
+    const [sub] = await db.select().from(subscriptions)
+      .where(eq(subscriptions.stripeSubscriptionId, subscription.id)).limit(1)
+
     await db.update(subscriptions).set({
       status: 'canceled',
       updatedAt: new Date()
     }).where(eq(subscriptions.stripeSubscriptionId, subscription.id))
+
+    // Emit subscription:changed event for Discord role removal
+    if (sub) {
+      const [tier] = await db.select({ tierLevel: subscriptionTiers.tierLevel })
+        .from(subscriptionTiers).where(eq(subscriptionTiers.id, sub.tierId)).limit(1)
+      serverEventBus.fire(subscriptionChanged(sub.authorId, sub.subscriberId, sub.tierId, tier?.tierLevel ?? 0, 'canceled'))
+    }
 
     fastify.log.info({ stripeSubId: subscription.id }, 'Subscription canceled')
   } catch (error) {

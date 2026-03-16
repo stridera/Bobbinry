@@ -32,6 +32,8 @@ import { verifyInternalRequest } from './lib/internal-auth'
 import googleDrivePlugin from './routes/google-drive'
 import aiToolsPlugin from './routes/ai-tools'
 import { initDriveSyncHandler } from './jobs/drive-sync-handler'
+import { initDiscordNotifierHandler } from './jobs/discord-notifier-handler'
+import { initDiscordRolesHandler } from './jobs/discord-roles-handler'
 
 export function build(opts = {}): FastifyInstance {
   const server = Fastify({
@@ -234,6 +236,8 @@ export function build(opts = {}): FastifyInstance {
     startTriggerScheduler()
     initNotificationHandlers()
     initDriveSyncHandler()
+    initDiscordNotifierHandler()
+    initDiscordRolesHandler()
   })
 
   server.addHook('onClose', async () => {

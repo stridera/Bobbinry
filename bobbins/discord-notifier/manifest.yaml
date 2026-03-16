@@ -1,0 +1,55 @@
+id: discord-notifier
+name: Discord Notifier
+version: 1.0.0
+author: Bobbins Core
+description: Announce chapter publishes to Discord channels via webhooks. Map tiers to channels for targeted notifications.
+tags: [discord, notifications, integration, webhooks]
+license: MIT
+
+capabilities:
+  external: true
+  customViews: true
+
+extensions:
+  contributions:
+    - slot: shell.rightPanel
+      type: panel
+      id: discord-notifier-settings
+      title: "Discord Notifier"
+      entry: src/views/settings
+      priority: 8
+      when:
+        inView: project
+
+interactions:
+  actions:
+    - id: test_webhook
+      name: Test Webhook
+      type: custom
+      handler: testWebhook
+      description: Send a test message to verify webhook configuration
+    - id: send_notification
+      name: Send Notification
+      type: custom
+      handler: sendNotification
+      description: Manually send a chapter notification to Discord
+
+  triggers:
+    - id: on_chapter_publish
+      event: publish
+      target: Chapter
+      actions:
+        - send_notification
+
+external:
+  endpoints:
+    - { id: discord_webhook, url: "https://discord.com/api/webhooks/*", method: POST, description: Send embeds to Discord channels }
+  permissions:
+    - endpoint: discord.com
+      reason: Send chapter announcements to Discord channels
+      required: true
+
+compatibility:
+  minShellVersion: 1.0.0
+  requiredBobbins:
+    - manuscript
