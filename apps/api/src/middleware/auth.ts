@@ -20,6 +20,29 @@ export interface AuthenticatedUser {
   emailVerified: Date | null
 }
 
+// In-memory auth user cache (60s TTL) to avoid redundant DB lookups
+const AUTH_CACHE_TTL_MS = 60_000
+const userCache = new Map<string, { user: AuthenticatedUser; expiresAt: number }>()
+
+function getCachedUser(userId: string): AuthenticatedUser | null {
+  const entry = userCache.get(userId)
+  if (!entry) return null
+  if (Date.now() > entry.expiresAt) {
+    userCache.delete(userId)
+    return null
+  }
+  return entry.user
+}
+
+function cacheUser(user: AuthenticatedUser): void {
+  userCache.set(user.id, { user, expiresAt: Date.now() + AUTH_CACHE_TTL_MS })
+}
+
+/** Clear cached user entry (e.g. on password change, account deletion) */
+export function clearUserCache(userId: string): void {
+  userCache.delete(userId)
+}
+
 // Extend FastifyRequest to include user
 declare module 'fastify' {
   interface FastifyRequest {
@@ -127,6 +150,13 @@ export async function requireAuth(
     return
   }
 
+  // Check cache first, then fall back to DB
+  const cached = getCachedUser(tokenPayload.id)
+  if (cached) {
+    request.user = cached
+    return
+  }
+
   // Verify user exists in database
   const [user] = await db
     .select({
@@ -147,7 +177,7 @@ export async function requireAuth(
     return
   }
 
-  // Attach user to request
+  cacheUser(user)
   request.user = user
 }
 
@@ -227,6 +257,13 @@ export async function optionalAuth(
     return // Invalid token is also fine for optional auth
   }
 
+  // Check cache first, then fall back to DB
+  const cached = getCachedUser(tokenPayload.id)
+  if (cached) {
+    request.user = cached
+    return
+  }
+
   // Try to get user from database
   const [user] = await db
     .select({
@@ -240,6 +277,7 @@ export async function optionalAuth(
     .limit(1)
 
   if (user) {
+    cacheUser(user)
     request.user = user
   }
 }

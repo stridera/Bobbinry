@@ -100,7 +100,14 @@ export function build(opts = {}): FastifyInstance {
 
     // Don't expose internal errors in production
     const isDevelopment = process.env.NODE_ENV === 'development'
-    const statusCode = error.statusCode || 500
+
+    // Rate limiter sets error.code (not statusCode) to 429
+    const isRateLimit = error.code === '429' || String(error.statusCode) === '429'
+    const statusCode = isRateLimit ? 429 : (error.statusCode || 500)
+
+    if (isRateLimit) {
+      reply.header('Retry-After', '60')
+    }
 
     reply.status(statusCode).send({
       error: statusCode < 500 ? error.message : 'Internal Server Error',
@@ -123,7 +130,7 @@ export function build(opts = {}): FastifyInstance {
 
   // Rate limiting
   server.register(rateLimit, {
-    max: process.env.NODE_ENV === 'development' ? 1000 : 100,
+    max: process.env.NODE_ENV === 'development' ? 1000 : 300,
     timeWindow: '1 minute',
     errorResponseBuilder: (request, context) => ({
       code: 429,
