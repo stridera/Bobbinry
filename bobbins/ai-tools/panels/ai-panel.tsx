@@ -19,6 +19,10 @@ interface AIToolsPanelProps {
     currentProject?: string
     currentView?: string
     apiToken?: string
+    entityId?: string
+    entityType?: string
+    bobbinId?: string
+    metadata?: { title?: string; name?: string }
   }
 }
 
@@ -61,6 +65,8 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
   // Review state
   const [reviewResult, setReviewResult] = useState<string | null>(null)
   const [reviewLoading, setReviewLoading] = useState(false)
+  const [noteSaving, setNoteSaving] = useState(false)
+  const [noteSaved, setNoteSaved] = useState(false)
 
   // Settings form state
   const [settingsProvider, setSettingsProvider] = useState<string>('anthropic')
@@ -72,11 +78,8 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
 
   const [error, setError] = useState<string | null>(null)
 
-  const apiBase = useMemo(() => {
-    if (typeof window === 'undefined') return ''
-    const port = window.location.port === '3100' ? '4100' : window.location.port
-    return `${window.location.protocol}//${window.location.hostname}:${port}/api`
-  }, [])
+  // Use the SDK's resolved API base URL (respects NEXT_PUBLIC_API_URL)
+  const apiBase = sdk.api.apiBaseUrl
 
   const headers = useMemo(
     () => ({
@@ -104,7 +107,7 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
     } finally {
       setConfigLoading(false)
     }
-  }, [apiBase, headers, context?.apiToken])
+  }, [apiBase, headers, context?.apiToken, sdk])
 
   useEffect(() => {
     loadConfig()
@@ -121,6 +124,23 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
       sdk.setProject(projectId)
     }
   }, [projectId, sdk])
+
+  // Initialize activeChapter from context on mount (handles re-expand after collapse)
+  useEffect(() => {
+    if (
+      !activeChapter &&
+      context?.bobbinId === 'manuscript' &&
+      context?.entityType === 'content' &&
+      context?.entityId
+    ) {
+      setActiveChapter({
+        entityId: context.entityId,
+        entityType: context.entityType,
+        bobbinId: 'manuscript',
+        label: context.metadata?.title || context.metadata?.name || 'Chapter',
+      })
+    }
+  }, [context?.entityId, context?.entityType, context?.bobbinId, context?.metadata?.title, context?.metadata?.name])
 
   // Listen for navigation events
   useEffect(() => {
@@ -139,6 +159,7 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
         setSynopsisSaved(false)
         setExistingSynopsis(null)
         setReviewResult(null)
+        setNoteSaved(false)
         setError(null)
       }
     }
@@ -155,6 +176,7 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
             setSynopsisSaved(false)
             setExistingSynopsis(null)
             setReviewResult(null)
+            setNoteSaved(false)
             setError(null)
           }
           return { entityId: detail.entityId, entityType: detail.entityType, bobbinId: 'manuscript', label }
@@ -235,6 +257,7 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
     if (!activeChapter || !projectId) return
     try {
       setReviewLoading(true)
+      setNoteSaved(false)
       setError(null)
 
       const resp = await fetch(`${apiBase}/ai-tools/review`, {
@@ -254,6 +277,44 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
       setError('Failed to generate review')
     } finally {
       setReviewLoading(false)
+    }
+  }
+
+  // Save feedback to notes
+  async function handleAddToNotes() {
+    if (!reviewResult || !activeChapter || !projectId) return
+    try {
+      setNoteSaving(true)
+      setError(null)
+
+      // Use a separate SDK instance scoped to the notes bobbin
+      const notesSdk = new BobbinrySDK('notes')
+      if (context?.apiToken) notesSdk.api.setAuthToken(context.apiToken)
+      notesSdk.setProject(projectId)
+
+      await notesSdk.entities.create('notes', {
+        title: `AI Feedback — ${activeChapter.label}`,
+        content: reviewResult,
+        folder_id: null,
+        tags: ['ai-feedback'],
+        linked_entities: [{
+          entityId: activeChapter.entityId,
+          collection: 'content',
+          bobbinId: 'manuscript',
+          label: activeChapter.label,
+        }],
+        pinned: false,
+        color: null,
+        icon: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+
+      setNoteSaved(true)
+    } catch {
+      setError('Failed to save to notes. Is the Notes bobbin installed?')
+    } finally {
+      setNoteSaving(false)
     }
   }
 
@@ -535,7 +596,16 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
                     .replace(/\n/g, '<br/>'),
                 }}
               />
-              <PanelActionButton onClick={handleGenerateReview}>Regenerate</PanelActionButton>
+              <div className="flex gap-2">
+                <PanelActionButton onClick={handleGenerateReview}>Regenerate</PanelActionButton>
+                {noteSaved ? (
+                  <PanelPill>Saved to Notes</PanelPill>
+                ) : (
+                  <PanelActionButton onClick={handleAddToNotes} disabled={noteSaving}>
+                    {noteSaving ? 'Saving...' : 'Add to Notes'}
+                  </PanelActionButton>
+                )}
+              </div>
             </PanelCard>
           ) : (
             <PanelActionButton onClick={handleGenerateReview}>Get Feedback</PanelActionButton>
