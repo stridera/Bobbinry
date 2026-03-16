@@ -6,17 +6,23 @@ set -euo pipefail
 
 echo "Running pre-commit checks..."
 
-echo "  [1/4] Schema drift check..."
+echo "  [1/5] Lockfile freshness..."
+bun install --frozen-lockfile > /dev/null 2>&1 || {
+  echo "    Lockfile is out of date. Run 'bun install' and commit bun.lock."
+  exit 1
+}
+
+echo "  [2/5] Schema drift check..."
 cd apps/api && bun run db:check-drift
 cd "$OLDPWD"
 
-echo "  [2/4] Lint..."
+echo "  [3/5] Lint..."
 bunx turbo lint db:check-drift
 
-echo "  [3/4] Bobbin lint..."
+echo "  [4/5] Bobbin lint..."
 bun run lint:bobbins
 
-echo "  [4/4] Typecheck..."
+echo "  [5/5] Typecheck..."
 bun run typecheck
 
 echo "All pre-commit checks passed."
