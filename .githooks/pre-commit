@@ -22,7 +22,10 @@ bunx turbo lint db:check-drift
 echo "  [4/5] Bobbin lint..."
 bun run lint:bobbins
 
-echo "  [5/5] Typecheck..."
+echo "  [5/6] Typecheck..."
 bun run typecheck
+
+echo "  [6/6] Build..."
+bun run build
 
 echo "All pre-commit checks passed."
