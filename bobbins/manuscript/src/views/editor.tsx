@@ -314,6 +314,7 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
   const [wordCount, setWordCount] = useState(0)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const titleSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const titleInputRef = useRef<HTMLInputElement>(null)
 
   // Track the entity that's currently being edited so we can flush on navigate
@@ -538,18 +539,24 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
 
     loadEntityNames()
 
-    // Re-load when entities are added/renamed/deleted
-    function handleEntityUpdated() {
+    // Re-load when entities are added/renamed/deleted.
+    // Skip editor-originated title changes — those don't affect entity names.
+    function handleEntityUpdated(e: Event) {
+      const detail = (e as CustomEvent).detail
+      if (detail?.source === 'editor') return
       loadEntityNames()
     }
     window.addEventListener('bobbinry:entity-updated', handleEntityUpdated)
     return () => window.removeEventListener('bobbinry:entity-updated', handleEntityUpdated)
   }, [editor, projectId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync title when another view (e.g. sidebar) renames the current entity
+  // Sync title when another view (e.g. sidebar) renames the current entity.
+  // Events with source === 'editor' are ones we dispatched ourselves — skip them
+  // to avoid bouncing stale titles back during fast typing.
   useEffect(() => {
     function handleExternalRename(e: Event) {
-      const { entityId: updatedId, changes } = (e as CustomEvent).detail
+      const { entityId: updatedId, changes, source } = (e as CustomEvent).detail
+      if (source === 'editor') return
       if (updatedId === entityId && changes?.title != null) {
         setTitle(changes.title)
       }
@@ -596,13 +603,27 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
    * runs for the NEW entity, which would cross-contaminate the draft cache.
    */
   function flushPendingState() {
-    // Cancel any pending debounced save
+    const outgoingEntityId = activeEntityRef.current
+
+    // Cancel any pending debounced body save and flush it
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current)
       saveTimeoutRef.current = null
     }
 
-    const outgoingEntityId = activeEntityRef.current
+    // Cancel any pending debounced title save and flush it
+    if (titleSaveTimeoutRef.current) {
+      clearTimeout(titleSaveTimeoutRef.current)
+      titleSaveTimeoutRef.current = null
+      // Fire the title save immediately with the latest draft title
+      if (outgoingEntityId) {
+        const draft = loadDraft(outgoingEntityId)
+        if (draft?.title) {
+          sdk.entities.update('content', outgoingEntityId, { title: draft.title }).catch(() => {})
+        }
+      }
+    }
+
     if (outgoingEntityId) {
       const draft = loadDraft(outgoingEntityId)
       if (draft && !draft.savedToServer) {
@@ -774,7 +795,7 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
     }
   }
 
-  async function handleTitleChange(newTitle: string) {
+  function handleTitleChange(newTitle: string) {
     setTitle(newTitle)
     if (!entityId) return
 
@@ -784,24 +805,32 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
       saveDraft(entityId, { ...draft, title: newTitle, savedToServer: false })
     }
 
-    try {
-      await sdk.entities.update('content', entityId, {
-        title: newTitle
+    // Notify sidebar immediately so the tree updates in real-time.
+    // Marked with source: 'editor' so handleExternalRename ignores it.
+    window.dispatchEvent(
+      new CustomEvent('bobbinry:entity-updated', {
+        detail: {
+          collection: 'content',
+          entityId,
+          changes: { title: newTitle },
+          source: 'editor'
+        }
       })
+    )
 
-      // Notify navigation panel of title change
-      window.dispatchEvent(
-        new CustomEvent('bobbinry:entity-updated', {
-          detail: {
-            collection: 'content',
-            entityId,
-            changes: { title: newTitle }
-          }
-        })
-      )
-    } catch (error) {
-      console.error('[EditorView] Failed to update title:', error)
+    // Debounce the actual API save to avoid hammering the server on every keystroke
+    if (titleSaveTimeoutRef.current) {
+      clearTimeout(titleSaveTimeoutRef.current)
     }
+    titleSaveTimeoutRef.current = setTimeout(async () => {
+      try {
+        await sdk.entities.update('content', entityId, {
+          title: newTitle
+        })
+      } catch (error) {
+        console.error('[EditorView] Failed to update title:', error)
+      }
+    }, 500)
   }
 
   function handleEditorClick(e: React.MouseEvent) {
