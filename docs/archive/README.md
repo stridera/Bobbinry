@@ -23,7 +23,6 @@ This folder contains historical documentation from the development process. Thes
 
 For current documentation, see the parent `docs/` folder:
 
-- **[DEVELOPMENT_HISTORY.md](../DEVELOPMENT_HISTORY.md)** - Consolidated development timeline
 - **[CLI_BLUEPRINT_v0.2.md](../CLI_BLUEPRINT_v0.2.md)** - Latest blueprint
 - **[BOBBIN_DEVELOPMENT_GUIDE.md](../BOBBIN_DEVELOPMENT_GUIDE.md)** - Creating custom bobbins
 - Technical architecture docs (EXECUTION_MODES, VIEW_ROUTING, etc.)

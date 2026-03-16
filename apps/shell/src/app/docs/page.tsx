@@ -205,7 +205,7 @@ ui:
             </table>
           </div>
           <p className="text-gray-500 dark:text-gray-500 text-sm mt-3">
-            For cross-bobbin coordination, prefer the SDK helpers such as <code className="text-sm bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">useMessageBus()</code> and <code className="text-sm bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">sdk.bus.emit()</code>.
+            For cross-bobbin coordination, prefer the SDK helpers such as <code className="text-sm bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">useMessageBus()</code> and <code className="text-sm bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">sdk.messageBus.send()</code>.
           </p>
         </section>
 

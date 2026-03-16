@@ -115,38 +115,23 @@ A modular, open-source platform for writers and worldbuilders. Create projects, 
 
 ### Available Bobbins
 
+Browse the [`bobbins/`](bobbins/) directory for the full list. Each bobbin has its own README with details. Some highlights:
+
 - **Manuscript** - Complete writing system with books, chapters, and scenes
 - **Corkboard** - Visual organization with drag-and-drop cards
 - **Dictionary** - Glossary and terminology management
-- **Debugger** - Developer tools for inspecting the message bus
+- **Web Publisher** - Publish chapters and manage readership
+- **Timeline** - Chronological event tracking
+- **Entities** - Generic entity browser and editor
 
 ### Architecture Documentation
 
-- **[Development History](docs/DEVELOPMENT_HISTORY.md)** - Complete development timeline and feature list
 - **[Execution Modes](docs/EXECUTION_MODES.md)** - How bobbins run (native vs sandboxed)
 - **[View Routing](docs/VIEW_ROUTING_ARCHITECTURE.md)** - View management and navigation
-- **[Manifest Security](docs/MANIFEST_SECURITY.md)** - Security model for bobbins
 - **[Compiler Spec](docs/bobbinry_compiler_spec_tiered_storage.md)** - Tiered storage architecture
 - **[Bobbin Development Guide](docs/BOBBIN_DEVELOPMENT_GUIDE.md)** - Creating custom bobbins
 
 ## 🛠️ Development
-
-### Project Structure
-
-```
-bobbins/
-├── apps/
-│   ├── api/          # Fastify backend API
-│   └── shell/        # Next.js frontend application
-├── packages/
-│   ├── compiler/     # Manifest compiler
-│   ├── types/        # Shared TypeScript types
-│   └── ui-components/# Shared UI component library
-├── bobbins/          # Example bobbin manifests
-├── infra/
-│   └── db/          # Database migrations and schema
-└── docs/            # Documentation
-```
 
 ### Development Commands
 
@@ -374,10 +359,3 @@ This is currently a scaffolding repository. Contribution guidelines will be adde
 - Documentation: `docs/`
 - Example Manifests: `bobbins/`
 - JSON Schema: `packages/types/manifest.schema.json`
-- Development History: [docs/DEVELOPMENT_HISTORY.md](docs/DEVELOPMENT_HISTORY.md)
-
----
-
-**Current Status**: Phase 8 Complete (MVP Ready)
-
-The platform supports the complete user journey from authentication through project creation, bobbin installation, and content editing. See [Development History](docs/DEVELOPMENT_HISTORY.md) for detailed feature list and roadmap.

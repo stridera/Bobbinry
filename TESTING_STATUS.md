@@ -237,7 +237,6 @@ docker exec bobbins-postgres-1 psql -U bobbinry -d bobbinry -c "SELECT * FROM ch
 ### For Developers
 - **Setup Guide**: `README.md`
 - **Testing Guide**: `docs/DEV_TESTING_GUIDE.md`
-- **Development History**: `docs/DEVELOPMENT_HISTORY.md`
 - **Bobbin Development**: `docs/BOBBIN_DEVELOPMENT_GUIDE.md`
 
 ### For Testing

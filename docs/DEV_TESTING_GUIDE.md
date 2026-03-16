@@ -557,4 +557,4 @@ After verifying these test scenarios:
 4. **Add Payment Integration** (Stripe setup)
 5. **Build Analytics Dashboard** (data collection works)
 
-See `/docs/DEVELOPMENT_HISTORY.md` for full feature list and roadmap.
+See the project README for an overview of available features.
