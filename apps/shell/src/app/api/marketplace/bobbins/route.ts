@@ -90,6 +90,7 @@ export async function GET() {
             tags: manifest.tags || [],
             license: manifest.license,
             visibility,
+            install: manifest.install || undefined,
             capabilities: manifest.capabilities || {},
             externalAccess: manifest.capabilities?.external ? {
               authType: manifest.external?.auth?.type,

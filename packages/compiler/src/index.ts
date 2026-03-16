@@ -5,7 +5,7 @@ import * as fs from 'fs'
 import { manifestSchema } from './schema'
 
 export interface CompilerOptions {
-  projectId: string
+  projectId?: string
   dryRun?: boolean
 }
 
@@ -257,7 +257,7 @@ export class ManifestCompiler {
 
     return generateCollectionMigration(collection, {
       bobbinId: 'unknown', // TODO: Pass actual bobbin ID
-      projectId: this.options.projectId
+      projectId: this.options.projectId || 'unknown'
     })
   }
 

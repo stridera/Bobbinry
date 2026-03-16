@@ -85,3 +85,34 @@ export async function findBobbinForCollection(
   }
   return null
 }
+
+/**
+ * Get the supported installation scopes from a manifest.
+ * Defaults to ['project'] when the install field is omitted.
+ */
+export function getManifestScopes(manifest: Record<string, any>): string[] {
+  return manifest.install?.scopes || ['project']
+}
+
+/**
+ * Find a bobbin for a collection across multiple scopes, with priority ordering.
+ * Returns the bobbinId and scope info for the first match (project > collection > global).
+ */
+export async function findBobbinForCollectionAcrossScopes(
+  effectiveBobbins: Array<{ bobbinId: string; scope: string; scopeOwnerId: string }>,
+  collectionName: string
+): Promise<{ bobbinId: string; scope: string; scopeOwnerId: string } | null> {
+  const bobbinIds = effectiveBobbins.map(b => b.bobbinId)
+  const manifests = await loadDiskManifests(bobbinIds)
+
+  // effectiveBobbins is already in priority order (project > collection > global)
+  for (const eb of effectiveBobbins) {
+    const manifest = manifests.get(eb.bobbinId)
+    if (!manifest) continue
+    const collections = manifest.data?.collections || []
+    if (collections.some((c: any) => c.name === collectionName)) {
+      return eb
+    }
+  }
+  return null
+}

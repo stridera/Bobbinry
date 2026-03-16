@@ -42,6 +42,21 @@ export const manifestSchema = {
     "license": {
       "type": "string"
     },
+    "install": {
+      "type": "object",
+      "properties": {
+        "scopes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["project", "collection", "global"]
+          },
+          "minItems": 1
+        }
+      },
+      "required": ["scopes"],
+      "additionalProperties": false
+    },
     "visibility": {
       "type": "string",
       "enum": ["public", "none", "moderator"],

@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { BobbinrySDK } from '@bobbinry/sdk'
 import { ClientWrapper } from '@/components/ClientWrapper'
+import { apiFetch } from '@/lib/api'
 import {
   BobbinCard,
   BobbinDetailModal,
@@ -12,6 +13,12 @@ import {
   useBobbinFilters,
 } from '@/components/bobbins'
 import type { BobbinMetadata, InstalledBobbin } from '@/components/bobbins'
+import type { BobbinScope } from '@/components/bobbins/types'
+
+interface UserCollection {
+  id: string
+  name: string
+}
 
 function BobbinsContent() {
   const params = useParams()
@@ -32,6 +39,9 @@ function BobbinsContent() {
   const [selectedBobbin, setSelectedBobbin] = useState<BobbinMetadata | null>(null)
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
   const [actionInProgress, setActionInProgress] = useState<string | null>(null)
+  const [scopePickerBobbin, setScopePickerBobbin] = useState<BobbinMetadata | null>(null)
+  const [userCollections, setUserCollections] = useState<UserCollection[]>([])
+  const [collectionsLoaded, setCollectionsLoaded] = useState(false)
 
   const loadAvailableBobbins = async () => {
     try {
@@ -57,10 +67,13 @@ function BobbinsContent() {
   const enrichBobbins = (available: any[], installed: InstalledBobbin[]) => {
     const installedIds = new Set(installed.map(b => b.id))
     const installedVersions = new Map(installed.map(b => [b.id, b.version]))
+    const installedScopes = new Map(installed.map(b => [b.id, b.scope || 'project']))
     return available.map((bobbin: any) => ({
       ...bobbin,
+      scopes: bobbin.install?.scopes || ['project'],
       isInstalled: installedIds.has(bobbin.id),
-      installedVersion: installedVersions.get(bobbin.id)
+      installedVersion: installedVersions.get(bobbin.id),
+      installedScope: installedScopes.get(bobbin.id),
     }))
   }
 
@@ -99,12 +112,64 @@ function BobbinsContent() {
     }
   }, [setupStatus])
 
-  const installBobbin = async (bobbin: BobbinMetadata) => {
+  const loadUserCollections = useCallback(async () => {
+    if (collectionsLoaded || !session?.apiToken) return
+    try {
+      const res = await apiFetch('/api/users/me/collections', session.apiToken)
+      if (res.ok) {
+        const data = await res.json()
+        setUserCollections((data.collections || []).map((c: any) => ({ id: c.id, name: c.name })))
+      }
+    } catch (err) {
+      console.error('Failed to load collections:', err)
+    } finally {
+      setCollectionsLoaded(true)
+    }
+  }, [collectionsLoaded, session?.apiToken])
+
+  /** Called when user clicks Install — shows scope picker if bobbin supports multiple scopes */
+  const handleInstallClick = (bobbin: BobbinMetadata) => {
+    const scopes: BobbinScope[] = (bobbin as any).scopes || ['project']
+    if (scopes.length <= 1) {
+      // Single scope — install directly
+      installToScope(bobbin, 'project')
+    } else {
+      // Multi-scope — open picker
+      loadUserCollections()
+      setScopePickerBobbin(bobbin)
+    }
+  }
+
+  /** Install a bobbin to a specific scope */
+  const installToScope = async (bobbin: BobbinMetadata, scope: BobbinScope, collectionId?: string) => {
+    setScopePickerBobbin(null)
     setActionInProgress(bobbin.id)
     setActionMessage(null)
 
     try {
-      await sdk.api.installBobbin(projectId, bobbin.manifestContent, 'yaml')
+      if (scope === 'project') {
+        await sdk.api.installBobbin(projectId, bobbin.manifestContent, 'yaml')
+      } else if (scope === 'collection' && collectionId) {
+        const res = await apiFetch(`/api/collections/${collectionId}/bobbins/install`, session!.apiToken!, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ manifestContent: bobbin.manifestContent, manifestType: 'yaml' }),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: 'Installation failed' }))
+          throw new Error(err.error || 'Installation failed')
+        }
+      } else if (scope === 'global') {
+        const res = await apiFetch('/api/users/me/bobbins/install', session!.apiToken!, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ manifestContent: bobbin.manifestContent, manifestType: 'yaml' }),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: 'Installation failed' }))
+          throw new Error(err.error || 'Installation failed')
+        }
+      }
 
       const [available, installed] = await Promise.all([
         loadAvailableBobbins(),
@@ -112,7 +177,8 @@ function BobbinsContent() {
       ])
       setAvailableBobbins(enrichBobbins(available, installed))
       setInstalledBobbins(installed)
-      setActionMessage({ type: 'success', text: `${bobbin.name} installed successfully!` })
+      const scopeLabel = scope === 'project' ? 'project' : scope === 'collection' ? 'series' : 'globally'
+      setActionMessage({ type: 'success', text: `${bobbin.name} installed to ${scopeLabel}!` })
       setTimeout(() => setActionMessage(null), 3000)
     } catch (error) {
       setActionMessage({
@@ -242,16 +308,27 @@ function BobbinsContent() {
                 onViewDetails={() => setSelectedBobbin(bobbin)}
                 actionSlot={
                   bobbin.isInstalled ? (
-                    <button
-                      onClick={() => uninstallBobbin(bobbin.id)}
-                      disabled={actionInProgress === bobbin.id}
-                      className="px-4 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50"
-                    >
-                      {actionInProgress === bobbin.id ? 'Removing...' : 'Uninstall'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {(bobbin as any).installedScope && (bobbin as any).installedScope !== 'project' && (
+                        <span className={`text-xs px-2 py-1 rounded font-medium ${
+                          (bobbin as any).installedScope === 'collection'
+                            ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
+                            : 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300'
+                        }`}>
+                          {(bobbin as any).installedScope === 'collection' ? 'Series' : 'Global'}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => uninstallBobbin(bobbin.id)}
+                        disabled={actionInProgress === bobbin.id}
+                        className="px-4 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50"
+                      >
+                        {actionInProgress === bobbin.id ? 'Removing...' : 'Uninstall'}
+                      </button>
+                    </div>
                   ) : (
                     <button
-                      onClick={() => installBobbin(bobbin)}
+                      onClick={() => handleInstallClick(bobbin)}
                       disabled={actionInProgress === bobbin.id}
                       className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
                     >
@@ -280,7 +357,7 @@ function BobbinsContent() {
               </button>
             ) : (
               <button
-                onClick={() => { installBobbin(selectedBobbin); setSelectedBobbin(null) }}
+                onClick={() => { handleInstallClick(selectedBobbin); setSelectedBobbin(null) }}
                 className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
               >
                 Install
@@ -288,6 +365,99 @@ function BobbinsContent() {
             )
           }
         />
+      )}
+
+      {/* Scope Picker Modal */}
+      {scopePickerBobbin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                Install {scopePickerBobbin.name}
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Choose where to install this bobbin
+              </p>
+            </div>
+
+            <div className="p-4 space-y-2">
+              {/* Project scope */}
+              {((scopePickerBobbin as any).scopes as BobbinScope[] || ['project']).includes('project') && (
+                <button
+                  onClick={() => installToScope(scopePickerBobbin, 'project')}
+                  className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors"
+                >
+                  <div className="font-medium text-gray-900 dark:text-gray-100">This project only</div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400">
+                    Available in this project only
+                  </div>
+                </button>
+              )}
+
+              {/* Collection scope */}
+              {((scopePickerBobbin as any).scopes as BobbinScope[] || ['project']).includes('collection') && (
+                <>
+                  {userCollections.length > 0 ? (
+                    userCollections.map(col => (
+                      <button
+                        key={col.id}
+                        onClick={() => installToScope(scopePickerBobbin, 'collection', col.id)}
+                        className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-purple-400 dark:hover:border-purple-500 hover:bg-purple-50 dark:hover:bg-purple-900/10 transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-gray-900 dark:text-gray-100">{col.name}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 font-medium">
+                            series
+                          </span>
+                        </div>
+                        <div className="text-sm text-gray-500 dark:text-gray-400">
+                          Shared across all projects in this series
+                        </div>
+                      </button>
+                    ))
+                  ) : collectionsLoaded ? (
+                    <div className="p-3 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 text-center">
+                      <div className="text-sm text-gray-400 dark:text-gray-500">
+                        No series found. Create a series on the dashboard to install bobbins across projects.
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 text-center text-sm text-gray-400 dark:text-gray-500">
+                      Loading series...
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Global scope */}
+              {((scopePickerBobbin as any).scopes as BobbinScope[] || ['project']).includes('global') && (
+                <button
+                  onClick={() => installToScope(scopePickerBobbin, 'global')}
+                  className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-teal-400 dark:hover:border-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/10 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-gray-900 dark:text-gray-100">All projects</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300 font-medium">
+                      global
+                    </span>
+                  </div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400">
+                    Available in every project you own
+                  </div>
+                </button>
+              )}
+            </div>
+
+            <div className="px-6 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+              <button
+                onClick={() => setScopePickerBobbin(null)}
+                className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

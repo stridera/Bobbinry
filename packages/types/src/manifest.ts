@@ -8,6 +8,11 @@ export interface Manifest {
   tags?: string[]
   license?: string
 
+  // Installation scope configuration
+  install?: {
+    scopes: ('project' | 'collection' | 'global')[]
+  }
+
   // Capabilities - what this bobbin can do
   capabilities: {
     publishable?: boolean

@@ -9,6 +9,7 @@ import { requireAuth, requireProjectOwnership, requireVerified } from '../middle
 import { getUserMembershipTier, getProjectLimit, getUserBadges } from '../lib/membership'
 import { checkAndUpgradeBobbin, type UpgradeResult } from '../lib/bobbin-upgrader'
 import { loadDiskManifests, normalizeManifestPathInput } from '../lib/disk-manifests'
+import { getEffectiveBobbins } from '../lib/effective-bobbins'
 
 const projectsPlugin: FastifyPluginAsync = async (fastify) => {
   // Create a new project (requires authentication)
@@ -338,6 +339,7 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
   })
 
   // List installed bobbins for project (requires ownership)
+  // Returns all bobbins visible from this project context: project + collection + global scopes.
   fastify.get<{
     Params: { projectId: string }
   }>('/projects/:projectId/bobbins', {
@@ -345,16 +347,20 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     try {
       const { projectId } = request.params
+      const userId = request.user!.id
 
       // Check ownership
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
       if (!hasAccess) return
+
+      // --- Project-scoped installations (with legacy migration) ---
 
       const installations = await db
         .select()
         .from(bobbinsInstalled)
         .where(and(
           eq(bobbinsInstalled.projectId, projectId),
+          eq(bobbinsInstalled.scope, 'project'),
           eq(bobbinsInstalled.enabled, true)
         ))
 
@@ -380,13 +386,16 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
             .from(bobbinsInstalled)
             .where(and(
               eq(bobbinsInstalled.projectId, projectId),
+              eq(bobbinsInstalled.scope, 'project'),
               eq(bobbinsInstalled.enabled, true)
             ))
         : installations
 
       // Read disk manifests concurrently, then check for upgrades
       const upgrades: UpgradeResult[] = []
-      const diskManifests = await loadDiskManifests(normalizedInstallations.map(i => i.bobbinId))
+      const allEffective = await getEffectiveBobbins(projectId, userId)
+      const allBobbinIds = allEffective.map(b => b.bobbinId)
+      const diskManifests = await loadDiskManifests(allBobbinIds)
 
       // Filter out bobbins that no longer exist on disk (renamed/removed).
       // Auto-uninstall stale records so they don't reappear.
@@ -415,14 +424,38 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
         }
       }
 
-      return {
-        bobbins: liveInstalls.map((install: any) => ({
+      // Build response from all effective bobbins (project + collection + global)
+      const seenIds = new Set<string>()
+      const bobbinsList: any[] = []
+
+      // Project-scoped first (with upgrade info)
+      for (const install of liveInstalls) {
+        seenIds.add(install.bobbinId)
+        bobbinsList.push({
           id: install.bobbinId,
           version: install.version,
-          // Disk is always the source of truth for first-party bobbins
+          scope: 'project',
+          scopeTarget: projectId,
           manifest: diskManifests.get(install.bobbinId),
-          installedAt: install.installedAt
-        })),
+          installedAt: install.installedAt,
+        })
+      }
+
+      // Collection + global scoped
+      for (const eb of allEffective) {
+        if (seenIds.has(eb.bobbinId)) continue
+        if (!diskManifests.has(eb.bobbinId)) continue
+        seenIds.add(eb.bobbinId)
+        bobbinsList.push({
+          id: eb.bobbinId,
+          scope: eb.scope,
+          scopeTarget: eb.scopeOwnerId,
+          manifest: diskManifests.get(eb.bobbinId),
+        })
+      }
+
+      return {
+        bobbins: bobbinsList,
         ...(upgrades.length > 0 && { upgrades })
       }
     } catch (error) {

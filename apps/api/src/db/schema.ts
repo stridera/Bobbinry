@@ -559,10 +559,13 @@ export const memberships = pgTable('memberships', {
   createdAt: timestamp('created_at').defaultNow().notNull()
 })
 
-// Installed bobbins per project
+// Installed bobbins — per project, collection, or user (global)
 export const bobbinsInstalled = pgTable('bobbins_installed', {
   id: uuid('id').defaultRandom().primaryKey(),
-  projectId: uuid('project_id').references(() => projects.id).notNull(),
+  projectId: uuid('project_id').references(() => projects.id),
+  collectionId: uuid('collection_id').references(() => projectCollections.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  scope: varchar('scope', { length: 20 }).notNull().default('project'),
   bobbinId: varchar('bobbin_id', { length: 255 }).notNull(),
   version: varchar('version', { length: 50 }).notNull(),
   manifestJson: jsonb('manifest_json').notNull(),
@@ -571,7 +574,10 @@ export const bobbinsInstalled = pgTable('bobbins_installed', {
   installedAt: timestamp('installed_at').defaultNow().notNull(),
   configUpdatedBy: uuid('config_updated_by').references(() => users.id),
   configUpdatedAt: timestamp('config_updated_at')
-})
+}, (table) => ({
+  collectionBobbinIdx: uniqueIndex('bobbins_installed_collection_bobbin_idx').on(table.collectionId, table.bobbinId),
+  globalBobbinIdx: uniqueIndex('bobbins_installed_global_bobbin_idx').on(table.userId, table.bobbinId),
+}))
 
 // Manifest versions registry
 export const manifestsVersions = pgTable('manifests_versions', {
@@ -600,7 +606,10 @@ export const publishTargets = pgTable('publish_targets', {
 // Entities table - Tier 1 JSONB storage for all collections
 export const entities = pgTable('entities', {
   id: uuid('id').defaultRandom().primaryKey(),
-  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+  collectionId: uuid('collection_id').references(() => projectCollections.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  scope: varchar('scope', { length: 20 }).notNull().default('project'),
   bobbinId: varchar('bobbin_id', { length: 255 }).notNull(),
   collectionName: varchar('collection_name', { length: 255 }).notNull(),
   entityData: jsonb('entity_data').notNull(),
@@ -611,6 +620,8 @@ export const entities = pgTable('entities', {
   updatedAt: timestamp('updated_at').defaultNow().notNull()
 }, (table) => ({
   projectCollectionIdx: index('entities_project_collection_idx').on(table.projectId, table.collectionName),
+  collCollectionIdx: index('entities_coll_collection_idx').on(table.collectionId, table.collectionName),
+  userCollectionIdx: index('entities_user_collection_idx').on(table.userId, table.collectionName),
   searchIdx: index('entities_search_idx').using('gin', table.entityData),
   orderIdx: index('entities_order_idx').using('btree', table.projectId, table.collectionName, sql`(entity_data->>'order')`),
   lastEditedIdx: index('entities_last_edited_idx').on(table.lastEditedAt),
@@ -688,6 +699,14 @@ export const bobbinsInstalledRelations = relations(bobbinsInstalled, ({ one }) =
   project: one(projects, {
     fields: [bobbinsInstalled.projectId],
     references: [projects.id]
+  }),
+  collection: one(projectCollections, {
+    fields: [bobbinsInstalled.collectionId],
+    references: [projectCollections.id]
+  }),
+  user: one(users, {
+    fields: [bobbinsInstalled.userId],
+    references: [users.id]
   })
 }))
 
@@ -702,6 +721,14 @@ export const entitiesRelations = relations(entities, ({ one }) => ({
   project: one(projects, {
     fields: [entities.projectId],
     references: [projects.id]
+  }),
+  collection: one(projectCollections, {
+    fields: [entities.collectionId],
+    references: [projectCollections.id]
+  }),
+  user: one(users, {
+    fields: [entities.userId],
+    references: [users.id]
   })
 }))
 

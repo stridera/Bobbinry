@@ -1,11 +1,12 @@
 import { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/connection'
-import { bobbinsInstalled, entities } from '../db/schema'
+import { entities } from '../db/schema'
 import { eq, and, sql, or } from 'drizzle-orm'
 import { requireAuth, requireProjectOwnership } from '../middleware/auth'
 import { serverEventBus, contentEdited } from '../lib/event-bus'
-import { findBobbinForCollection } from '../lib/disk-manifests'
+import { findBobbinForCollectionAcrossScopes } from '../lib/disk-manifests'
+import { getEffectiveBobbins, getCollectionIdsForProject, buildScopeCondition } from '../lib/effective-bobbins'
 
 /** Format an entity row into the standard API response shape */
 function formatEntityResponse(row: typeof entities.$inferSelect) {
@@ -15,6 +16,7 @@ function formatEntityResponse(row: typeof entities.$inferSelect) {
     _meta: {
       bobbinId: row.bobbinId,
       collection: row.collectionName,
+      scope: row.scope,
       version: row.version,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt
@@ -77,12 +79,14 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
       if (!hasAccess) return
 
-      // For now, use JSONB storage (Tier 1)
-      // In production, this would check if collection has been promoted to physical tables
+      // Resolve scope: include entities from project, its collections, and global
+      const userId = request.user!.id
+      const collectionIds = await getCollectionIdsForProject(projectId)
+      const scopeFilter = buildScopeCondition(projectId, collectionIds, userId)
 
       // Build query conditions
       let whereCondition = and(
-        eq(entities.projectId, projectId),
+        scopeFilter,
         eq(entities.collectionName, collection)
       )
 
@@ -186,41 +190,44 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
       if (!hasAccess) return
 
-      // Validate that the collection exists in an installed bobbin
-      const installation = await db
-        .select()
-        .from(bobbinsInstalled)
-        .where(and(
-          eq(bobbinsInstalled.projectId, projectId),
-          eq(bobbinsInstalled.enabled, true)
-        ))
+      // Validate that the collection exists in an installed bobbin (across all scopes)
+      const userId = request.user!.id
+      const effective = await getEffectiveBobbins(projectId, userId)
 
-      if (installation.length === 0) {
+      if (effective.length === 0) {
         return reply.status(400).send({ error: 'No bobbins installed in project' })
       }
 
-      // Find which bobbin contains this collection (use disk manifests as source of truth)
-      const bobbinIds = installation.map(i => i.bobbinId)
-      const targetBobbinId = await findBobbinForCollection(bobbinIds, collection)
+      // Find which bobbin contains this collection (project > collection > global priority)
+      const match = await findBobbinForCollectionAcrossScopes(effective, collection)
 
-      if (!targetBobbinId) {
+      if (!match) {
         return reply.status(400).send({
           error: `Collection '${collection}' not found in any installed bobbin`
         })
       }
 
-      // Create entity in JSONB storage (Tier 1)
+      // Set the correct FK based on the resolved scope
       const entityId = crypto.randomUUID()
+      const insertValues: Record<string, any> = {
+        id: entityId,
+        bobbinId: match.bobbinId,
+        collectionName: collection,
+        entityData: data,
+        scope: match.scope,
+      }
+
+      if (match.scope === 'project') {
+        insertValues.projectId = projectId
+      } else if (match.scope === 'collection') {
+        insertValues.collectionId = match.scopeOwnerId
+      } else {
+        insertValues.userId = userId
+      }
 
       const result = await db
         .insert(entities)
-        .values({
-          id: entityId,
-          projectId,
-          bobbinId: targetBobbinId,
-          collectionName: collection,
-          entityData: data
-        })
+        .values(insertValues as any)
         .returning()
 
       const created = result[0]
@@ -274,13 +281,18 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
       if (!hasAccess) return
 
+      // Resolve scope for entity visibility
+      const userId = request.user!.id
+      const collectionIds = await getCollectionIdsForProject(projectId)
+      const scopeFilter = buildScopeCondition(projectId, collectionIds, userId)
+
       // First, fetch the current entity to merge with existing data
       const current = await db
         .select()
         .from(entities)
         .where(and(
           eq(entities.id, entityId),
-          eq(entities.projectId, projectId),
+          scopeFilter,
           eq(entities.collectionName, collection)
         ))
         .limit(1)
@@ -317,7 +329,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
         })
         .where(and(
           eq(entities.id, entityId),
-          eq(entities.projectId, projectId),
+          scopeFilter,
           eq(entities.collectionName, collection),
           // Double-check version at DB level to prevent TOCTOU race
           eq(entities.version, currentEntity.version)
@@ -421,7 +433,13 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
       if (!hasAccess) return
 
+      // Resolve scope for entity visibility
+      const userId = request.user!.id
+      const collectionIds = await getCollectionIdsForProject(projectId)
+      const scopeFilter = buildScopeCondition(projectId, collectionIds, userId)
+
       // If deleting a container, use cascade delete in a transaction
+      // (containers are always project-scoped — manuscript is project-only)
       if (collection === 'containers') {
         await db.transaction(async (tx) => {
           await deleteContainerCascade(projectId, entityId, tx)
@@ -435,7 +453,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
         .delete(entities)
         .where(and(
           eq(entities.id, entityId),
-          eq(entities.projectId, projectId),
+          scopeFilter,
           eq(entities.collectionName, collection)
         ))
         .returning({ id: entities.id })
@@ -480,6 +498,12 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
       if (!hasAccess) return
 
+      // Resolve scope for entity visibility
+      const userId = request.user!.id
+      const collectionIds = await getCollectionIdsForProject(projectId)
+      const scopeFilter = buildScopeCondition(projectId, collectionIds, userId)
+      const effective = await getEffectiveBobbins(projectId, userId)
+
       // Start a transaction
       const results = await db.transaction(async (tx) => {
         const opResults = []
@@ -489,41 +513,40 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
 
           try {
             let result
-            
+
             switch (type) {
               case 'create':
                 if (!data) {
                   throw new Error('Create operation requires data')
                 }
-                
-                // Find target bobbin (use disk manifests as source of truth)
-                const installations = await tx
-                  .select({ bobbinId: bobbinsInstalled.bobbinId })
-                  .from(bobbinsInstalled)
-                  .where(and(
-                    eq(bobbinsInstalled.projectId, projectId),
-                    eq(bobbinsInstalled.enabled, true)
-                  ))
 
-                const targetBobbinId = await findBobbinForCollection(
-                  installations.map(i => i.bobbinId),
-                  collection
-                )
+                // Find target bobbin across all scopes
+                const match = await findBobbinForCollectionAcrossScopes(effective, collection)
 
-                if (!targetBobbinId) {
+                if (!match) {
                   throw new Error(`Collection '${collection}' not found`)
                 }
 
                 const entityId = crypto.randomUUID()
+                const insertValues: Record<string, any> = {
+                  id: entityId,
+                  bobbinId: match.bobbinId,
+                  collectionName: collection,
+                  entityData: data,
+                  scope: match.scope,
+                }
+
+                if (match.scope === 'project') {
+                  insertValues.projectId = projectId
+                } else if (match.scope === 'collection') {
+                  insertValues.collectionId = match.scopeOwnerId
+                } else {
+                  insertValues.userId = userId
+                }
+
                 const created = await tx
                   .insert(entities)
-                  .values({
-                    id: entityId,
-                    projectId,
-                    bobbinId: targetBobbinId,
-                    collectionName: collection,
-                    entityData: data
-                  })
+                  .values(insertValues as any)
                   .returning()
 
                 result = {
@@ -536,7 +559,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
                 if (!id || !data) {
                   throw new Error('Update operation requires id and data')
                 }
-                
+
                 const updated = await tx
                   .update(entities)
                   .set({
@@ -545,7 +568,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
                   })
                   .where(and(
                     eq(entities.id, id),
-                    eq(entities.projectId, projectId),
+                    scopeFilter,
                     eq(entities.collectionName, collection)
                   ))
                   .returning()
@@ -564,8 +587,8 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
                 if (!id) {
                   throw new Error('Delete operation requires id')
                 }
-                
-                // Use cascade delete for containers
+
+                // Use cascade delete for containers (always project-scoped)
                 if (collection === 'containers') {
                   await deleteContainerCascade(projectId, id, tx)
                   result = { deleted: true, id }
@@ -574,7 +597,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
                     .delete(entities)
                     .where(and(
                       eq(entities.id, id),
-                      eq(entities.projectId, projectId),
+                      scopeFilter,
                       eq(entities.collectionName, collection)
                     ))
                     .returning({ id: entities.id })
@@ -632,12 +655,17 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
       if (!hasAccess) return
 
+      // Resolve scope for entity visibility
+      const userId = request.user!.id
+      const collectionIds = await getCollectionIdsForProject(projectId)
+      const scopeFilter = buildScopeCondition(projectId, collectionIds, userId)
+
       const result = await db
         .select()
         .from(entities)
         .where(and(
           eq(entities.id, entityId),
-          eq(entities.projectId, projectId),
+          scopeFilter,
           eq(entities.collectionName, collection)
         ))
 

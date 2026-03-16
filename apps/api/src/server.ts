@@ -31,6 +31,7 @@ import { getMetricsSnapshot, incrementCounter, observeTimingMs } from './lib/met
 import { verifyInternalRequest } from './lib/internal-auth'
 import googleDrivePlugin from './routes/google-drive'
 import aiToolsPlugin from './routes/ai-tools'
+import userBobbinsPlugin from './routes/user-bobbins'
 import { initDriveSyncHandler } from './jobs/drive-sync-handler'
 import { initDiscordNotifierHandler } from './jobs/discord-notifier-handler'
 import { initDiscordRolesHandler } from './jobs/discord-roles-handler'
@@ -229,6 +230,7 @@ export function build(opts = {}): FastifyInstance {
   server.register(adminPlugin, { prefix: '/api' })
   server.register(googleDrivePlugin, { prefix: '/api' })
   server.register(aiToolsPlugin, { prefix: '/api' })
+  server.register(userBobbinsPlugin, { prefix: '/api' })
 
   // Warm disk manifest cache, then start the trigger scheduler
   server.addHook('onReady', async () => {

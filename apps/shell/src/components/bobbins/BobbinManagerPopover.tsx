@@ -10,6 +10,8 @@ import type { BobbinMetadata } from './types'
 interface InstalledBobbin {
   id: string
   version: string
+  scope?: 'project' | 'collection' | 'global'
+  scopeTarget?: string
   manifest: {
     name: string
     description?: string
@@ -181,23 +183,44 @@ export function BobbinManagerPopover({ projectId, installedBobbins, onOpenFullMa
                 </div>
               ) : (
                 <div className="py-1">
-                  {installedBobbins.map(bobbin => (
-                    <div key={bobbin.id} className="flex items-center justify-between px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                          {bobbin.manifest.name}
-                        </p>
-                        <p className="text-xs text-gray-400 dark:text-gray-500">v{bobbin.version}</p>
+                  {installedBobbins.map(bobbin => {
+                    const scope = bobbin.scope || 'project'
+                    const isShared = scope !== 'project'
+                    return (
+                      <div key={bobbin.id} className="flex items-center justify-between px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                              {bobbin.manifest.name}
+                            </p>
+                            {isShared && (
+                              <span className={`text-[10px] px-1 py-0.5 rounded font-medium ${
+                                scope === 'collection'
+                                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
+                                  : 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300'
+                              }`}>
+                                {scope === 'collection' ? 'series' : 'global'}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-400 dark:text-gray-500">v{bobbin.version}</p>
+                        </div>
+                        {isShared ? (
+                          <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0 px-2 py-1">
+                            Shared
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleUninstall(bobbin.id)}
+                            disabled={busyId === bobbin.id}
+                            className="text-xs text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 disabled:opacity-50 px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors shrink-0"
+                          >
+                            {busyId === bobbin.id ? 'Removing...' : 'Remove'}
+                          </button>
+                        )}
                       </div>
-                      <button
-                        onClick={() => handleUninstall(bobbin.id)}
-                        disabled={busyId === bobbin.id}
-                        className="text-xs text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 disabled:opacity-50 px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors shrink-0"
-                      >
-                        {busyId === bobbin.id ? 'Removing...' : 'Remove'}
-                      </button>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )
             ) : (

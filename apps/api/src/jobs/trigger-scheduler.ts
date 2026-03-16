@@ -117,7 +117,7 @@ export function registerActionHandler(
 
 interface InstalledBobbin {
   bobbinId: string
-  projectId: string
+  projectId: string | null
 }
 
 /** Shared query for both schedule triggers and backup sync. */
@@ -152,6 +152,9 @@ export async function processScheduleTriggers(
 
   try {
     for (const bobbin of installed) {
+      // Schedule triggers only apply to project-scoped installations
+      if (!bobbin.projectId) continue
+
       const manifest = diskManifests.get(bobbin.bobbinId)
       const interactions: ManifestInteractions | undefined = manifest?.interactions
 
@@ -227,6 +230,9 @@ export async function processBackupSync(
     const now = new Date()
 
     for (const bobbin of installed) {
+      // Backup sync only applies to project-scoped installations
+      if (!bobbin.projectId) continue
+
       const manifest = diskManifests.get(bobbin.bobbinId)
       const capabilities = manifest?.capabilities || {}
       const sync = manifest?.sync || {}

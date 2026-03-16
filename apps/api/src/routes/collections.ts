@@ -6,11 +6,14 @@
  */
 
 import { FastifyPluginAsync } from 'fastify'
+import { parse as parseYAML } from 'yaml'
 import { db } from '../db/connection'
-import { projectCollections, projectCollectionMemberships, projects } from '../db/schema'
+import { projectCollections, projectCollectionMemberships, projects, bobbinsInstalled } from '../db/schema'
 import { eq, and, desc, sql, isNull, isNotNull } from 'drizzle-orm'
 import { randomBytes } from 'crypto'
 import { requireAuth } from '../middleware/auth'
+import { ManifestCompiler } from '@bobbinry/compiler'
+import { loadDiskManifests, getManifestScopes, normalizeManifestPathInput } from '../lib/disk-manifests'
 
 /** Internal helper for collection ownership checks. */
 async function checkCollectionOwnership(
@@ -598,6 +601,161 @@ const collectionsPlugin: FastifyPluginAsync = async (fastify) => {
     } catch (error) {
       fastify.log.error({ error }, 'Failed to release short URL')
       return reply.status(500).send({ error: 'Failed to release short URL' })
+    }
+  })
+
+  // ─── Collection-scoped bobbin management ──────────────────────────
+
+  /**
+   * Install bobbin at collection scope
+   * POST /collections/:collectionId/bobbins/install
+   */
+  fastify.post<{
+    Params: { collectionId: string }
+    Body: {
+      manifestPath?: string
+      manifestContent?: string
+      manifestType?: 'yaml' | 'json'
+    }
+  }>('/collections/:collectionId/bobbins/install', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    try {
+      const { collectionId } = request.params
+      const { manifestPath, manifestContent, manifestType } = request.body
+
+      const owned = await requireCollectionOwnership(request, reply, collectionId)
+      if (!owned) return
+
+      // Get manifest content
+      let content: string
+      let type: 'yaml' | 'json'
+
+      if (manifestPath) {
+        const fs = await import('fs/promises')
+        const path = await import('path')
+        const normalizedManifestPath = normalizeManifestPathInput(manifestPath)
+        const projectRoot = path.resolve(__dirname, '../../../..')
+        const bobbinsDir = path.resolve(projectRoot, 'bobbins')
+        const fullPath = path.resolve(projectRoot, normalizedManifestPath)
+        const realPath = await fs.realpath(fullPath).catch(() => fullPath)
+        if (!realPath.startsWith(bobbinsDir + path.sep)) {
+          return reply.status(403).send({ error: 'Access denied', message: 'Manifest path must be within the bobbins directory' })
+        }
+        content = await fs.readFile(fullPath, 'utf-8')
+        type = normalizedManifestPath.endsWith('.yaml') || normalizedManifestPath.endsWith('.yml') ? 'yaml' : 'json'
+      } else if (manifestContent) {
+        content = manifestContent
+        type = manifestType || 'json'
+      } else {
+        return reply.status(400).send({ error: 'Either manifestPath or manifestContent is required' })
+      }
+
+      let manifest: any
+      try {
+        manifest = type === 'yaml' ? parseYAML(content) : JSON.parse(content)
+      } catch {
+        return reply.status(400).send({ error: 'Invalid manifest format' })
+      }
+
+      // Validate that the manifest supports collection scope
+      const scopes = getManifestScopes(manifest)
+      if (!scopes.includes('collection')) {
+        return reply.status(400).send({ error: `Bobbin '${manifest.id}' does not support collection-scope installation` })
+      }
+
+      // Compile & validate
+      const compiler = new ManifestCompiler({})
+      const compileResult = await compiler.compile(manifest)
+      if (!compileResult.success) {
+        return reply.status(400).send({ error: 'Manifest compilation failed', details: compileResult.errors })
+      }
+
+      // Upsert
+      const existing = await db.select().from(bobbinsInstalled)
+        .where(and(eq(bobbinsInstalled.collectionId, collectionId), eq(bobbinsInstalled.bobbinId, manifest.id)))
+        .limit(1)
+
+      if (existing.length > 0) {
+        await db.update(bobbinsInstalled)
+          .set({ version: manifest.version, manifestJson: manifest, enabled: true, installedAt: new Date() })
+          .where(eq(bobbinsInstalled.id, existing[0]!.id))
+        return { success: true, action: 'updated', bobbin: { id: manifest.id, name: manifest.name, version: manifest.version } }
+      }
+
+      const [installation] = await db.insert(bobbinsInstalled).values({
+        collectionId,
+        scope: 'collection',
+        bobbinId: manifest.id,
+        version: manifest.version,
+        manifestJson: manifest,
+        enabled: true,
+      }).returning()
+
+      return { success: true, action: 'installed', bobbin: { id: manifest.id, name: manifest.name, version: manifest.version }, installation: { id: installation!.id, installedAt: installation!.installedAt } }
+    } catch (error) {
+      fastify.log.error({ error }, 'Failed to install bobbin at collection scope')
+      return reply.status(500).send({ error: 'Failed to install bobbin' })
+    }
+  })
+
+  /**
+   * List collection-scoped bobbins
+   * GET /collections/:collectionId/bobbins
+   */
+  fastify.get<{
+    Params: { collectionId: string }
+  }>('/collections/:collectionId/bobbins', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    try {
+      const { collectionId } = request.params
+
+      const owned = await requireCollectionOwnership(request, reply, collectionId)
+      if (!owned) return
+
+      const installations = await db.select().from(bobbinsInstalled)
+        .where(and(eq(bobbinsInstalled.collectionId, collectionId), eq(bobbinsInstalled.scope, 'collection'), eq(bobbinsInstalled.enabled, true)))
+
+      const diskManifests = await loadDiskManifests(installations.map(i => i.bobbinId))
+
+      return {
+        bobbins: installations.filter(i => diskManifests.has(i.bobbinId)).map(install => ({
+          id: install.bobbinId,
+          version: install.version,
+          scope: 'collection',
+          manifest: diskManifests.get(install.bobbinId),
+          installedAt: install.installedAt,
+        }))
+      }
+    } catch (error) {
+      fastify.log.error({ error }, 'Failed to list collection bobbins')
+      return reply.status(500).send({ error: 'Failed to list collection bobbins' })
+    }
+  })
+
+  /**
+   * Uninstall bobbin from collection
+   * DELETE /collections/:collectionId/bobbins/:bobbinId
+   */
+  fastify.delete<{
+    Params: { collectionId: string; bobbinId: string }
+  }>('/collections/:collectionId/bobbins/:bobbinId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    try {
+      const { collectionId, bobbinId } = request.params
+
+      const owned = await requireCollectionOwnership(request, reply, collectionId)
+      if (!owned) return
+
+      await db.delete(bobbinsInstalled)
+        .where(and(eq(bobbinsInstalled.collectionId, collectionId), eq(bobbinsInstalled.bobbinId, bobbinId)))
+
+      return { success: true, message: `Bobbin ${bobbinId} uninstalled from collection` }
+    } catch (error) {
+      fastify.log.error({ error }, 'Failed to uninstall bobbin from collection')
+      return reply.status(500).send({ error: 'Failed to uninstall bobbin' })
     }
   })
 }

@@ -1,3 +1,5 @@
+export type BobbinScope = 'project' | 'collection' | 'global'
+
 export interface BobbinMetadata {
   id: string
   name: string
@@ -6,6 +8,7 @@ export interface BobbinMetadata {
   description: string
   tags: string[]
   license?: string
+  scopes?: BobbinScope[]
   capabilities: {
     publishable?: boolean
     external?: boolean
@@ -30,6 +33,8 @@ export interface BobbinMetadata {
 export interface InstalledBobbin {
   id: string
   version: string
+  scope?: BobbinScope
+  scopeTarget?: string
   manifest: any
   installedAt: string
 }
