@@ -25,9 +25,12 @@ COPY packages/ui/package.json packages/ui/
 COPY packages/ui-components/package.json packages/ui-components/
 
 # Bobbins
+COPY bobbins/ai-tools/package.json bobbins/ai-tools/
 COPY bobbins/cat/package.json bobbins/cat/
 COPY bobbins/corkboard/package.json bobbins/corkboard/
 COPY bobbins/dictionary-panel/package.json bobbins/dictionary-panel/
+COPY bobbins/discord-notifier/package.json bobbins/discord-notifier/
+COPY bobbins/discord-roles/package.json bobbins/discord-roles/
 COPY bobbins/entities/package.json bobbins/entities/
 COPY bobbins/goals/package.json bobbins/goals/
 COPY bobbins/google-drive-backup/package.json bobbins/google-drive-backup/
