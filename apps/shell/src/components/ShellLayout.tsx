@@ -1,10 +1,16 @@
 'use client'
 
-import { ReactNode, useState, useMemo, useEffect, useRef } from 'react'
+import { ReactNode, useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { ExtensionSlot } from './ExtensionSlot'
 import { UserMenu } from './UserMenu'
 import { BobbinManagerPopover } from './bobbins'
+
+const DEFAULT_LEFT_WIDTH = 256   // current w-64
+const DEFAULT_RIGHT_WIDTH = 320  // current w-80
+const MIN_PANEL_WIDTH = 200
+const MAX_PANEL_WIDTH = 600
+const RESIZE_HANDLE_WIDTH = 4
 
 interface InstalledBobbin {
   id: string
@@ -66,9 +72,81 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
   const [showFocusHint, setShowFocusHint] = useState(false)
   const focusModeRef = useRef(false)
 
+  const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
+    if (typeof window === 'undefined') return DEFAULT_LEFT_WIDTH
+    const saved = localStorage.getItem('shellPanelWidth:left')
+    return saved ? Number(saved) : DEFAULT_LEFT_WIDTH
+  })
+  const [rightPanelWidth, setRightPanelWidth] = useState(() => {
+    if (typeof window === 'undefined') return DEFAULT_RIGHT_WIDTH
+    const saved = localStorage.getItem('shellPanelWidth:right')
+    return saved ? Number(saved) : DEFAULT_RIGHT_WIDTH
+  })
+  const [resizingPanel, setResizingPanel] = useState<'left' | 'right' | null>(null)
+  const resizeDragRef = useRef<{ side: 'left' | 'right'; startX: number; startWidth: number } | null>(null)
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration bridge
     setIsHydrated(true)
+  }, [])
+
+  // Persist panel widths
+  useEffect(() => {
+    localStorage.setItem('shellPanelWidth:left', String(leftPanelWidth))
+  }, [leftPanelWidth])
+  useEffect(() => {
+    localStorage.setItem('shellPanelWidth:right', String(rightPanelWidth))
+  }, [rightPanelWidth])
+
+  // Drag handler
+  useEffect(() => {
+    if (!resizingPanel) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const drag = resizeDragRef.current
+      if (!drag) return
+      const maxWidth = Math.min(MAX_PANEL_WIDTH, window.innerWidth * 0.5)
+      if (drag.side === 'left') {
+        const delta = e.clientX - drag.startX
+        setLeftPanelWidth(Math.max(MIN_PANEL_WIDTH, Math.min(maxWidth, drag.startWidth + delta)))
+      } else {
+        const delta = drag.startX - e.clientX // inverted for right panel
+        setRightPanelWidth(Math.max(MIN_PANEL_WIDTH, Math.min(maxWidth, drag.startWidth + delta)))
+      }
+    }
+
+    const handleMouseUp = () => {
+      setResizingPanel(null)
+      resizeDragRef.current = null
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [resizingPanel])
+
+  const handleResizeMouseDown = useCallback((side: 'left' | 'right', e: React.MouseEvent) => {
+    e.preventDefault()
+    resizeDragRef.current = {
+      side,
+      startX: e.clientX,
+      startWidth: side === 'left' ? leftPanelWidth : rightPanelWidth
+    }
+    setResizingPanel(side)
+  }, [leftPanelWidth, rightPanelWidth])
+
+  const handleResizeDoubleClick = useCallback((side: 'left' | 'right') => {
+    if (side === 'left') setLeftPanelWidth(DEFAULT_LEFT_WIDTH)
+    else setRightPanelWidth(DEFAULT_RIGHT_WIDTH)
   }, [])
 
   useEffect(() => {
@@ -215,9 +293,10 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
       <div className="flex-1 flex overflow-hidden">
         {/* Left Panel */}
         <aside
-          className={`bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transition-all duration-300 ${
-            focusMode || (isHydrated && leftPanelCollapsed) ? 'w-0' : 'w-64'
+          className={`bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 ${
+            resizingPanel === 'left' ? '' : 'transition-all duration-300'
           } overflow-hidden`}
+          style={{ width: focusMode || (isHydrated && leftPanelCollapsed) ? 0 : leftPanelWidth }}
         >
           <div className="h-full">
             <ExtensionSlot
@@ -239,6 +318,16 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
             />
           </div>
         </aside>
+
+        {/* Left resize handle */}
+        {!focusMode && !(isHydrated && leftPanelCollapsed) && (
+          <div
+            className="shrink-0 cursor-col-resize bg-transparent hover:bg-blue-400 active:bg-blue-500 transition-colors"
+            style={{ width: RESIZE_HANDLE_WIDTH }}
+            onMouseDown={(e) => handleResizeMouseDown('left', e)}
+            onDoubleClick={() => handleResizeDoubleClick('left')}
+          />
+        )}
 
         {/* Main Content */}
         <main className="flex-1 flex flex-col overflow-hidden">
@@ -262,11 +351,22 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
           />
         </main>
 
+        {/* Right resize handle */}
+        {!focusMode && !(isHydrated && rightPanelCollapsed) && (
+          <div
+            className="shrink-0 cursor-col-resize bg-transparent hover:bg-blue-400 active:bg-blue-500 transition-colors"
+            style={{ width: RESIZE_HANDLE_WIDTH }}
+            onMouseDown={(e) => handleResizeMouseDown('right', e)}
+            onDoubleClick={() => handleResizeDoubleClick('right')}
+          />
+        )}
+
         {/* Right Panel */}
         <aside
-          className={`bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 transition-all duration-300 ${
-            focusMode || (isHydrated && rightPanelCollapsed) ? 'w-0' : 'w-80'
+          className={`bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 ${
+            resizingPanel === 'right' ? '' : 'transition-all duration-300'
           } overflow-hidden`}
+          style={{ width: focusMode || (isHydrated && rightPanelCollapsed) ? 0 : rightPanelWidth }}
         >
           <div className="h-full">
             <ExtensionSlot
