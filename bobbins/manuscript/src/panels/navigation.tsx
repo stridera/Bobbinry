@@ -678,33 +678,35 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     const insertAt = position === 'before' ? targetIndex : targetIndex + 1
     filtered.splice(insertAt, 0, draggedId)
 
-    // Persist: update parent if moving across containers, then update order for all siblings
+    // Persist: update parent and order for all items at the target level
+    // When moving across containers, merge parent + order into one update for the dragged entity
+    // to avoid two concurrent updates hitting the server's version check
     const updates: Promise<any>[] = []
 
-    if (!sameParent) {
-      const collection = draggedType === 'container' ? 'containers' : 'content'
-      const field = draggedType === 'container' ? 'parent_id' : 'container_id'
-      updates.push(
-        sdk.entities.update(collection, draggedId, {
-          [field]: targetParentId,
-          updated_at: new Date().toISOString()
-        })
-      )
-    }
-
-    // Update order for all items at the target level
     for (let i = 0; i < filtered.length; i++) {
       const nodeId = filtered[i]!
-      // Look up the node to determine its collection
       const node = findNodeById(nodeId)
       if (!node) continue
       const collection = node.nodeType === 'container' ? 'containers' : 'content'
-      updates.push(
-        sdk.entities.update(collection, nodeId, {
-          order: (i + 1) * 100,
-          updated_at: new Date().toISOString()
-        })
-      )
+
+      if (!sameParent && nodeId === draggedId) {
+        // Merge parent change + order into a single update
+        const field = draggedType === 'container' ? 'parent_id' : 'container_id'
+        updates.push(
+          sdk.entities.update(collection, draggedId, {
+            [field]: targetParentId,
+            order: (i + 1) * 100,
+            updated_at: new Date().toISOString()
+          })
+        )
+      } else {
+        updates.push(
+          sdk.entities.update(collection, nodeId, {
+            order: (i + 1) * 100,
+            updated_at: new Date().toISOString()
+          })
+        )
+      }
     }
 
     await Promise.all(updates)
