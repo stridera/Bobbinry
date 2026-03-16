@@ -10,7 +10,7 @@
     "./actions/*": "./actions/*.ts"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.actions.json",
+    "build": "echo 'actions loaded at runtime by API'",
     "dev": "echo 'consumed as source by shell'",
     "typecheck": "echo 'consumed as source by shell'"
   },
