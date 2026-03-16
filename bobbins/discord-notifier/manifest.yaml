@@ -1,6 +1,6 @@
 id: discord-notifier
 name: Discord Notifier
-version: 1.0.0
+version: 1.0.1
 author: Bobbins Core
 description: Announce chapter publishes to Discord channels via webhooks. Map tiers to channels for targeted notifications.
 tags: [discord, notifications, integration, webhooks]
@@ -44,10 +44,14 @@ interactions:
 external:
   endpoints:
     - { id: discord_webhook, url: "https://discord.com/api/webhooks/*", method: POST, description: Send embeds to Discord channels }
+    - { id: bobbinry_links, url: "https://bobbinry.com/*", method: GET, description: Chapter links in Discord embeds }
   permissions:
     - endpoint: discord.com
       reason: Send chapter announcements to Discord channels
       required: true
+    - endpoint: bobbinry.com
+      reason: Generate chapter links in Discord notification embeds
+      required: false
 
 compatibility:
   minShellVersion: 1.0.0
