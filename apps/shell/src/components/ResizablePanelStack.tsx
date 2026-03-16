@@ -380,8 +380,24 @@ export function ResizablePanelStack({
   }, [])
 
   const allHeadersHeight = visiblePanels.length * HEADER_HEIGHT
-  const dividersHeightTotal = Math.max(0, visiblePanels.length - 1) * DIVIDER_HEIGHT
+  const activeDividerCount = visiblePanels.reduce((count, item, index) => {
+    const next = visiblePanels[index + 1]
+    if (!next) return count
+    if (panelState.collapsed[item.orderIndex] || panelState.collapsed[next.orderIndex]) return count
+    return count + 1
+  }, 0)
+  const dividersHeightTotal = activeDividerCount * DIVIDER_HEIGHT
   const availableHeight = Math.max(0, containerHeight - allHeadersHeight - dividersHeightTotal)
+
+  // Redistribute available body space only among non-collapsed panels
+  const effectiveSizes = useMemo(() => {
+    const raw = visiblePanels.map((item, index) =>
+      panelState.collapsed[item.orderIndex] ? 0 : (visibleSizes[index] ?? 0)
+    )
+    const total = raw.reduce((sum, s) => sum + s, 0)
+    if (total <= 0) return visibleSizes
+    return raw.map(s => (s / total) * 100)
+  }, [visiblePanels, visibleSizes, panelState.collapsed])
   const hiddenCount = panels.length - visiblePanels.length
   const showManagementBar = panels.length > 1 || hiddenCount > 0
 
@@ -474,7 +490,7 @@ export function ResizablePanelStack({
           // eslint-disable-next-line react-hooks/refs -- getActionsRef is a stable ref-callback factory, not reading mutable state for render
           visiblePanels.map((item, index) => {
             const isCollapsed = panelState.collapsed[item.orderIndex]
-            const heightPercent = visibleSizes[index] || 100 / visiblePanels.length
+            const heightPercent = effectiveSizes[index] || 100 / visiblePanels.length
             const heightPx = isCollapsed ? HEADER_HEIGHT : (heightPercent / 100) * availableHeight + HEADER_HEIGHT
             const isDragOver = dropTarget === index && reorderDrag?.sourceIndex !== index
             const isDragSource = reorderDrag?.sourceIndex === index
