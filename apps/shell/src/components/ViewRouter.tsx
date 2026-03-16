@@ -93,22 +93,50 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
     return nav ? `${nav.bobbinId}:${nav.entityType}:${nav.entityId}` : ''
   }
 
+  function buildNavUrl(nav: NavigationState): string {
+    return `/projects/${projectId}/${nav.bobbinId}/${nav.entityType}/${nav.entityId}`
+  }
+
+  const lastNavKey = `bobbinry:lastNav:${projectId}`
+
   function updateNav(nav: NavigationState | null) {
     const key = navKey(nav)
     if (key === navKeyRef.current) return
     navKeyRef.current = key
     setCurrentNav(nav)
+
+    // Persist last-visited so we can restore on next visit
+    if (nav) {
+      try { localStorage.setItem(lastNavKey, JSON.stringify(nav)) } catch {}
+    }
   }
 
-  // Check for initial state from history on mount
+  // Check for initial state from history or localStorage on mount
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.history.state) {
+    if (typeof window === 'undefined') return
+
+    if (window.history.state) {
       const state = window.history.state as NavigationState
       if (state.entityType && state.entityId && state.bobbinId) {
         console.log('[ViewRouter] Restoring state from history:', state)
         updateNav(state)
+        return
       }
     }
+
+    // Fall back to last-visited chapter from localStorage
+    // Note: don't call replaceState here — changing the URL to the deep-link
+    // format would cause Next.js to re-route to the [...slug] page component.
+    try {
+      const saved = localStorage.getItem(lastNavKey)
+      if (saved) {
+        const state = JSON.parse(saved) as NavigationState
+        if (state.entityType && state.entityId && state.bobbinId) {
+          console.log('[ViewRouter] Restoring last-visited from localStorage:', state)
+          updateNav(state)
+        }
+      }
+    } catch {}
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -121,8 +149,7 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
       console.log('[ViewRouter] Navigation event received:', navState)
 
       if (!isNavigatingRef.current) {
-        const url = `/projects/${projectId}/${navState.bobbinId}/${navState.entityType}/${navState.entityId}`
-        window.history.pushState(navState, '', url)
+        window.history.pushState(navState, '', buildNavUrl(navState))
       }
 
       updateNav(navState)

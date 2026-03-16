@@ -59,7 +59,6 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   // Track auto-selection: only auto-navigate to first item once per mount
   const hasAutoSelectedRef = useRef(false)
   const selectedNodeIdRef = useRef<string | null>(null)
-  const autoSelectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Map nodeId → parentId for quick lookup during drag operations
   const nodeParentMap = useRef(new Map<string, string | null>())
@@ -137,18 +136,12 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     selectedNodeIdRef.current = selectedNodeId
   }, [selectedNodeId])
 
-  // Clean up auto-select timer on unmount
-  useEffect(() => {
-    return () => {
-      if (autoSelectTimerRef.current) clearTimeout(autoSelectTimerRef.current)
-    }
-  }, [])
-
   // Sync sidebar highlight with the actual view the router navigated to.
   useEffect(() => {
     function handleViewContextChange(e: Event) {
       const detail = (e as CustomEvent).detail
       if (detail?.entityId) {
+        selectedNodeIdRef.current = detail.entityId
         setSelectedNodeId(detail.entityId)
       }
     }
@@ -297,28 +290,76 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
       nodeParentMap.current = parentMap
       setTree(treeData)
 
-      // Auto-select first content item on initial load if nothing is selected
+      // Auto-select on initial load: prefer last-visited chapter from
+      // localStorage, fall back to first content item in the tree.
       if (!hasAutoSelectedRef.current && treeData.length > 0) {
         hasAutoSelectedRef.current = true
-        const findFirstContent = (nodes: TreeNode[]): TreeNode | null => {
-          for (const node of nodes) {
-            if (node.nodeType === 'content') return node
-            if (node.children) {
-              const found = findFirstContent(node.children)
-              if (found) return found
+
+        // Check if ViewRouter already restored a selection (e.g. from history state)
+        if (!selectedNodeIdRef.current) {
+          // Try to restore the last-visited chapter from localStorage
+          let targetNode: TreeNode | null = null
+          try {
+            const saved = localStorage.getItem(`bobbinry:lastNav:${projectId}`)
+            if (saved) {
+              const state = JSON.parse(saved)
+              if (state?.entityId) {
+                const findNode = (nodes: TreeNode[]): TreeNode | null => {
+                  for (const node of nodes) {
+                    if (node.id === state.entityId) return node
+                    if (node.children) {
+                      const found = findNode(node.children)
+                      if (found) return found
+                    }
+                  }
+                  return null
+                }
+                targetNode = findNode(treeData)
+              }
+            }
+          } catch {}
+
+          // Fall back to most recently updated content item
+          if (!targetNode) {
+            const contentIds = new Set<string>()
+            const collectContentIds = (nodes: TreeNode[]) => {
+              for (const node of nodes) {
+                if (node.nodeType === 'content') contentIds.add(node.id)
+                if (node.children) collectContentIds(node.children)
+              }
+            }
+            collectContentIds(treeData)
+
+            if (contentIds.size > 0) {
+              let latestId: string | null = null
+              let latestTime = ''
+              for (const item of allContent.data as any[]) {
+                if (!contentIds.has(item.id)) continue
+                const updatedAt = item._meta?.updatedAt || item.updated_at || ''
+                if (updatedAt > latestTime) {
+                  latestTime = updatedAt
+                  latestId = item.id
+                }
+              }
+              if (latestId) {
+                const findNode = (nodes: TreeNode[]): TreeNode | null => {
+                  for (const node of nodes) {
+                    if (node.id === latestId) return node
+                    if (node.children) {
+                      const found = findNode(node.children)
+                      if (found) return found
+                    }
+                  }
+                  return null
+                }
+                targetNode = findNode(treeData)
+              }
             }
           }
-          return null
-        }
-        const firstItem = findFirstContent(treeData)
-        if (firstItem) {
-          // Small delay to let ViewRouter restore from history state first
-          autoSelectTimerRef.current = setTimeout(() => {
-            autoSelectTimerRef.current = null
-            if (!selectedNodeIdRef.current) {
-              handleNodeClick(firstItem)
-            }
-          }, 150)
+
+          if (targetNode) {
+            handleNodeClick(targetNode)
+          }
         }
       }
 

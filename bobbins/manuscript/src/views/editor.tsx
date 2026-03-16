@@ -693,6 +693,18 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
         // Unsaved draft — schedule a server save to sync it
         debouncedSave(draft.html, targetEntityId, draft.wordCount)
       }
+
+      // Refresh the title from the server — the draft cache may have a stale
+      // title if the chapter was renamed via the sidebar.
+      sdk.entities.get('content', targetEntityId).then((result: any) => {
+        if (isStale()) return
+        const serverTitle = result?.title
+        if (serverTitle && serverTitle !== draft.title) {
+          setTitle(serverTitle)
+          saveDraft(targetEntityId, { html: draft.html, title: serverTitle, wordCount: draft.wordCount, savedToServer: draft.savedToServer })
+        }
+      }).catch(() => {})
+
       return
     }
 
