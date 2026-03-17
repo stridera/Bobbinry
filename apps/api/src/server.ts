@@ -1,4 +1,4 @@
-import Fastify, { FastifyInstance } from 'fastify'
+import Fastify, { FastifyInstance, FastifyRequest } from 'fastify'
 import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
 import rateLimit from '@fastify/rate-limit'
@@ -35,6 +35,8 @@ import userBobbinsPlugin from './routes/user-bobbins'
 import { initDriveSyncHandler } from './jobs/drive-sync-handler'
 import { initDiscordNotifierHandler } from './jobs/discord-notifier-handler'
 import { initDiscordRolesHandler } from './jobs/discord-roles-handler'
+import apiKeysPlugin from './routes/api-keys'
+import { requireReadOnly, hashApiKey, getApiKeyTier } from './middleware/auth'
 
 export function build(opts = {}): FastifyInstance {
   const server = Fastify({
@@ -132,10 +134,32 @@ export function build(opts = {}): FastifyInstance {
     frameguard: false // Disable X-Frame-Options to allow iframe embedding
   })
 
-  // Rate limiting
+  // Rate limiting — per-key buckets for API keys, per-IP for browser sessions
   server.register(rateLimit, {
-    max: process.env.NODE_ENV === 'development' ? 1000 : 300,
+    max: (request: FastifyRequest) => {
+      const authHeader = request.headers.authorization
+      if (authHeader) {
+        const token = authHeader.split(' ')[1]
+        if (token?.startsWith('bby_')) {
+          const keyHash = hashApiKey(token)
+          const tier = getApiKeyTier(keyHash)
+          // tier may be null on first request before cache is populated — use free limit
+          return tier === 'supporter' ? 500 : 100
+        }
+      }
+      return process.env.NODE_ENV === 'development' ? 1000 : 300
+    },
     timeWindow: '1 minute',
+    keyGenerator: (request: FastifyRequest) => {
+      const authHeader = request.headers.authorization
+      if (authHeader) {
+        const token = authHeader.split(' ')[1]
+        if (token?.startsWith('bby_')) {
+          return `apikey:${hashApiKey(token)}`
+        }
+      }
+      return request.ip
+    },
     errorResponseBuilder: (request, context) => ({
       code: 429,
       error: 'Rate limit exceeded',
@@ -231,6 +255,10 @@ export function build(opts = {}): FastifyInstance {
   server.register(googleDrivePlugin, { prefix: '/api' })
   server.register(aiToolsPlugin, { prefix: '/api' })
   server.register(userBobbinsPlugin, { prefix: '/api' })
+  server.register(apiKeysPlugin, { prefix: '/api' })
+
+  // Safety net: block non-GET/HEAD for API key-authenticated requests (Phase 1 read-only)
+  server.addHook('onRequest', requireReadOnly)
 
   // Warm disk manifest cache, then start the trigger scheduler
   server.addHook('onReady', async () => {

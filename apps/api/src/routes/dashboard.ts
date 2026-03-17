@@ -15,7 +15,7 @@ import {
 } from '../db/schema'
 import { eq, and, ne, desc, sql, inArray, isNull, isNotNull } from 'drizzle-orm'
 import { randomBytes } from 'crypto'
-import { requireAuth, requireProjectOwnership, requireDeletedProjectOwnership } from '../middleware/auth'
+import { requireAuth, requireProjectOwnership, requireDeletedProjectOwnership, requireScope } from '../middleware/auth'
 
 const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
   /**
@@ -27,7 +27,7 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
       includeArchived?: string
     }
   }>('/users/me/projects', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, requireScope('stats:read')]
   }, async (request, reply) => {
     try {
       const userId = request.user!.id
@@ -72,7 +72,7 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Querystring: Record<string, never>
   }>('/users/me/projects/grouped', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, requireScope('stats:read')]
   }, async (request, reply) => {
     try {
       const userId = request.user!.id
@@ -132,7 +132,7 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
       limit?: string
     }
   }>('/users/me/recent-activity', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, requireScope('stats:read')]
   }, async (request, reply) => {
     try {
       const userId = request.user!.id
@@ -180,7 +180,7 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Querystring: Record<string, never>
   }>('/dashboard/stats', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, requireScope('stats:read')]
   }, async (request, reply) => {
     try {
       const userId = request.user!.id

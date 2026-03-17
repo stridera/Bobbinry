@@ -10,7 +10,7 @@ import { users, userProfiles, userBadges, emailVerificationTokens, passwordReset
 import { eq } from 'drizzle-orm'
 import { randomBytes, scrypt, timingSafeEqual, createHash } from 'crypto'
 import { promisify } from 'util'
-import { requireAuth } from '../middleware/auth'
+import { requireAuth, denyApiKeyAuth } from '../middleware/auth'
 import { incrementCounter } from '../lib/metrics'
 import { verifyInternalRequest } from '../lib/internal-auth'
 import { sendWelcomeEmail, sendVerificationEmail, sendPasswordResetEmail } from '../lib/email'
@@ -542,7 +542,7 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
    * Requires authentication. Generates a new token and sends a verification email.
    */
   fastify.post('/auth/resend-verification', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, denyApiKeyAuth],
     config: {
       rateLimit: {
         max: 3,
@@ -678,7 +678,7 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
    * POST /auth/totp/setup
    */
   fastify.post('/auth/totp/setup', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, denyApiKeyAuth],
   }, async (request, reply) => {
     try {
       const user = request.user!
@@ -721,7 +721,7 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.post<{
     Body: { code: string }
   }>('/auth/totp/enable', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, denyApiKeyAuth],
   }, async (request, reply) => {
     try {
       const user = request.user!
@@ -774,7 +774,7 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.post<{
     Body: { code: string }
   }>('/auth/totp/disable', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, denyApiKeyAuth],
   }, async (request, reply) => {
     try {
       const user = request.user!
@@ -892,7 +892,7 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
    * Returns the authenticated user's information.
    */
   fastify.get('/auth/session', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, denyApiKeyAuth]
   }, async (request, reply) => {
     try {
       const user = request.user!

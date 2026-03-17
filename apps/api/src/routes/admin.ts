@@ -8,10 +8,10 @@ import { FastifyPluginAsync } from 'fastify'
 import { db } from '../db/connection'
 import { users, projects, userBadges, userProfiles, siteMemberships } from '../db/schema'
 import { eq, sql, ilike, or, and, count, desc, isNull } from 'drizzle-orm'
-import { requireAuth, requireOwner } from '../middleware/auth'
+import { requireAuth, requireOwner, denyApiKeyAuth } from '../middleware/auth'
 
 const adminPlugin: FastifyPluginAsync = async (fastify) => {
-  const adminPreHandler = [requireAuth, requireOwner]
+  const adminPreHandler = [requireAuth, requireOwner, denyApiKeyAuth]
 
   /**
    * GET /admin/stats

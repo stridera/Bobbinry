@@ -3,14 +3,17 @@
  *
  * Validates JWT tokens from NextAuth and extracts user context.
  * Uses the same secret as NextAuth to verify tokens.
+ * Also supports API key authentication (bby_ prefix).
  */
 
 import { FastifyRequest, FastifyReply } from 'fastify'
 import * as jose from 'jose'
+import { createHash } from 'crypto'
 import { db } from '../db/connection'
-import { users, projects } from '../db/schema'
-import { eq, and, isNull, isNotNull } from 'drizzle-orm'
-import { getUserBadges } from '../lib/membership'
+import { users, projects, apiKeys } from '../db/schema'
+import { eq, and, isNull, isNotNull, or } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
+import { getUserBadges, getUserMembershipTier, type MembershipTier } from '../lib/membership'
 
 // User context attached to authenticated requests
 export interface AuthenticatedUser {
@@ -43,10 +46,46 @@ export function clearUserCache(userId: string): void {
   userCache.delete(userId)
 }
 
-// Extend FastifyRequest to include user
+// API key cache (60s TTL) keyed by key hash
+const API_KEY_CACHE_TTL_MS = 60_000
+const apiKeyCache = new Map<string, { userId: string; scopes: string[]; tier: MembershipTier; expiresAt: number }>()
+
+function getCachedApiKey(keyHash: string): { userId: string; scopes: string[]; tier: MembershipTier } | null {
+  const entry = apiKeyCache.get(keyHash)
+  if (!entry) return null
+  if (Date.now() > entry.expiresAt) {
+    apiKeyCache.delete(keyHash)
+    return null
+  }
+  return { userId: entry.userId, scopes: entry.scopes, tier: entry.tier }
+}
+
+function cacheApiKey(keyHash: string, userId: string, scopes: string[], tier: MembershipTier): void {
+  apiKeyCache.set(keyHash, { userId, scopes, tier, expiresAt: Date.now() + API_KEY_CACHE_TTL_MS })
+}
+
+/** Clear cached API key entry (e.g. on revocation) */
+export function clearApiKeyCache(keyHash: string): void {
+  apiKeyCache.delete(keyHash)
+}
+
+/** Get cached API key tier for rate limiting (avoids DB lookup in hot path) */
+export function getApiKeyTier(keyHash: string): MembershipTier | null {
+  const cached = getCachedApiKey(keyHash)
+  return cached?.tier ?? null
+}
+
+/** Hash a raw API key token with SHA-256 */
+export function hashApiKey(token: string): string {
+  return createHash('sha256').update(token).digest('hex')
+}
+
+// Extend FastifyRequest to include user and API key info
 declare module 'fastify' {
   interface FastifyRequest {
     user?: AuthenticatedUser
+    apiKeyAuth?: boolean
+    apiKeyScopes?: string[]
   }
 }
 
@@ -121,43 +160,97 @@ async function verifyToken(token: string): Promise<{ id: string; email?: string;
 }
 
 /**
- * Authentication middleware - requires valid JWT token
- *
- * Extracts user from JWT and attaches to request.user
- * Returns 401 if token is missing or invalid.
+ * Resolve an API key token to a user and scopes.
+ * Returns null if the token is not a valid API key.
  */
-export async function requireAuth(
-  request: FastifyRequest,
-  reply: FastifyReply
-): Promise<void> {
+async function resolveApiKey(token: string): Promise<{ user: AuthenticatedUser; scopes: string[] } | null> {
+  if (!token.startsWith('bby_')) return null
+
+  const keyHash = hashApiKey(token)
+
+  // Check cache first
+  const cached = getCachedApiKey(keyHash)
+  if (cached) {
+    const user = getCachedUser(cached.userId)
+    if (user) {
+      // Fire-and-forget lastUsedAt update
+      db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.keyHash, keyHash)).catch(() => {})
+      return { user, scopes: cached.scopes }
+    }
+  }
+
+  // Query API key from DB
+  const [key] = await db
+    .select({
+      id: apiKeys.id,
+      userId: apiKeys.userId,
+      scopes: apiKeys.scopes,
+    })
+    .from(apiKeys)
+    .where(and(
+      eq(apiKeys.keyHash, keyHash),
+      isNull(apiKeys.revokedAt),
+      or(isNull(apiKeys.expiresAt), sql`${apiKeys.expiresAt} > NOW()`)
+    ))
+    .limit(1)
+
+  if (!key) return null
+
+  // Look up the user
+  const [user] = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      name: users.name,
+      emailVerified: users.emailVerified,
+    })
+    .from(users)
+    .where(eq(users.id, key.userId))
+    .limit(1)
+
+  if (!user) return null
+
+  // Get membership tier for rate limiting cache
+  const tier = await getUserMembershipTier(user.id)
+
+  // Cache both the key and user
+  cacheUser(user)
+  cacheApiKey(keyHash, user.id, key.scopes, tier)
+
+  // Fire-and-forget lastUsedAt update
+  db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.keyHash, keyHash)).catch(() => {})
+
+  return { user, scopes: key.scopes }
+}
+
+/**
+ * Shared logic for authenticating a request via JWT or API key.
+ * Returns the user and whether auth succeeded, or null if no valid auth found.
+ */
+async function authenticateRequest(request: FastifyRequest): Promise<{ user: AuthenticatedUser } | null> {
   const token = extractBearerToken(request)
+  if (!token) return null
 
-  if (!token) {
-    reply.status(401).send({
-      error: 'Authentication required',
-      message: 'Missing or invalid Authorization header'
-    })
-    return
+  // Try API key first (fast prefix check)
+  if (token.startsWith('bby_')) {
+    const result = await resolveApiKey(token)
+    if (!result) return null
+    request.apiKeyAuth = true
+    request.apiKeyScopes = result.scopes
+    return { user: result.user }
   }
 
+  // Fall back to JWT
   const tokenPayload = await verifyToken(token)
-
-  if (!tokenPayload) {
-    reply.status(401).send({
-      error: 'Authentication required',
-      message: 'Invalid or expired token'
-    })
-    return
-  }
+  if (!tokenPayload) return null
 
   // Check cache first, then fall back to DB
   const cached = getCachedUser(tokenPayload.id)
   if (cached) {
-    request.user = cached
-    return
+    request.apiKeyAuth = false
+    return { user: cached }
   }
 
-  // Verify user exists in database
   const [user] = await db
     .select({
       id: users.id,
@@ -169,16 +262,34 @@ export async function requireAuth(
     .where(eq(users.id, tokenPayload.id))
     .limit(1)
 
-  if (!user) {
+  if (!user) return null
+
+  cacheUser(user)
+  request.apiKeyAuth = false
+  return { user }
+}
+
+/**
+ * Authentication middleware - requires valid JWT token or API key
+ *
+ * Extracts user from JWT/API key and attaches to request.user
+ * Returns 401 if token is missing or invalid.
+ */
+export async function requireAuth(
+  request: FastifyRequest,
+  reply: FastifyReply
+): Promise<void> {
+  const result = await authenticateRequest(request)
+
+  if (!result) {
     reply.status(401).send({
       error: 'Authentication required',
-      message: 'User not found'
+      message: 'Missing or invalid Authorization header'
     })
     return
   }
 
-  cacheUser(user)
-  request.user = user
+  request.user = result.user
 }
 
 /**
@@ -245,40 +356,63 @@ export async function optionalAuth(
   request: FastifyRequest,
   _reply: FastifyReply
 ): Promise<void> {
-  const token = extractBearerToken(request)
-
-  if (!token) {
-    return // No token is fine for optional auth
+  const result = await authenticateRequest(request)
+  if (result) {
+    request.user = result.user
   }
+}
 
-  const tokenPayload = await verifyToken(token)
-
-  if (!tokenPayload) {
-    return // Invalid token is also fine for optional auth
+/**
+ * Scope enforcement middleware factory.
+ * If the request is authenticated via API key, checks that the key has the required scope.
+ * JWT requests pass through (all scopes implicit).
+ */
+export function requireScope(scope: string) {
+  return async function (request: FastifyRequest, reply: FastifyReply): Promise<void> {
+    if (request.apiKeyAuth && request.apiKeyScopes && !request.apiKeyScopes.includes(scope)) {
+      reply.status(403).send({
+        error: 'Insufficient scope',
+        message: `This API key does not have the '${scope}' scope`
+      })
+    }
   }
+}
 
-  // Check cache first, then fall back to DB
-  const cached = getCachedUser(tokenPayload.id)
-  if (cached) {
-    request.user = cached
-    return
-  }
-
-  // Try to get user from database
-  const [user] = await db
-    .select({
-      id: users.id,
-      email: users.email,
-      name: users.name,
-      emailVerified: users.emailVerified,
+/**
+ * Deny API key authentication middleware.
+ * Use on sensitive endpoints that require session (JWT) auth only.
+ */
+export async function denyApiKeyAuth(
+  request: FastifyRequest,
+  reply: FastifyReply
+): Promise<void> {
+  if (request.apiKeyAuth) {
+    reply.status(403).send({
+      error: 'Session auth required',
+      message: 'This endpoint requires session authentication and cannot be accessed with an API key'
     })
-    .from(users)
-    .where(eq(users.id, tokenPayload.id))
-    .limit(1)
+  }
+}
 
-  if (user) {
-    cacheUser(user)
-    request.user = user
+/**
+ * Read-only enforcement for API key requests.
+ * Blocks non-GET/HEAD methods when the Authorization header carries an API key.
+ * Checks the raw header prefix so it can run as an onRequest hook (before auth resolves).
+ * Safety net for Phase 1 (read-only API keys).
+ */
+export async function requireReadOnly(
+  request: FastifyRequest,
+  reply: FastifyReply
+): Promise<void> {
+  if (request.method === 'GET' || request.method === 'HEAD' || request.method === 'OPTIONS') return
+  const authHeader = request.headers.authorization
+  if (!authHeader) return
+  const token = authHeader.split(' ')[1]
+  if (token?.startsWith('bby_')) {
+    reply.status(403).send({
+      error: 'Read-only access',
+      message: 'API keys only support read operations'
+    })
   }
 }
 

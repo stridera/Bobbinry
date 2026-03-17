@@ -647,6 +647,23 @@ export const uploads = pgTable('uploads', {
   statusIdx: index('uploads_status_idx').on(table.status)
 }))
 
+// API keys - user-generated keys for programmatic access
+export const apiKeys = pgTable('api_keys', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  name: varchar('name', { length: 100 }).notNull(),
+  keyPrefix: varchar('key_prefix', { length: 12 }).notNull(),
+  keyHash: varchar('key_hash', { length: 64 }).unique().notNull(),
+  scopes: jsonb('scopes').notNull().$type<string[]>(),
+  lastUsedAt: timestamp('last_used_at'),
+  expiresAt: timestamp('expires_at'),
+  revokedAt: timestamp('revoked_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  userIdx: index('api_keys_user_idx').on(table.userId),
+}))
+
 // Provenance events - audit trail for security and compliance
 export const provenanceEvents = pgTable('provenance_events', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -668,6 +685,7 @@ export const usersRelations = relations(users, ({ many, one }) => ({
     references: [siteMemberships.userId]
   }),
   badges: many(userBadges),
+  apiKeys: many(apiKeys),
 }))
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({
@@ -1019,5 +1037,12 @@ export const uploadsRelations = relations(uploads, ({ one }) => ({
   project: one(projects, {
     fields: [uploads.projectId],
     references: [projects.id]
+  })
+}))
+
+export const apiKeysRelations = relations(apiKeys, ({ one }) => ({
+  user: one(users, {
+    fields: [apiKeys.userId],
+    references: [users.id]
   })
 }))

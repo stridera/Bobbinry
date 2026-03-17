@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { db } from '../db/connection'
 import { entities } from '../db/schema'
 import { eq, and, sql, or } from 'drizzle-orm'
-import { requireAuth, requireProjectOwnership } from '../middleware/auth'
+import { requireAuth, requireProjectOwnership, requireScope } from '../middleware/auth'
 import { serverEventBus, contentEdited } from '../lib/event-bus'
 import { findBobbinForCollectionAcrossScopes } from '../lib/disk-manifests'
 import { getEffectiveBobbins, getCollectionIdsForProject, buildScopeCondition } from '../lib/effective-bobbins'
@@ -65,7 +65,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       search?: string
     }
   }>('/collections/:collection/entities', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, requireScope('entities:read')]
   }, async (request, reply) => {
     try {
       // Validate input
@@ -645,7 +645,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       collection: string
     }
   }>('/entities/:entityId', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, requireScope('entities:read')]
   }, async (request, reply) => {
     try {
       const { entityId } = request.params

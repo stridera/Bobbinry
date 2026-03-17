@@ -12,7 +12,7 @@ import {
   userBadges,
 } from '../db/schema'
 import { eq, and, sql } from 'drizzle-orm'
-import { requireAuth, requireSelf, requireVerified } from '../middleware/auth'
+import { requireAuth, requireSelf, requireVerified, denyApiKeyAuth } from '../middleware/auth'
 import { serverEventBus, subscriptionChanged } from '../lib/event-bus'
 import { getStripe, createExpressAccount, createOnboardingLink } from '../lib/stripe'
 
@@ -31,7 +31,7 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { userId: string }
   }>('/users/:userId/payment-config', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, denyApiKeyAuth]
   }, async (request, reply) => {
     try {
       const { userId } = request.params
@@ -103,7 +103,7 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
       paymentProvider?: 'stripe' | 'patreon' | 'both'
     }
   }>('/users/:userId/payment-config', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, denyApiKeyAuth]
   }, async (request, reply) => {
     try {
       const { userId } = request.params
@@ -140,7 +140,7 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
     Params: { userId: string }
     Body: { returnUrl?: string; refreshUrl?: string }
   }>('/users/:userId/stripe/connect', {
-    preHandler: [requireAuth, requireVerified]
+    preHandler: [requireAuth, requireVerified, denyApiKeyAuth]
   }, async (request, reply) => {
     try {
       const { userId } = request.params
@@ -211,7 +211,7 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { userId: string }
   }>('/users/:userId/stripe/dashboard-link', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, denyApiKeyAuth]
   }, async (request, reply) => {
     try {
       const { userId } = request.params
@@ -314,7 +314,7 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
   fastify.post<{
     Params: { userId: string }
   }>('/users/:userId/stripe/verify-onboarding', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, denyApiKeyAuth]
   }, async (request, reply) => {
     try {
       const { userId } = request.params
@@ -368,7 +368,7 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
       returnUrl?: string
     }
   }>('/subscribe/checkout', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, denyApiKeyAuth]
   }, async (request, reply) => {
     try {
       const { subscriberId, authorId, tierId, billingPeriod = 'monthly', returnUrl } = request.body
@@ -448,7 +448,7 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
   fastify.post<{
     Body: { userId: string; subscriptionId?: string; returnUrl?: string }
   }>('/subscribe/portal-session', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, denyApiKeyAuth]
   }, async (request, reply) => {
     try {
       const { userId, subscriptionId, returnUrl } = request.body
