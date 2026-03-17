@@ -256,7 +256,20 @@ function MembershipContent() {
                 Supporter
               </span>
             </div>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">For serious writers & worldbuilders</p>
+            <div className="mb-6">
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">For serious writers & worldbuilders</p>
+              {!isSupporter && (
+                <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                  {billingPeriod === 'yearly' ? (
+                    <>$48<span className="text-sm font-normal text-gray-500 dark:text-gray-400">/year</span>{' '}
+                      <span className="text-xs font-medium text-green-600 dark:text-green-400">Save 20%</span>
+                    </>
+                  ) : (
+                    <>$5<span className="text-sm font-normal text-gray-500 dark:text-gray-400">/month</span></>
+                  )}
+                </p>
+              )}
+            </div>
 
             <ul className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
               <li className="flex items-center gap-2">

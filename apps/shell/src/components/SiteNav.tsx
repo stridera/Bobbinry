@@ -87,7 +87,7 @@ export function SiteNav() {
           {session?.user ? (
             <>
               <NotificationDrawer />
-              <UserMenu user={session.user as { id: string; email: string; name?: string | null; badges?: string[] }} />
+              <UserMenu user={session.user as { id: string; email: string; name?: string | null; badges?: string[]; membershipTier?: 'free' | 'supporter' }} />
             </>
           ) : (
             <div className="flex items-center gap-2">

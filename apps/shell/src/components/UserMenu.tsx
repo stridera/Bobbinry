@@ -10,6 +10,7 @@ interface User {
   email: string
   name?: string | null
   badges?: string[]
+  membershipTier?: 'free' | 'supporter'
 }
 
 interface UserMenuProps {
@@ -79,6 +80,19 @@ export function UserMenu({ user }: UserMenuProps) {
               </svg>
               My Profile
             </Link>
+
+            {user.membershipTier !== 'supporter' && (
+              <Link
+                href="/membership"
+                className="flex items-center gap-3 px-4 py-2 text-sm text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/10 transition-colors"
+                onClick={() => setIsOpen(false)}
+              >
+                <svg className="w-4 h-4 text-purple-500 dark:text-purple-400" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 2l2.09 6.26L20.18 9l-5 4.27L16.82 20 12 16.77 7.18 20l1.64-6.73L3.82 9l6.09-.74z" />
+                </svg>
+                Become a Supporter
+              </Link>
+            )}
 
             {user.badges?.includes('owner') && (
               <Link
