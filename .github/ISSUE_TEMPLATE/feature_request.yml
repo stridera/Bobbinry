@@ -1,0 +1,75 @@
+name: Feature Request
+description: Suggest a new feature or improvement
+title: "[Feature] "
+labels: ["enhancement", "triage"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the project does this relate to?
+      options:
+        - "Core: Shell"
+        - "Core: API"
+        - SDK/Packages
+        - Bobbin
+        - Documentation
+        - CI/Infrastructure
+        - New Bobbin idea
+    validations:
+      required: true
+
+  - type: dropdown
+    id: bobbin
+    attributes:
+      label: Bobbin
+      description: If this involves a specific bobbin, which one?
+      options:
+        - N/A
+        - Manuscript
+        - Corkboard
+        - Entities
+        - Timeline
+        - Notes
+        - AI Tools
+        - Web Publisher
+        - Relationships
+        - Goals
+        - Dictionary
+        - Discord Notifier
+        - Discord Roles
+        - Google Drive Backup
+    validations:
+      required: false
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / Use case
+      description: What problem does this solve, or what use case does it address?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How do you think this should work?
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any other approaches you've thought about?
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Any other context, mockups, or examples.
+    validations:
+      required: false

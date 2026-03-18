@@ -1,0 +1,18 @@
+# Default owner for everything
+* @stridera
+
+# Core apps
+# apps/shell/  @stridera
+# apps/api/    @stridera
+
+# Packages
+# packages/    @stridera
+
+# Bobbins — assign per-bobbin owners as community grows
+# bobbins/manuscript/     @stridera
+# bobbins/corkboard/      @stridera
+# bobbins/entities/       @stridera
+
+# Infrastructure
+# .github/     @stridera
+# infra/       @stridera

@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security Vulnerability
+    url: mailto:security@bobbinry.com
+    about: Report security issues privately via email. Do not open a public issue.
+  - name: Bobbin Development Guide
+    url: https://github.com/stridera/Bobbinry/blob/main/CONTRIBUTING.md
+    about: Learn how to build and contribute bobbins.
+  - name: GitHub Discussions (Q&A)
+    url: https://github.com/stridera/Bobbinry/discussions
+    about: Ask questions, share ideas, and discuss Bobbinry with the community.

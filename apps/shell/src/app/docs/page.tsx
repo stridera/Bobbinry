@@ -267,6 +267,79 @@ export default function NotesView({ sdk, projectId }: {
           </pre>
         </section>
 
+        {/* API Access */}
+        <section className="mb-14">
+          <h2 className="font-display text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">API Access</h2>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">
+            Bobbinry provides a REST API for programmatic read-only access to your projects, entities, stats, and profile.
+            Authenticate with a personal API key using a Bearer token.
+          </p>
+
+          <h3 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Getting an API Key</h3>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">
+            Generate an API key from your{' '}
+            <Link href="/settings/api-keys" className="text-blue-600 dark:text-blue-400 hover:underline">
+              API Keys settings
+            </Link>
+            . Each key is scoped to specific permissions and can optionally have an expiration date.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+            {[
+              { scope: 'projects:read', description: 'Read your projects and their settings' },
+              { scope: 'entities:read', description: 'Read entities across your collections' },
+              { scope: 'stats:read', description: 'Read dashboard stats and recent activity' },
+              { scope: 'profile:read', description: 'Read your profile information' },
+            ].map((s) => (
+              <div
+                key={s.scope}
+                className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-4 py-3"
+              >
+                <code className="text-xs font-mono text-blue-600 dark:text-blue-400">{s.scope}</code>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{s.description}</p>
+              </div>
+            ))}
+          </div>
+
+          <h3 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Making Requests</h3>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">
+            Pass your key in the <code className="text-sm bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">Authorization</code> header:
+          </p>
+          <pre className="bg-gray-900 dark:bg-gray-800 text-gray-100 rounded-lg p-4 text-sm overflow-x-auto mb-4">
+            <code>{`curl -H "Authorization: Bearer bby_..." \\
+  https://api.bobbinry.com/api/projects`}</code>
+          </pre>
+
+          <h3 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Available Endpoints</h3>
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
+                  <th className="text-left px-4 py-2.5 font-semibold text-gray-900 dark:text-gray-100">Endpoint</th>
+                  <th className="text-left px-4 py-2.5 font-semibold text-gray-900 dark:text-gray-100">Scope</th>
+                  <th className="text-left px-4 py-2.5 font-semibold text-gray-900 dark:text-gray-100">Description</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {[
+                  ['GET /api/projects', 'projects:read', 'List your projects'],
+                  ['GET /api/projects/:projectId', 'projects:read', 'Get a single project'],
+                  ['GET /api/collections/:collection/entities', 'entities:read', 'Query entities in a collection'],
+                  ['GET /api/entities/:entityId', 'entities:read', 'Get a single entity'],
+                  ['GET /api/dashboard/stats', 'stats:read', 'Dashboard stats and recent activity'],
+                  ['GET /api/auth/session', 'profile:read', 'Your session and profile information'],
+                ].map(([endpoint, scope, desc]) => (
+                  <tr key={endpoint}>
+                    <td className="px-4 py-2.5 font-mono text-xs text-blue-600 dark:text-blue-400 whitespace-nowrap">{endpoint}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{scope}</td>
+                    <td className="px-4 py-2.5 text-gray-600 dark:text-gray-400">{desc}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
         {/* Links */}
         <section className="mb-8">
           <h2 className="font-display text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">Resources</h2>
@@ -275,6 +348,7 @@ export default function NotesView({ sdk, projectId }: {
               { label: 'GitHub Repository', href: GITHUB_REPO, external: true },
               { label: 'Report an Issue', href: `${GITHUB_REPO}/issues`, external: true },
               { label: 'Browse Existing Bobbins', href: '/bobbins', external: false },
+              { label: 'Manage API Keys', href: '/settings/api-keys', external: false },
             ].map((link) => (
               <a
                 key={link.label}

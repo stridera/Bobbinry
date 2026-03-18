@@ -397,13 +397,73 @@ export default function ApiKeysPage() {
           </section>
         )}
 
-        {/* Usage hint */}
-        <div className="mt-8 p-4 bg-gray-100 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
-          <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">Usage</h3>
-          <code className="block text-xs text-gray-600 dark:text-gray-400 font-mono break-all">
-            curl -H &quot;Authorization: Bearer bby_...&quot; {typeof window !== 'undefined' ? window.location.origin.replace(/:\d+$/, ':4100') : 'https://api.bobbinry.com'}/api/projects
-          </code>
-        </div>
+        {/* API Documentation */}
+        <section className="mt-10 space-y-6">
+          <div>
+            <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1">
+              How to Connect
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Pass your API key as a Bearer token in the <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">Authorization</code> header.
+            </p>
+          </div>
+
+          <pre className="bg-gray-900 dark:bg-gray-800 text-gray-100 rounded-lg p-4 text-sm overflow-x-auto">
+            <code>{`curl -H "Authorization: Bearer bby_..." \\
+  https://api.bobbinry.com/api/projects`}</code>
+          </pre>
+
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Available Scopes</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {AVAILABLE_SCOPES.map(scope => (
+                <div
+                  key={scope.id}
+                  className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2.5"
+                >
+                  <code className="text-xs font-mono text-blue-600 dark:text-blue-400">{scope.id}</code>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{scope.description}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Available Endpoints</h3>
+            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-gray-900 dark:text-gray-100">Endpoint</th>
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-gray-900 dark:text-gray-100">Scope</th>
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-gray-900 dark:text-gray-100">Description</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {[
+                    ['GET /api/projects', 'projects:read', 'List your projects'],
+                    ['GET /api/projects/:projectId', 'projects:read', 'Get a single project'],
+                    ['GET /api/collections/:collection/entities', 'entities:read', 'Query entities in a collection'],
+                    ['GET /api/entities/:entityId', 'entities:read', 'Get a single entity'],
+                    ['GET /api/dashboard/stats', 'stats:read', 'Dashboard stats and recent activity'],
+                    ['GET /api/auth/session', 'profile:read', 'Your session and profile'],
+                  ].map(([endpoint, scope, desc]) => (
+                    <tr key={endpoint}>
+                      <td className="px-4 py-2 font-mono text-[11px] text-blue-600 dark:text-blue-400 whitespace-nowrap">{endpoint}</td>
+                      <td className="px-4 py-2 font-mono text-[11px] text-gray-500 dark:text-gray-400 whitespace-nowrap">{scope}</td>
+                      <td className="px-4 py-2 text-xs text-gray-600 dark:text-gray-400">{desc}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-400 dark:text-gray-500">
+            All endpoints are read-only. Keys are prefixed with <code className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">bby_</code> and
+            can be revoked at any time. Responses are JSON.
+          </p>
+        </section>
       </div>
     </div>
   )
