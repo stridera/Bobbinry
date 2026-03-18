@@ -23,7 +23,7 @@
     "@bobbinry/types": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^20.19.17",
+    "@types/node": "^25.5.0",
     "typescript": "6.0.0-beta"
   }
 }
