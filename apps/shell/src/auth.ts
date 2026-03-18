@@ -13,6 +13,7 @@ import { SignJWT } from 'jose'
 import type { User } from 'next-auth'
 import { config } from '@/lib/config'
 import { createHash, createHmac } from 'crypto'
+import { PHASE_PRODUCTION_BUILD } from 'next/constants'
 
 /** Shared secret used by both NextAuth and the API for JWT verification */
 const jwtSecret = new TextEncoder().encode(
@@ -282,7 +283,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
   secret: (() => {
     const secret = process.env.NEXTAUTH_SECRET
-    if (!secret && process.env.NODE_ENV === 'production') {
+    const isBuildPhase = process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD
+    if (!secret && process.env.NODE_ENV === 'production' && !isBuildPhase) {
       throw new Error('NEXTAUTH_SECRET must be set in production')
     }
     return secret || 'development-secret-only-for-local-dev'
