@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { apiFetch } from '@/lib/api'
-import { ConfirmModal } from '@/components/ConfirmModal'
+import { ConfirmModal } from '@bobbinry/sdk'
 
 interface Bobbin {
   id: string

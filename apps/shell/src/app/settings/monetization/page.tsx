@@ -7,7 +7,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
 import { SiteNav } from '@/components/SiteNav'
-import { ConfirmModal } from '@/components/ConfirmModal'
+import { ConfirmModal } from '@bobbinry/sdk'
 
 interface SubscriptionTier {
   id: string

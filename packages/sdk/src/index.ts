@@ -861,6 +861,8 @@ export {
   PanelSectionTitle
 } from './panel-ui'
 export { escapePlainText, getSanitizedHtmlProps, sanitizeHtml } from './html'
+export { ConfirmModal } from './confirm-modal'
+export type { ConfirmModalProps } from './confirm-modal'
 
 // Convenience exports
 export * from '@bobbinry/types'

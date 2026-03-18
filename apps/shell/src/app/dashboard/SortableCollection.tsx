@@ -8,7 +8,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
-import { ConfirmModal } from '@/components/ConfirmModal'
+import { ConfirmModal } from '@bobbinry/sdk'
 import {
   DndContext,
   closestCenter,

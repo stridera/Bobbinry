@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   BobbinrySDK,
+  ConfirmModal,
   PanelActions,
   PanelActionButton,
   PanelBody,
@@ -43,6 +44,8 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   const [editingValue, setEditingValue] = useState('')
   const [showDropdown, setShowDropdown] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [deleteFolderId, setDeleteFolderId] = useState<string | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   const [sdk] = useState(() => new BobbinrySDK('notes'))
   const projectId = useMemo(() => context?.projectId || context?.currentProject, [context?.projectId, context?.currentProject])
@@ -161,6 +164,27 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     }))
   }
 
+  useEffect(() => {
+    function handleEntityUpdated(e: Event) {
+      const detail = (e as CustomEvent).detail
+      if (detail?.deleted) {
+        // Advance to the next note in the list
+        if (selectedNoteId === detail.entityId) {
+          const idx = filteredNotes.findIndex((n: any) => n.id === detail.entityId)
+          const next = filteredNotes[idx + 1] || filteredNotes[idx - 1]
+          if (next) {
+            handleNoteClick(next)
+          } else {
+            setSelectedNoteId(null)
+          }
+        }
+        loadData()
+      }
+    }
+    window.addEventListener('bobbinry:entity-updated', handleEntityUpdated)
+    return () => window.removeEventListener('bobbinry:entity-updated', handleEntityUpdated)
+  }, [selectedNoteId, filteredNotes])
+
   function handleFolderClick(folderId: string) {
     setSelectedFolderId(folderId === selectedFolderId ? null : folderId)
   }
@@ -237,15 +261,21 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     }
   }
 
-  async function handleDelete(id: string, collection: 'folders' | 'notes') {
-    const label = collection === 'folders' ? 'folder' : 'note'
-    if (!confirm(`Delete this ${label}? This cannot be undone.`)) return
+  function handleDeleteFolder(id: string) {
+    setDeleteFolderId(id)
+  }
+
+  async function confirmDeleteFolder() {
+    if (!deleteFolderId) return
+    setDeleteLoading(true)
     try {
-      await sdk.entities.delete(collection, id)
+      await sdk.entities.delete('folders', deleteFolderId)
       await loadData()
-      if (selectedNoteId === id) setSelectedNoteId(null)
     } catch (error) {
-      console.error('Failed to delete:', error)
+      console.error('Failed to delete folder:', error)
+    } finally {
+      setDeleteLoading(false)
+      setDeleteFolderId(null)
     }
   }
 
@@ -275,7 +305,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
           onClick={() => handleFolderClick(folder.id)}
           onContextMenu={(e) => {
             e.preventDefault()
-            handleDelete(folder.id, 'folders')
+            handleDeleteFolder(folder.id)
           }}
         >
           {hasChildren ? (
@@ -308,7 +338,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
             <span className="flex-1 text-gray-800 dark:text-gray-200 truncate">{folder.name}</span>
           )}
           <button
-            onClick={(e) => { e.stopPropagation(); handleDelete(folder.id, 'folders') }}
+            onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder.id) }}
             className="flex-shrink-0 text-gray-400 opacity-0 transition-opacity hover:text-red-500 group-hover:opacity-100 dark:text-gray-500 dark:hover:text-red-400"
             title="Delete folder"
           >
@@ -420,22 +450,12 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
               {filteredNotes.map((note: any) => (
                 <div
                   key={note.id}
-                  className={`group cursor-pointer border-b border-gray-200 px-3 py-2 last:border-b-0 hover:bg-gray-100 dark:border-gray-700/60 dark:hover:bg-gray-700/60 ${selectedNoteId === note.id ? 'bg-gray-100 dark:bg-gray-700/60' : ''}`}
+                  className={`cursor-pointer border-b border-gray-200 px-3 py-2 last:border-b-0 hover:bg-gray-100 dark:border-gray-700/60 dark:hover:bg-gray-700/60 ${selectedNoteId === note.id ? 'bg-gray-100 dark:bg-gray-700/60' : ''}`}
                   onClick={() => handleNoteClick(note)}
-                  onContextMenu={(e) => { e.preventDefault(); handleDelete(note.id, 'notes') }}
                 >
                   <div className="flex items-center gap-2">
                     {note.pinned ? <PanelPill>Pinned</PanelPill> : null}
                     <span className="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200">{note.title || 'Untitled'}</span>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleDelete(note.id, 'notes') }}
-                      className="flex-shrink-0 text-gray-400 opacity-0 transition-opacity hover:text-red-500 group-hover:opacity-100 dark:text-gray-500 dark:hover:text-red-400"
-                      title="Delete note"
-                    >
-                      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
                   </div>
                   {note.tags && note.tags.length > 0 ? (
                     <div className="mt-1 flex gap-1">
@@ -450,6 +470,17 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
           )}
         </div>
       </PanelBody>
+
+      <ConfirmModal
+        open={!!deleteFolderId}
+        title="Delete Folder"
+        description="This folder will be permanently deleted. This cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleteLoading}
+        onConfirm={confirmDeleteFolder}
+        onCancel={() => setDeleteFolderId(null)}
+      />
     </PanelFrame>
   )
 }

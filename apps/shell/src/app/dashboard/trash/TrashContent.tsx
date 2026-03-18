@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { SiteNav } from '@/components/SiteNav'
-import { ConfirmModal } from '@/components/ConfirmModal'
+import { ConfirmModal } from '@bobbinry/sdk'
 import { apiFetch } from '@/lib/api'
 
 interface TrashedItem {

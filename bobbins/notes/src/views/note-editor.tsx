@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { ConfirmModal } from '@bobbinry/sdk'
 import type { BobbinrySDK } from '@bobbinry/sdk'
 
 interface NoteEditorViewProps {
@@ -22,6 +23,25 @@ export default function NoteEditorView({
   const [error, setError] = useState<string | null>(null)
   const [tagInput, setTagInput] = useState('')
   const [folders, setFolders] = useState<any[]>([])
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  async function handleDeleteNote() {
+    if (!entityId) return
+    setDeleting(true)
+    try {
+      await sdk.entities.delete('notes', entityId)
+      window.dispatchEvent(new CustomEvent('bobbinry:entity-updated', {
+        detail: { entityId, deleted: true }
+      }))
+      setNote(null)
+    } catch (err) {
+      console.error('[NoteEditor] Failed to delete:', err)
+    } finally {
+      setDeleting(false)
+      setShowDeleteConfirm(false)
+    }
+  }
 
   useEffect(() => {
     if (entityId && entityId !== 'pinboard') {
@@ -146,6 +166,15 @@ export default function NoteEditorView({
             <span className="text-xs text-gray-400">
               {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'unsaved' ? 'Unsaved' : 'Saved'}
             </span>
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors"
+              title="Delete note"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
           </div>
         </div>
       </div>
@@ -259,6 +288,17 @@ export default function NoteEditorView({
           </div>
         </div>
       </div>
+
+      <ConfirmModal
+        open={showDeleteConfirm}
+        title="Delete Note"
+        description={`"${note.title || 'Untitled'}" will be permanently deleted. This cannot be undone.`}
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleting}
+        onConfirm={handleDeleteNote}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   )
 }

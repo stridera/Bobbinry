@@ -1,8 +1,6 @@
-'use client'
-
 import { useEffect, useRef, useCallback } from 'react'
 
-interface ConfirmModalProps {
+export interface ConfirmModalProps {
   open: boolean
   title: string
   description: string
