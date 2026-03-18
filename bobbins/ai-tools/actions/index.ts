@@ -3,8 +3,14 @@ import { AIClient, type AIProvider } from './ai-service'
 import {
   SYNOPSIS_SYSTEM_PROMPT,
   buildSynopsisUserPrompt,
-  REVIEW_SYSTEM_PROMPT,
+  buildReviewSystemPrompt,
   buildReviewUserPrompt,
+  NAMES_SYSTEM_PROMPT,
+  buildNamesUserPrompt,
+  BRAINSTORM_SYSTEM_PROMPT,
+  buildBrainstormUserPrompt,
+  FLESH_OUT_SYSTEM_PROMPT,
+  buildFleshOutUserPrompt,
 } from './prompts'
 
 /**
@@ -49,6 +55,11 @@ function buildClient(config: any): AIClient {
   })
 }
 
+/** Strip HTML tags to plain text */
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
 export async function generateSynopsis(
   params: { entityId: string; projectId: string },
   context: ActionContext,
@@ -75,11 +86,11 @@ export async function generateSynopsis(
     const title = data?.title || 'Untitled'
     const body = data?.body || ''
 
-    if (!body || body.replace(/<[^>]*>/g, '').trim().length < 50) {
+    if (!body || stripHtml(body).length < 50) {
       return { success: false, error: 'Chapter needs more content before generating a synopsis' }
     }
 
-    const plainText = body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+    const plainText = stripHtml(body)
     const client = buildClient(bobbin.config)
 
     const result = await client.generateText(
@@ -103,7 +114,7 @@ export async function generateSynopsis(
 }
 
 export async function generateReview(
-  params: { entityId: string; projectId: string },
+  params: { entityId: string; projectId: string; focus?: string },
   context: ActionContext,
   runtime: ActionRuntimeHost
 ): Promise<ActionResult> {
@@ -128,29 +139,215 @@ export async function generateReview(
     const title = data?.title || 'Untitled'
     const body = data?.body || ''
 
-    if (!body || body.replace(/<[^>]*>/g, '').trim().length < 100) {
+    if (!body || stripHtml(body).length < 100) {
       return { success: false, error: 'Chapter needs more content before generating a review' }
     }
 
-    const plainText = body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+    const plainText = stripHtml(body)
     const client = buildClient(bobbin.config)
 
     const result = await client.generateText(
-      REVIEW_SYSTEM_PROMPT,
-      buildReviewUserPrompt(title, plainText)
+      buildReviewSystemPrompt(params.focus),
+      buildReviewUserPrompt(title, plainText, params.focus)
     )
+
+    // Auto-save to entityData.lastReview
+    const { provenanceEvents } = await createDbCallbacks()
+    const generatedAt = new Date().toISOString()
+
+    // Re-fetch to avoid stale data
+    const [freshEntity] = await db
+      .select()
+      .from(entities)
+      .where(eq(entities.id, params.entityId))
+      .limit(1)
+
+    if (freshEntity) {
+      const currentData = freshEntity.entityData as any
+      await db
+        .update(entities)
+        .set({
+          entityData: {
+            ...currentData,
+            lastReview: {
+              text: result.text.trim(),
+              model: result.model,
+              focus: params.focus?.trim() || null,
+              generatedAt,
+            },
+          },
+          updatedAt: new Date(),
+        })
+        .where(eq(entities.id, params.entityId))
+
+      await db.insert(provenanceEvents).values({
+        projectId: params.projectId,
+        entityRef: `${params.projectId}:manuscript:content:${params.entityId}`,
+        actor: context.userId,
+        action: 'ai_assist',
+        metaJson: {
+          type: 'review_save',
+          aiModel: result.model,
+          focus: params.focus?.trim() || null,
+          bobbinId: 'ai-tools',
+        },
+      })
+    }
 
     return {
       success: true,
       data: {
         review: result.text.trim(),
         model: result.model,
+        focus: params.focus?.trim() || null,
+        generatedAt,
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
       },
     }
   } catch (error) {
     runtime.log.error({ error }, 'generateReview failed')
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+  }
+}
+
+export async function generateNames(
+  params: { entityId: string; projectId: string; genre?: string },
+  context: ActionContext,
+  runtime: ActionRuntimeHost
+): Promise<ActionResult> {
+  try {
+    const bobbin = await getUserAIConfig(context.userId)
+    if (!bobbin?.config || !(bobbin.config as any).apiKey) {
+      return { success: false, error: 'AI tools not configured — add your API key in settings' }
+    }
+
+    const { db, entities, eq } = await createDbCallbacks()
+    const [entity] = await db
+      .select()
+      .from(entities)
+      .where(eq(entities.id, params.entityId))
+      .limit(1)
+
+    if (!entity) {
+      return { success: false, error: 'Entity not found' }
+    }
+
+    const data = entity.entityData as any
+    const existingName = data?.name || ''
+    const collectionName = entity.collectionName || 'characters'
+
+    const client = buildClient(bobbin.config)
+
+    const result = await client.generateText(
+      NAMES_SYSTEM_PROMPT,
+      buildNamesUserPrompt(collectionName, existingName, params.genre)
+    )
+
+    const names = result.text
+      .trim()
+      .split('\n')
+      .map((n) => n.trim())
+      .filter((n) => n.length > 0)
+
+    return {
+      success: true,
+      data: { names, model: result.model },
+    }
+  } catch (error) {
+    runtime.log.error({ error }, 'generateNames failed')
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+  }
+}
+
+export async function generateBrainstorm(
+  params: { entityId: string; projectId: string },
+  context: ActionContext,
+  runtime: ActionRuntimeHost
+): Promise<ActionResult> {
+  try {
+    const bobbin = await getUserAIConfig(context.userId)
+    if (!bobbin?.config || !(bobbin.config as any).apiKey) {
+      return { success: false, error: 'AI tools not configured — add your API key in settings' }
+    }
+
+    const { db, entities, eq } = await createDbCallbacks()
+    const [entity] = await db
+      .select()
+      .from(entities)
+      .where(eq(entities.id, params.entityId))
+      .limit(1)
+
+    if (!entity) {
+      return { success: false, error: 'Entity not found' }
+    }
+
+    const data = entity.entityData as any
+    const title = data?.title || 'Untitled'
+    const content = data?.content || ''
+    const plainContent = stripHtml(content)
+
+    if (plainContent.length < 20) {
+      return { success: false, error: 'Note needs more content before brainstorming' }
+    }
+
+    const client = buildClient(bobbin.config)
+
+    const result = await client.generateText(
+      BRAINSTORM_SYSTEM_PROMPT,
+      buildBrainstormUserPrompt(title, plainContent)
+    )
+
+    return {
+      success: true,
+      data: { brainstorm: result.text.trim(), model: result.model },
+    }
+  } catch (error) {
+    runtime.log.error({ error }, 'generateBrainstorm failed')
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+  }
+}
+
+export async function generateFleshOut(
+  params: { entityId: string; projectId: string },
+  context: ActionContext,
+  runtime: ActionRuntimeHost
+): Promise<ActionResult> {
+  try {
+    const bobbin = await getUserAIConfig(context.userId)
+    if (!bobbin?.config || !(bobbin.config as any).apiKey) {
+      return { success: false, error: 'AI tools not configured — add your API key in settings' }
+    }
+
+    const { db, entities, eq } = await createDbCallbacks()
+    const [entity] = await db
+      .select()
+      .from(entities)
+      .where(eq(entities.id, params.entityId))
+      .limit(1)
+
+    if (!entity) {
+      return { success: false, error: 'Entity not found' }
+    }
+
+    const data = entity.entityData as any
+    const title = data?.title || 'Untitled'
+    const description = data?.description || ''
+    const dateLabel = data?.date_label || ''
+
+    const client = buildClient(bobbin.config)
+
+    const result = await client.generateText(
+      FLESH_OUT_SYSTEM_PROMPT,
+      buildFleshOutUserPrompt(title, description, dateLabel)
+    )
+
+    return {
+      success: true,
+      data: { details: result.text.trim(), model: result.model },
+    }
+  } catch (error) {
+    runtime.log.error({ error }, 'generateFleshOut failed')
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
   }
 }
@@ -178,5 +375,8 @@ export async function testApiKey(
 export const actions = {
   generate_synopsis: generateSynopsis,
   generate_review: generateReview,
+  generate_names: generateNames,
+  generate_brainstorm: generateBrainstorm,
+  generate_flesh_out: generateFleshOut,
   test_api_key: testApiKey,
 }

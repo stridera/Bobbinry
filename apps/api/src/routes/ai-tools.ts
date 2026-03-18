@@ -1,8 +1,9 @@
 /**
  * AI Tools Routes (User-Scoped)
  *
- * Handles AI config storage, synopsis generation, and review feedback.
- * Config stored in user_bobbins_installed, provenance logged on synopsis save.
+ * Handles AI config storage, synopsis generation, review feedback,
+ * name generation, brainstorming, and timeline flesh-out.
+ * Config stored in user_bobbins_installed, provenance logged on synopsis/review save.
  */
 
 import { FastifyPluginAsync } from 'fastify'
@@ -141,7 +142,7 @@ async function testConnection(provider: AIProvider, apiKey: string, model: strin
   }
 }
 
-// --- Prompts ---
+// --- Prompts (inlined for rootDir constraints) ---
 
 const SYNOPSIS_SYSTEM_PROMPT = `You are a writing assistant that creates concise synopses. Your job is to summarize what happens in a chapter, not to rewrite or improve it.
 
@@ -159,7 +160,14 @@ function buildSynopsisPrompt(title: string, bodyText: string): string {
   return `Write a synopsis for this chapter.\n\nTitle: ${title}\n\nContent:\n${truncated}`
 }
 
-const REVIEW_SYSTEM_PROMPT = `You are a thoughtful beta reader providing structured feedback on a chapter of fiction. You analyze — you do not rewrite or generate content.
+const REVIEW_BASE_RULES = `Rules:
+- Be honest but constructive
+- Cite specific passages when possible
+- Never rewrite sentences for the author
+- Focus on craft observations, not plot preferences
+- Respect the author's voice and style`
+
+const REVIEW_DEFAULT_SYSTEM_PROMPT = `You are a thoughtful beta reader providing structured feedback on a chapter of fiction. You analyze — you do not rewrite or generate content.
 
 Provide feedback in these sections:
 
@@ -178,16 +186,76 @@ Note any patterns — overuse of adverbs, repetitive sentence structures, passiv
 **Suggestions** (bulleted list)
 3-5 specific, actionable suggestions. Frame as observations, not commands.
 
-Rules:
-- Be honest but constructive
-- Cite specific passages when possible
-- Never rewrite sentences for the author
-- Focus on craft observations, not plot preferences
-- Respect the author's voice and style`
+${REVIEW_BASE_RULES}`
 
-function buildReviewPrompt(title: string, bodyText: string): string {
+function buildReviewSystemPrompt(focus?: string): string {
+  if (!focus?.trim()) return REVIEW_DEFAULT_SYSTEM_PROMPT
+
+  return `You are a thoughtful beta reader providing structured feedback on a chapter of fiction. You analyze — you do not rewrite or generate content.
+
+The author has requested feedback focused on: "${focus.trim()}".
+
+Provide your feedback with this focus as the primary lens. Structure with clear **bold** section headers relevant to the requested focus. You may briefly note anything else significant, but keep the majority on the requested focus.
+
+${REVIEW_BASE_RULES}`
+}
+
+function buildReviewPrompt(title: string, bodyText: string, focus?: string): string {
   const truncated = bodyText.length > 12000 ? bodyText.slice(0, 12000) + '\n\n[Content truncated]' : bodyText
-  return `Please provide structured feedback on this chapter.\n\nTitle: ${title}\n\nContent:\n${truncated}`
+  const focusLine = focus?.trim() ? `\nFocus: ${focus.trim()}\n` : ''
+  return `Please provide structured feedback on this chapter.\n\nTitle: ${title}${focusLine}\n\nContent:\n${truncated}`
+}
+
+const NAMES_SYSTEM_PROMPT = `You are a creative name generator for fiction. Generate exactly 8 names.
+
+Rules:
+- Each name on its own line, no numbering or bullets
+- Varied styles (some common, some unusual, some culturally inspired)
+- If a genre/setting is specified, match the cultural and tonal feel
+- No explanations or descriptions, just the names`
+
+function buildNamesPrompt(collectionName: string, existingName?: string, genre?: string): string {
+  let prompt = `Generate 8 names for a ${collectionName.replace(/s$/, '')}`
+  if (genre?.trim()) prompt += ` in a ${genre.trim()} setting`
+  prompt += '.'
+  if (existingName?.trim()) prompt += `\n\nThe current name is "${existingName.trim()}" — provide alternatives in a similar or complementary style.`
+  return prompt
+}
+
+const BRAINSTORM_SYSTEM_PROMPT = `You are a creative writing brainstorming partner. Your job is to expand on the author's notes with fresh ideas — not to rewrite or restructure.
+
+Provide:
+**Ideas & Angles** — 3-5 directions the author could take this
+**Questions to Consider** — 3-5 questions that might deepen the concept
+**Connections** — any themes, tropes, or narrative possibilities you notice
+
+Rules:
+- Be generative, not prescriptive
+- Respect what the author already has
+- Offer variety — don't just elaborate on one angle`
+
+function buildBrainstormPrompt(title: string, content: string): string {
+  const truncated = content.length > 8000 ? content.slice(0, 8000) + '\n\n[Content truncated]' : content
+  return `Brainstorm ideas based on this note.\n\nTitle: ${title}\n\nContent:\n${truncated}`
+}
+
+const FLESH_OUT_SYSTEM_PROMPT = `You are a worldbuilding assistant helping flesh out timeline events for fiction.
+
+Provide:
+**Expanded Description** — 2-3 sentences adding detail and atmosphere
+**Consequences** — what this event likely causes or changes
+**Story Hooks** — 2-3 narrative opportunities this event creates
+
+Rules:
+- Stay consistent with the event's existing details
+- Don't contradict what the author wrote
+- Frame suggestions as possibilities, not requirements`
+
+function buildFleshOutPrompt(title: string, description?: string, dateLabel?: string): string {
+  let prompt = `Flesh out this timeline event.\n\nTitle: ${title}`
+  if (dateLabel?.trim()) prompt += `\nDate: ${dateLabel.trim()}`
+  if (description?.trim()) prompt += `\n\nDescription:\n${description.trim()}`
+  return prompt
 }
 
 // --- Helpers ---
@@ -457,14 +525,14 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
 
   /**
    * POST /ai-tools/review
-   * Generate structured review for an entity (ephemeral, no save)
+   * Generate structured review for a chapter, auto-save to entityData.lastReview
    */
-  fastify.post<{ Body: { projectId: string; entityId: string } }>(
+  fastify.post<{ Body: { projectId: string; entityId: string; focus?: string } }>(
     '/ai-tools/review',
     { preHandler: requireAuth },
     async (request, reply) => {
       const userId = request.user!.id
-      const { projectId, entityId } = request.body || {}
+      const { projectId, entityId, focus } = request.body || {}
 
       if (!projectId || !entityId) {
         return reply.status(400).send({ error: 'projectId and entityId are required' })
@@ -503,19 +571,301 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
           config.provider as AIProvider,
           config.apiKey,
           config.model || getDefaultModel(config.provider),
-          REVIEW_SYSTEM_PROMPT,
-          buildReviewPrompt(title, plainText)
+          buildReviewSystemPrompt(focus),
+          buildReviewPrompt(title, plainText, focus)
         )
+
+        const generatedAt = new Date().toISOString()
+
+        // Re-fetch entity to avoid stale data, then auto-save review
+        const [freshEntity] = await db
+          .select()
+          .from(entities)
+          .where(and(eq(entities.id, entityId), eq(entities.projectId, projectId)))
+          .limit(1)
+
+        if (freshEntity) {
+          const currentData = freshEntity.entityData as any
+          await db
+            .update(entities)
+            .set({
+              entityData: {
+                ...currentData,
+                lastReview: {
+                  text: result.text.trim(),
+                  model: result.model,
+                  focus: focus?.trim() || null,
+                  generatedAt,
+                },
+              },
+              updatedAt: new Date(),
+            })
+            .where(eq(entities.id, entityId))
+
+          await db.insert(provenanceEvents).values({
+            projectId,
+            entityRef: `${projectId}:manuscript:content:${entityId}`,
+            actor: userId,
+            action: 'ai_assist',
+            metaJson: {
+              type: 'review_save',
+              aiModel: result.model,
+              focus: focus?.trim() || null,
+              bobbinId: 'ai-tools',
+            },
+          })
+        }
 
         return reply.send({
           success: true,
           review: result.text.trim(),
           model: result.model,
+          focus: focus?.trim() || null,
+          generatedAt,
           inputTokens: result.inputTokens,
           outputTokens: result.outputTokens,
         })
       } catch (error) {
         fastify.log.error({ error, entityId }, 'Review generation failed')
+        return reply.status(502).send({
+          error: error instanceof Error ? error.message : 'AI generation failed',
+        })
+      }
+    }
+  )
+
+  /**
+   * GET /ai-tools/review/existing
+   * Load persisted review from entityData.lastReview
+   */
+  fastify.get<{ Querystring: { projectId: string; entityId: string } }>(
+    '/ai-tools/review/existing',
+    { preHandler: requireAuth },
+    async (request, reply) => {
+      const { projectId, entityId } = request.query || {}
+
+      if (!projectId || !entityId) {
+        return reply.status(400).send({ error: 'projectId and entityId are required' })
+      }
+
+      const isOwner = await requireProjectOwnership(request, reply, projectId)
+      if (!isOwner) return
+
+      const [entity] = await db
+        .select()
+        .from(entities)
+        .where(and(eq(entities.id, entityId), eq(entities.projectId, projectId)))
+        .limit(1)
+
+      if (!entity) {
+        return reply.status(404).send({ error: 'Entity not found' })
+      }
+
+      const data = entity.entityData as any
+      const lastReview = data?.lastReview
+
+      if (!lastReview) {
+        return reply.send({ exists: false })
+      }
+
+      return reply.send({
+        exists: true,
+        review: lastReview.text,
+        model: lastReview.model,
+        focus: lastReview.focus || null,
+        generatedAt: lastReview.generatedAt,
+      })
+    }
+  )
+
+  /**
+   * POST /ai-tools/names
+   * Generate name suggestions for an entity
+   */
+  fastify.post<{ Body: { projectId: string; entityId: string; genre?: string } }>(
+    '/ai-tools/names',
+    { preHandler: requireAuth },
+    async (request, reply) => {
+      const userId = request.user!.id
+      const { projectId, entityId, genre } = request.body || {}
+
+      if (!projectId || !entityId) {
+        return reply.status(400).send({ error: 'projectId and entityId are required' })
+      }
+
+      const isOwner = await requireProjectOwnership(request, reply, projectId)
+      if (!isOwner) return
+
+      const bobbin = await getUserAIBobbin(userId)
+      const config = bobbin?.config as any
+      if (!config?.apiKey) {
+        return reply.status(400).send({ error: 'AI tools not configured — add your API key' })
+      }
+
+      const [entity] = await db
+        .select()
+        .from(entities)
+        .where(and(eq(entities.id, entityId), eq(entities.projectId, projectId)))
+        .limit(1)
+
+      if (!entity) {
+        return reply.status(404).send({ error: 'Entity not found' })
+      }
+
+      const data = entity.entityData as any
+      const existingName = data?.name || ''
+      const collectionName = entity.collectionName || 'characters'
+
+      try {
+        const result = await generateText(
+          config.provider as AIProvider,
+          config.apiKey,
+          config.model || getDefaultModel(config.provider),
+          NAMES_SYSTEM_PROMPT,
+          buildNamesPrompt(collectionName, existingName, genre)
+        )
+
+        const names = result.text
+          .trim()
+          .split('\n')
+          .map((n) => n.trim())
+          .filter((n) => n.length > 0)
+
+        return reply.send({
+          success: true,
+          names,
+          model: result.model,
+        })
+      } catch (error) {
+        fastify.log.error({ error, entityId }, 'Name generation failed')
+        return reply.status(502).send({
+          error: error instanceof Error ? error.message : 'AI generation failed',
+        })
+      }
+    }
+  )
+
+  /**
+   * POST /ai-tools/brainstorm
+   * Brainstorm ideas from a note's content
+   */
+  fastify.post<{ Body: { projectId: string; entityId: string } }>(
+    '/ai-tools/brainstorm',
+    { preHandler: requireAuth },
+    async (request, reply) => {
+      const userId = request.user!.id
+      const { projectId, entityId } = request.body || {}
+
+      if (!projectId || !entityId) {
+        return reply.status(400).send({ error: 'projectId and entityId are required' })
+      }
+
+      const isOwner = await requireProjectOwnership(request, reply, projectId)
+      if (!isOwner) return
+
+      const bobbin = await getUserAIBobbin(userId)
+      const config = bobbin?.config as any
+      if (!config?.apiKey) {
+        return reply.status(400).send({ error: 'AI tools not configured — add your API key' })
+      }
+
+      const [entity] = await db
+        .select()
+        .from(entities)
+        .where(and(eq(entities.id, entityId), eq(entities.projectId, projectId)))
+        .limit(1)
+
+      if (!entity) {
+        return reply.status(404).send({ error: 'Entity not found' })
+      }
+
+      const data = entity.entityData as any
+      const title = data?.title || 'Untitled'
+      const content = data?.content || ''
+      const plainContent = stripHtml(content)
+
+      if (plainContent.length < 20) {
+        return reply.status(400).send({ error: 'Note needs more content before brainstorming' })
+      }
+
+      try {
+        const result = await generateText(
+          config.provider as AIProvider,
+          config.apiKey,
+          config.model || getDefaultModel(config.provider),
+          BRAINSTORM_SYSTEM_PROMPT,
+          buildBrainstormPrompt(title, plainContent)
+        )
+
+        return reply.send({
+          success: true,
+          brainstorm: result.text.trim(),
+          model: result.model,
+        })
+      } catch (error) {
+        fastify.log.error({ error, entityId }, 'Brainstorm generation failed')
+        return reply.status(502).send({
+          error: error instanceof Error ? error.message : 'AI generation failed',
+        })
+      }
+    }
+  )
+
+  /**
+   * POST /ai-tools/flesh-out
+   * Flesh out a timeline event with details, consequences, and story hooks
+   */
+  fastify.post<{ Body: { projectId: string; entityId: string } }>(
+    '/ai-tools/flesh-out',
+    { preHandler: requireAuth },
+    async (request, reply) => {
+      const userId = request.user!.id
+      const { projectId, entityId } = request.body || {}
+
+      if (!projectId || !entityId) {
+        return reply.status(400).send({ error: 'projectId and entityId are required' })
+      }
+
+      const isOwner = await requireProjectOwnership(request, reply, projectId)
+      if (!isOwner) return
+
+      const bobbin = await getUserAIBobbin(userId)
+      const config = bobbin?.config as any
+      if (!config?.apiKey) {
+        return reply.status(400).send({ error: 'AI tools not configured — add your API key' })
+      }
+
+      const [entity] = await db
+        .select()
+        .from(entities)
+        .where(and(eq(entities.id, entityId), eq(entities.projectId, projectId)))
+        .limit(1)
+
+      if (!entity) {
+        return reply.status(404).send({ error: 'Entity not found' })
+      }
+
+      const data = entity.entityData as any
+      const title = data?.title || 'Untitled'
+      const description = data?.description || ''
+      const dateLabel = data?.date_label || ''
+
+      try {
+        const result = await generateText(
+          config.provider as AIProvider,
+          config.apiKey,
+          config.model || getDefaultModel(config.provider),
+          FLESH_OUT_SYSTEM_PROMPT,
+          buildFleshOutPrompt(title, description, dateLabel)
+        )
+
+        return reply.send({
+          success: true,
+          details: result.text.trim(),
+          model: result.model,
+        })
+      } catch (error) {
+        fastify.log.error({ error, entityId }, 'Flesh-out generation failed')
         return reply.status(502).send({
           error: error instanceof Error ? error.message : 'AI generation failed',
         })

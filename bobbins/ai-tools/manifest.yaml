@@ -1,8 +1,8 @@
 id: ai-tools
 name: AI Tools
-version: 0.1.2
+version: 0.2.0
 author: Bobbins Core
-description: Analysis and suggestion tools for your writing. Provides synopsis suggestions and structured feedback — never writes or rewrites your content.
+description: Context-adaptive AI tools for your writing. Provides feedback, name generation, brainstorming, and more — never writes or rewrites your content.
 tags: [ai, analysis, feedback, synopsis]
 license: MIT
 visibility: none  # Hidden from all users; owners bypass visibility restrictions
@@ -20,8 +20,6 @@ extensions:
       title: "AI Tools"
       entry: panels/ai-panel
       priority: 3
-      when:
-        entityType: content
 
 external:
   endpoints:
@@ -52,8 +50,21 @@ interactions:
       type: custom
       handler: testApiKey
       description: Validate an AI provider API key
+    - id: generate_names
+      name: Generate Names
+      type: custom
+      handler: generateNames
+      description: Generate name suggestions for an entity
+    - id: generate_brainstorm
+      name: Brainstorm
+      type: custom
+      handler: generateBrainstorm
+      description: Brainstorm ideas from note content
+    - id: generate_flesh_out
+      name: Flesh Out Event
+      type: custom
+      handler: generateFleshOut
+      description: Flesh out a timeline event with details
 
 compatibility:
   minShellVersion: 1.0.0
-  requiredBobbins:
-    - manuscript

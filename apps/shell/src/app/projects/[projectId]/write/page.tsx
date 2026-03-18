@@ -74,13 +74,14 @@ export default function ProjectWritePage() {
   }, [session?.apiToken, sdk])
 
   // Load installed bobbins and their views
-  const loadProject = useRef<(() => Promise<void>) | null>(null)
+  const loadProject = useRef<((skipLoading?: boolean) => Promise<void>) | null>(null)
 
   // Keep loadProject ref up to date
-  loadProject.current = async () => {
+  // skipLoading=true avoids unmounting ShellLayout (preserves view context)
+  loadProject.current = async (skipLoading?: boolean) => {
     try {
       console.log('🔄 PROJECT PAGE: Starting loadProject for:', projectId)
-      setLoading(true)
+      if (!skipLoading) setLoading(true)
       sdk.setProject(projectId)
 
       const response = await sdk.api.getInstalledBobbins(projectId)
@@ -108,7 +109,7 @@ export default function ProjectWritePage() {
     } catch (error) {
       console.error('Failed to load project:', error)
     } finally {
-      setLoading(false)
+      if (!skipLoading) setLoading(false)
     }
   }
 
@@ -118,9 +119,10 @@ export default function ProjectWritePage() {
   }, [projectId, sdk, session?.apiToken])
 
   // Re-load bobbins when install/uninstall happens via the popover
+  // skipLoading=true keeps ShellLayout mounted so view context is preserved
   useEffect(() => {
     const handleBobbinsChanged = () => {
-      loadProject.current?.()
+      loadProject.current?.(true)
     }
     window.addEventListener('bobbinry:bobbins-changed', handleBobbinsChanged)
     return () => window.removeEventListener('bobbinry:bobbins-changed', handleBobbinsChanged)
