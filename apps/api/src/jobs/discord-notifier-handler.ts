@@ -7,7 +7,7 @@
 
 import { serverEventBus, type DomainEvent } from '../lib/event-bus'
 import { db } from '../db/connection'
-import { projects, entities, users, projectDestinations, embargoSchedules } from '../db/schema'
+import { projects, entities, users, userProfiles, projectDestinations, embargoSchedules } from '../db/schema'
 import { eq, and } from 'drizzle-orm'
 import { sendWebhook, buildChapterEmbed } from '../lib/discord-api'
 
@@ -47,14 +47,15 @@ async function sendToMatchingDestinations(
   if (!project || !chapter) return
 
   const [author] = await db
-    .select({ name: users.name })
+    .select({ name: users.name, username: userProfiles.username })
     .from(users)
+    .leftJoin(userProfiles, eq(userProfiles.userId, users.id))
     .where(eq(users.id, project.ownerId))
     .limit(1)
 
   const chapterData = chapter.entityData as Record<string, unknown>
   const chapterTitle = (chapterData?.title as string) || 'Untitled Chapter'
-  const chapterUrl = `https://bobbinry.com/${project.shortUrl || project.id}/read/${chapter.id}`
+  const chapterUrl = `https://bobbinry.com/read/${author?.username}/${project.shortUrl || project.id}/${chapter.id}`
 
   for (const dest of destinations) {
     const config = dest.config as any

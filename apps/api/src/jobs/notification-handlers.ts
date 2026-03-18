@@ -16,6 +16,7 @@ import {
   projects,
   entities,
   users,
+  userProfiles,
   projectFollows,
   userNotificationPreferences,
   embargoSchedules,
@@ -50,8 +51,9 @@ async function handleContentPublished(event: DomainEvent): Promise<void> {
   if (!project || !chapter) return
 
   const [author] = await db
-    .select({ id: users.id, name: users.name })
+    .select({ id: users.id, name: users.name, username: userProfiles.username })
     .from(users)
+    .leftJoin(userProfiles, eq(userProfiles.userId, users.id))
     .where(eq(users.id, project.ownerId))
     .limit(1)
 
@@ -78,7 +80,7 @@ async function handleContentPublished(event: DomainEvent): Promise<void> {
   const chapterData = chapter.entityData as Record<string, unknown>
   const chapterTitle = (chapterData?.title as string) || 'Untitled Chapter'
   const projectTitle = project.name || 'Untitled Project'
-  const chapterUrl = `/${project.shortUrl || projectId}/read/${chapterId}`
+  const chapterUrl = `/read/${author.username}/${project.shortUrl || projectId}/${chapterId}`
 
   // If embargoed, determine which followers have immediate access (active subscribers)
   let followerIdsToNotify: Set<string>
@@ -191,8 +193,9 @@ async function handleContentAvailable(event: DomainEvent): Promise<void> {
   if (!project || !chapter) return
 
   const [author] = await db
-    .select({ id: users.id, name: users.name })
+    .select({ id: users.id, name: users.name, username: userProfiles.username })
     .from(users)
+    .leftJoin(userProfiles, eq(userProfiles.userId, users.id))
     .where(eq(users.id, project.ownerId))
     .limit(1)
 
@@ -225,7 +228,7 @@ async function handleContentAvailable(event: DomainEvent): Promise<void> {
   const chapterData = chapter.entityData as Record<string, unknown>
   const chapterTitle = (chapterData?.title as string) || 'Untitled Chapter'
   const projectTitle = project.name || 'Untitled Project'
-  const chapterUrl = `/${project.shortUrl || projectId}/read/${chapterId}`
+  const chapterUrl = `/read/${author.username}/${project.shortUrl || projectId}/${chapterId}`
 
   // Insert in-app notifications
   const notificationValues = freeFollowers.map(f => ({
