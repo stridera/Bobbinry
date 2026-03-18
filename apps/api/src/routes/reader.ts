@@ -97,6 +97,11 @@ async function checkPublicChapterAccess(
       .limit(1)
 
     if (project) {
+      // Project owner always has full access to their own chapters
+      if (project.ownerId === userId) {
+        return { canAccess: true }
+      }
+
       const [sub] = await db
         .select({
           tierId: subscriptions.tierId,
