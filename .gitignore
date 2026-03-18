@@ -16,8 +16,11 @@ coverage/
 Thumbs.db
 .idea/
 .vscode/
-# TypeScript build cache
+# TypeScript build cache & stray compiled output in src/
 *.tsbuildinfo
+apps/api/src/**/*.js
+apps/api/src/**/*.js.map
+apps/api/src/**/*.d.ts
 
 # Logs
 npm-debug.log*
