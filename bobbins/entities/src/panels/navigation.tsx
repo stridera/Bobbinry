@@ -5,8 +5,10 @@
  * Types expand inline to show individual entities
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
+  BobbinryAPI,
+  EntityAPI,
   PanelActions,
   PanelBody,
   PanelCard,
@@ -24,6 +26,7 @@ interface NavigationViewProps {
     projectId?: string
     currentProject?: string
     currentView?: string
+    apiToken?: string
   }
 }
 
@@ -44,29 +47,32 @@ export default function NavigationView({ context }: NavigationViewProps) {
 
   // Get projectId from context
   const projectId = context?.projectId || context?.currentProject
+  const apiToken = context?.apiToken
+
+  const entityApi = useMemo(() => {
+    if (!projectId) return null
+    const api = new BobbinryAPI()
+    if (apiToken) api.setAuthToken(apiToken)
+    return new EntityAPI(api, projectId)
+  }, [projectId, apiToken])
 
   useEffect(() => {
-    if (projectId) {
+    if (projectId && entityApi) {
       loadEntityTypes()
     } else {
       setLoading(false)
       setEntityTypes([])
     }
-  }, [projectId])
+  }, [projectId, entityApi])
 
   async function loadEntityTypes() {
+    if (!entityApi) return
     try {
       setLoading(true)
       setError(null)
 
-      const response = await fetch(`/api/collections/entity_type_definitions/entities?projectId=${projectId}`)
-
-      if (!response.ok) {
-        throw new Error(`Failed to load entity types: ${response.statusText}`)
-      }
-
-      const data = await response.json()
-      const types = data.entities || []
+      const result = await entityApi.query({ collection: 'entity_type_definitions' })
+      const types = result.data
       setEntityTypes(types)
 
       // Load counts for each entity type in parallel
@@ -74,11 +80,8 @@ export default function NavigationView({ context }: NavigationViewProps) {
       const countResults = await Promise.all(
         typeIds.map(async (typeId: string) => {
           try {
-            const countResponse = await fetch(`/api/collections/${typeId}/entities?projectId=${projectId}&limit=1`)
-            if (countResponse.ok) {
-              const countData = await countResponse.json()
-              return [typeId, countData.total || 0] as const
-            }
+            const countResult = await entityApi.query({ collection: typeId, limit: 1 })
+            return [typeId, countResult.total || 0] as const
           } catch {}
           return [typeId, 0] as const
         })
@@ -94,14 +97,13 @@ export default function NavigationView({ context }: NavigationViewProps) {
   }
 
   async function loadEntitiesForType(typeId: string) {
+    if (!entityApi) return
     setLoadingEntities(prev => new Set(prev).add(typeId))
     try {
-      const response = await fetch(`/api/collections/${typeId}/entities?projectId=${projectId}`)
-      if (!response.ok) throw new Error(response.statusText)
-      const data = await response.json()
-      const entities = data.entities || []
+      const result = await entityApi.query({ collection: typeId })
+      const entities = result.data
       setTypeEntities(prev => ({ ...prev, [typeId]: entities }))
-      setCounts(prev => ({ ...prev, [typeId]: data.total || entities.length }))
+      setCounts(prev => ({ ...prev, [typeId]: result.total || entities.length }))
     } catch (err) {
       console.error('[Navigation] Failed to load entities for type:', typeId, err)
     } finally {

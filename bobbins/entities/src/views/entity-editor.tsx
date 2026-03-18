@@ -64,14 +64,8 @@ export default function EntityEditorView({
 
       console.log('[EntityEditor] Loading type config for:', entityType)
 
-      const response = await fetch(`/api/collections/entity_type_definitions/entities?projectId=${projectId}`)
-      
-      if (!response.ok) {
-        throw new Error(`Failed to load type config: ${response.statusText}`)
-      }
-      
-      const data = await response.json()
-      const config = data.entities?.find((t: any) =>
+      const result = await sdk.entities.query({ collection: 'entity_type_definitions' })
+      const config = result.data.find((t: any) =>
         (t.type_id || t.typeId) === entityType
       )
 
@@ -81,7 +75,7 @@ export default function EntityEditorView({
         setLoading(false)
         return
       }
-      
+
       setTypeConfig(config)
       console.log('[EntityEditor] Loaded type config:', config)
 
@@ -99,15 +93,9 @@ export default function EntityEditorView({
 
       console.log('[EntityEditor] Loading entity:', entityType, entityId)
 
-      const response = await fetch(`/api/entities/${entityId}?projectId=${projectId}&collection=${entityType}`)
-      
-      if (!response.ok) {
-        throw new Error(`Failed to load entity: ${response.statusText}`)
-      }
-      
-      const data = await response.json()
-      setEntity(data.entity || {})
-      console.log('[EntityEditor] Loaded entity:', data.entity)
+      const data = await sdk.entities.get(entityType, entityId)
+      setEntity(data?.entity || data || {})
+      console.log('[EntityEditor] Loaded entity:', data)
 
       setSaveStatus('saved')
     } catch (err: any) {
@@ -185,31 +173,16 @@ export default function EntityEditorView({
       console.log('[EntityEditor] Saving entity:', { isNewEntity, entityType, entity })
 
       if (isNewEntity) {
-        const response = await fetch('/api/entities', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            collection: entityType,
-            projectId,
-            data: entity
-          })
-        })
-
-        if (!response.ok) {
-          throw new Error(`Failed to create entity: ${response.statusText}`)
-        }
-
-        const result = await response.json()
+        const result = await sdk.entities.create(entityType!, entity)
         console.log('[EntityEditor] Created entity:', result)
 
         // Navigate to the created entity
-        if (typeof window !== 'undefined' && result.entity?.id) {
+        const createdId = result?.entity?.id || result?.id
+        if (typeof window !== 'undefined' && createdId) {
           window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
             detail: {
               entityType,
-              entityId: result.entity.id,
+              entityId: createdId,
               bobbinId: 'entities',
               metadata: {
                 view: 'entity-editor',
@@ -220,22 +193,7 @@ export default function EntityEditorView({
           }))
         }
       } else {
-        const response = await fetch(`/api/entities/${entityId}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            collection: entityType,
-            projectId,
-            data: entity
-          })
-        })
-
-        if (!response.ok) {
-          throw new Error(`Failed to update entity: ${response.statusText}`)
-        }
-
+        await sdk.entities.update(entityType!, entityId!, entity)
         console.log('[EntityEditor] Updated entity')
       }
 
@@ -259,13 +217,7 @@ export default function EntityEditorView({
     try {
       console.log('[EntityEditor] Deleting entity:', entityType, entityId)
 
-      const response = await fetch(`/api/entities/${entityId}?projectId=${projectId}&collection=${entityType}`, {
-        method: 'DELETE'
-      })
-
-      if (!response.ok) {
-        throw new Error(`Failed to delete entity: ${response.statusText}`)
-      }
+      await sdk.entities.delete(entityType!, entityId!)
 
       console.log('[EntityEditor] Deleted entity')
 

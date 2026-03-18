@@ -49,24 +49,18 @@ export default function EntityListView({
       setError(null)
       console.log('[EntityList] Loading type config for:', entityType)
 
-      const response = await fetch(`/api/collections/entity_type_definitions/entities?projectId=${projectId}`)
-      
-      if (!response.ok) {
-        throw new Error(`Failed to load type config: ${response.statusText}`)
-      }
-      
-      const data = await response.json()
-      const config = data.entities?.find((t: any) =>
+      const result = await sdk.entities.query({ collection: 'entity_type_definitions' })
+      const config = result.data.find((t: any) =>
         (t.type_id || t.typeId) === entityType
       )
-      
+
       if (!config) {
         console.warn(`[EntityList] Entity type "${entityType}" not found in entity_type_definitions`)
         setError(`Entity type "${entityType}" is not managed by the entities bobbin`)
         setLoading(false)
         return
       }
-      
+
       setTypeConfig(config)
       console.log('[EntityList] Loaded type config:', config)
     } catch (err: any) {
@@ -82,15 +76,9 @@ export default function EntityListView({
 
       console.log('[EntityList] Loading entities for:', entityType)
 
-      const response = await fetch(`/api/collections/${entityType}/entities?projectId=${projectId}&limit=1000`)
-      
-      if (!response.ok) {
-        throw new Error(`Failed to load entities: ${response.statusText}`)
-      }
-      
-      const data = await response.json()
-      setEntities(data.entities || [])
-      console.log('[EntityList] Loaded entities:', data.entities)
+      const result = await sdk.entities.query({ collection: entityType!, limit: 1000 })
+      setEntities(result.data)
+      console.log('[EntityList] Loaded entities:', result.data)
 
       setLoading(false)
     } catch (err: any) {

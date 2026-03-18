@@ -62,16 +62,10 @@ export default function ConfigView({ projectId, sdk }: ConfigViewProps) {
   async function loadEntityTypes() {
     try {
       console.log('[ConfigView] Loading entity types for project:', projectId)
-      
-      const response = await fetch(`/api/collections/entity_type_definitions/entities?projectId=${projectId}`)
-      
-      if (!response.ok) {
-        throw new Error(`Failed to load entity types: ${response.statusText}`)
-      }
-      
-      const data = await response.json()
-      setEntityTypes(data.entities || [])
-      console.log('[ConfigView] Loaded entity types:', data.entities)
+
+      const result = await sdk.entities.query({ collection: 'entity_type_definitions' })
+      setEntityTypes(result.data)
+      console.log('[ConfigView] Loaded entity types:', result.data)
     } catch (error) {
       console.error('[ConfigView] Error loading entity types:', error)
     }
@@ -117,34 +111,19 @@ export default function ConfigView({ projectId, sdk }: ConfigViewProps) {
 
       console.log('[ConfigView] Saving entity type:', entityTypeDefinition)
 
-      const response = await fetch('/api/entities', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          collection: 'entity_type_definitions',
-          projectId,
-          data: {
-            type_id: entityTypeDefinition.typeId,
-            label: entityTypeDefinition.label,
-            icon: entityTypeDefinition.icon,
-            template_id: entityTypeDefinition.templateId,
-            base_fields: entityTypeDefinition.baseFields,
-            custom_fields: entityTypeDefinition.customFields,
-            editor_layout: entityTypeDefinition.editorLayout,
-            list_layout: entityTypeDefinition.listLayout,
-            subtitle_fields: entityTypeDefinition.subtitleFields,
-            allow_duplicates: entityTypeDefinition.allowDuplicates
-          }
-        })
+      const result = await sdk.entities.create('entity_type_definitions', {
+        type_id: entityTypeDefinition.typeId,
+        label: entityTypeDefinition.label,
+        icon: entityTypeDefinition.icon,
+        template_id: entityTypeDefinition.templateId,
+        base_fields: entityTypeDefinition.baseFields,
+        custom_fields: entityTypeDefinition.customFields,
+        editor_layout: entityTypeDefinition.editorLayout,
+        list_layout: entityTypeDefinition.listLayout,
+        subtitle_fields: entityTypeDefinition.subtitleFields,
+        allow_duplicates: entityTypeDefinition.allowDuplicates
       })
 
-      if (!response.ok) {
-        throw new Error(`Failed to save entity type: ${response.statusText}`)
-      }
-
-      const result = await response.json()
       console.log('[ConfigView] Entity type saved:', result)
 
       setToast({ message: `Entity type "${entityLabel}" saved! It's now available in the navigation panel.`, variant: 'success' })

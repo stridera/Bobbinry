@@ -83,6 +83,22 @@ const eslintConfig = [
       "react-hooks/purity": "warn",
       "react-hooks/immutability": "warn",
       "react/no-unescaped-entities": "off",
+      "no-restricted-imports": ["error", {
+        paths: [
+          {
+            name: "drizzle-orm",
+            message: "Shell must not import drizzle-orm directly. Use the Fastify API via SDK instead.",
+          },
+          {
+            name: "drizzle-orm/postgres-js",
+            message: "Shell must not import drizzle-orm directly. Use the Fastify API via SDK instead.",
+          },
+          {
+            name: "@/lib/db",
+            message: "Shell must not import DB modules directly. Use the Fastify API via SDK instead.",
+          },
+        ],
+      }],
     },
   },
 ];
