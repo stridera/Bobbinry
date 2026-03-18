@@ -250,6 +250,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             if (data.emailVerified !== undefined) {
               token.emailVerified = data.emailVerified
             }
+            if (data.hasPassword !== undefined) {
+              token.hasPassword = data.hasPassword
+            }
           }
         } catch {}
         // Round to nearest TTL window to avoid constant token churn
@@ -259,6 +262,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (!token.membershipTier) token.membershipTier = 'free'
       if (!token.badges) token.badges = []
       if (token.emailVerified === undefined) token.emailVerified = false
+      if (token.hasPassword === undefined) token.hasPassword = false
       return token
     },
     async session({ session, token }) {
@@ -267,6 +271,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.user.membershipTier = (token.membershipTier as 'free' | 'supporter') || 'free'
         session.user.badges = (token.badges as string[]) || []
         ;(session.user as any).emailVerified = !!token.emailVerified
+        session.user.hasPassword = !!token.hasPassword
       }
       session.apiToken = token.apiToken as string
       return session

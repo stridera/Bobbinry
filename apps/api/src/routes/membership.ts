@@ -53,7 +53,14 @@ const membershipPlugin: FastifyPluginAsync = async (fastify) => {
         }
       }
 
-      return reply.send({ tier, badges, membership, emailVerified: !!user.emailVerified })
+      // Check if user has a password (credentials account vs OAuth-only)
+      const [dbUser] = await db
+        .select({ passwordHash: users.passwordHash })
+        .from(users)
+        .where(eq(users.id, user.id))
+        .limit(1)
+
+      return reply.send({ tier, badges, membership, emailVerified: !!user.emailVerified, hasPassword: !!dbUser?.passwordHash })
     } catch (error) {
       fastify.log.error(error)
       return reply.status(500).send({ error: 'Failed to fetch membership' })

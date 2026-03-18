@@ -19,6 +19,7 @@ declare module '@auth/core/types' {
       membershipTier: 'free' | 'supporter'
       badges: string[]
       emailVerified: boolean
+      hasPassword: boolean
     }
     apiToken: string
   }
@@ -40,6 +41,7 @@ declare module 'next-auth' {
       membershipTier: 'free' | 'supporter'
       badges: string[]
       emailVerified: boolean
+      hasPassword: boolean
     }
     apiToken: string
   }
@@ -58,5 +60,6 @@ declare module 'next-auth/jwt' {
     membershipTier: 'free' | 'supporter'
     badges: string[]
     emailVerified: boolean
+    hasPassword: boolean
   }
 }

@@ -529,8 +529,8 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Two-Factor Authentication */}
-        {session.apiToken && <TwoFactorSection apiToken={session.apiToken} />}
+        {/* Two-Factor Authentication (only for password-based accounts) */}
+        {session.apiToken && session.user.hasPassword && <TwoFactorSection apiToken={session.apiToken} />}
 
         {/* Public Profile */}
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
