@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { ConflictError } from '@bobbinry/sdk'
 import type { BobbinrySDK } from '@bobbinry/sdk'
 import { useEditor, EditorContent } from '@tiptap/react'
 import type { Editor } from '@tiptap/react'
@@ -39,6 +40,8 @@ interface DraftEntry {
   wordCount: number
   savedToServer: boolean
   timestamp: number
+  version: number | null
+  containerId: string | null
 }
 
 function getParentOrigin(): string {
@@ -66,6 +69,8 @@ function saveDraft(entityId: string, draft: Partial<DraftEntry> & { html: string
       wordCount: draft.wordCount ?? existing?.wordCount ?? 0,
       savedToServer: draft.savedToServer ?? false,
       timestamp: Date.now(),
+      version: draft.version !== undefined ? draft.version : (existing?.version ?? null),
+      containerId: draft.containerId !== undefined ? draft.containerId : (existing?.containerId ?? null),
     }
     localStorage.setItem(getDraftKey(entityId), JSON.stringify(entry))
   } catch {
@@ -84,7 +89,12 @@ function loadDraft(entityId: string): DraftEntry | null {
 }
 
 // --- Save state ---
-type SaveStatus = 'clean' | 'dirty' | 'saving' | 'saved' | 'error' | 'offline'
+type SaveStatus = 'clean' | 'dirty' | 'saving' | 'saved' | 'error' | 'offline' | 'conflict'
+
+interface ConflictInfo {
+  serverVersion: number
+  localVersion: number | null
+}
 
 function ToolbarButton({ onClick, isActive, disabled, title, children }: ToolbarButtonProps) {
   return (
@@ -292,6 +302,12 @@ function SaveIndicator({ status, focusMode }: { status: SaveStatus; focusMode: b
           <span className="text-[10px] text-orange-400 font-medium">Offline</span>
         </span>
       )}
+      {status === 'conflict' && (
+        <span className="flex items-center gap-1" title="Conflict — this scene was edited elsewhere">
+          <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+          <span className="text-[10px] text-red-500 font-medium">Conflict</span>
+        </span>
+      )}
     </div>
   )
 }
@@ -325,6 +341,10 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
   const suppressSaveRef = useRef(false)
   // Track in-flight save to avoid concurrent saves
   const savingRef = useRef(false)
+  // Server version for optimistic locking
+  const versionRef = useRef<number | null>(null)
+  // Conflict state
+  const [conflictInfo, setConflictInfo] = useState<ConflictInfo | null>(null)
 
   const [focusMode, setFocusMode] = useState(false)
 
@@ -679,13 +699,16 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
     const gen = ++loadGenRef.current
     const isStale = () => loadGenRef.current !== gen
 
+    // Clear any previous conflict state
+    setConflictInfo(null)
+
     const draft = loadDraft(targetEntityId)
 
     // --- Fast path: if we have a local draft, show it instantly ---
-    // This covers both unsaved edits AND confirmed-saved content.
     // The user sees their content immediately with no loading spinner.
     if (draft && draft.html && draft.html !== '<p></p>') {
       applyContent(draft.html, draft.title, draft.wordCount)
+      versionRef.current = draft.version ?? null
       setSaveStatus(draft.savedToServer ? 'clean' : 'dirty')
       setLoading(false)
 
@@ -694,16 +717,79 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
         debouncedSave(draft.html, targetEntityId, draft.wordCount)
       }
 
-      // Refresh the title from the server — the draft cache may have a stale
-      // title if the chapter was renamed via the sidebar.
-      sdk.entities.get('content', targetEntityId).then((result: any) => {
-        if (isStale()) return
-        const serverTitle = result?.title
-        if (serverTitle && serverTitle !== draft.title) {
-          setTitle(serverTitle)
-          saveDraft(targetEntityId, { html: draft.html, title: serverTitle, wordCount: draft.wordCount, savedToServer: draft.savedToServer })
+      // Lightweight version check via HEAD — avoids downloading full content
+      sdk.entities.getVersion('content', targetEntityId).then((versionInfo) => {
+        if (isStale() || !versionInfo) return
+        const serverVersion = versionInfo.version
+
+        if (draft.version !== null && serverVersion === draft.version) {
+          // Versions match — cache is fresh
+          if (draft.savedToServer) {
+            // Nothing to do, we're in sync
+            return
+          }
+          // Local unsaved edits, but server hasn't changed — safe to save normally
+          return
         }
-      }).catch(() => {})
+
+        // Versions differ
+        if (!draft.savedToServer) {
+          // CONFLICT: local unsaved edits AND server changed
+          setSaveStatus('conflict')
+          setConflictInfo({ serverVersion, localVersion: draft.version })
+          return
+        }
+
+        // Draft was saved — server is newer, fetch full content to update
+        sdk.entities.get('content', targetEntityId).then((result: any) => {
+          if (isStale()) return
+          const serverContent = result as any
+          const serverTitle = serverContent?.title ?? ''
+          const serverBody = serverContent?.body ?? ''
+          const serverWordCount = serverContent?.word_count ?? 0
+          const newVersion = serverContent?._meta?.version ?? serverVersion
+
+          applyContent(serverBody, serverTitle || draft.title, serverWordCount)
+          versionRef.current = newVersion
+          saveDraft(targetEntityId, {
+            html: serverBody,
+            title: serverTitle || draft.title,
+            wordCount: serverWordCount,
+            savedToServer: true,
+            version: newVersion,
+            containerId: serverContent?.container_id ?? draft.containerId,
+          })
+        }).catch(() => {})
+      }).catch(() => {
+        // HEAD failed — fall back to full fetch for reconciliation
+        sdk.entities.get('content', targetEntityId).then((result: any) => {
+          if (isStale()) return
+          const serverContent = result as any
+          const serverTitle = serverContent?.title ?? ''
+          const serverBody = serverContent?.body ?? ''
+          const serverWordCount = serverContent?.word_count ?? 0
+          const newVersion = serverContent?._meta?.version ?? null
+
+          versionRef.current = newVersion
+
+          if (draft.savedToServer) {
+            if (serverBody && serverBody !== draft.html) {
+              applyContent(serverBody, serverTitle || draft.title, serverWordCount)
+              saveDraft(targetEntityId, {
+                html: serverBody,
+                title: serverTitle || draft.title,
+                wordCount: serverWordCount,
+                savedToServer: true,
+                version: newVersion,
+                containerId: serverContent?.container_id ?? draft.containerId,
+              })
+            }
+          } else if (serverTitle && serverTitle !== draft.title) {
+            setTitle(serverTitle)
+            saveDraft(targetEntityId, { html: draft.html, title: serverTitle, wordCount: draft.wordCount, savedToServer: false })
+          }
+        }).catch(() => {})
+      })
 
       return
     }
@@ -721,8 +807,11 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
       const body = serverContent.body || ''
       const titleVal = serverContent.title || ''
       const count = serverContent.word_count || 0
+      const version = serverContent._meta?.version ?? null
+      const containerId = serverContent.container_id ?? null
 
       applyContent(body, titleVal, count)
+      versionRef.current = version
 
       // Cache for instant loading next time
       saveDraft(targetEntityId, {
@@ -730,6 +819,8 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
         title: titleVal,
         wordCount: count,
         savedToServer: true,
+        version,
+        containerId,
       })
 
       setLoading(false)
@@ -742,6 +833,7 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
       const fallbackDraft = loadDraft(targetEntityId)
       if (fallbackDraft && editor) {
         applyContent(fallbackDraft.html, fallbackDraft.title, fallbackDraft.wordCount)
+        versionRef.current = fallbackDraft.version ?? null
         setSaveStatus('dirty')
       }
 
@@ -767,7 +859,7 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
    * Actually persist content to the server. The entityId is captured at
    * schedule time, not read from the current prop.
    */
-  async function serverSave(targetEntityId: string, html: string, count: number) {
+  async function serverSave(targetEntityId: string, html: string, count: number, skipVersionCheck?: boolean) {
     if (!targetEntityId || savingRef.current) return
 
     // Don't attempt server save when offline — stay in offline/dirty state
@@ -781,21 +873,35 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
       savingRef.current = true
       setSaveStatus('saving')
 
-      await sdk.entities.update('content', targetEntityId, {
+      const expectedVersion = skipVersionCheck ? undefined : (versionRef.current ?? undefined)
+
+      const result = await sdk.entities.update('content', targetEntityId, {
         body: html,
         word_count: count
-      })
+      }, expectedVersion) as any
+
+      // Extract new version from response and update refs + draft
+      const newVersion = result?._meta?.version ?? null
+      versionRef.current = newVersion
 
       // Mark the draft as saved to server
-      saveDraft(targetEntityId, { html, wordCount: count, savedToServer: true })
+      saveDraft(targetEntityId, { html, wordCount: count, savedToServer: true, version: newVersion })
 
       // Show "saved" briefly, then go clean
       setSaveStatus('saved')
+      setConflictInfo(null)
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
       savedTimerRef.current = setTimeout(() => {
         setSaveStatus(prev => prev === 'saved' ? 'clean' : prev)
       }, 2000)
     } catch (error) {
+      if (error instanceof ConflictError) {
+        console.warn('[EditorView] Save conflict detected:', error.currentVersion, 'vs expected', error.expectedVersion)
+        setSaveStatus('conflict')
+        setConflictInfo({ serverVersion: error.currentVersion, localVersion: versionRef.current })
+        saveDraft(targetEntityId, { html, wordCount: count, savedToServer: false })
+        return
+      }
       console.error('[EditorView] Auto-save failed:', error)
       // Detect network errors and set offline status
       const isNetworkError = error instanceof TypeError && error.message.includes('fetch')
@@ -805,6 +911,68 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
     } finally {
       savingRef.current = false
     }
+  }
+
+  // --- Conflict resolution handlers ---
+
+  function handleConflictReload() {
+    const eid = activeEntityRef.current
+    if (!eid) return
+    // Clear local draft, reset version, re-fetch from server
+    localStorage.removeItem(getDraftKey(eid))
+    versionRef.current = null
+    setConflictInfo(null)
+    setSaveStatus('clean')
+    loadContent(eid)
+  }
+
+  async function handleConflictSaveAsNew() {
+    const eid = activeEntityRef.current
+    if (!eid || !editor) return
+    const draft = loadDraft(eid)
+    const html = editor.getHTML()
+    const currentTitle = title || draft?.title || 'Untitled'
+    const containerId = draft?.containerId ?? null
+
+    try {
+      const newData: Record<string, any> = {
+        title: `${currentTitle} (copy)`,
+        body: html,
+        word_count: wordCount,
+      }
+      if (containerId) {
+        newData.container_id = containerId
+      }
+
+      const created = await sdk.entities.create('content', newData) as any
+      const newVersion = created?._meta?.version ?? null
+
+      // Update editor to point at the new entity
+      versionRef.current = newVersion
+      setConflictInfo(null)
+      setSaveStatus('saved')
+
+      // Notify sidebar so it shows the new scene
+      window.dispatchEvent(
+        new CustomEvent('bobbinry:entity-updated', {
+          detail: { collection: 'content', entityId: created.id, source: 'editor' }
+        })
+      )
+
+      // Clean up old draft
+      localStorage.removeItem(getDraftKey(eid))
+    } catch (error) {
+      console.error('[EditorView] Failed to save as new scene:', error)
+    }
+  }
+
+  function handleConflictOverwrite() {
+    const eid = activeEntityRef.current
+    if (!eid || !editor) return
+    const html = editor.getHTML()
+    setConflictInfo(null)
+    // Retry save without expectedVersion — forces overwrite
+    serverSave(eid, html, wordCount, true)
   }
 
   function handleTitleChange(newTitle: string) {
@@ -956,6 +1124,57 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
           <EditorContent editor={editor} />
         </div>
       </div>
+
+      {/* Conflict resolution dialog */}
+      {conflictInfo && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-[2px]">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full mx-4 p-6 border border-gray-200 dark:border-gray-700">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  Editing conflict
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  This scene was edited in another session. Your local changes can't be saved without resolving this.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConflictInfo(null)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 -mt-1 -mr-1 p-1"
+                title="Dismiss (conflict will resurface on next save)"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={handleConflictReload}
+                className="w-full px-4 py-2.5 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors cursor-pointer"
+              >
+                Reload server version
+              </button>
+              <button
+                type="button"
+                onClick={handleConflictSaveAsNew}
+                className="w-full px-4 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 transition-colors cursor-pointer"
+              >
+                Save as new scene
+              </button>
+              <button
+                type="button"
+                onClick={handleConflictOverwrite}
+                className="w-full px-4 py-2.5 rounded-lg text-sm font-medium bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 transition-colors cursor-pointer"
+              >
+                Overwrite server version
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Floating status - word count + save indicator */}
       <div className={`absolute bottom-3 right-4 flex items-center gap-3 text-xs transition-opacity duration-300 ${focusMode ? 'opacity-20 hover:opacity-50' : 'opacity-60 hover:opacity-100'}`}>

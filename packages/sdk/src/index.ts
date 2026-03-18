@@ -230,6 +230,19 @@ export class MessageBus {
   }
 }
 
+// Conflict error for optimistic locking
+export class ConflictError extends Error {
+  currentVersion: number
+  expectedVersion: number
+
+  constructor(currentVersion: number, expectedVersion: number) {
+    super('Conflict: entity was modified by another session')
+    this.name = 'ConflictError'
+    this.currentVersion = currentVersion
+    this.expectedVersion = expectedVersion
+  }
+}
+
 // Entity data access layer
 export interface EntityQuery {
   collection: string
@@ -320,23 +333,60 @@ export class EntityAPI {
     return response.json()
   }
 
-  async update<T = any>(collection: string, id: string, data: Partial<T>): Promise<T> {
+  async update<T = any>(collection: string, id: string, data: Partial<T>, expectedVersion?: number): Promise<T> {
+    const body: Record<string, any> = {
+      collection,
+      projectId: this.projectId,
+      data
+    }
+    if (expectedVersion !== undefined) {
+      body.expectedVersion = expectedVersion
+    }
+
     const response = await fetch(`${this.api.apiBaseUrl}/entities/${id}`, {
       method: 'PUT',
       headers: this.api.getAuthHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({
-        collection,
-        projectId: this.projectId,
-        data
-      })
+      body: JSON.stringify(body)
     })
 
     if (!response.ok) {
+      if (response.status === 409) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new ConflictError(
+          errorData.currentVersion ?? 0,
+          errorData.expectedVersion ?? expectedVersion ?? 0
+        )
+      }
       const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
       throw new Error(`Failed to update entity: ${errorData.details || errorData.error || response.statusText}`)
     }
 
     return response.json()
+  }
+
+  async getVersion(collection: string, id: string): Promise<{ version: number; updatedAt: string } | null> {
+    const params = new URLSearchParams({
+      projectId: this.projectId,
+      collection
+    })
+
+    const response = await fetch(`${this.api.apiBaseUrl}/entities/${id}?${params}`, {
+      method: 'HEAD',
+      headers: this.api.getAuthHeaders()
+    })
+
+    if (!response.ok) {
+      if (response.status === 404) return null
+      throw new Error(`Failed to get entity version: ${response.statusText}`)
+    }
+
+    const version = response.headers.get('X-Entity-Version')
+    const updatedAt = response.headers.get('X-Entity-Updated-At')
+
+    return {
+      version: version ? parseInt(version, 10) : 0,
+      updatedAt: updatedAt || new Date().toISOString()
+    }
   }
 
   async delete(collection: string, id: string): Promise<void> {

@@ -637,6 +637,51 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
+  // Lightweight version check (HEAD — no body)
+  fastify.head<{
+    Params: { entityId: string }
+    Querystring: {
+      projectId: string
+      collection: string
+    }
+  }>('/entities/:entityId', {
+    preHandler: [requireAuth, requireScope('entities:read')]
+  }, async (request, reply) => {
+    try {
+      const { entityId } = request.params
+      const { projectId, collection } = request.query
+
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
+
+      const userId = request.user!.id
+      const collectionIds = await getCollectionIdsForProject(projectId)
+      const scopeFilter = buildScopeCondition(projectId, collectionIds, userId)
+
+      const result = await db
+        .select({ version: entities.version, updatedAt: entities.updatedAt })
+        .from(entities)
+        .where(and(
+          eq(entities.id, entityId),
+          scopeFilter,
+          eq(entities.collectionName, collection)
+        ))
+        .limit(1)
+
+      if (result.length === 0) {
+        return reply.status(404).send()
+      }
+
+      const row = result[0]!
+      reply.header('X-Entity-Version', String(row.version))
+      reply.header('X-Entity-Updated-At', row.updatedAt.toISOString())
+      return reply.status(200).send()
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.status(500).send()
+    }
+  })
+
   // Get single entity (requires project ownership)
   fastify.get<{
     Params: { entityId: string }
