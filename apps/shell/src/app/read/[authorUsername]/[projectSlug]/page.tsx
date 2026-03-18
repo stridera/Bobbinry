@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -90,6 +90,42 @@ function ProjectReadingContent() {
   const [muteLoading, setMuteLoading] = useState(false)
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly')
   const [justSubscribed, setJustSubscribed] = useState(false)
+  const supportRef = useRef<HTMLDivElement>(null)
+
+  const scrollToSupport = useCallback(() => {
+    const el = supportRef.current
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+    const grid = el.querySelector('.grid')
+    if (!grid) return
+    const cards = Array.from(grid.children) as HTMLElement[]
+    if (cards.length === 0) return
+
+    // Clean up any running animations
+    cards.forEach(card => {
+      card.classList.remove('tier-glow', 'tier-sparkle')
+      card.style.removeProperty('--glow-delay')
+    })
+    void el.offsetWidth
+
+    const stagger = 180
+    const settle = 300
+
+    cards.forEach((card, i) => {
+      const isLast = i === cards.length - 1
+      card.style.setProperty('--glow-delay', `${settle + i * stagger}ms`)
+      card.classList.add(isLast ? 'tier-sparkle' : 'tier-glow')
+    })
+
+    // Clean up after all animations complete
+    setTimeout(() => {
+      cards.forEach(card => {
+        card.classList.remove('tier-glow', 'tier-sparkle')
+        card.style.removeProperty('--glow-delay')
+      })
+    }, settle + cards.length * stagger + 1800)
+  }, [])
 
   const apiToken = (session as any)?.apiToken as string | undefined
   const userId = session?.user?.id
@@ -438,12 +474,12 @@ function ProjectReadingContent() {
                   </Link>
                 )}
                 {tiers.length > 0 && (
-                  <a
-                    href="#support"
+                  <button
+                    onClick={scrollToSupport}
                     className="text-xs px-3 py-1.5 rounded-full bg-purple-600 text-white hover:bg-purple-700 transition-colors"
                   >
                     Subscribe
-                  </a>
+                  </button>
                 )}
               </>
             )}
@@ -532,7 +568,7 @@ function ProjectReadingContent() {
 
       {/* Subscribe / Follow section */}
       {tiers.length > 0 && (
-        <div id="support" className="border-t border-gray-200 dark:border-gray-800 pt-8">
+        <div ref={supportRef} id="support" className="border-t border-gray-200 dark:border-gray-800 pt-8">
           <h2 className="font-display text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">
             Support this Author
           </h2>
