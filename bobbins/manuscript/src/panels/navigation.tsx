@@ -91,6 +91,32 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     }
   }, [projectId, context?.apiToken])
 
+  // Reload navigation tree when tab becomes visible again (handles
+  // chapters created/reordered on another device while this tab was
+  // in the background).
+  useEffect(() => {
+    let lastCheck = Date.now()
+
+    function handleVisibilityChange() {
+      if (document.visibilityState !== 'visible') return
+      if (!projectId || !context?.apiToken) return
+      // Throttle: skip if checked less than 10 seconds ago
+      const now = Date.now()
+      if (now - lastCheck < 10_000) return
+      lastCheck = now
+
+      if (!isLoadingRef.current) {
+        isLoadingRef.current = true
+        loadTree().finally(() => {
+          isLoadingRef.current = false
+        })
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [projectId, context?.apiToken])
+
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       const target = e.target as HTMLElement

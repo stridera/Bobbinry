@@ -193,6 +193,48 @@ export function useOfflineStatus() {
     }
   }, [])
 
+  // Check for new deployments by comparing the baked-in build ID against the
+  // server's current one.  Runs on visibility change (tab focus) + a 5-minute
+  // background interval so stale tabs surface the update banner promptly.
+  useEffect(() => {
+    const clientBuildId = process.env.NEXT_PUBLIC_BUILD_ID
+    if (!clientBuildId || clientBuildId === 'dev') return
+
+    let lastCheck = 0
+
+    async function checkVersion() {
+      // Throttle: at most once per 30 seconds
+      const now = Date.now()
+      if (now - lastCheck < 30_000) return
+      lastCheck = now
+
+      try {
+        const res = await fetch('/api/version', { cache: 'no-store' })
+        if (!res.ok) return
+        const { buildId } = await res.json()
+        if (buildId && buildId !== clientBuildId) {
+          setHasUpdates(true)
+        }
+      } catch {
+        // Network error — ignore, will retry next cycle
+      }
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        checkVersion()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    const interval = setInterval(checkVersion, 5 * 60 * 1000)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      clearInterval(interval)
+    }
+  }, [])
+
   const updateApp = async () => {
     const swManager = ServiceWorkerManager.getInstance()
     await swManager.update()

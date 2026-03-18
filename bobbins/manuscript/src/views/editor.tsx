@@ -343,6 +343,8 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
   const savingRef = useRef(false)
   // Server version for optimistic locking
   const versionRef = useRef<number | null>(null)
+  // Timestamp of last version check (throttles visibility-change checks)
+  const lastVersionCheckRef = useRef(0)
   // Conflict state
   const [conflictInfo, setConflictInfo] = useState<ConflictInfo | null>(null)
 
@@ -409,6 +411,71 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
     window.addEventListener('bobbinry:entity-version-changed', handleVersionChanged)
     return () => window.removeEventListener('bobbinry:entity-version-changed', handleVersionChanged)
   }, [])
+
+  // Re-check server version when the tab becomes visible again.
+  // Handles the case where content was edited on another device while
+  // this tab was in the background.
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.visibilityState !== 'visible') return
+
+      const eid = activeEntityRef.current
+      if (!eid) return
+
+      // Throttle: skip if checked less than 10 seconds ago
+      const now = Date.now()
+      if (now - lastVersionCheckRef.current < 10_000) return
+      lastVersionCheckRef.current = now
+
+      // Don't interrupt an in-flight save or a conflict the user is resolving
+      if (savingRef.current) return
+
+      const draft = loadDraft(eid)
+      if (!draft) return
+
+      sdk.entities.getVersion('content', eid).then((versionInfo) => {
+        if (!versionInfo) return
+        // Bail if user navigated elsewhere while the request was in flight
+        if (activeEntityRef.current !== eid) return
+
+        const serverVersion = versionInfo.version
+        if (draft.version !== null && serverVersion === draft.version) {
+          // Versions match — nothing to do
+          return
+        }
+
+        if (!draft.savedToServer) {
+          // Local unsaved edits AND server changed — conflict
+          setSaveStatus('conflict')
+          setConflictInfo({ serverVersion, localVersion: draft.version })
+          return
+        }
+
+        // Draft was saved, server is newer — fetch and apply fresh content
+        sdk.entities.get('content', eid).then((result: any) => {
+          if (activeEntityRef.current !== eid) return
+          const serverBody = result?.body ?? ''
+          const serverTitle = result?.title ?? ''
+          const serverWordCount = result?.word_count ?? 0
+          const newVersion = result?._meta?.version ?? serverVersion
+
+          applyContent(serverBody, serverTitle || draft.title, serverWordCount)
+          versionRef.current = newVersion
+          saveDraft(eid, {
+            html: serverBody,
+            title: serverTitle || draft.title,
+            wordCount: serverWordCount,
+            savedToServer: true,
+            version: newVersion,
+            containerId: result?.container_id ?? draft.containerId,
+          })
+        }).catch(() => {})
+      }).catch(() => {})
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const imageUploadFileRef = useRef<HTMLInputElement>(null)
 
