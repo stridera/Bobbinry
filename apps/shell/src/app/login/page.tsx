@@ -4,6 +4,7 @@ import { useState, Suspense } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import { config } from '@/lib/config'
 import { GoogleOAuthButton } from '@/components/GoogleOAuthButton'
 
 function LoginForm() {
@@ -26,6 +27,31 @@ function LoginForm() {
     setLoading(true)
 
     try {
+      // Call API directly to check credentials and detect 2FA
+      // (NextAuth v5 doesn't propagate custom error messages from authorize())
+      const apiRes = await fetch(`${config.apiUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
+
+      if (!apiRes.ok) {
+        if (apiRes.status === 429) {
+          setError('Too many login attempts. Please try again later.')
+        } else {
+          setError('Invalid email or password')
+        }
+        return
+      }
+
+      const data = await apiRes.json()
+
+      if (data.requiresTwoFactor) {
+        setTwoFactorUserId(data.userId)
+        return
+      }
+
+      // Credentials valid, no 2FA — create NextAuth session
       const result = await signIn('credentials', {
         email,
         password,
@@ -33,16 +59,7 @@ function LoginForm() {
       })
 
       if (result?.error) {
-        // Check if 2FA is required — NextAuth wraps the error message
-        if (result.error.includes('REQUIRES_2FA:')) {
-          const userId = result.error.split('REQUIRES_2FA:')[1]
-          if (userId) {
-            setTwoFactorUserId(userId)
-            setLoading(false)
-            return
-          }
-        }
-        setError('Invalid email or password')
+        setError('Login failed. Please try again.')
       } else if (result?.ok) {
         router.push(callbackUrl)
         router.refresh()
@@ -60,6 +77,19 @@ function LoginForm() {
     setLoading(true)
 
     try {
+      // Verify TOTP code directly with API first
+      const verifyRes = await fetch(`${config.apiUrl}/api/auth/totp/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: twoFactorUserId, code: totpCode }),
+      })
+
+      if (!verifyRes.ok) {
+        setError('Invalid verification code')
+        return
+      }
+
+      // TOTP verified — create NextAuth session
       const result = await signIn('credentials', {
         email,
         password,
@@ -69,11 +99,7 @@ function LoginForm() {
       })
 
       if (result?.error) {
-        if (result.error.includes('INVALID_TOTP')) {
-          setError('Invalid verification code')
-        } else {
-          setError('Verification failed. Please try again.')
-        }
+        setError('Verification failed. Please try again.')
       } else if (result?.ok) {
         router.push(callbackUrl)
         router.refresh()
