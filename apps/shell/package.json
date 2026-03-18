@@ -13,7 +13,7 @@
     "test:watch": "../../scripts/jest.sh --watch"
   },
   "dependencies": {
-    "@auth/core": "^0.40.0",
+    "@auth/core": "^0.41.1",
     "@bobbinry/ai-tools": "workspace:*",
     "@bobbinry/cat": "workspace:*",
     "@bobbinry/corkboard": "workspace:*",
