@@ -1,6 +1,6 @@
 id: entities
 name: Entities
-version: 1.1.0
+version: 1.1.1
 author: "Bobbins Core"
 description: "Configurable entity system for characters, spells, locations, items, and more"
 tags: [worldbuilding, rpg, entities, configurable]
@@ -66,6 +66,8 @@ extensions:
       id: entity-preview
       title: "Entity Preview"
       entry: panels/entity-preview
+      when:
+        entityType: content
 
 external: null
 

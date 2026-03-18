@@ -270,7 +270,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     return (
       <div key={folder.id}>
         <div
-          className={`pr-2 py-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 text-sm flex items-center gap-1.5 ${isSelected ? 'bg-gray-100 dark:bg-gray-700' : ''}`}
+          className={`group pr-2 py-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 text-sm flex items-center gap-1.5 ${isSelected ? 'bg-gray-100 dark:bg-gray-700' : ''}`}
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
           onClick={() => handleFolderClick(folder.id)}
           onContextMenu={(e) => {
@@ -307,6 +307,15 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
           ) : (
             <span className="flex-1 text-gray-800 dark:text-gray-200 truncate">{folder.name}</span>
           )}
+          <button
+            onClick={(e) => { e.stopPropagation(); handleDelete(folder.id, 'folders') }}
+            className="flex-shrink-0 text-gray-400 opacity-0 transition-opacity hover:text-red-500 group-hover:opacity-100 dark:text-gray-500 dark:hover:text-red-400"
+            title="Delete folder"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
         </div>
         {hasChildren && isExpanded && folder.children.map(child => renderFolder(child, depth + 1))}
       </div>
@@ -411,13 +420,22 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
               {filteredNotes.map((note: any) => (
                 <div
                   key={note.id}
-                  className={`cursor-pointer border-b border-gray-200 px-3 py-2 last:border-b-0 hover:bg-gray-100 dark:border-gray-700/60 dark:hover:bg-gray-700/60 ${selectedNoteId === note.id ? 'bg-gray-100 dark:bg-gray-700/60' : ''}`}
+                  className={`group cursor-pointer border-b border-gray-200 px-3 py-2 last:border-b-0 hover:bg-gray-100 dark:border-gray-700/60 dark:hover:bg-gray-700/60 ${selectedNoteId === note.id ? 'bg-gray-100 dark:bg-gray-700/60' : ''}`}
                   onClick={() => handleNoteClick(note)}
                   onContextMenu={(e) => { e.preventDefault(); handleDelete(note.id, 'notes') }}
                 >
                   <div className="flex items-center gap-2">
                     {note.pinned ? <PanelPill>Pinned</PanelPill> : null}
                     <span className="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200">{note.title || 'Untitled'}</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDelete(note.id, 'notes') }}
+                      className="flex-shrink-0 text-gray-400 opacity-0 transition-opacity hover:text-red-500 group-hover:opacity-100 dark:text-gray-500 dark:hover:text-red-400"
+                      title="Delete note"
+                    >
+                      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
                   </div>
                   {note.tags && note.tags.length > 0 ? (
                     <div className="mt-1 flex gap-1">

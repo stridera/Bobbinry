@@ -392,6 +392,24 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
     return () => window.removeEventListener('bobbinry:focus-mode-change', handleFocusMode)
   }, [])
 
+  // Listen for version changes from other panels (e.g. chapter notes saving to the same entity)
+  useEffect(() => {
+    function handleVersionChanged(e: Event) {
+      const detail = (e as CustomEvent<{ entityId: string; version: number }>).detail
+      if (!detail || detail.entityId !== activeEntityRef.current) return
+
+      versionRef.current = detail.version
+
+      // Also update the draft's stored version so it stays in sync
+      const draft = loadDraft(detail.entityId)
+      if (draft) {
+        saveDraft(detail.entityId, { html: draft.html, version: detail.version })
+      }
+    }
+    window.addEventListener('bobbinry:entity-version-changed', handleVersionChanged)
+    return () => window.removeEventListener('bobbinry:entity-version-changed', handleVersionChanged)
+  }, [])
+
   const imageUploadFileRef = useRef<HTMLInputElement>(null)
 
   const editor = useEditor({

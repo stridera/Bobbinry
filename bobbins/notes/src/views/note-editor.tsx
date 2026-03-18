@@ -138,10 +138,10 @@ export default function NoteEditorView({
           <div className="flex items-center gap-3">
             <button
               onClick={() => saveNote({ pinned: !note.pinned })}
-              className={`text-lg ${note.pinned ? 'text-amber-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}
+              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium transition-colors ${note.pinned ? 'border-amber-400 bg-amber-50 text-amber-700 dark:border-amber-500 dark:bg-amber-900/30 dark:text-amber-300' : 'border-gray-300 bg-transparent text-gray-400 hover:border-gray-400 hover:text-gray-600 dark:border-gray-600 dark:hover:border-gray-500 dark:hover:text-gray-300'}`}
               title={note.pinned ? 'Unpin' : 'Pin'}
             >
-              📌
+              📌 {note.pinned ? 'Pinned' : 'Pin'}
             </button>
             <span className="text-xs text-gray-400">
               {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'unsaved' ? 'Unsaved' : 'Saved'}

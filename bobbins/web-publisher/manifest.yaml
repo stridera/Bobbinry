@@ -1,6 +1,6 @@
 id: web-publisher
 name: Web Publisher
-version: 1.1.0
+version: 1.1.1
 author: Bobbins Core
 description: Native publishing suite with reader delivery, analytics, and release automation
 tags: [publishing, reader, automation, scheduling, analytics, community]
@@ -20,7 +20,7 @@ extensions:
       entry: panels/chapter-publish
       priority: 5
       when:
-        inView: project
+        entityType: content
 
 data:
   collections:

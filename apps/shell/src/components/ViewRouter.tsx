@@ -80,6 +80,7 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
   const [ViewComponent, setViewComponent] = useState<React.ComponentType<any> | null>(null)
   const [compatibleViews, setCompatibleViews] = useState<ViewRegistryEntry[]>([])
   const [activeViewId, setActiveViewId] = useState<string | null>(null)
+  const activeViewIdRef = useRef<string | null>(null)
   const isNavigatingRef = useRef(false)
   const lastDispatchedViewRef = useRef<string | null>(null)
   const loadingViewRef = useRef<string | null>(null)
@@ -101,7 +102,16 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
 
   function updateNav(nav: NavigationState | null) {
     const key = navKey(nav)
-    if (key === navKeyRef.current) return
+    if (key === navKeyRef.current) {
+      // Same entity — but if a different view was requested, switch to it
+      if (nav?.metadata?.view) {
+        const requestedViewId = `${nav.bobbinId}.${nav.metadata.view}`
+        if (requestedViewId !== activeViewIdRef.current) {
+          setActiveViewId(requestedViewId)
+        }
+      }
+      return
+    }
     navKeyRef.current = key
     setCurrentNav(nav)
 
@@ -242,6 +252,7 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
   // just set by the navigation effect above (same viewKey already loaded).
   useEffect(() => {
     if (!activeViewId || !currentNav) return
+    activeViewIdRef.current = activeViewId
 
     const entry = viewRegistry.get(activeViewId)
     if (!entry) return

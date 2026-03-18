@@ -1,6 +1,6 @@
 id: dictionary-panel
 name: Dictionary Panel
-version: 1.2.0
+version: 1.2.1
 author: "Bobbins Samples"
 description: "Right-side panel with dictionary definitions and thesaurus. Looks up selected words via Free Dictionary API and Datamuse."
 tags: [panel, dictionary, thesaurus, pubsub]
@@ -17,7 +17,7 @@ extensions:
       entry: panels/dictionary-panel
       priority: 4
       when:
-        inView: project
+        entityType: content
 data:
   collections: []
 external:

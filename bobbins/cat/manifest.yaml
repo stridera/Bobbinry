@@ -1,6 +1,6 @@
 id: cat
 name: Cat Companion
-version: 1.0.1
+version: 1.0.2
 author: Bobbinry Team
 description: A morale-boosting writing companion that rewards you with cat images every 1,000 words and plays meow sounds when you type "cat" or "meow"
 tags:
@@ -23,7 +23,7 @@ extensions:
       entry: panels/cat-panel
       priority: 5
       when:
-        inView: project
+        entityType: content
 
 compatibility:
   minShellVersion: "0.1.0"

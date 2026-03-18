@@ -1,6 +1,6 @@
 id: ai-tools
 name: AI Tools
-version: 0.1.1
+version: 0.1.2
 author: Bobbins Core
 description: Analysis and suggestion tools for your writing. Provides synopsis suggestions and structured feedback — never writes or rewrites your content.
 tags: [ai, analysis, feedback, synopsis]
@@ -21,7 +21,7 @@ extensions:
       entry: panels/ai-panel
       priority: 3
       when:
-        inView: project
+        entityType: content
 
 external:
   endpoints:

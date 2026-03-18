@@ -144,6 +144,7 @@ export function ExtensionSlot({
         panels={panels}
         slotId={slotId}
         singlePanel={extensions.length === 1}
+        contextKey={context?.bobbinId}
         {...(slot?.maxContributions !== undefined ? { defaultVisibleCount: slot.maxContributions } : {})}
       />
     </div>

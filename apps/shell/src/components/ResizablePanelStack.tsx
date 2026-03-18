@@ -14,6 +14,7 @@ interface ResizablePanelStackProps {
   slotId: string
   singlePanel?: boolean
   defaultVisibleCount?: number
+  contextKey?: string
 }
 
 interface PanelState {
@@ -133,7 +134,11 @@ export function ResizablePanelStack({
   slotId,
   singlePanel,
   defaultVisibleCount,
+  contextKey,
 }: ResizablePanelStackProps) {
+  const storageKey = contextKey ? `panelLayout:${slotId}:${contextKey}` : `panelLayout:${slotId}`
+  const storageKeyRef = useRef(storageKey)
+
   const listContainerRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const actionsRefs = useRef<Map<string, HTMLDivElement>>(new Map())
@@ -146,7 +151,7 @@ export function ResizablePanelStack({
       return createDefaultPanelState(panels, defaultVisibleCount)
     }
 
-    const saved = localStorage.getItem(`panelLayout:${slotId}`)
+    const saved = localStorage.getItem(storageKey)
     if (!saved) {
       return createDefaultPanelState(panels, defaultVisibleCount)
     }
@@ -159,6 +164,30 @@ export function ResizablePanelStack({
       return createDefaultPanelState(panels, defaultVisibleCount)
     }
   })
+
+  // Reset panel state when context changes (e.g., switching between manuscript and notes)
+  useEffect(() => {
+    if (storageKey === storageKeyRef.current) return
+    storageKeyRef.current = storageKey
+
+    if (typeof window === 'undefined') {
+      setPanelState(createDefaultPanelState(panels, defaultVisibleCount))
+      return
+    }
+
+    const saved = localStorage.getItem(storageKey)
+    if (!saved) {
+      setPanelState(createDefaultPanelState(panels, defaultVisibleCount))
+      return
+    }
+
+    try {
+      const parsed = JSON.parse(saved)
+      setPanelState(reconcilePanelState(parsed, panels, defaultVisibleCount))
+    } catch {
+      setPanelState(createDefaultPanelState(panels, defaultVisibleCount))
+    }
+  }, [storageKey, panels, defaultVisibleCount])
 
   const orderedPanels = useMemo(() => {
     return panelState.order
@@ -205,8 +234,8 @@ export function ResizablePanelStack({
   }, [])
 
   useEffect(() => {
-    localStorage.setItem(`panelLayout:${slotId}`, JSON.stringify(panelState))
-  }, [panelState, slotId])
+    localStorage.setItem(storageKey, JSON.stringify(panelState))
+  }, [panelState, storageKey])
 
   useEffect(() => {
     if (!isMenuOpen) return

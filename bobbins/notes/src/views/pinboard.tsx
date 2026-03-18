@@ -128,9 +128,13 @@ export default function PinboardView({
                   </h3>
                   <button
                     onClick={(e) => togglePin(e, note)}
-                    className={`text-xs ml-2 flex-shrink-0 ${note.pinned ? 'text-amber-500' : 'text-gray-400'}`}
+                    className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-medium transition-colors ml-2 flex-shrink-0 ${
+                      note.pinned
+                        ? 'border-amber-400 bg-amber-50 text-amber-700 dark:border-amber-500 dark:bg-amber-900/30 dark:text-amber-300'
+                        : 'border-gray-300 bg-transparent text-gray-400 hover:border-gray-400 hover:text-gray-600 dark:border-gray-600 dark:hover:border-gray-500 dark:hover:text-gray-300'
+                    }`}
                   >
-                    📌
+                    📌 {note.pinned ? 'Pinned' : 'Pin'}
                   </button>
                 </div>
                 {note.content && (

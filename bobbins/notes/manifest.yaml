@@ -1,6 +1,6 @@
 id: notes
 name: Notes & Research
-version: 1.0.0
+version: 1.1.0
 author: "Bobbins Core"
 description: "Rich research tool with folders, tagging, entity linking, and pinboard"
 tags: [notes, research, organization, writing]
@@ -40,13 +40,13 @@ ui:
       type: custom
       source: "*"
       handlers:
-        - "*"
+        - "notes"
     - id: pinboard
       name: Pinboard
       type: custom
       source: "*"
       handlers:
-        - "*"
+        - "notes"
 
 interactions:
   actions:
@@ -71,6 +71,8 @@ extensions:
       id: chapter-notes
       title: "Chapter Notes"
       entry: panels/chapter-notes
+      when:
+        entityType: content
 
 external: null
 
