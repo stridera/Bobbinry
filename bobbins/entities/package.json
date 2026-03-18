@@ -33,7 +33,7 @@
     "@tiptap/starter-kit": "^3.6.2"
   },
   "devDependencies": {
-    "@jest/globals": "^29.7.0",
+    "@jest/globals": "^30.3.0",
     "@testing-library/jest-dom": "^6.9.0",
     "@testing-library/react": "^16.3.0",
     "@types/jest": "^29.5.14",
