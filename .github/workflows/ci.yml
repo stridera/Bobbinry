@@ -25,6 +25,7 @@ jobs:
       - run: bun run typecheck
       - run: bun run lint
       - run: bun run lint:bobbins
+      - run: ./scripts/check-vercel-compat.sh
 
   deploy-api:
     needs: build

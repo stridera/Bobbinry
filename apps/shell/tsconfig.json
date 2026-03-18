@@ -14,7 +14,7 @@
     // Next.js specific
     "allowJs": true,
     "noEmit": true,
-    "incremental": true,
+    "incremental": false,
     // Path mapping
     "baseUrl": ".",
     "paths": {

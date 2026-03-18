@@ -22,10 +22,13 @@ bunx turbo lint db:check-drift
 echo "  [4/5] Bobbin lint..."
 bun run lint:bobbins
 
-echo "  [5/6] Typecheck..."
+echo "  [5/7] Vercel compat..."
+./scripts/check-vercel-compat.sh
+
+echo "  [6/7] Typecheck..."
 bun run typecheck
 
-echo "  [6/6] Build..."
+echo "  [7/7] Build..."
 bun run build
 
 echo "All pre-commit checks passed."
