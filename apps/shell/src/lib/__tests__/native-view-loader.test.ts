@@ -138,8 +138,8 @@ describe('NativeViewLoader', () => {
   })
 
   describe('preloadNativeView', () => {
-    let consoleLogSpy: jest.SpyInstance
-    let consoleErrorSpy: jest.SpyInstance
+    let consoleLogSpy: ReturnType<typeof jest.spyOn>
+    let consoleErrorSpy: ReturnType<typeof jest.spyOn>
 
     beforeEach(() => {
       consoleLogSpy = jest.spyOn(console, 'log').mockImplementation()
@@ -176,8 +176,8 @@ describe('NativeViewLoader', () => {
   })
 
   describe('preloadNativeViews', () => {
-    let consoleLogSpy: jest.SpyInstance
-    let consoleErrorSpy: jest.SpyInstance
+    let consoleLogSpy: ReturnType<typeof jest.spyOn>
+    let consoleErrorSpy: ReturnType<typeof jest.spyOn>
 
     beforeEach(() => {
       consoleLogSpy = jest.spyOn(console, 'log').mockImplementation()
