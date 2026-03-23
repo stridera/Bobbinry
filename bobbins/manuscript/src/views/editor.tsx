@@ -67,7 +67,7 @@ function saveDraft(entityId: string, draft: Partial<DraftEntry> & { html: string
       html: draft.html,
       title: draft.title ?? existing?.title ?? '',
       wordCount: draft.wordCount ?? existing?.wordCount ?? 0,
-      savedToServer: draft.savedToServer ?? false,
+      savedToServer: draft.savedToServer ?? existing?.savedToServer ?? false,
       timestamp: Date.now(),
       version: draft.version !== undefined ? draft.version : (existing?.version ?? null),
       containerId: draft.containerId !== undefined ? draft.containerId : (existing?.containerId ?? null),
