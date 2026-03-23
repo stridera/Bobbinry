@@ -8,7 +8,7 @@ module.exports = {
     '**/?(*.)+(spec|test).{ts,tsx}'
   ],
   transform: {
-    '^.+\\.ts$': 'ts-jest'
+    '^.+\\.tsx?$': ['ts-jest', { tsconfig: { jsx: 'react-jsx' } }]
   },
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',

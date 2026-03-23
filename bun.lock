@@ -19,7 +19,7 @@
         "ts-jest": "^29.4.6",
         "tsx": "^4.20.6",
         "turbo": "^2.8.15",
-        "typescript": "6.0.0-beta",
+        "typescript": "6.0.1-rc",
         "zod": "^4.1.12",
       },
     },
@@ -61,7 +61,7 @@
         "jest": "^30.3.0",
         "ts-jest": "^29.4.6",
         "tsx": "^4.20.6",
-        "typescript": "6.0.0-beta",
+        "typescript": "6.0.1-rc",
       },
     },
     "apps/shell": {
@@ -120,7 +120,7 @@
         "jest": "^30.3.0",
         "jest-environment-jsdom": "^30.3.0",
         "ts-jest": "^29.4.6",
-        "typescript": "6.0.0-beta",
+        "typescript": "6.0.1-rc",
       },
     },
     "bobbins/ai-tools": {
@@ -146,7 +146,7 @@
       },
       "devDependencies": {
         "@types/react": "^19.2.14",
-        "typescript": "6.0.0-beta",
+        "typescript": "6.0.1-rc",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -161,7 +161,7 @@
       },
       "devDependencies": {
         "@types/react": "^19.2.14",
-        "typescript": "6.0.0-beta",
+        "typescript": "6.0.1-rc",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -175,7 +175,7 @@
       },
       "devDependencies": {
         "@types/react": "^19.2.14",
-        "typescript": "6.0.0-beta",
+        "typescript": "6.0.1-rc",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -231,7 +231,7 @@
         "jest": "^30.3.0",
         "jsdom": "^29.0.0",
         "ts-jest": "^29.4.6",
-        "typescript": "6.0.0-beta",
+        "typescript": "6.0.1-rc",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -247,7 +247,7 @@
       },
       "devDependencies": {
         "@types/react": "^19.2.14",
-        "typescript": "6.0.0-beta",
+        "typescript": "6.0.1-rc",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -277,7 +277,7 @@
       },
       "devDependencies": {
         "@types/react": "^19.2.14",
-        "typescript": "6.0.0-beta",
+        "typescript": "6.0.1-rc",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -307,7 +307,7 @@
         "jest": "^30.3.0",
         "jsdom": "^29.0.0",
         "ts-jest": "^29.4.6",
-        "typescript": "6.0.0-beta",
+        "typescript": "6.0.1-rc",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -323,7 +323,7 @@
       },
       "devDependencies": {
         "@types/react": "^19.2.14",
-        "typescript": "6.0.0-beta",
+        "typescript": "6.0.1-rc",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -339,7 +339,7 @@
       },
       "devDependencies": {
         "@types/react": "^19.2.14",
-        "typescript": "6.0.0-beta",
+        "typescript": "6.0.1-rc",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -355,7 +355,7 @@
       },
       "devDependencies": {
         "@types/react": "^19.2.14",
-        "typescript": "6.0.0-beta",
+        "typescript": "6.0.1-rc",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -383,7 +383,7 @@
       },
       "devDependencies": {
         "@types/node": "^22",
-        "typescript": "6.0.0-beta",
+        "typescript": "6.0.1-rc",
       },
     },
     "packages/compiler": {
@@ -415,7 +415,7 @@
       },
       "devDependencies": {
         "@types/node": "^22",
-        "typescript": "6.0.0-beta",
+        "typescript": "6.0.1-rc",
       },
     },
     "packages/event-bus": {
@@ -426,7 +426,7 @@
       },
       "devDependencies": {
         "@types/node": "^22",
-        "typescript": "6.0.0-beta",
+        "typescript": "6.0.1-rc",
       },
     },
     "packages/sdk": {
@@ -446,7 +446,7 @@
         "jest": "^30.3.0",
         "jest-environment-jsdom": "^30.3.0",
         "ts-jest": "^29.4.6",
-        "typescript": "6.0.0-beta",
+        "typescript": "6.0.1-rc",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -457,7 +457,7 @@
       "name": "@bobbinry/types",
       "version": "1.0.0",
       "devDependencies": {
-        "typescript": "6.0.0-beta",
+        "typescript": "6.0.1-rc",
       },
     },
     "packages/ui": {
@@ -470,7 +470,7 @@
       "devDependencies": {
         "@types/react": "^19.0.6",
         "@types/react-dom": "^19.0.6",
-        "typescript": "6.0.0-beta",
+        "typescript": "6.0.1-rc",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -2526,7 +2526,7 @@
 
     "typed-array-length": ["typed-array-length@1.0.7", "", { "dependencies": { "call-bind": "^1.0.7", "for-each": "^0.3.3", "gopd": "^1.0.1", "is-typed-array": "^1.1.13", "possible-typed-array-names": "^1.0.0", "reflect.getprototypeof": "^1.0.6" } }, "sha512-3KS2b+kL7fsuk/eJZ7EQdnEmQoaho/r6KUef7hxvltNA5DR8NAUM+8wJMbJyZ4G9/7i3v5zPBIMN5aybAh2/Jg=="],
 
-    "typescript": ["typescript@6.0.0-beta", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-CldZdztDpQRLM1HC6WDQjQkQN5Ub5zRau737a1diGh3lPmb9oRsaWHk1y5iqK0o7+1bNJ0oXfEGRkAogFZBL+Q=="],
+    "typescript": ["typescript@6.0.1-rc", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-7XlzYb+p/7YxX6qSOzwB4mxVFRdAgWWkj1PgAZ+jzldeuFV6Z77vwFbNxHsUXAL/bhlWY2jCT8shLwDJR8337g=="],
 
     "typescript-eslint": ["typescript-eslint@8.56.1", "", { "dependencies": { "@typescript-eslint/eslint-plugin": "8.56.1", "@typescript-eslint/parser": "8.56.1", "@typescript-eslint/typescript-estree": "8.56.1", "@typescript-eslint/utils": "8.56.1" }, "peerDependencies": { "eslint": "^8.57.0 || ^9.0.0 || ^10.0.0", "typescript": ">=4.8.4 <6.0.0" } }, "sha512-U4lM6pjmBX7J5wk4szltF7I1cGBHXZopnAXCMXb3+fZ3B/0Z3hq3wS/CCUB2NZBNAExK92mCU2tEohWuwVMsDQ=="],
 

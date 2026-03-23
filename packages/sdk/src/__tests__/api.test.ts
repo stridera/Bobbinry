@@ -177,8 +177,9 @@ describe('MessageBus', () => {
 
     bus.on('HELLO', handler)
 
-    // Simulate a window message
+    // Simulate a window message (origin must match window.location.origin)
     window.dispatchEvent(new MessageEvent('message', {
+      origin: window.location.origin,
       data: { type: 'HELLO', source: 'other', target: 'test-component', data: { greeting: 'hi' } }
     }))
 
@@ -194,6 +195,7 @@ describe('MessageBus', () => {
     bus.on('UPDATE', handler)
 
     window.dispatchEvent(new MessageEvent('message', {
+      origin: window.location.origin,
       data: { type: 'UPDATE', source: 'shell', target: 'other-view', data: {} }
     }))
 
@@ -207,6 +209,7 @@ describe('MessageBus', () => {
     bus.on('BROADCAST', handler)
 
     window.dispatchEvent(new MessageEvent('message', {
+      origin: window.location.origin,
       data: { type: 'BROADCAST', source: 'shell', target: '*', data: { msg: 'all' } }
     }))
 
@@ -221,6 +224,7 @@ describe('MessageBus', () => {
     bus.off('EVT', handler)
 
     window.dispatchEvent(new MessageEvent('message', {
+      origin: window.location.origin,
       data: { type: 'EVT', source: 's', target: 'test', data: {} }
     }))
 
@@ -240,7 +244,7 @@ describe('MessageBus', () => {
         target: 'receiver',
         data: { val: 1 }
       }),
-      '*'
+      window.location.origin
     )
 
     postSpy.mockRestore()

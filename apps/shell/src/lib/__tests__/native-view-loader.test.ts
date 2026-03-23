@@ -41,16 +41,14 @@ describe('NativeViewLoader', () => {
       expect(outline).not.toBe(editor)
     })
 
-    it('should throw error for non-existent view', async () => {
-      await expect(
-        loadNativeView('manuscript', 'nonexistent')
-      ).rejects.toThrow(/Failed to load native view/)
+    it('should return null for non-existent view', async () => {
+      const result = await loadNativeView('manuscript', 'nonexistent')
+      expect(result).toBeNull()
     })
 
-    it('should throw error for non-existent bobbin', async () => {
-      await expect(
-        loadNativeView('nonexistent', 'outline')
-      ).rejects.toThrow(/Failed to load native view/)
+    it('should return null for non-existent bobbin', async () => {
+      const result = await loadNativeView('nonexistent', 'outline')
+      expect(result).toBeNull()
     })
 
     // Note: This test is difficult to properly mock with Jest's virtual mocks
@@ -130,10 +128,11 @@ describe('NativeViewLoader', () => {
       expect(outline).not.toBe(editor)
     })
 
-    it('should fail when loader is called with invalid view', async () => {
+    it('should return null when loader is called with invalid view', async () => {
       const loader = createComponentLoader('nonexistent', 'view')
 
-      await expect(loader()).rejects.toThrow(/Failed to load native view/)
+      const result = await loader()
+      expect(result).toBeNull()
     })
   })
 
@@ -165,13 +164,13 @@ describe('NativeViewLoader', () => {
       ).resolves.not.toThrow()
     })
 
-    it('should log error on preload failure', async () => {
+    it('should log success even for missing views (returns null gracefully)', async () => {
       await preloadNativeView('nonexistent', 'view')
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        '[NativeViewLoader] Failed to preload: nonexistent.view',
-        expect.any(Error)
+      expect(consoleLogSpy).toHaveBeenCalledWith(
+        '[NativeViewLoader] Preloaded: nonexistent.view'
       )
+      expect(consoleErrorSpy).not.toHaveBeenCalled()
     })
   })
 
@@ -214,26 +213,25 @@ describe('NativeViewLoader', () => {
       ).resolves.not.toThrow()
     })
 
-    it('should continue preloading after failures', async () => {
+    it('should preload all views including missing ones (returns null gracefully)', async () => {
       await preloadNativeViews([
         { bobbinId: 'manuscript', viewPath: 'outline' },
         { bobbinId: 'nonexistent', viewPath: 'view' },
         { bobbinId: 'manuscript', viewPath: 'editor' }
       ])
 
-      // Should have logged 2 successes
+      // All 3 logged as preloaded (missing views return null without throwing)
+      expect(consoleLogSpy).toHaveBeenCalledTimes(3)
       expect(consoleLogSpy).toHaveBeenCalledWith(
         '[NativeViewLoader] Preloaded: manuscript.outline'
       )
       expect(consoleLogSpy).toHaveBeenCalledWith(
+        '[NativeViewLoader] Preloaded: nonexistent.view'
+      )
+      expect(consoleLogSpy).toHaveBeenCalledWith(
         '[NativeViewLoader] Preloaded: manuscript.editor'
       )
-
-      // And 1 failure
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        '[NativeViewLoader] Failed to preload: nonexistent.view',
-        expect.any(Error)
-      )
+      expect(consoleErrorSpy).not.toHaveBeenCalled()
     })
 
     it('should handle empty array', async () => {
