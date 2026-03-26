@@ -47,7 +47,8 @@ interface AccessCheckResult {
 async function checkChapterAccess(
   userId: string | null,
   chapterId: string,
-  projectId: string
+  projectId: string,
+  defaultVisibility?: string
 ): Promise<AccessCheckResult> {
   // Get chapter publication info
   const [chapterPub] = await db
@@ -72,6 +73,10 @@ async function checkChapterAccess(
 
   // Anonymous users can only access fully public chapters
   if (!userId) {
+    if (defaultVisibility === 'subscribers_only') {
+      return { canAccess: false, reason: 'Subscription required' }
+    }
+
     if (chapterPub.publicReleaseDate) {
       const now = new Date()
       if (now < new Date(chapterPub.publicReleaseDate)) {
@@ -163,6 +168,11 @@ async function checkChapterAccess(
     }
 
     return { canAccess: true, reason: 'Active subscription' }
+  }
+
+  // Project-level subscriber-only restriction
+  if (defaultVisibility === 'subscribers_only') {
+    return { canAccess: false, reason: 'Subscription required' }
   }
 
   // Check if chapter is public (embargo passed)
@@ -1358,7 +1368,14 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       const { projectId, chapterId } = request.params
       const { userId } = request.query
 
-      const result = await checkChapterAccess(userId || null, chapterId, projectId)
+      // Get project visibility setting
+      const [accessPublishConfig] = await db
+        .select({ defaultVisibility: projectPublishConfig.defaultVisibility })
+        .from(projectPublishConfig)
+        .where(eq(projectPublishConfig.projectId, projectId))
+        .limit(1)
+
+      const result = await checkChapterAccess(userId || null, chapterId, projectId, accessPublishConfig?.defaultVisibility || 'public')
 
       return reply.send({ ...result, correlationId })
     } catch (error) {

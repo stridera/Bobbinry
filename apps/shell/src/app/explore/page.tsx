@@ -27,6 +27,7 @@ interface DiscoverProject {
   chapterCount: number
   totalViews: number
   authorBadges?: string[]
+  subscriberOnly?: boolean
 }
 
 interface DiscoverAuthor {
@@ -413,9 +414,16 @@ export default function ExplorePage() {
 
                       <div className="p-4">
                         {/* Title */}
-                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                          {project.name}
-                        </h3>
+                        <div className="flex items-center gap-1.5">
+                          <h3 className="font-semibold text-gray-900 dark:text-gray-100 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                            {project.name}
+                          </h3>
+                          {project.subscriberOnly && (
+                            <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400 font-medium">
+                              Subscribers
+                            </span>
+                          )}
+                        </div>
 
                         {/* Author */}
                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1.5">

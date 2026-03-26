@@ -99,7 +99,8 @@ const discoverPlugin: FastifyPluginAsync = async (fastify) => {
             authorUsername: userProfiles.username,
             authorDisplayName: userProfiles.displayName,
             authorAvatarUrl: userProfiles.avatarUrl,
-            totalViews: sql<number>`COALESCE(${sql.raw('views_sq.total_views')}, 0)`
+            totalViews: sql<number>`COALESCE(${sql.raw('views_sq.total_views')}, 0)`,
+            defaultVisibility: projectPublishConfig.defaultVisibility
           })
           .from(projects)
           .innerJoin(projectPublishConfig, eq(projectPublishConfig.projectId, projects.id))
@@ -141,7 +142,8 @@ const discoverPlugin: FastifyPluginAsync = async (fastify) => {
             authorUsername: userProfiles.username,
             authorDisplayName: userProfiles.displayName,
             authorAvatarUrl: userProfiles.avatarUrl,
-            totalViews: sql<number>`COALESCE(${sql.raw('trending_sq.total_views')}, 0)`
+            totalViews: sql<number>`COALESCE(${sql.raw('trending_sq.total_views')}, 0)`,
+            defaultVisibility: projectPublishConfig.defaultVisibility
           })
           .from(projects)
           .innerJoin(projectPublishConfig, eq(projectPublishConfig.projectId, projects.id))
@@ -180,7 +182,8 @@ const discoverPlugin: FastifyPluginAsync = async (fastify) => {
           authorUsername: userProfiles.username,
           authorDisplayName: userProfiles.displayName,
           authorAvatarUrl: userProfiles.avatarUrl,
-          totalViews: sql<number>`0`
+          totalViews: sql<number>`0`,
+          defaultVisibility: projectPublishConfig.defaultVisibility
         })
         .from(projects)
         .innerJoin(projectPublishConfig, eq(projectPublishConfig.projectId, projects.id))
@@ -424,6 +427,7 @@ async function enrichProjects(rows: Array<{
   authorDisplayName: string | null
   authorAvatarUrl: string | null
   totalViews: number
+  defaultVisibility: string | null
 }>) {
   if (rows.length === 0) return []
 
@@ -510,6 +514,7 @@ async function enrichProjects(rows: Array<{
       chapterCount: stats.chapterCount,
       totalViews: stats.totalViews,
       authorBadges: badgesByUser.get(row.ownerId) || [],
+      subscriberOnly: row.defaultVisibility === 'subscribers_only',
     }
   })
 }

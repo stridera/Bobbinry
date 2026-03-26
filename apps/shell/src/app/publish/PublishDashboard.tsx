@@ -139,6 +139,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null)
   const [slugChecking, setSlugChecking] = useState<Record<string, boolean>>({})
   const [username, setUsername] = useState<string>('')
+  const [projectVisibility, setProjectVisibility] = useState<Record<string, string>>({})
 
   const authorId = username || user.id
 
@@ -182,6 +183,22 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
         }
 
         setPublications((current) => ({ ...current, ...pubMap }))
+
+        // Load visibility settings for published projects
+        const visResults = await Promise.allSettled(
+          published.map((project) =>
+            apiFetch(`/api/projects/${project.id}/publish-config`, apiToken)
+              .then((response) => response.json())
+              .then((data) => ({ projectId: project.id, visibility: data.config?.defaultVisibility || 'public' }))
+          )
+        )
+        const visMap: Record<string, string> = {}
+        for (const result of visResults) {
+          if (result.status === 'fulfilled') {
+            visMap[result.value.projectId] = result.value.visibility
+          }
+        }
+        setProjectVisibility((current) => ({ ...current, ...visMap }))
       }
     } catch (err) {
       console.error('Failed to load projects:', err)
@@ -367,6 +384,22 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
     }
   }
 
+  const updateProjectVisibility = async (projectId: string, visibility: string) => {
+    try {
+      await apiFetch(`/api/projects/${projectId}/publish-config`, apiToken, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defaultVisibility: visibility }),
+      })
+      setProjectVisibility((current) => ({ ...current, [projectId]: visibility }))
+    } catch (err) {
+      setMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to update visibility',
+      })
+    }
+  }
+
   const publishedProjects = projects.filter((project) => project.shortUrl)
   const draftProjects = projects.filter((project) => !project.shortUrl)
 
@@ -492,6 +525,17 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
                                   {publishedCount} published
                                   {projectChapters.length > 0 ? ` · ${projectChapters.length} total chapters` : ''}
                                 </span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-gray-400 dark:text-gray-500">Visibility</span>
+                                  <select
+                                    value={projectVisibility[project.id] || 'public'}
+                                    onChange={(e) => void updateProjectVisibility(project.id, e.target.value)}
+                                    className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                                  >
+                                    <option value="public">Public</option>
+                                    <option value="subscribers_only">Subscribers Only</option>
+                                  </select>
+                                </div>
                               </div>
                             </div>
 

@@ -104,8 +104,16 @@ export function PublishingSettings({ projectId, config, authorUsername, readerSl
               {' '}·{' '}
               {config.enableReactions ? 'Reactions on' : 'Reactions off'}
             </p>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 capitalize">
-              Default visibility: {config.defaultVisibility.replace('_', ' ')}
+            <p className="mt-1 text-xs">
+              {config.defaultVisibility === 'subscribers_only' ? (
+                <span className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+                  Subscribers Only
+                </span>
+              ) : (
+                <span className="text-gray-500 dark:text-gray-400 capitalize">
+                  Visibility: {config.defaultVisibility.replace('_', ' ')}
+                </span>
+              )}
             </p>
           </div>
         </div>

@@ -16,6 +16,7 @@ interface ProjectInfo {
   coverImage: string | null
   shortUrl: string | null
   ownerId?: string
+  defaultVisibility?: string
 }
 
 interface AuthorInfo {
@@ -34,6 +35,7 @@ interface TocChapter {
   order: number
   locked?: boolean
   embargoUntil?: string
+  lockReason?: string
 }
 
 interface SubscriptionTier {
@@ -433,9 +435,16 @@ function ProjectReadingContent() {
           />
         )}
         <div className="min-w-0">
-          <h1 className="font-display text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">
-            {project.name}
-          </h1>
+          <div className="flex items-center gap-3 mb-2">
+            <h1 className="font-display text-3xl font-bold text-gray-900 dark:text-gray-100">
+              {project.name}
+            </h1>
+            {project.defaultVisibility === 'subscribers_only' && (
+              <span className="inline-flex items-center rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+                Subscribers Only
+              </span>
+            )}
+          </div>
           {author && (
             <Link
               href={author.username ? `/read/${author.username}` : '#'}
@@ -521,6 +530,20 @@ function ProjectReadingContent() {
         </div>
       </div>
 
+      {/* Subscriber-only CTA */}
+      {project.defaultVisibility === 'subscribers_only' && !subscribedTierId && !isOwnProject && (
+        <div className="mb-6 rounded-lg border border-purple-200 bg-purple-50 p-4 dark:border-purple-800 dark:bg-purple-900/20">
+          <p className="text-sm text-purple-700 dark:text-purple-300">
+            This is a subscriber-only project. Subscribe to access all chapters.
+          </p>
+          {tiers.length > 0 && (
+            <button onClick={scrollToSupport} className="mt-2 text-sm font-medium text-purple-600 hover:underline dark:text-purple-400">
+              View subscription tiers
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Table of Contents */}
       <div className="mb-8">
         <h2 className="font-display text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">
@@ -539,7 +562,11 @@ function ProjectReadingContent() {
                       <span className="text-gray-500 dark:text-gray-400">{chapter.title || 'Untitled'}</span>
                     </div>
                     <span className="text-xs text-gray-400 dark:text-gray-500">
-                      {chapter.embargoUntil ? new Date(chapter.embargoUntil).toLocaleString() : 'Scheduled'}
+                      {chapter.lockReason === 'subscription_required'
+                        ? 'Subscribe to read'
+                        : chapter.embargoUntil
+                          ? new Date(chapter.embargoUntil).toLocaleString()
+                          : 'Scheduled'}
                     </span>
                   </div>
                 ) : (

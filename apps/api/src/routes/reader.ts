@@ -40,7 +40,8 @@ interface AccessCheckResult {
 async function checkPublicChapterAccess(
   chapterId: string,
   projectId: string,
-  userId?: string
+  userId?: string,
+  defaultVisibility?: string
 ): Promise<AccessCheckResult> {
   // Get chapter publication info
   const [chapterPub] = await db
@@ -139,6 +140,11 @@ async function checkPublicChapterAccess(
     }
   }
 
+  // Project-level subscriber-only restriction
+  if (defaultVisibility === 'subscribers_only') {
+    return { canAccess: false, reason: 'Subscription required' }
+  }
+
   // Check embargo (public release date) for free/anonymous users
   if (chapterPub.publicReleaseDate) {
     const now = new Date()
@@ -175,6 +181,14 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       const { projectId } = request.params
       const { userId } = request.query
 
+      // Get project visibility setting
+      const [publishConfig] = await db
+        .select({ defaultVisibility: projectPublishConfig.defaultVisibility })
+        .from(projectPublishConfig)
+        .where(eq(projectPublishConfig.projectId, projectId))
+        .limit(1)
+      const defaultVisibility = publishConfig?.defaultVisibility || 'public'
+
       // Get all published chapters for this project
       const publishedChapters = await db
         .select({
@@ -196,7 +210,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       // Filter chapters based on access control
       const accessibleChapters = []
       for (const chapter of publishedChapters) {
-        const access = await checkPublicChapterAccess(chapter.chapterId, projectId, userId)
+        const access = await checkPublicChapterAccess(chapter.chapterId, projectId, userId, defaultVisibility)
         if (access.canAccess) {
           accessibleChapters.push({
             id: chapter.chapterId,
@@ -205,14 +219,15 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
             viewCount: chapter.viewCount,
             order: chapter.order
           })
-        } else if (access.embargoUntil) {
-          // Show embargoed chapters but mark them
+        } else {
+          // Show locked chapters but mark them with the reason
           accessibleChapters.push({
             id: chapter.chapterId,
             title: chapter.title,
             embargoUntil: access.embargoUntil,
             order: chapter.order,
-            locked: true
+            locked: true,
+            lockReason: access.reason === 'Subscription required' ? 'subscription_required' : 'embargo'
           })
         }
       }
@@ -220,6 +235,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       return reply.send({
         toc: accessibleChapters,
         totalChapters: accessibleChapters.length,
+        subscriberOnly: defaultVisibility === 'subscribers_only',
         correlationId
       })
     } catch (error) {
@@ -243,8 +259,15 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       const { projectId, chapterId } = request.params
       const { userId } = request.query
 
+      // Get project visibility setting
+      const [chapterPublishConfig] = await db
+        .select({ defaultVisibility: projectPublishConfig.defaultVisibility })
+        .from(projectPublishConfig)
+        .where(eq(projectPublishConfig.projectId, projectId))
+        .limit(1)
+
       // Check access
-      const access = await checkPublicChapterAccess(chapterId, projectId, userId)
+      const access = await checkPublicChapterAccess(chapterId, projectId, userId, chapterPublishConfig?.defaultVisibility || 'public')
       if (!access.canAccess) {
         return reply.status(403).send({
           error: access.reason || 'Access denied',
@@ -1035,7 +1058,18 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(404).send({ error: 'Project not found', correlationId })
       }
 
-      return reply.send({ project, author, correlationId })
+      // Get project visibility setting
+      const [projPublishConfig] = await db
+        .select({ defaultVisibility: projectPublishConfig.defaultVisibility })
+        .from(projectPublishConfig)
+        .where(eq(projectPublishConfig.projectId, project.id))
+        .limit(1)
+
+      return reply.send({
+        project: { ...project, defaultVisibility: projPublishConfig?.defaultVisibility || 'public' },
+        author,
+        correlationId
+      })
     } catch (error) {
       fastify.log.error({ error, correlationId }, 'Failed to resolve project by author and slug')
       return reply.status(500).send({ error: 'Failed to resolve project', correlationId })
