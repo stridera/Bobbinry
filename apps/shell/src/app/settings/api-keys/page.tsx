@@ -10,8 +10,7 @@ import { apiFetch } from '@/lib/api'
 const AVAILABLE_SCOPES = [
   { id: 'projects:read', label: 'Projects', description: 'Read your projects and their settings' },
   { id: 'entities:read', label: 'Entities', description: 'Read entities across your collections' },
-  { id: 'stats:read', label: 'Stats', description: 'Read dashboard stats and recent activity' },
-  { id: 'profile:read', label: 'Profile', description: 'Read your profile information' },
+  { id: 'stats:read', label: 'Stats', description: 'Read dashboard stats, activity, and project groupings' },
 ] as const
 
 interface ApiKey {
@@ -445,8 +444,10 @@ export default function ApiKeysPage() {
                     ['GET /api/projects/:projectId', 'projects:read', 'Get a single project'],
                     ['GET /api/collections/:collection/entities', 'entities:read', 'Query entities in a collection'],
                     ['GET /api/entities/:entityId', 'entities:read', 'Get a single entity'],
-                    ['GET /api/dashboard/stats', 'stats:read', 'Dashboard stats and recent activity'],
-                    ['GET /api/auth/session', 'profile:read', 'Your session and profile'],
+                    ['GET /api/dashboard/stats', 'stats:read', 'Dashboard overview stats'],
+                    ['GET /api/users/me/projects', 'stats:read', 'Projects with collection info'],
+                    ['GET /api/users/me/projects/grouped', 'stats:read', 'Projects grouped by collection'],
+                    ['GET /api/users/me/recent-activity', 'stats:read', 'Recent entity edits across projects'],
                   ].map(([endpoint, scope, desc]) => (
                     <tr key={endpoint}>
                       <td className="px-4 py-2 font-mono text-[11px] text-blue-600 dark:text-blue-400 whitespace-nowrap">{endpoint}</td>
@@ -459,10 +460,15 @@ export default function ApiKeysPage() {
             </div>
           </div>
 
-          <p className="text-xs text-gray-400 dark:text-gray-500">
-            All endpoints are read-only. Keys are prefixed with <code className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">bby_</code> and
-            can be revoked at any time. Responses are JSON.
-          </p>
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Notes</h3>
+            <ul className="text-xs text-gray-500 dark:text-gray-400 space-y-1.5 list-disc list-inside">
+              <li>All endpoints are read-only. Responses are JSON.</li>
+              <li>Keys are prefixed with <code className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">bby_</code> and can be revoked at any time.</li>
+              <li>Entity endpoints require <code className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">?projectId=</code> as a query parameter.</li>
+              <li>Rate limits: 100 req/min (free), 500 req/min (supporter).</li>
+            </ul>
+          </div>
         </section>
       </div>
     </div>
