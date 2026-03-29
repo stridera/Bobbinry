@@ -63,6 +63,8 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   // Map nodeId → parentId for quick lookup during drag operations
   const nodeParentMap = useRef(new Map<string, string | null>())
 
+  const treeContainerRef = useRef<HTMLDivElement>(null)
+
   const [sdk] = useState(() => new BobbinrySDK('manuscript'))
   const projectId = useMemo(() => context?.projectId || context?.currentProject, [context?.projectId, context?.currentProject])
 
@@ -107,8 +109,14 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
 
       if (!isLoadingRef.current) {
         isLoadingRef.current = true
+        const scrollTop = treeContainerRef.current?.scrollTop ?? 0
         loadTree().finally(() => {
           isLoadingRef.current = false
+          requestAnimationFrame(() => {
+            if (treeContainerRef.current) {
+              treeContainerRef.current.scrollTop = scrollTop
+            }
+          })
         })
       }
     }
@@ -157,9 +165,20 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     return () => window.removeEventListener('bobbinry:entity-updated', handleEntityUpdated)
   }, [])
 
-  // Keep selectedNodeId ref in sync for auto-selection logic
+  // Keep selectedNodeId ref in sync for auto-selection logic,
+  // and scroll the selected node into view.
   useEffect(() => {
     selectedNodeIdRef.current = selectedNodeId
+    if (selectedNodeId && treeContainerRef.current) {
+      requestAnimationFrame(() => {
+        const el = treeContainerRef.current?.querySelector(
+          `[data-node-id="${CSS.escape(selectedNodeId)}"]`
+        )
+        if (el) {
+          el.scrollIntoView({ block: 'nearest' })
+        }
+      })
+    }
   }, [selectedNodeId])
 
   // Sync sidebar highlight with the actual view the router navigated to.
@@ -516,14 +535,21 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     try {
       const collection = nodeType === 'container' ? 'containers' : 'content'
 
-      await sdk.entities.update(collection, nodeId, {
+      const result = await sdk.entities.update(collection, nodeId, {
         title: newTitle.trim(),
         updated_at: new Date().toISOString()
-      })
-      await loadTree()
-      setEditingNodeId(null)
+      }) as any
 
-      // Notify other views (e.g. editor) of the rename
+      // Dispatch version + title events before loadTree so the editor
+      // picks up the new version before any visibility-change poll fires.
+      const newVersion = result?._meta?.version
+      if (newVersion != null) {
+        window.dispatchEvent(
+          new CustomEvent('bobbinry:entity-version-changed', {
+            detail: { entityId: nodeId, version: newVersion }
+          })
+        )
+      }
       window.dispatchEvent(
         new CustomEvent('bobbinry:entity-updated', {
           detail: {
@@ -533,6 +559,9 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
           }
         })
       )
+
+      await loadTree()
+      setEditingNodeId(null)
     } catch (error) {
       console.error('Failed to rename:', error)
       setToast({ message: 'Failed to rename: ' + (error instanceof Error ? error.message : 'Unknown error'), variant: 'danger' })
@@ -814,6 +843,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
         )}
 
         <div
+          data-node-id={node.id}
           draggable={!isEditing}
           onDragStart={(e) => handleDragStart(e, node.id, node.nodeType)}
           onDragOver={(e) => handleDragOverNode(e, node.id, isContainer)}
@@ -983,6 +1013,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
       </PanelActions>
 
       <div
+        ref={treeContainerRef}
         className="flex-1 overflow-y-auto"
         onDragOver={(e) => {
           e.preventDefault()

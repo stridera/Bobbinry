@@ -430,13 +430,19 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
       // Don't interrupt an in-flight save or a conflict the user is resolving
       if (savingRef.current) return
 
-      const draft = loadDraft(eid)
-      if (!draft) return
+      if (!localStorage.getItem(getDraftKey(eid))) return
 
       sdk.entities.getVersion('content', eid).then((versionInfo) => {
         if (!versionInfo) return
         // Bail if user navigated elsewhere while the request was in flight
         if (activeEntityRef.current !== eid) return
+        // Bail if a save started (or finished) while the HEAD was in flight
+        if (savingRef.current) return
+
+        // Re-read the draft — a debounced save may have completed during
+        // the async getVersion round-trip, updating version/savedToServer.
+        const draft = loadDraft(eid)
+        if (!draft) return
 
         const serverVersion = versionInfo.version
         if (draft.version !== null && serverVersion === draft.version) {
@@ -716,24 +722,25 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
       saveTimeoutRef.current = null
     }
 
-    // Cancel any pending debounced title save and flush it
+    // Cancel any pending debounced title save — we'll include it in the
+    // body flush below so we don't fire two concurrent updates that race
+    // on the entity version.
+    const hadPendingTitle = !!titleSaveTimeoutRef.current
     if (titleSaveTimeoutRef.current) {
       clearTimeout(titleSaveTimeoutRef.current)
       titleSaveTimeoutRef.current = null
-      // Fire the title save immediately with the latest draft title
-      if (outgoingEntityId) {
-        const draft = loadDraft(outgoingEntityId)
-        if (draft?.title) {
-          sdk.entities.update('content', outgoingEntityId, { title: draft.title }).catch(() => {})
-        }
-      }
     }
 
     if (outgoingEntityId) {
       const draft = loadDraft(outgoingEntityId)
       if (draft && !draft.savedToServer) {
-        // Draft was already written by onUpdate — just trigger the server save
-        serverSave(outgoingEntityId, draft.html, draft.wordCount)
+        // Draft was already written by onUpdate — trigger the server save,
+        // bundling the pending title so we don't fire two concurrent updates.
+        serverSave(outgoingEntityId, draft.html, draft.wordCount,
+          hadPendingTitle ? { title: draft.title } : undefined)
+      } else if (hadPendingTitle && draft?.title) {
+        // Only the title changed — fire a standalone title save
+        sdk.entities.update('content', outgoingEntityId, { title: draft.title }).catch(() => {})
       }
     }
   }
@@ -944,7 +951,7 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
    * Actually persist content to the server. The entityId is captured at
    * schedule time, not read from the current prop.
    */
-  async function serverSave(targetEntityId: string, html: string, count: number, skipVersionCheck?: boolean) {
+  async function serverSave(targetEntityId: string, html: string, count: number, opts?: { skipVersionCheck?: boolean; title?: string }) {
     if (!targetEntityId || savingRef.current) return
 
     // Don't attempt server save when offline — stay in offline/dirty state
@@ -958,41 +965,47 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
       savingRef.current = true
       setSaveStatus('saving')
 
-      const expectedVersion = skipVersionCheck ? undefined : (versionRef.current ?? undefined)
+      const expectedVersion = opts?.skipVersionCheck ? undefined : (versionRef.current ?? undefined)
 
-      const result = await sdk.entities.update('content', targetEntityId, {
-        body: html,
-        word_count: count
-      }, expectedVersion) as any
+      const data: Record<string, any> = { body: html, word_count: count }
+      if (opts?.title !== undefined) data.title = opts.title
 
-      // Extract new version from response and update refs + draft
+      const result = await sdk.entities.update('content', targetEntityId,
+        data, expectedVersion) as any
+
       const newVersion = result?._meta?.version ?? null
-      versionRef.current = newVersion
-
-      // Mark the draft as saved to server
       saveDraft(targetEntityId, { html, wordCount: count, savedToServer: true, version: newVersion })
 
-      // Show "saved" briefly, then go clean
-      setSaveStatus('saved')
-      setConflictInfo(null)
-      if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
-      savedTimerRef.current = setTimeout(() => {
-        setSaveStatus(prev => prev === 'saved' ? 'clean' : prev)
-      }, 2000)
+      // Only update in-memory version + UI status if this entity is still active.
+      // A flushed save for the previous entity can complete after navigation; without
+      // this guard it would overwrite versionRef with the wrong entity's version.
+      if (activeEntityRef.current === targetEntityId) {
+        versionRef.current = newVersion
+        setSaveStatus('saved')
+        setConflictInfo(null)
+        if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+        savedTimerRef.current = setTimeout(() => {
+          setSaveStatus(prev => prev === 'saved' ? 'clean' : prev)
+        }, 2000)
+      }
     } catch (error) {
       if (error instanceof ConflictError) {
         console.warn('[EditorView] Save conflict detected:', error.currentVersion, 'vs expected', error.expectedVersion)
-        setSaveStatus('conflict')
-        setConflictInfo({ serverVersion: error.currentVersion, localVersion: versionRef.current })
         saveDraft(targetEntityId, { html, wordCount: count, savedToServer: false })
+        // Only show conflict UI if this entity is still active
+        if (activeEntityRef.current === targetEntityId) {
+          setSaveStatus('conflict')
+          setConflictInfo({ serverVersion: error.currentVersion, localVersion: versionRef.current })
+        }
         return
       }
       console.error('[EditorView] Auto-save failed:', error)
-      // Detect network errors and set offline status
-      const isNetworkError = error instanceof TypeError && error.message.includes('fetch')
-      setSaveStatus(isNetworkError || !navigator.onLine ? 'offline' : 'error')
-      // Keep the draft marked as unsaved so it will retry
       saveDraft(targetEntityId, { html, wordCount: count, savedToServer: false })
+      // Only update status if this entity is still active
+      if (activeEntityRef.current === targetEntityId) {
+        const isNetworkError = error instanceof TypeError && error.message.includes('fetch')
+        setSaveStatus(isNetworkError || !navigator.onLine ? 'offline' : 'error')
+      }
     } finally {
       savingRef.current = false
     }
@@ -1057,7 +1070,7 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
     const html = editor.getHTML()
     setConflictInfo(null)
     // Retry save without expectedVersion — forces overwrite
-    serverSave(eid, html, wordCount, true)
+    serverSave(eid, html, wordCount, { skipVersionCheck: true })
   }
 
   function handleTitleChange(newTitle: string) {
@@ -1089,9 +1102,19 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
     }
     titleSaveTimeoutRef.current = setTimeout(async () => {
       try {
-        await sdk.entities.update('content', entityId, {
+        const result = await sdk.entities.update('content', entityId, {
           title: newTitle
-        })
+        }) as any
+        // Title update bumps the server version — keep versionRef in sync
+        // so the next body save doesn't send a stale expectedVersion.
+        const newVersion = result?._meta?.version ?? null
+        if (newVersion != null && activeEntityRef.current === entityId) {
+          versionRef.current = newVersion
+          const draft = loadDraft(entityId)
+          if (draft) {
+            saveDraft(entityId, { html: draft.html, version: newVersion })
+          }
+        }
       } catch (error) {
         console.error('[EditorView] Failed to update title:', error)
       }
