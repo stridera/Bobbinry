@@ -12,10 +12,14 @@ try {
 
 const nextConfig: NextConfig = {
   generateBuildId: () => buildId,
+  poweredByHeader: false,
+  productionBrowserSourceMaps: false,
   env: {
     NEXT_PUBLIC_BUILD_ID: buildId,
   },
-  allowedDevOrigins: process.env.NEXT_PUBLIC_APP_URL ? [new URL(process.env.NEXT_PUBLIC_APP_URL).hostname] : [],
+  ...(process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_APP_URL
+    ? { allowedDevOrigins: [new URL(process.env.NEXT_PUBLIC_APP_URL).hostname] }
+    : {}),
   transpilePackages: ['@bobbinry/ui-components', '@bobbinry/manuscript', '@bobbinry/corkboard', '@bobbinry/cat', '@bobbinry/web-publisher'],
   async redirects() {
     return [

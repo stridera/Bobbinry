@@ -23,7 +23,7 @@ const geistMono = Geist_Mono({
 const siteDescription = "A modular platform for writers and worldbuilders. Write with powerful tools, publish on your terms, and find your audience.";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3100"),
+  metadataBase: new URL(process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "https://bobbinry.com"),
   title: "Bobbinry",
   description: siteDescription,
   manifest: "/manifest.json",
@@ -36,7 +36,7 @@ export const metadata: Metadata = {
     siteName: "Bobbinry",
     type: "website",
     locale: "en_US",
-    url: "https://bobbinry.utaboshi.com",
+    url: "/",
   },
   twitter: {
     card: "summary_large_image",

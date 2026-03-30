@@ -13,7 +13,7 @@ interface EnvConfig {
 }
 
 const requiredEnvVars = {
-  production: ['NEXTAUTH_SECRET', 'DATABASE_URL'],
+  production: ['NEXTAUTH_SECRET', 'DATABASE_URL', 'NEXT_PUBLIC_APP_URL'],
   development: [] as string[],
   test: [] as string[]
 } as const
