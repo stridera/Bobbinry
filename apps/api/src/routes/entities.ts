@@ -8,6 +8,37 @@ import { serverEventBus, contentEdited } from '../lib/event-bus'
 import { findBobbinForCollectionAcrossScopes } from '../lib/disk-manifests'
 import { getEffectiveBobbins, getCollectionIdsForProject, buildScopeCondition } from '../lib/effective-bobbins'
 
+/**
+ * Check if a collection name matches a user-created entity type definition.
+ * Entity types created via the config UI are stored as rows in entity_type_definitions,
+ * not in bobbin manifests. This resolves them to the entities bobbin so they can be
+ * used as collections for storing entity instances.
+ */
+async function resolveEntityTypeCollection(
+  effectiveBobbins: Array<{ bobbinId: string; scope: string; scopeOwnerId: string }>,
+  collectionName: string,
+  scopeFilter: ReturnType<typeof buildScopeCondition>
+): Promise<{ bobbinId: string; scope: string; scopeOwnerId: string } | null> {
+  const entitiesBobbin = effectiveBobbins.find(b => b.bobbinId === 'entities')
+  if (!entitiesBobbin) return null
+
+  const typeDef = await db
+    .select({ id: entities.id })
+    .from(entities)
+    .where(and(
+      scopeFilter,
+      eq(entities.collectionName, 'entity_type_definitions'),
+      sql`${entities.entityData}->>'type_id' = ${collectionName}`
+    ))
+    .limit(1)
+
+  if (typeDef.length > 0) {
+    return entitiesBobbin
+  }
+
+  return null
+}
+
 /** Format an entity row into the standard API response shape */
 function formatEntityResponse(row: typeof entities.$inferSelect) {
   return {
@@ -134,21 +165,27 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
         )
       }
 
-      const result = await db
-        .select()
-        .from(entities)
-        .where(whereCondition)
-        .orderBy(
-          sql`COALESCE((${entities.entityData}->>'order')::bigint, 999999) ASC`,
-          sql`${entities.createdAt} DESC`
-        )
-        .limit(limit)
-        .offset(offset)
+      const [result, countResult] = await Promise.all([
+        db
+          .select()
+          .from(entities)
+          .where(whereCondition)
+          .orderBy(
+            sql`COALESCE((${entities.entityData}->>'order')::bigint, 999999) ASC`,
+            sql`${entities.createdAt} DESC`
+          )
+          .limit(limit)
+          .offset(offset),
+        db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(entities)
+          .where(whereCondition)
+      ])
 
-      // Transform results to match expected format
       const entityList = result.map(formatEntityResponse)
+      const total = countResult[0]?.count ?? entityList.length
 
-      return { entities: entityList, total: entityList.length }
+      return { entities: entityList, total }
 
     } catch (error) {
       fastify.log.error(error)
@@ -199,7 +236,14 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       }
 
       // Find which bobbin contains this collection (project > collection > global priority)
-      const match = await findBobbinForCollectionAcrossScopes(effective, collection)
+      let match = await findBobbinForCollectionAcrossScopes(effective, collection)
+
+      // Fallback: check if this is a user-created entity type
+      if (!match) {
+        const collectionIds = await getCollectionIdsForProject(projectId)
+        const scopeFilter = buildScopeCondition(projectId, collectionIds, userId)
+        match = await resolveEntityTypeCollection(effective, collection, scopeFilter)
+      }
 
       if (!match) {
         return reply.status(400).send({
@@ -521,7 +565,12 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
                 }
 
                 // Find target bobbin across all scopes
-                const match = await findBobbinForCollectionAcrossScopes(effective, collection)
+                let match = await findBobbinForCollectionAcrossScopes(effective, collection)
+
+                // Fallback: check if this is a user-created entity type
+                if (!match) {
+                  match = await resolveEntityTypeCollection(effective, collection, scopeFilter)
+                }
 
                 if (!match) {
                   throw new Error(`Collection '${collection}' not found`)

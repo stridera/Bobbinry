@@ -1,21 +1,22 @@
 /**
- * Upload Context
+ * SDK Context
  *
- * Provides SDK upload capability to deeply nested field renderers
- * without threading props through every layout component.
+ * Provides SDK and project context to deeply nested field renderers
+ * (image uploads, relation field resolution, etc.) without threading
+ * props through every layout component.
  */
 
 import { createContext, useContext } from 'react'
-import type { BobbinrySDK, UploadResult } from '@bobbinry/sdk'
+import type { BobbinrySDK } from '@bobbinry/sdk'
 
-interface UploadContextValue {
+interface SdkContextValue {
   sdk: BobbinrySDK
   projectId: string
 }
 
-const UploadContext = createContext<UploadContextValue | null>(null)
+const SdkContext = createContext<SdkContextValue | null>(null)
 
-export function UploadProvider({
+export function SdkProvider({
   sdk,
   projectId,
   children,
@@ -25,12 +26,18 @@ export function UploadProvider({
   children: React.ReactNode
 }) {
   return (
-    <UploadContext.Provider value={{ sdk, projectId }}>
+    <SdkContext.Provider value={{ sdk, projectId }}>
       {children}
-    </UploadContext.Provider>
+    </SdkContext.Provider>
   )
 }
 
-export function useUpload(): UploadContextValue | null {
-  return useContext(UploadContext)
+export function useSdkContext(): SdkContextValue | null {
+  return useContext(SdkContext)
 }
+
+// Backwards-compatible aliases
+export const UploadProvider = SdkProvider
+export const useUpload = useSdkContext
+export const EntityProvider = SdkProvider
+export const useEntityContext = useSdkContext

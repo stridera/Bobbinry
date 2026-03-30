@@ -15,7 +15,7 @@ import { useState, useEffect } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
 import type { EntityTypeDefinition } from '../types'
 import { LayoutRenderer } from '../components/LayoutRenderer'
-import { UploadProvider } from '../components/UploadContext'
+import { SdkProvider } from '../components/UploadContext'
 
 interface EntityEditorViewProps {
   projectId: string
@@ -39,6 +39,7 @@ export default function EntityEditorView({
   const [saving, setSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'saved' | 'unsaved' | 'saving'>('saved')
   const [error, setError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState(false) // Prevents auto-save retry loop
 
   const isNewEntity = entityId === 'new'
 
@@ -127,6 +128,9 @@ export default function EntityEditorView({
         case 'number':
           defaultEntity[field.name] = field.min || 0
           break
+        case 'relation':
+          defaultEntity[field.name] = field.allowMultiple ? [] : null
+          break
         default:
           defaultEntity[field.name] = ''
       }
@@ -176,21 +180,28 @@ export default function EntityEditorView({
         const result = await sdk.entities.create(entityType!, entity)
         console.log('[EntityEditor] Created entity:', result)
 
-        // Navigate to the created entity
+        // Notify sidebar that entities changed
         const createdId = result?.entity?.id || result?.id
-        if (typeof window !== 'undefined' && createdId) {
-          window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
-            detail: {
-              entityType,
-              entityId: createdId,
-              bobbinId: 'entities',
-              metadata: {
-                view: 'entity-editor',
-                isNew: false,
-                typeConfig
-              }
-            }
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('bobbinry:entities-changed', {
+            detail: { collection: entityType, action: 'created' }
           }))
+
+          // Navigate to the created entity
+          if (createdId) {
+            window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
+              detail: {
+                entityType,
+                entityId: createdId,
+                bobbinId: 'entities',
+                metadata: {
+                  view: 'entity-editor',
+                  isNew: false,
+                  typeConfig
+                }
+              }
+            }))
+          }
         }
       } else {
         await sdk.entities.update(entityType!, entityId!, entity)
@@ -202,6 +213,7 @@ export default function EntityEditorView({
       console.error('[EntityEditor] Failed to save:', err)
       setError(err.message || 'Failed to save entity')
       setSaveStatus('unsaved')
+      setSaveError(true) // Stop auto-save from retrying
     } finally {
       setSaving(false)
     }
@@ -220,6 +232,13 @@ export default function EntityEditorView({
       await sdk.entities.delete(entityType!, entityId!)
 
       console.log('[EntityEditor] Deleted entity')
+
+      // Notify sidebar that entities changed
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('bobbinry:entities-changed', {
+          detail: { collection: entityType, action: 'deleted' }
+        }))
+      }
 
       // Navigate back to list
       if (typeof window !== 'undefined') {
@@ -249,11 +268,12 @@ export default function EntityEditorView({
       [fieldName]: value
     }))
     setSaveStatus('unsaved')
+    setSaveError(false) // Reset error flag when user makes a new edit
   }
 
-  // Auto-save after 2 seconds of inactivity
+  // Auto-save after 2 seconds of inactivity (skip if last save errored)
   useEffect(() => {
-    if (saveStatus === 'unsaved') {
+    if (saveStatus === 'unsaved' && !saveError) {
       const timer = setTimeout(() => {
         saveEntity()
       }, 2000)
@@ -261,7 +281,7 @@ export default function EntityEditorView({
       return () => clearTimeout(timer)
     }
     return undefined
-  }, [entity, saveStatus])
+  }, [entity, saveStatus, saveError])
 
   if (loading) {
     return (
@@ -349,7 +369,7 @@ export default function EntityEditorView({
 
       {/* Editor Content */}
       <div className="flex-1 overflow-auto p-6">
-        <UploadProvider sdk={sdk} projectId={projectId}>
+        <SdkProvider sdk={sdk} projectId={projectId}>
           <LayoutRenderer
             layout={typeConfig.editorLayout}
             fields={typeConfig.customFields}
@@ -357,7 +377,7 @@ export default function EntityEditorView({
             onFieldChange={handleFieldChange}
             readonly={false}
           />
-        </UploadProvider>
+        </SdkProvider>
       </div>
     </div>
   )

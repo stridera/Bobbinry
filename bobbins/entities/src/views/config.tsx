@@ -16,6 +16,7 @@ import { useState, useEffect, useCallback } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
 import { Toast, ToastContainer } from '@bobbinry/ui-components'
 import { templates } from '../templates'
+import { getTypeId } from '../types'
 import type { EntityTemplate, EntityTypeDefinition, FieldDefinition, EditorLayout, ListLayout } from '../types'
 import { TemplatePreviewModal } from '../components/TemplatePreviewModal'
 import { FieldBuilder } from '../components/FieldBuilder'
@@ -58,6 +59,43 @@ export default function ConfigView({ projectId, sdk }: ConfigViewProps) {
   useEffect(() => {
     loadEntityTypes()
   }, [projectId])
+
+  function navigateToNewEntity(typeId: string, type: EntityTypeDefinition) {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
+        detail: {
+          entityType: typeId,
+          entityId: 'new',
+          bobbinId: 'entities',
+          metadata: {
+            view: 'entity-editor',
+            isNew: true,
+            typeId,
+            typeLabel: type.label,
+            typeIcon: type.icon
+          }
+        }
+      }))
+    }
+  }
+
+  function navigateToEntityList(typeId: string, type: EntityTypeDefinition) {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
+        detail: {
+          entityType: typeId,
+          entityId: 'list',
+          bobbinId: 'entities',
+          metadata: {
+            view: 'entity-list',
+            typeId,
+            typeLabel: type.label,
+            typeIcon: type.icon
+          }
+        }
+      }))
+    }
+  }
 
   async function loadEntityTypes() {
     try {
@@ -126,6 +164,13 @@ export default function ConfigView({ projectId, sdk }: ConfigViewProps) {
 
       console.log('[ConfigView] Entity type saved:', result)
 
+      // Notify sidebar to refresh entity types
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('bobbinry:entities-changed', {
+          detail: { collection: 'entity_type_definitions', action: 'created' }
+        }))
+      }
+
       setToast({ message: `Entity type "${entityLabel}" saved! It's now available in the navigation panel.`, variant: 'success' })
 
       // Reload entity types and return to template selector
@@ -165,7 +210,7 @@ export default function ConfigView({ projectId, sdk }: ConfigViewProps) {
             background: rgb(107 114 128);
           }
         `}</style>
-        <div className="h-full overflow-y-auto p-8 max-w-6xl mx-auto scrollable-config">
+        <div className="h-full overflow-y-auto p-8 scrollable-config">
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2 text-gray-900 dark:text-gray-100">
             Entity Types Configuration
@@ -182,15 +227,34 @@ export default function ConfigView({ projectId, sdk }: ConfigViewProps) {
               Your Entity Types ({entityTypes.length})
             </h2>
             <div className="grid grid-cols-3 gap-4">
-              {/* TODO: Render existing entity types */}
-              {entityTypes.map(type => (
-                <div key={type.id} className="p-4 border rounded bg-white dark:bg-gray-800">
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">{type.icon}</span>
-                    <span className="font-medium text-gray-900 dark:text-gray-100">{type.label}</span>
+              {entityTypes.map(type => {
+                const typeId = getTypeId(type)
+                return (
+                  <div
+                    key={type.id}
+                    className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 hover:border-blue-400 dark:hover:border-blue-600 transition-colors"
+                  >
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-2xl">{type.icon}</span>
+                      <span className="font-medium text-gray-900 dark:text-gray-100">{type.label}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => navigateToEntityList(typeId, type)}
+                        className="flex-1 px-3 py-1.5 text-xs font-medium border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
+                      >
+                        View All
+                      </button>
+                      <button
+                        onClick={() => navigateToNewEntity(typeId, type)}
+                        className="flex-1 px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded hover:bg-blue-700"
+                      >
+                        + New {type.label}
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}
@@ -201,9 +265,6 @@ export default function ConfigView({ projectId, sdk }: ConfigViewProps) {
             Create New Entity Type
           </h2>
           <div className="flex gap-4 mb-6">
-            <button className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-              📚 Choose from Template
-            </button>
             <button
               onClick={handleCreateFromScratch}
               className="px-6 py-3 border-2 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800"
@@ -216,7 +277,7 @@ export default function ConfigView({ projectId, sdk }: ConfigViewProps) {
         {/* Template Grid */}
         <div>
           <h3 className="text-lg font-medium mb-4 text-gray-900 dark:text-gray-100">
-            Popular Templates
+            Templates
           </h3>
           <div className="grid grid-cols-2 gap-6">
             {templates.map(template => (
@@ -311,7 +372,7 @@ export default function ConfigView({ projectId, sdk }: ConfigViewProps) {
           background: rgb(107 114 128);
         }
       `}</style>
-      <div className="h-full overflow-y-auto p-8 max-w-6xl mx-auto scrollable-config">
+      <div className="h-full overflow-y-auto p-8 scrollable-config">
       <button
         onClick={() => {
           setShowTemplateSelector(true)
@@ -367,6 +428,11 @@ export default function ConfigView({ projectId, sdk }: ConfigViewProps) {
       <FieldBuilder
         fields={customFields}
         onChange={setCustomFields}
+        entityTypes={entityTypes.map(et => ({
+          typeId: getTypeId(et),
+          label: et.label,
+          icon: et.icon,
+        }))}
       />
 
       {/* Layout Designer */}

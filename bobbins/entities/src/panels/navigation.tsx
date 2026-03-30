@@ -19,6 +19,7 @@ import {
   PanelPill,
   PanelSectionTitle,
 } from '@bobbinry/sdk'
+import { getTypeId } from '../types'
 import type { EntityTypeDefinition } from '../types'
 
 interface NavigationViewProps {
@@ -28,10 +29,6 @@ interface NavigationViewProps {
     currentView?: string
     apiToken?: string
   }
-}
-
-function getTypeId(type: EntityTypeDefinition): string {
-  return (type as any).type_id || type.typeId
 }
 
 export default function NavigationView({ context }: NavigationViewProps) {
@@ -65,6 +62,28 @@ export default function NavigationView({ context }: NavigationViewProps) {
     }
   }, [projectId, entityApi])
 
+  // Listen for entity changes (create/delete) to refresh sidebar
+  useEffect(() => {
+    function handleEntitiesChanged(e: Event) {
+      const detail = (e as CustomEvent).detail
+      const collection = detail?.collection
+
+      if (collection === 'entity_type_definitions') {
+        // A new entity type was created/deleted — reload everything
+        loadEntityTypes()
+      } else if (collection && expandedTypes.has(collection)) {
+        // An entity was created/deleted in an expanded type — refresh that type
+        loadEntitiesForType(collection)
+      } else if (collection) {
+        // Type not expanded — just refresh counts
+        refreshCountForType(collection)
+      }
+    }
+
+    window.addEventListener('bobbinry:entities-changed', handleEntitiesChanged)
+    return () => window.removeEventListener('bobbinry:entities-changed', handleEntitiesChanged)
+  }, [entityApi, expandedTypes])
+
   async function loadEntityTypes() {
     if (!entityApi) return
     try {
@@ -94,6 +113,14 @@ export default function NavigationView({ context }: NavigationViewProps) {
       setError(err.message || 'Failed to load entity types')
       setLoading(false)
     }
+  }
+
+  async function refreshCountForType(typeId: string) {
+    if (!entityApi) return
+    try {
+      const result = await entityApi.query({ collection: typeId, limit: 1 })
+      setCounts(prev => ({ ...prev, [typeId]: result.total || 0 }))
+    } catch {}
   }
 
   async function loadEntitiesForType(typeId: string) {
@@ -225,10 +252,11 @@ export default function NavigationView({ context }: NavigationViewProps) {
       <PanelActions>
         <PanelIconButton
           onClick={handleConfigClick}
-          title="Create new entity type"
+          title="Entity type settings"
         >
           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 5v14M5 12h14" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.573-1.066z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
         </PanelIconButton>
       </PanelActions>

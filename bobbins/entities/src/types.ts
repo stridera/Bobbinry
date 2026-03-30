@@ -12,6 +12,7 @@ export type FieldType =
   | 'json'
   | 'rich-text'
   | 'image'
+  | 'relation'
 
 export type LayoutTemplate = 'compact-card' | 'hero-image' | 'list-details' | 'custom'
 
@@ -32,6 +33,8 @@ export interface FieldDefinition {
   max?: number  // For number
   multiline?: boolean  // For text type
   schema?: Record<string, string>  // For json type
+  targetEntityType?: string  // For relation: typeId of the target entity type
+  allowMultiple?: boolean  // For relation: if true, stores array of IDs
 }
 
 export interface LayoutSection {
@@ -82,6 +85,11 @@ export interface EntityTypeDefinition {
   allowDuplicates: boolean
   createdAt: Date
   updatedAt: Date
+}
+
+/** Extract typeId from an entity type definition, handling both camelCase and snake_case */
+export function getTypeId(type: EntityTypeDefinition): string {
+  return (type as any).type_id || type.typeId
 }
 
 export interface EntityMatch {

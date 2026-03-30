@@ -21,6 +21,7 @@ import {
 } from '@bobbinry/sdk'
 import type { EntityTypeDefinition } from '../types'
 import { LayoutRenderer } from '../components/LayoutRenderer'
+import { SdkProvider } from '../components/UploadContext'
 
 interface EntityPreviewPanelProps {
   context?: {
@@ -255,13 +256,15 @@ export default function EntityPreviewPanel({ context }: EntityPreviewPanelProps)
           <span className="text-lg">{preview.typeIcon}</span>
         </div>
 
-        <LayoutRenderer
-          layout={preview.typeConfig.editorLayout}
-          fields={preview.typeConfig.customFields}
-          entity={preview.entity}
-          onFieldChange={() => {}}
-          readonly={true}
-        />
+        <SdkProvider sdk={sdk} projectId={projectId!}>
+          <LayoutRenderer
+            layout={preview.typeConfig.editorLayout}
+            fields={preview.typeConfig.customFields}
+            entity={preview.entity}
+            onFieldChange={() => {}}
+            readonly={true}
+          />
+        </SdkProvider>
       </PanelBody>
 
       <div className="border-t border-gray-200 px-3 py-2 dark:border-gray-700">

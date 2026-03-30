@@ -10,6 +10,7 @@ import type { FieldDefinition, FieldType } from '../types'
 interface FieldBuilderProps {
   fields: FieldDefinition[]
   onChange: (fields: FieldDefinition[]) => void
+  entityTypes?: Array<{ typeId: string; label: string; icon: string }>
 }
 
 const FIELD_TYPES: { value: FieldType; label: string }[] = [
@@ -21,10 +22,11 @@ const FIELD_TYPES: { value: FieldType; label: string }[] = [
   { value: 'date', label: 'Date' },
   { value: 'json', label: 'JSON' },
   { value: 'rich-text', label: 'Rich Text' },
-  { value: 'image', label: 'Image Upload' }
+  { value: 'image', label: 'Image Upload' },
+  { value: 'relation', label: 'Relation (link to entity type)' }
 ]
 
-export function FieldBuilder({ fields, onChange }: FieldBuilderProps) {
+export function FieldBuilder({ fields, onChange, entityTypes = [] }: FieldBuilderProps) {
   const [editingField, setEditingField] = useState<number | null>(null)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
 
@@ -285,6 +287,47 @@ export function FieldBuilder({ fields, onChange }: FieldBuilderProps) {
                         Multiline (textarea)
                       </span>
                     </label>
+                  </div>
+                )}
+
+                {field.type === 'relation' && (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Target Entity Type
+                      </label>
+                      {entityTypes.length > 0 ? (
+                        <select
+                          value={field.targetEntityType || ''}
+                          onChange={(e) => handleUpdateField(index, { targetEntityType: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                        >
+                          <option value="">Select entity type...</option>
+                          {entityTypes.map(et => (
+                            <option key={et.typeId} value={et.typeId}>
+                              {et.icon} {et.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <div className="text-sm text-gray-500 dark:text-gray-400 italic">
+                          No entity types available. Create one first, then come back to configure this field.
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={field.allowMultiple || false}
+                          onChange={(e) => handleUpdateField(index, { allowMultiple: e.target.checked })}
+                          className="w-4 h-4"
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">
+                          Allow multiple selections
+                        </span>
+                      </label>
+                    </div>
                   </div>
                 )}
               </div>
