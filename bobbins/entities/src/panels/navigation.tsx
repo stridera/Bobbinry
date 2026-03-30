@@ -280,73 +280,86 @@ export default function NavigationView({ context }: NavigationViewProps) {
             }
           />
         ) : (
-          <PanelCard className="px-0 py-1">
+          <PanelCard className="px-0 py-0.5">
             {entityTypes.map(type => {
             const typeId = getTypeId(type)
             const isExpanded = expandedTypes.has(typeId)
             const entities = typeEntities[typeId] || []
             const isLoadingType = loadingEntities.has(typeId)
+            const count = counts[typeId] || 0
 
             return (
               <div key={type.id}>
                 {/* Type row */}
                 <div
-                  className="flex cursor-pointer items-center gap-1.5 py-1 pr-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
-                  style={{ paddingLeft: '8px' }}
+                  className="group/type flex cursor-pointer items-center gap-2 py-1.5 pr-2 text-sm rounded-md mx-1 hover:bg-gray-100 dark:hover:bg-gray-700/60 transition-colors"
+                  style={{ paddingLeft: '6px' }}
                   onClick={() => toggleType(typeId)}
                 >
-                  <span
-                    className="text-gray-400 text-xs w-3 flex-shrink-0 hover:text-gray-600 dark:hover:text-gray-200"
+                  <svg
+                    className={`w-3 h-3 flex-shrink-0 text-gray-400 dark:text-gray-500 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}
+                    fill="none" stroke="currentColor" viewBox="0 0 24 24"
                   >
-                    {isExpanded ? '▼' : '▶'}
-                  </span>
-                  <span className="flex-shrink-0">{type.icon}</span>
-                  <span className="flex-1 text-gray-800 dark:text-gray-200 truncate">{type.label}</span>
-                  <PanelPill className="mr-1">{counts[typeId] || 0}</PanelPill>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                  </svg>
+                  <span className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-md bg-gray-100 dark:bg-gray-700/50 text-sm">{type.icon}</span>
+                  <span className="flex-1 font-medium text-gray-800 dark:text-gray-200 truncate text-[13px]">{type.label}</span>
+                  <span className="text-[10px] tabular-nums text-gray-400 dark:text-gray-500 mr-0.5">{count}</span>
                   <PanelIconButton
                     onClick={(e) => { e.stopPropagation(); handleNewEntity(type) }}
                     title={`New ${type.label}`}
+                    className="h-5 w-5 !p-0 opacity-0 group-hover/type:opacity-100 transition-opacity"
                   >
-                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 5v14M5 12h14" />
+                    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14M5 12h14" />
                     </svg>
                   </PanelIconButton>
                 </div>
 
                 {/* Expanded entity list */}
                 {isExpanded && (
-                  <div>
+                  <div className="pb-1">
                     {isLoadingType ? (
-                      <div className="py-1 text-xs text-gray-400 dark:text-gray-500" style={{ paddingLeft: `${16 + 8}px` }}>
+                      <div className="py-1.5 text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1.5" style={{ paddingLeft: '36px' }}>
+                        <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
                         Loading...
                       </div>
                     ) : entities.length === 0 ? (
                       <div
-                        className="py-1 text-xs text-gray-400 dark:text-gray-500 italic"
-                        style={{ paddingLeft: `${16 + 8}px` }}
+                        className="py-1.5 flex items-center gap-1"
+                        style={{ paddingLeft: '36px' }}
                       >
-                        No entities
+                        <span className="text-xs text-gray-400 dark:text-gray-500 italic">Empty</span>
+                        <button
+                          onClick={() => handleNewEntity(type)}
+                          className="text-[11px] text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 cursor-pointer"
+                        >
+                          + Add first
+                        </button>
                       </div>
                     ) : (
                       entities.map((entity: any) => (
                         <div
                           key={entity.id}
-                          className="group flex cursor-pointer items-center gap-1.5 py-1 pr-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
-                          style={{ paddingLeft: `${16 + 8}px` }}
+                          className="group/entity flex cursor-pointer items-center gap-1.5 py-0.5 pr-2 text-[13px] rounded-md mx-1 hover:bg-gray-100 dark:hover:bg-gray-700/60 transition-colors"
+                          style={{ paddingLeft: '30px' }}
                           onClick={() => handleEntityClick(entity, type)}
                         >
-                          <span className="w-3 flex-shrink-0"></span>
+                          <span className="text-[10px] flex-shrink-0 opacity-50">{type.icon}</span>
                           <span className="flex-1 text-gray-700 dark:text-gray-300 truncate">
                             {entity.name || 'Untitled'}
                           </span>
                           <PanelIconButton
                             onClick={(e) => handleEntityPreview(e, entity, type)}
-                            className="h-5 w-5 opacity-0 transition-opacity group-hover:opacity-100"
+                            className="h-5 w-5 !p-0 opacity-0 transition-opacity group-hover/entity:opacity-100"
                             title={`Preview ${entity.name || 'entity'}`}
                           >
-                            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 3h6m0 0v6m0-6L10 14" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 7H7a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-2" />
+                            <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 3h6m0 0v6m0-6L10 14" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7H7a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-2" />
                             </svg>
                           </PanelIconButton>
                         </div>
