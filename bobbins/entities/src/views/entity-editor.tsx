@@ -13,9 +13,10 @@
 
 import { useState, useEffect } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
-import type { EntityTypeDefinition } from '../types'
+import type { EntityTypeDefinition, FieldDefinition } from '../types'
 import { LayoutRenderer } from '../components/LayoutRenderer'
 import { SdkProvider } from '../components/UploadContext'
+import { checkTypeCompatibility } from '../components/FieldRenderers'
 
 interface EntityEditorViewProps {
   projectId: string
@@ -40,6 +41,7 @@ export default function EntityEditorView({
   const [saveStatus, setSaveStatus] = useState<'saved' | 'unsaved' | 'saving'>('saved')
   const [error, setError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState(false) // Prevents auto-save retry loop
+  const [versionMismatch, setVersionMismatch] = useState(false)
 
   const isNewEntity = entityId === 'new'
 
@@ -95,8 +97,16 @@ export default function EntityEditorView({
       console.log('[EntityEditor] Loading entity:', entityType, entityId)
 
       const data = await sdk.entities.get(entityType, entityId)
-      setEntity(data?.entity || data || {})
+      const entityData = data?.entity || data || {}
+      setEntity(entityData)
       console.log('[EntityEditor] Loaded entity:', data)
+
+      // Check schema version mismatch
+      if (typeConfig) {
+        const typeVersion = (typeConfig as any).schema_version || 0
+        const entityVersion = entityData._schema_version || 0
+        setVersionMismatch(typeVersion > 0 && entityVersion < typeVersion)
+      }
 
       setSaveStatus('saved')
     } catch (err: any) {
@@ -113,7 +123,8 @@ export default function EntityEditorView({
       name: '',
       description: '',
       tags: [],
-      image_url: ''
+      image_url: '',
+      _schema_version: (typeConfig as any).schema_version || 1,
     }
 
     // Add defaults for custom fields
@@ -174,10 +185,16 @@ export default function EntityEditorView({
         throw new Error(`Missing required fields: ${missingFields.join(', ')}`)
       }
 
-      console.log('[EntityEditor] Saving entity:', { isNewEntity, entityType, entity })
+      // Stamp current schema version on save
+      const entityToSave = {
+        ...entity,
+        _schema_version: (typeConfig as any).schema_version || 1,
+      }
+
+      console.log('[EntityEditor] Saving entity:', { isNewEntity, entityType, entity: entityToSave })
 
       if (isNewEntity) {
-        const result = await sdk.entities.create(entityType!, entity)
+        const result: any = await sdk.entities.create(entityType!, entityToSave)
         console.log('[EntityEditor] Created entity:', result)
 
         // Notify sidebar that entities changed
@@ -204,7 +221,7 @@ export default function EntityEditorView({
           }
         }
       } else {
-        await sdk.entities.update(entityType!, entityId!, entity)
+        await sdk.entities.update(entityType!, entityId!, entityToSave)
         console.log('[EntityEditor] Updated entity')
       }
 
@@ -269,6 +286,41 @@ export default function EntityEditorView({
     }))
     setSaveStatus('unsaved')
     setSaveError(false) // Reset error flag when user makes a new edit
+  }
+
+  function handleUpdateSchema() {
+    if (!typeConfig) return
+
+    const customFields: FieldDefinition[] = typeConfig.customFields || (typeConfig as any).custom_fields || []
+    const updated = { ...entity }
+
+    // Clear incompatible values and add defaults for new fields
+    for (const field of customFields) {
+      const currentValue = updated[field.name]
+      if (currentValue !== null && currentValue !== undefined && currentValue !== '') {
+        const { compatible } = checkTypeCompatibility(field.type, currentValue, field)
+        if (!compatible) {
+          updated[field.name] = null
+        }
+      } else if (!(field.name in updated)) {
+        // New field — set default
+        switch (field.type) {
+          case 'boolean': updated[field.name] = false; break
+          case 'multi-select': updated[field.name] = []; break
+          case 'number': updated[field.name] = field.min || 0; break
+          case 'relation': updated[field.name] = field.allowMultiple ? [] : null; break
+          default: updated[field.name] = ''
+        }
+      }
+    }
+
+    // Stamp new version
+    updated._schema_version = (typeConfig as any).schema_version || 1
+
+    setEntity(updated)
+    setVersionMismatch(false)
+    setSaveStatus('unsaved')
+    setSaveError(false)
   }
 
   // Auto-save after 2 seconds of inactivity (skip if last save errored)
@@ -366,6 +418,32 @@ export default function EntityEditorView({
           </button>
         </div>
       </div>
+
+      {/* Schema version mismatch banner */}
+      {versionMismatch && (
+        <div className="mx-4 mt-4 p-3 border border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20 rounded-lg flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-amber-600 dark:text-amber-400 flex-shrink-0">&#9888;</span>
+            <span className="text-sm text-amber-800 dark:text-amber-200">
+              This entity was created with an older field schema. Some fields may have changed type or been added.
+            </span>
+          </div>
+          <div className="flex gap-2 flex-shrink-0">
+            <button
+              onClick={handleUpdateSchema}
+              className="px-3 py-1.5 text-xs font-medium bg-amber-600 text-white rounded hover:bg-amber-700 cursor-pointer"
+            >
+              Update to latest
+            </button>
+            <button
+              onClick={() => setVersionMismatch(false)}
+              className="px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-600 rounded hover:bg-amber-100 dark:hover:bg-amber-800 cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Editor Content */}
       <div className="flex-1 overflow-auto p-6">

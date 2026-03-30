@@ -27,7 +27,153 @@ interface FieldRendererProps {
   display?: 'inline' | 'stacked' | 'json-editor' | 'rich-text'
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Check if a stored value is compatible with the expected field type */
+export function checkTypeCompatibility(
+  fieldType: FieldType,
+  value: any,
+  field: FieldDefinition
+): { compatible: boolean; reason?: string } {
+  if (value === null || value === undefined || value === '') {
+    return { compatible: true }
+  }
+
+  switch (fieldType) {
+    case 'text':
+    case 'rich-text':
+      return { compatible: true }
+
+    case 'number':
+      if (typeof value === 'number') return { compatible: true }
+      if (typeof value === 'string' && !isNaN(Number(value)) && value.trim() !== '') {
+        return { compatible: true }
+      }
+      return { compatible: false, reason: `expected number, got ${typeof value}` }
+
+    case 'boolean':
+      if (typeof value === 'boolean') return { compatible: true }
+      return { compatible: false, reason: `expected boolean, got ${typeof value}` }
+
+    case 'date':
+      if (typeof value === 'string' && !isNaN(Date.parse(value))) return { compatible: true }
+      return { compatible: false, reason: `expected date string, got ${typeof value}` }
+
+    case 'select':
+      if (typeof value !== 'string') {
+        return { compatible: false, reason: `expected string, got ${typeof value}` }
+      }
+      if (field.options && !field.options.includes(value)) {
+        return { compatible: false, reason: `"${value}" not in options` }
+      }
+      return { compatible: true }
+
+    case 'multi-select':
+      if (!Array.isArray(value)) {
+        return { compatible: false, reason: `expected array, got ${typeof value}` }
+      }
+      return { compatible: true }
+
+    case 'relation': {
+      if (field.allowMultiple) {
+        if (!Array.isArray(value)) {
+          return { compatible: false, reason: `expected array of IDs, got ${typeof value}` }
+        }
+        const hasNonUuid = value.some((v: any) => typeof v !== 'string' || !UUID_PATTERN.test(v))
+        if (hasNonUuid) {
+          return { compatible: false, reason: 'array contains non-UUID values' }
+        }
+      } else {
+        if (typeof value !== 'string' || !UUID_PATTERN.test(value)) {
+          return { compatible: false, reason: `expected UUID, got "${String(value).slice(0, 30)}"` }
+        }
+      }
+      return { compatible: true }
+    }
+
+    case 'json':
+      if (typeof value === 'object') return { compatible: true }
+      return { compatible: false, reason: `expected object, got ${typeof value}` }
+
+    case 'image':
+      if (typeof value === 'string') return { compatible: true }
+      return { compatible: false, reason: `expected URL string, got ${typeof value}` }
+
+    default:
+      return { compatible: true }
+  }
+}
+
+function TypeMismatchBadge({
+  field,
+  value,
+  reason,
+  onChange,
+}: {
+  field: FieldDefinition
+  value: any
+  reason: string
+  onChange?: (value: any) => void
+}) {
+  const displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value)
+  const truncated = displayValue.length > 50 ? displayValue.slice(0, 50) + '...' : displayValue
+
+  return (
+    <div className="mb-4">
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        {field.label}
+      </label>
+      <div className="p-3 border border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+        <div className="flex items-start gap-2">
+          <span className="text-amber-600 dark:text-amber-400 text-sm flex-shrink-0">&#9888;</span>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm text-amber-800 dark:text-amber-200">
+              Type mismatch: stored as <code className="px-1 bg-amber-100 dark:bg-amber-800 rounded text-xs">{truncated}</code>,
+              field expects <strong>{field.type}</strong>
+            </div>
+            <div className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">{reason}</div>
+          </div>
+          {onChange && (
+            <button
+              onClick={() => onChange(null)}
+              className="text-xs px-2 py-1 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-600 rounded hover:bg-amber-100 dark:hover:bg-amber-800 flex-shrink-0 cursor-pointer"
+            >
+              Clear value
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ReadonlyTypeMismatchBadge({
+  value,
+  reason,
+}: {
+  value: any
+  reason: string
+}) {
+  const displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value)
+  const truncated = displayValue.length > 80 ? displayValue.slice(0, 80) + '...' : displayValue
+
+  return (
+    <div className="inline-flex items-center gap-1.5 text-sm">
+      <span className="text-amber-500" title={`Type mismatch: ${reason}`}>&#9888;</span>
+      <span className="text-gray-500 dark:text-gray-400 italic">{truncated}</span>
+    </div>
+  )
+}
+
 export function FieldRenderer({ field, value, onChange, display }: FieldRendererProps) {
+  // Check for type mismatch before dispatching to type-specific renderer
+  if (value !== null && value !== undefined && value !== '') {
+    const { compatible, reason } = checkTypeCompatibility(field.type, value, field)
+    if (!compatible) {
+      return <TypeMismatchBadge field={field} value={value} reason={reason!} onChange={onChange} />
+    }
+  }
+
   // Route to appropriate renderer based on field type
   switch (field.type) {
     case 'text':
@@ -605,6 +751,12 @@ export function renderField(
 function ReadonlyFieldDisplay({ field, value }: { field: FieldDefinition, value: any }) {
   if (value === null || value === undefined || value === '') {
     return <span className="text-gray-400 dark:text-gray-500 italic">Not set</span>
+  }
+
+  // Check for type mismatch
+  const { compatible, reason } = checkTypeCompatibility(field.type, value, field)
+  if (!compatible) {
+    return <ReadonlyTypeMismatchBadge value={value} reason={reason!} />
   }
 
   // Handle different field types for display

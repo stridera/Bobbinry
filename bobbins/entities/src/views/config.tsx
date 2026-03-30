@@ -18,10 +18,47 @@ import { useClickOutside } from '@bobbinry/sdk'
 import { Toast, ToastContainer } from '@bobbinry/ui-components'
 import { templates } from '../templates'
 import { getTypeId } from '../types'
-import type { EntityTemplate, EntityTypeDefinition, FieldDefinition, EditorLayout, ListLayout } from '../types'
+import type { EntityTemplate, EntityTypeDefinition, FieldDefinition, FieldType, EditorLayout, ListLayout } from '../types'
 import { TemplatePreviewModal } from '../components/TemplatePreviewModal'
 import { FieldBuilder } from '../components/FieldBuilder'
 import { LayoutDesigner } from '../components/LayoutDesigner'
+
+/** Detect structural changes between old and new field definitions */
+function detectFieldChanges(
+  original: FieldDefinition[],
+  updated: FieldDefinition[]
+): {
+  hasChanges: boolean
+  typeChanges: Array<{ fieldName: string; fieldLabel: string; oldType: FieldType; newType: FieldType }>
+  added: string[]
+  removed: string[]
+} {
+  const typeChanges: Array<{ fieldName: string; fieldLabel: string; oldType: FieldType; newType: FieldType }> = []
+  const originalNames = new Set(original.map(f => f.name))
+  const updatedNames = new Set(updated.map(f => f.name))
+
+  for (const updatedField of updated) {
+    const originalField = original.find(f => f.name === updatedField.name)
+    if (originalField && originalField.type !== updatedField.type) {
+      typeChanges.push({
+        fieldName: updatedField.name,
+        fieldLabel: updatedField.label,
+        oldType: originalField.type,
+        newType: updatedField.type,
+      })
+    }
+  }
+
+  const added = updated.filter(f => !originalNames.has(f.name)).map(f => f.name)
+  const removed = original.filter(f => !updatedNames.has(f.name)).map(f => f.name)
+
+  return {
+    hasChanges: typeChanges.length > 0 || added.length > 0 || removed.length > 0,
+    typeChanges,
+    added,
+    removed,
+  }
+}
 
 interface ConfigViewProps {
   projectId: string
@@ -170,6 +207,30 @@ export default function ConfigView({ projectId, sdk }: ConfigViewProps) {
       const editingType = editingTypeId ? entityTypes.find(t => t.id === editingTypeId) : null
       const typeIdValue = editingType ? getTypeId(editingType) : entityLabel.toLowerCase().replace(/[^a-z0-9]+/g, '_')
 
+      // Detect field changes for schema versioning
+      let schemaVersion = 1
+      let fieldHistory: Array<{ version: number; fields: FieldDefinition[]; changedAt: string }> = []
+      let versionBumped = false
+
+      if (editingType) {
+        const originalFields: FieldDefinition[] = editingType.customFields || (editingType as any).custom_fields || []
+        const currentVersion: number = (editingType as any).schema_version || 1
+        fieldHistory = (editingType as any)._field_history || []
+        schemaVersion = currentVersion
+
+        const changes = detectFieldChanges(originalFields, customFields)
+        if (changes.hasChanges) {
+          // Bump version and archive old fields
+          fieldHistory = [...fieldHistory, {
+            version: currentVersion,
+            fields: originalFields,
+            changedAt: new Date().toISOString(),
+          }]
+          schemaVersion = currentVersion + 1
+          versionBumped = true
+        }
+      }
+
       const data = {
         type_id: typeIdValue,
         label: entityLabel,
@@ -180,7 +241,9 @@ export default function ConfigView({ projectId, sdk }: ConfigViewProps) {
         editor_layout: editorLayout,
         list_layout: listLayout,
         subtitle_fields: selectedTemplate?.subtitleFields || [],
-        allow_duplicates: true
+        allow_duplicates: true,
+        schema_version: schemaVersion,
+        _field_history: fieldHistory,
       }
 
       if (editingTypeId) {
@@ -197,7 +260,9 @@ export default function ConfigView({ projectId, sdk }: ConfigViewProps) {
 
       setToast({
         message: editingTypeId
-          ? `Entity type "${entityLabel}" updated.`
+          ? versionBumped
+            ? `Entity type "${entityLabel}" updated (schema v${schemaVersion}). Existing entities will show an update prompt.`
+            : `Entity type "${entityLabel}" updated.`
           : `Entity type "${entityLabel}" created! It's now available in the navigation panel.`,
         variant: 'success'
       })
