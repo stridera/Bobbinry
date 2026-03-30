@@ -135,7 +135,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
   const [publications, setPublications] = useState<Record<string, Record<string, ChapterPublication>>>({})
   const [slugInputs, setSlugInputs] = useState<Record<string, string>>({})
   const [slugAvailability, setSlugAvailability] = useState<Record<string, boolean | null>>({})
-  const [publishRefreshKey, setPublishRefreshKey] = useState(0)
+  const [publishRefreshKey] = useState(0)
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null)
   const [slugChecking, setSlugChecking] = useState<Record<string, boolean>>({})
   const [username, setUsername] = useState<string>('')

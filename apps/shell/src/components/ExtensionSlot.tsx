@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef, ReactNode, useMemo, memo } from 'react'
+import { useEffect, useState, useRef, ReactNode, useMemo, memo, useSyncExternalStore } from 'react'
 import { extensionRegistry, RegisteredExtension } from '@/lib/extensions'
 import { useExtensions } from './ExtensionProvider'
 import { ResizablePanelStack } from './ResizablePanelStack'
@@ -12,6 +12,8 @@ interface ExtensionSlotProps {
   fallback?: ReactNode
   layout?: 'stacked' | 'inline'
 }
+
+const noopSubscribe = () => () => {}
 
 const PanelContent = memo(function PanelContent({
   extension,
@@ -53,35 +55,28 @@ export function ExtensionSlot({
 }: ExtensionSlotProps) {
   const extensionContext = useExtensions()
   const registeredCount = extensionContext?.extensions?.length ?? 0
-  const [extensions, setExtensions] = useState<RegisteredExtension[]>([])
-  const [isHydrated, setIsHydrated] = useState(false)
   const contextRef = useRef(context)
+  const [slotChangeVersion, setSlotChangeVersion] = useState(0)
+
+  // SSR-safe hydration detection without synchronous setState in effects
+  const isHydrated = useSyncExternalStore(noopSubscribe, () => true, () => false)
 
   useEffect(() => {
     contextRef.current = context
   }, [context])
 
+  // Compute extensions as derived state — no setState in effect body
+  const extensions = useMemo(() => {
+    if (!isHydrated) return []
+    return extensionRegistry.getExtensionsForSlot(slotId, context)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context, slotId, isHydrated, registeredCount, slotChangeVersion])
+
+  // Subscribe to slot changes
   useEffect(() => {
-    if (!isHydrated) return
-
-    const currentExtensions = extensionRegistry.getExtensionsForSlot(slotId, context)
-    setExtensions(currentExtensions)
-  }, [context, slotId, isHydrated, registeredCount])
-
-  useEffect(() => {
-    setIsHydrated(true)
-
-    const updateExtensions = () => {
-      const currentExtensions = extensionRegistry.getExtensionsForSlot(slotId, contextRef.current)
-      setExtensions(currentExtensions)
-    }
-
-    updateExtensions()
-
     const unsubscribe = extensionRegistry.onSlotChange(slotId, () => {
-      updateExtensions()
+      setSlotChangeVersion(v => v + 1)
     })
-
     return unsubscribe
   }, [slotId])
 

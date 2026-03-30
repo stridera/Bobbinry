@@ -65,9 +65,10 @@ interface ConfigViewProps {
   bobbinId: string
   viewId: string
   sdk: BobbinrySDK
+  metadata?: Record<string, any>
 }
 
-export default function ConfigView({ projectId, sdk }: ConfigViewProps) {
+export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps) {
   const [entityTypes, setEntityTypes] = useState<EntityTypeDefinition[]>([])
   const [selectedTemplate, setSelectedTemplate] = useState<EntityTemplate | null>(null)
   const [showTemplateSelector, setShowTemplateSelector] = useState(true)
@@ -100,6 +101,16 @@ export default function ConfigView({ projectId, sdk }: ConfigViewProps) {
   useEffect(() => {
     loadEntityTypes()
   }, [projectId])
+
+  // Auto-edit a specific entity type when navigated with editTypeId metadata
+  useEffect(() => {
+    if (metadata?.editTypeId && entityTypes.length > 0) {
+      const type = entityTypes.find(t => getTypeId(t) === metadata.editTypeId)
+      if (type) {
+        handleEditType(type)
+      }
+    }
+  }, [metadata?.editTypeId, entityTypes])
 
   function navigateToNewEntity(typeId: string, type: EntityTypeDefinition) {
     if (typeof window !== 'undefined') {

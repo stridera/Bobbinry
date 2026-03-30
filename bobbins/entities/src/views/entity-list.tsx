@@ -186,6 +186,19 @@ export default function EntityListView({
     }
   }
 
+  function handleEditType() {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
+        detail: {
+          entityType: 'entity_type_definitions',
+          entityId: 'config',
+          bobbinId: 'entities',
+          metadata: { view: 'config', editTypeId: entityType }
+        }
+      }))
+    }
+  }
+
   function handleEntityClick(entity: any) {
     console.log('[EntityList] Opening entity:', entity.id)
 
@@ -203,7 +216,6 @@ export default function EntityListView({
         }
       }))
     }
-    // }))
   }
 
   function toggleTag(tag: string) {
@@ -271,12 +283,23 @@ export default function EntityListView({
             </div>
           </div>
 
-          <button
-            onClick={handleCreateNew}
-            className="px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 font-medium"
-          >
-            + New {typeConfig?.label}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleEditType}
+              className="px-3 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+              title="Edit entity type"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+            </button>
+            <button
+              onClick={handleCreateNew}
+              className="px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 font-medium cursor-pointer"
+            >
+              + New {typeConfig?.label}
+            </button>
+          </div>
         </div>
 
         {/* Search & Filters */}

@@ -283,7 +283,8 @@ export class EntityAPI {
     })
 
     if (!response.ok) {
-      throw new Error(`Failed to query entities: ${response.statusText}`)
+      const body = await response.text().catch(() => '')
+      throw new Error(`Failed to query entities (${response.status}): ${body || response.statusText}`)
     }
 
     const result = await response.json()
@@ -308,7 +309,8 @@ export class EntityAPI {
       if (response.status === 404) {
         return null
       }
-      throw new Error(`Failed to get entity: ${response.statusText}`)
+      const body = await response.text().catch(() => '')
+      throw new Error(`Failed to get entity (${response.status}): ${body || response.statusText}`)
     }
 
     return response.json()
@@ -377,7 +379,7 @@ export class EntityAPI {
 
     if (!response.ok) {
       if (response.status === 404) return null
-      throw new Error(`Failed to get entity version: ${response.statusText}`)
+      throw new Error(`Failed to get entity version (${response.status})`)
     }
 
     const version = response.headers.get('X-Entity-Version')
@@ -401,7 +403,8 @@ export class EntityAPI {
     })
 
     if (!response.ok) {
-      throw new Error(`Failed to delete entity: ${response.statusText}`)
+      const body = await response.text().catch(() => '')
+      throw new Error(`Failed to delete entity (${response.status}): ${body || response.statusText}`)
     }
   }
 }
