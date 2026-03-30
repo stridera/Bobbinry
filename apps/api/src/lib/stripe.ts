@@ -5,13 +5,11 @@ import Stripe from 'stripe'
  * onboarding links, and client instantiation.
  */
 
-const STRIPE_API_VERSION = '2026-02-25.clover'
-
 /** Single Stripe client factory. Returns null if STRIPE_SECRET_KEY is unset. */
 export function getStripe(): Stripe | null {
   const key = process.env.STRIPE_SECRET_KEY
   if (!key) return null
-  return new Stripe(key, { apiVersion: STRIPE_API_VERSION as any })
+  return new Stripe(key)
 }
 
 /** Split a display name into first/last for Stripe prefill. */
