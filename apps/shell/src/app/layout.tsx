@@ -77,6 +77,26 @@ export default function RootLayout({
         />
       </head>
       <body className={`${playfair.variable} ${dmSans.variable} ${geistMono.variable} antialiased`}>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'WebSite',
+              name: 'Bobbinry',
+              url: process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://bobbinry.com',
+              description: siteDescription,
+              potentialAction: {
+                '@type': 'SearchAction',
+                target: {
+                  '@type': 'EntryPoint',
+                  urlTemplate: `${process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://bobbinry.com'}/explore?q={search_term_string}`,
+                },
+                'query-input': 'required name=search_term_string',
+              },
+            }),
+          }}
+        />
         <Providers>
           <div id="app-root">
             {children}
