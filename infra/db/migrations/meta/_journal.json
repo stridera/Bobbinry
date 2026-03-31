@@ -120,6 +120,13 @@
       "when": 1774675200000,
       "tag": "0017_add_memberships_pk_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1774848000000,
+      "tag": "0018_add_missing_indexes",
+      "breakpoints": true
     }
   ]
 }

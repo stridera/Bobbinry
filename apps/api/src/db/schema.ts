@@ -580,6 +580,7 @@ export const bobbinsInstalled = pgTable('bobbins_installed', {
 }, (table) => ({
   collectionBobbinIdx: uniqueIndex('bobbins_installed_collection_bobbin_idx').on(table.collectionId, table.bobbinId),
   globalBobbinIdx: uniqueIndex('bobbins_installed_global_bobbin_idx').on(table.userId, table.bobbinId),
+  projectBobbinIdx: uniqueIndex('bobbins_installed_project_bobbin_idx').on(table.projectId, table.bobbinId),
 }))
 
 // Manifest versions registry
@@ -604,7 +605,9 @@ export const publishTargets = pgTable('publish_targets', {
   versionId: varchar('version_id', { length: 255 }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull()
-})
+}, (table) => ({
+  projectIdx: index('publish_targets_project_idx').on(table.projectId),
+}))
 
 // Entities table - Tier 1 JSONB storage for all collections
 export const entities = pgTable('entities', {
@@ -676,7 +679,10 @@ export const provenanceEvents = pgTable('provenance_events', {
   action: varchar('action', { length: 100 }).notNull(), // create, update, delete, publish, ai_assist, external_call
   metaJson: jsonb('meta_json'), // Additional context data
   createdAt: timestamp('created_at').defaultNow().notNull()
-})
+}, (table) => ({
+  projectCreatedIdx: index('provenance_events_project_created_idx').on(table.projectId, table.createdAt),
+  actorCreatedIdx: index('provenance_events_actor_created_idx').on(table.actor, table.createdAt),
+}))
 
 // Relations
 export const usersRelations = relations(users, ({ many, one }) => ({
