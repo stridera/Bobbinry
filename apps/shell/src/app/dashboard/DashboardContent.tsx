@@ -244,7 +244,7 @@ export function DashboardContent({ user, apiToken }: { user: User; apiToken: str
       {/* Sub-header with greeting and actions */}
       <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 {getGreeting()}, {user.name || user.email}
@@ -274,7 +274,7 @@ export function DashboardContent({ user, apiToken }: { user: User; apiToken: str
 
           {/* Stats */}
           {stats && (
-            <div className="mt-6 grid grid-cols-3 gap-4">
+            <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
               <div className="bg-blue-50/80 dark:bg-blue-950/20 rounded-lg p-4 border border-blue-100 dark:border-blue-900/30">
                 <div className="font-display text-3xl font-bold text-blue-700 dark:text-blue-400">{stats.projects.active}</div>
                 <div className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">Active Projects</div>
@@ -291,7 +291,7 @@ export function DashboardContent({ user, apiToken }: { user: User; apiToken: str
           )}
 
           {/* Search and filters */}
-          <div className="mt-6 flex items-center gap-4">
+          <div className="mt-6 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
             <div className="flex-1 relative">
               <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -304,36 +304,38 @@ export function DashboardContent({ user, apiToken }: { user: User; apiToken: str
                 className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-gray-600 bg-gray-50/50 dark:bg-gray-900/50 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 dark:focus:border-blue-400 transition-colors placeholder-gray-400 dark:placeholder-gray-500"
               />
             </div>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-              aria-label="Sort projects"
-              className="text-sm border border-gray-200 dark:border-gray-600 bg-gray-50/50 dark:bg-gray-900/50 text-gray-700 dark:text-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 cursor-pointer"
-            >
-              <option value="recent">Recently Modified</option>
-              <option value="alphabetical">Alphabetical</option>
-              <option value="created">Newest First</option>
-            </select>
-            <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={showArchived}
-                onChange={(e) => setShowArchived(e.target.checked)}
-                className="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
-              />
-              Show archived
-            </label>
-            {stats?.trashed && parseInt(stats.trashed.total) > 0 && (
-              <Link
-                href="/dashboard/trash"
-                className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+            <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                aria-label="Sort projects"
+                className="text-sm border border-gray-200 dark:border-gray-600 bg-gray-50/50 dark:bg-gray-900/50 text-gray-700 dark:text-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 cursor-pointer"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-                Trash ({stats.trashed.total})
-              </Link>
-            )}
+                <option value="recent">Recently Modified</option>
+                <option value="alphabetical">Alphabetical</option>
+                <option value="created">Newest First</option>
+              </select>
+              <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showArchived}
+                  onChange={(e) => setShowArchived(e.target.checked)}
+                  className="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
+                />
+                Show archived
+              </label>
+              {stats?.trashed && parseInt(stats.trashed.total) > 0 && (
+                <Link
+                  href="/dashboard/trash"
+                  className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Trash ({stats.trashed.total})
+                </Link>
+              )}
+            </div>
           </div>
         </div>
       </header>

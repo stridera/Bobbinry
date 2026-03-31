@@ -392,7 +392,7 @@ export default function ExplorePage() {
         )}
 
         {/* Tab bar + sort controls */}
-        <div className="flex items-center justify-between mb-6 border-b border-gray-200 dark:border-gray-800">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 border-b border-gray-200 dark:border-gray-800">
           <div className="flex gap-1">
             <button
               onClick={() => setActiveTab('stories')}
@@ -427,7 +427,7 @@ export default function ExplorePage() {
           </div>
 
           {/* Sort dropdown */}
-          <div className="flex items-center gap-2 pb-2">
+          <div className="flex items-center gap-2 pb-2 sm:pb-2 -mt-1 sm:mt-0">
             <svg className="w-4 h-4 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
             </svg>
@@ -474,7 +474,7 @@ export default function ExplorePage() {
               />
             ) : (
               <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                   {projects.map(project => (
                     <Link
                       key={project.id}
@@ -601,7 +601,7 @@ export default function ExplorePage() {
               />
             ) : (
               <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                   {authors.map(author => (
                     <div
                       key={author.userId}

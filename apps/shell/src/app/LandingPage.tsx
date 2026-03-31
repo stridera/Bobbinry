@@ -120,7 +120,7 @@ export function LandingPage() {
       </header>
 
       {/* Hero */}
-      <section className="relative pt-28 pb-16 sm:pt-40 sm:pb-28">
+      <section className="relative pt-24 pb-12 sm:pt-40 sm:pb-28">
         {/* Background gradient */}
         <div
           className="absolute inset-0 animate-gradient-shift opacity-30 dark:opacity-20"
@@ -136,7 +136,7 @@ export function LandingPage() {
         />
 
         <div className="relative max-w-4xl mx-auto px-4 sm:px-6 text-center">
-          <h1 className="font-display text-5xl sm:text-6xl md:text-7xl font-bold text-gray-900 dark:text-gray-100 tracking-tight leading-[1.1] animate-fade-in-up">
+          <h1 className="font-display text-4xl sm:text-6xl md:text-7xl font-bold text-gray-900 dark:text-gray-100 tracking-tight leading-[1.1] animate-fade-in-up">
             Where stories
             <span className="block text-blue-600 dark:text-blue-400">come to life</span>
           </h1>
