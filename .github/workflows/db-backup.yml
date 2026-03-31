@@ -79,3 +79,27 @@ jobs:
             done
 
           echo "Pruned backups older than ${{ env.RETENTION }} days"
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          BACKUP_WEBHOOK_URL: ${{ secrets.BACKUP_WEBHOOK_URL }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TIMESTAMP="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          # If a webhook URL is configured (Slack/Discord), send a notification
+          if [ -n "${BACKUP_WEBHOOK_URL}" ]; then
+            curl -sf -X POST "${BACKUP_WEBHOOK_URL}" \
+              -H "Content-Type: application/json" \
+              -d "{\"text\":\"⚠️ Bobbinry database backup failed at ${TIMESTAMP}. <${RUN_URL}|View run>\"}" \
+              || echo "::warning::Webhook notification failed"
+          fi
+
+          # Always create a GitHub issue for visibility
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "DB backup failed — ${TIMESTAMP}" \
+            --body "The daily database backup workflow failed.\n\n**Run:** ${RUN_URL}\n**Time:** ${TIMESTAMP}\n\nCheck the workflow logs for details." \
+            --label "bug"
