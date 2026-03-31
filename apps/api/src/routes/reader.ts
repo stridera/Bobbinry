@@ -161,6 +161,171 @@ async function checkPublicChapterAccess(
   return { canAccess: true }
 }
 
+/**
+ * Batch version of checkPublicChapterAccess.
+ * Pre-loads all access data in 3-4 queries total (instead of 3-5 per chapter),
+ * then resolves access in memory.
+ */
+async function checkMultipleChaptersAccess(
+  chapters: { chapterId: string; publishedAt: Date | null; publicReleaseDate: Date | null }[],
+  projectId: string,
+  userId: string | undefined,
+  defaultVisibility: string | undefined
+): Promise<Map<string, AccessCheckResult>> {
+  const results = new Map<string, AccessCheckResult>()
+  if (chapters.length === 0) return results
+
+  const chapterIds = chapters.map(c => c.chapterId)
+  const now = new Date()
+
+  // Build lookup maps for user-specific access (if userId provided)
+  let accessGrantMap = new Map<string, boolean>() // chapterId -> has grant (or project-wide grant)
+  let hasProjectWideGrant = false
+  let isOwner = false
+  let subscription: { chapterDelayDays: number | null } | null = null
+
+  if (userId) {
+    // Query 1: Beta readers for this project + user
+    const [betaReaderRow] = await db
+      .select({ readerId: betaReaders.readerId })
+      .from(betaReaders)
+      .where(and(
+        eq(betaReaders.projectId, projectId),
+        eq(betaReaders.readerId, userId),
+        eq(betaReaders.isActive, true)
+      ))
+      .limit(1)
+
+    if (betaReaderRow) {
+      // Beta reader has access to all chapters
+      for (const ch of chapters) {
+        results.set(ch.chapterId, { canAccess: true })
+      }
+      return results
+    }
+
+    // Query 2: Access grants for this project + user (chapter-specific and project-wide)
+    const grants = await db
+      .select({ chapterId: accessGrants.chapterId })
+      .from(accessGrants)
+      .where(and(
+        eq(accessGrants.projectId, projectId),
+        eq(accessGrants.grantedTo, userId),
+        eq(accessGrants.isActive, true),
+        or(
+          inArray(accessGrants.chapterId, chapterIds),
+          isNull(accessGrants.chapterId)
+        )
+      ))
+
+    for (const g of grants) {
+      if (g.chapterId === null) {
+        hasProjectWideGrant = true
+      } else {
+        accessGrantMap.set(g.chapterId, true)
+      }
+    }
+
+    if (hasProjectWideGrant) {
+      for (const ch of chapters) {
+        results.set(ch.chapterId, { canAccess: true })
+      }
+      return results
+    }
+
+    // Query 3: Project owner + subscription
+    const [project] = await db
+      .select({ ownerId: projects.ownerId })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1)
+
+    if (project) {
+      if (project.ownerId === userId) {
+        isOwner = true
+      } else {
+        // Query 4: Active subscription for this user -> project owner
+        const [sub] = await db
+          .select({
+            chapterDelayDays: subscriptionTiers.chapterDelayDays
+          })
+          .from(subscriptions)
+          .innerJoin(subscriptionTiers, eq(subscriptionTiers.id, subscriptions.tierId))
+          .where(and(
+            eq(subscriptions.subscriberId, userId),
+            eq(subscriptions.authorId, project.ownerId),
+            eq(subscriptions.status, 'active')
+          ))
+          .limit(1)
+
+        if (sub) {
+          subscription = sub
+        }
+      }
+    }
+  }
+
+  // Resolve access per chapter in memory
+  for (const ch of chapters) {
+    // Owner always has access
+    if (isOwner) {
+      results.set(ch.chapterId, { canAccess: true })
+      continue
+    }
+
+    // Chapter-specific access grant
+    if (accessGrantMap.has(ch.chapterId)) {
+      results.set(ch.chapterId, { canAccess: true })
+      continue
+    }
+
+    // Subscription tier-based access
+    if (subscription) {
+      if (ch.publishedAt) {
+        const delayMs = (subscription.chapterDelayDays ?? 0) * 24 * 60 * 60 * 1000
+        const accessDate = new Date(ch.publishedAt.getTime() + delayMs)
+        if (now >= accessDate) {
+          results.set(ch.chapterId, { canAccess: true })
+          continue
+        } else {
+          results.set(ch.chapterId, {
+            canAccess: false,
+            reason: 'Chapter not yet available for your tier',
+            embargoUntil: accessDate
+          })
+          continue
+        }
+      }
+      // Published but no date? Grant access
+      results.set(ch.chapterId, { canAccess: true })
+      continue
+    }
+
+    // Project-level subscriber-only restriction
+    if (defaultVisibility === 'subscribers_only') {
+      results.set(ch.chapterId, { canAccess: false, reason: 'Subscription required' })
+      continue
+    }
+
+    // Embargo for free/anonymous users
+    if (ch.publicReleaseDate) {
+      if (ch.publicReleaseDate > now) {
+        results.set(ch.chapterId, {
+          canAccess: false,
+          reason: 'Chapter embargoed',
+          embargoUntil: ch.publicReleaseDate
+        })
+        continue
+      }
+    }
+
+    // Public chapter - anyone can access
+    results.set(ch.chapterId, { canAccess: true })
+  }
+
+  return results
+}
+
 const readerPlugin: FastifyPluginAsync = async (fastify) => {
   // ============================================
   // PUBLIC READER ENDPOINTS
@@ -207,30 +372,39 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         ))
         .orderBy(sql`COALESCE((${entities.entityData}->>'order')::bigint, 0)`)
 
-      // Filter chapters based on access control
-      const accessibleChapters = []
-      for (const chapter of publishedChapters) {
-        const access = await checkPublicChapterAccess(chapter.chapterId, projectId, userId, defaultVisibility)
+      // Batch access check: 3-4 queries total instead of 3-5 per chapter
+      const accessMap = await checkMultipleChaptersAccess(
+        publishedChapters.map(ch => ({
+          chapterId: ch.chapterId,
+          publishedAt: ch.publishedAt,
+          publicReleaseDate: ch.publicReleaseDate
+        })),
+        projectId,
+        userId,
+        defaultVisibility
+      )
+
+      const accessibleChapters = publishedChapters.map(chapter => {
+        const access = accessMap.get(chapter.chapterId) ?? { canAccess: true }
         if (access.canAccess) {
-          accessibleChapters.push({
+          return {
             id: chapter.chapterId,
             title: chapter.title,
             publishedAt: chapter.publishedAt,
             viewCount: chapter.viewCount,
             order: chapter.order
-          })
+          }
         } else {
-          // Show locked chapters but mark them with the reason
-          accessibleChapters.push({
+          return {
             id: chapter.chapterId,
             title: chapter.title,
             embargoUntil: access.embargoUntil,
             order: chapter.order,
             locked: true,
             lockReason: access.reason === 'Subscription required' ? 'subscription_required' : 'embargo'
-          })
+          }
         }
-      }
+      })
 
       return reply.send({
         toc: accessibleChapters,
