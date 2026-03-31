@@ -13,6 +13,7 @@ import { CSS } from '@dnd-kit/utilities'
 import Link from 'next/link'
 import { formatDistanceToNow } from 'date-fns'
 import { OptimizedImage } from '@/components/OptimizedImage'
+import { HighlightText } from '@/components/HighlightText'
 
 interface Project {
   id: string
@@ -30,23 +31,6 @@ interface SortableProjectCardProps {
   isDragging: boolean
   searchQuery?: string | undefined
   onRemoveFromCollection?: (projectId: string) => void
-}
-
-function HighlightText({ text, query }: { text: string; query?: string | undefined }) {
-  if (!query || !query.trim()) return <>{text}</>
-  const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
-  const parts = text.split(regex)
-  return (
-    <>
-      {parts.map((part, i) =>
-        regex.test(part) ? (
-          <mark key={i} className="bg-yellow-200 dark:bg-yellow-800/50 text-inherit rounded-sm px-0.5">{part}</mark>
-        ) : (
-          <span key={i}>{part}</span>
-        )
-      )}
-    </>
-  )
 }
 
 export function SortableProjectCard({ project, searchQuery, onRemoveFromCollection }: SortableProjectCardProps) {

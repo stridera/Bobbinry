@@ -138,15 +138,17 @@ export function DashboardContent({ user, apiToken }: { user: User; apiToken: str
   }
 
   const filteredProjects = (projects: Project[]) => {
-    const filtered = projects.filter(p => {
+    return projects.filter(p => {
       const matchesSearch = !searchQuery ||
         p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.description?.toLowerCase().includes(searchQuery.toLowerCase())
       const matchesArchived = showArchived || !p.isArchived
       return matchesSearch && matchesArchived
     })
+  }
 
-    return [...filtered].sort((a, b) => {
+  const sortedProjects = (projects: Project[]) => {
+    return [...projects].sort((a, b) => {
       switch (sortBy) {
         case 'alphabetical':
           return a.name.localeCompare(b.name)
@@ -363,11 +365,11 @@ export function DashboardContent({ user, apiToken }: { user: User; apiToken: str
             })}
 
             {/* Uncategorized projects */}
-            {data?.uncategorized && filteredProjects(data.uncategorized).length > 0 && (
+            {data?.uncategorized && sortedProjects(filteredProjects(data.uncategorized)).length > 0 && (
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
                 <h2 className="font-display text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">All Projects</h2>
                 <div className="grid gap-3">
-                  {filteredProjects(data.uncategorized).map((project) => (
+                  {sortedProjects(filteredProjects(data.uncategorized)).map((project) => (
                     <ProjectCard
                       key={project.id}
                       project={project}

@@ -10,6 +10,7 @@ import { SkeletonGrid } from '@/components/LoadingState'
 import { EmptyState } from '@/components/EmptyState'
 import { OptimizedImage } from '@/components/OptimizedImage'
 import { UserBadges } from '@/components/UserBadges'
+import { useInfiniteScrollSentinel } from '@/hooks/useInfiniteScrollSentinel'
 
 interface DiscoverProject {
   id: string
@@ -74,19 +75,11 @@ export default function ExplorePage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [genresExpanded, setGenresExpanded] = useState(false)
   const genreContainerRef = useRef<HTMLDivElement>(null)
+  const checkedAuthorIdsRef = useRef<Set<string>>(new Set())
   const [genresOverflow, setGenresOverflow] = useState(false)
 
   const apiToken = (session as any)?.apiToken
   const userId = session?.user?.id
-
-  // Infinite scroll sentinels
-  const storySentinelRef = useRef<HTMLDivElement | null>(null)
-  const authorSentinelRef = useRef<HTMLDivElement | null>(null)
-  const loadProjectsRef = useRef<((append?: boolean) => void) | null>(null)
-  const loadAuthorsRef = useRef<((append?: boolean) => void) | null>(null)
-  const projectsHasMoreRef = useRef(projectsHasMore)
-  const authorsHasMoreRef = useRef(authorsHasMore)
-  const loadingMoreRef = useRef(loadingMore)
 
   // Detect if genre pills overflow one row
   useEffect(() => {
@@ -147,7 +140,7 @@ export default function ExplorePage() {
   // Load authors when filters change
   const loadAuthors = useCallback(async (append = false) => {
     if (append) setLoadingMore(true)
-    else setLoadingAuthors(true)
+    else { setLoadingAuthors(true); checkedAuthorIdsRef.current.clear() }
 
     try {
       const params = new URLSearchParams()
@@ -190,14 +183,18 @@ export default function ExplorePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedQuery, authorSort, activeTab])
 
-  // Check follow status for displayed authors (batched)
+  // Check follow status for displayed authors (only new ones)
   useEffect(() => {
     if (!userId || !apiToken || authors.length === 0) return
 
+    const unchecked = authors.filter(
+      a => a.userId !== userId && !checkedAuthorIdsRef.current.has(a.userId)
+    )
+    if (unchecked.length === 0) return
+
     const checkFollows = async () => {
-      const otherAuthors = authors.filter(a => a.userId !== userId)
       const results = await Promise.allSettled(
-        otherAuthors.map(async (author) => {
+        unchecked.map(async (author) => {
           const res = await fetch(
             `${config.apiUrl}/api/users/${userId}/is-following/${author.userId}`
           )
@@ -206,57 +203,39 @@ export default function ExplorePage() {
           return data.isFollowing ? author.userId : null
         })
       )
-      const followed = new Set<string>()
+      for (const author of unchecked) {
+        checkedAuthorIdsRef.current.add(author.userId)
+      }
+      const newFollowed: string[] = []
       for (const result of results) {
         if (result.status === 'fulfilled' && result.value) {
-          followed.add(result.value)
+          newFollowed.push(result.value)
         }
       }
-      setFollowedAuthors(followed)
+      if (newFollowed.length > 0) {
+        setFollowedAuthors(prev => {
+          const next = new Set(prev)
+          for (const id of newFollowed) next.add(id)
+          return next
+        })
+      }
     }
     checkFollows()
   }, [authors, userId, apiToken])
 
-  // Keep refs in sync for intersection observer callbacks
-  useEffect(() => { loadProjectsRef.current = loadProjects }, [loadProjects])
-  useEffect(() => { loadAuthorsRef.current = loadAuthors }, [loadAuthors])
-  useEffect(() => { projectsHasMoreRef.current = projectsHasMore }, [projectsHasMore])
-  useEffect(() => { authorsHasMoreRef.current = authorsHasMore }, [authorsHasMore])
-  useEffect(() => { loadingMoreRef.current = loadingMore }, [loadingMore])
+  const storySentinelRef = useInfiniteScrollSentinel({
+    enabled: activeTab === 'stories',
+    hasMore: projectsHasMore,
+    loading: loadingMore,
+    onLoadMore: () => void loadProjects(true),
+  })
 
-  // Infinite scroll for stories
-  useEffect(() => {
-    const el = storySentinelRef.current
-    if (!el) return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0]
-        if (entry && entry.isIntersecting && projectsHasMoreRef.current && !loadingMoreRef.current) {
-          loadProjectsRef.current?.(true)
-        }
-      },
-      { rootMargin: '200px' }
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [projects.length])
-
-  // Infinite scroll for authors
-  useEffect(() => {
-    const el = authorSentinelRef.current
-    if (!el) return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0]
-        if (entry && entry.isIntersecting && authorsHasMoreRef.current && !loadingMoreRef.current) {
-          loadAuthorsRef.current?.(true)
-        }
-      },
-      { rootMargin: '200px' }
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [authors.length])
+  const authorSentinelRef = useInfiniteScrollSentinel({
+    enabled: activeTab === 'authors',
+    hasMore: authorsHasMore,
+    loading: loadingMore,
+    onLoadMore: () => void loadAuthors(true),
+  })
 
   const handleFollow = async (authorId: string) => {
     if (!userId || !apiToken) return

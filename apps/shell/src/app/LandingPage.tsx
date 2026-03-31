@@ -60,7 +60,7 @@ function useScrollReveal() {
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const el = ref.current
-    if (!el) return
+    if (!el || typeof IntersectionObserver === 'undefined') return
     const observer = new IntersectionObserver(
       (entries) => {
         const entry = entries[0]
@@ -162,7 +162,7 @@ export function LandingPage() {
 
       {/* Three Pillars */}
       <section className="py-20 sm:py-28">
-        <div ref={pillarsRef} className="max-w-5xl mx-auto px-4 sm:px-6 opacity-0">
+        <div ref={pillarsRef} className="max-w-5xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-14">
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
               One platform, three pillars
@@ -196,7 +196,7 @@ export function LandingPage() {
 
       {/* Powered by Bobbins */}
       <section className="py-20 sm:py-28 bg-white dark:bg-gray-900 border-y border-gray-200 dark:border-gray-800">
-        <div ref={bobbinsRef} className="max-w-4xl mx-auto px-4 sm:px-6 opacity-0">
+        <div ref={bobbinsRef} className="max-w-4xl mx-auto px-4 sm:px-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
             <div className="animate-slide-in-left">
               <span className="text-xs font-semibold tracking-widest uppercase text-blue-600 dark:text-blue-400">Modular by design</span>
@@ -248,7 +248,7 @@ export function LandingPage() {
 
       {/* Final CTA */}
       <section className="py-20 sm:py-28">
-        <div ref={ctaRef} className="max-w-3xl mx-auto px-4 sm:px-6 text-center opacity-0">
+        <div ref={ctaRef} className="max-w-3xl mx-auto px-4 sm:px-6 text-center">
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
             Ready to start your story?
           </h2>
