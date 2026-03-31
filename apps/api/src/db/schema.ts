@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, jsonb, boolean, varchar, integer, bigint, decimal, index, uniqueIndex } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, text, timestamp, jsonb, boolean, varchar, integer, bigint, decimal, index, uniqueIndex, primaryKey } from 'drizzle-orm/pg-core'
 import { relations, sql } from 'drizzle-orm'
 
 // Users table - authentication and user management
@@ -553,11 +553,14 @@ export const projects = pgTable('projects', {
 
 // Project memberships - user access to projects
 export const memberships = pgTable('memberships', {
-  userId: uuid('user_id').references(() => users.id).notNull(),
-  projectId: uuid('project_id').references(() => projects.id).notNull(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }).notNull(),
   role: varchar('role', { length: 50 }).notNull().default('member'), // owner, admin, member, viewer
   createdAt: timestamp('created_at').defaultNow().notNull()
-})
+}, (table) => ({
+  pk: primaryKey({ columns: [table.userId, table.projectId] }),
+  projectIdx: index('memberships_project_idx').on(table.projectId)
+}))
 
 // Installed bobbins — per project, collection, or user (global)
 export const bobbinsInstalled = pgTable('bobbins_installed', {
