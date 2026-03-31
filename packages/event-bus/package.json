@@ -17,7 +17,7 @@
     "leb"
   ],
   "author": "Bobbinry",
-  "license": "Apache-2.0",
+  "license": "AGPL-3.0-only",
   "dependencies": {
     "@bobbinry/types": "workspace:*"
   },
