@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
 import Link from 'next/link'
 
 const PILLARS = [
@@ -7,8 +8,15 @@ const PILLARS = [
     title: 'Write',
     description: 'A distraction-free editor with modular tools. Outline chapters, organize scenes, build worlds — all in one workspace.',
     icon: (
-      <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+      <svg className="w-8 h-8" viewBox="0 0 24 24" aria-hidden="true">
+        <defs>
+          <linearGradient id="icon-write" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#3b82f6" />
+            <stop offset="100%" stopColor="#6366f1" />
+          </linearGradient>
+        </defs>
+        <path fill="url(#icon-write)" d="M21.731 2.269a2.625 2.625 0 00-3.712 0l-1.157 1.157 3.712 3.712 1.157-1.157a2.625 2.625 0 000-3.712zM19.513 8.199l-3.712-3.712-8.4 8.4a5.25 5.25 0 00-1.32 2.214l-.8 2.685a.75.75 0 00.933.933l2.685-.8a5.25 5.25 0 002.214-1.32l8.4-8.4z" />
+        <path fill="url(#icon-write)" d="M5.25 5.25a3 3 0 00-3 3v10.5a3 3 0 003 3h10.5a3 3 0 003-3V13.5a.75.75 0 00-1.5 0v5.25a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5V8.25a1.5 1.5 0 011.5-1.5h5.25a.75.75 0 000-1.5H5.25z" />
       </svg>
     ),
     delay: '0s',
@@ -17,8 +25,14 @@ const PILLARS = [
     title: 'Publish',
     description: 'Share your work with the world. Publish chapters, build an audience, and offer subscriptions — your writing, your terms.',
     icon: (
-      <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+      <svg className="w-8 h-8" viewBox="0 0 24 24" aria-hidden="true">
+        <defs>
+          <linearGradient id="icon-publish" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#3b82f6" />
+            <stop offset="100%" stopColor="#8b5cf6" />
+          </linearGradient>
+        </defs>
+        <path fill="url(#icon-publish)" d="M11.25 4.533A9.707 9.707 0 006 3a9.735 9.735 0 00-3.25.555.75.75 0 00-.5.707v14.25a.75.75 0 001 .707A8.237 8.237 0 016 18.75c1.995 0 3.823.707 5.25 1.886V4.533zM12.75 20.636A8.214 8.214 0 0118 18.75c.966 0 1.89.166 2.75.47a.75.75 0 001-.708V4.262a.75.75 0 00-.5-.707A9.735 9.735 0 0018 3a9.707 9.707 0 00-5.25 1.533v16.103z" />
       </svg>
     ),
     delay: '0.15s',
@@ -27,16 +41,47 @@ const PILLARS = [
     title: 'Read',
     description: 'Discover stories from a growing community. Follow authors, track your reading progress, and support the writers you love.',
     icon: (
-      <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+      <svg className="w-8 h-8" viewBox="0 0 24 24" aria-hidden="true">
+        <defs>
+          <linearGradient id="icon-read" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#6366f1" />
+            <stop offset="100%" stopColor="#a855f7" />
+          </linearGradient>
+        </defs>
+        <path fill="url(#icon-read)" d="M12 15a3 3 0 100-6 3 3 0 000 6z" />
+        <path fill="url(#icon-read)" fillRule="evenodd" d="M1.323 11.447C2.811 6.976 7.028 3.75 12.001 3.75c4.97 0 9.185 3.223 10.675 7.69.12.362.12.752 0 1.113-1.487 4.471-5.705 7.697-10.677 7.697-4.97 0-9.186-3.223-10.675-7.69a1.762 1.762 0 010-1.113zM17.25 12a5.25 5.25 0 11-10.5 0 5.25 5.25 0 0110.5 0z" clipRule="evenodd" />
       </svg>
     ),
     delay: '0.3s',
   },
 ]
 
+function useScrollReveal() {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0]
+        if (entry && entry.isIntersecting) {
+          el.classList.add('animate-fade-in-up')
+          observer.disconnect()
+        }
+      },
+      { threshold: 0.15 }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+  return ref
+}
+
 export function LandingPage() {
+  const pillarsRef = useScrollReveal()
+  const bobbinsRef = useScrollReveal()
+  const ctaRef = useScrollReveal()
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 overflow-hidden">
       {/* Top bar */}
@@ -117,7 +162,7 @@ export function LandingPage() {
 
       {/* Three Pillars */}
       <section className="py-20 sm:py-28">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6">
+        <div ref={pillarsRef} className="max-w-5xl mx-auto px-4 sm:px-6 opacity-0">
           <div className="text-center mb-14">
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
               One platform, three pillars
@@ -151,7 +196,7 @@ export function LandingPage() {
 
       {/* Powered by Bobbins */}
       <section className="py-20 sm:py-28 bg-white dark:bg-gray-900 border-y border-gray-200 dark:border-gray-800">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6">
+        <div ref={bobbinsRef} className="max-w-4xl mx-auto px-4 sm:px-6 opacity-0">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
             <div className="animate-slide-in-left">
               <span className="text-xs font-semibold tracking-widest uppercase text-blue-600 dark:text-blue-400">Modular by design</span>
@@ -179,16 +224,19 @@ export function LandingPage() {
             <div className="relative">
               <div className="space-y-3">
                 {[
-                  { name: 'Manuscript', desc: 'Books, chapters, and scenes', color: 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800' },
-                  { name: 'Corkboard', desc: 'Drag-and-drop scene organization', color: 'bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800' },
-                  { name: 'Dictionary', desc: 'Worldbuilding glossary', color: 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800' },
+                  { name: 'Manuscript', desc: 'Books, chapters, and scenes', color: 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800', hoverColor: 'hover:border-blue-400 dark:hover:border-blue-600', icon: '📖' },
+                  { name: 'Corkboard', desc: 'Drag-and-drop scene organization', color: 'bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800', hoverColor: 'hover:border-purple-400 dark:hover:border-purple-600', icon: '📌' },
+                  { name: 'Dictionary', desc: 'Worldbuilding glossary', color: 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800', hoverColor: 'hover:border-green-400 dark:hover:border-green-600', icon: '📚' },
                 ].map((bobbin, i) => (
                   <div
                     key={bobbin.name}
-                    className={`${bobbin.color} border rounded-xl p-4 animate-fade-in-up`}
+                    className={`${bobbin.color} ${bobbin.hoverColor} border rounded-xl p-4 animate-fade-in-up cursor-default hover:shadow-md hover:-translate-y-0.5 transition-all duration-200`}
                     style={{ animationDelay: `${0.1 * (i + 1)}s` }}
                   >
-                    <div className="font-display font-semibold text-gray-900 dark:text-gray-100">{bobbin.name}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg" aria-hidden="true">{bobbin.icon}</span>
+                      <span className="font-display font-semibold text-gray-900 dark:text-gray-100">{bobbin.name}</span>
+                    </div>
                     <div className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{bobbin.desc}</div>
                   </div>
                 ))}
@@ -200,7 +248,7 @@ export function LandingPage() {
 
       {/* Final CTA */}
       <section className="py-20 sm:py-28">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 text-center">
+        <div ref={ctaRef} className="max-w-3xl mx-auto px-4 sm:px-6 text-center opacity-0">
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
             Ready to start your story?
           </h2>

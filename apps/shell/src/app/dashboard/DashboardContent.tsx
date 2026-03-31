@@ -108,6 +108,7 @@ export function DashboardContent({ user, apiToken }: { user: User; apiToken: str
   const [searchQuery, setSearchQuery] = useState('')
   const [showArchived, setShowArchived] = useState(false)
   const [showCreateCollection, setShowCreateCollection] = useState(false)
+  const [sortBy, setSortBy] = useState<'recent' | 'alphabetical' | 'created'>('recent')
 
   useEffect(() => {
     loadDashboard()
@@ -137,12 +138,24 @@ export function DashboardContent({ user, apiToken }: { user: User; apiToken: str
   }
 
   const filteredProjects = (projects: Project[]) => {
-    return projects.filter(p => {
+    const filtered = projects.filter(p => {
       const matchesSearch = !searchQuery ||
         p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.description?.toLowerCase().includes(searchQuery.toLowerCase())
       const matchesArchived = showArchived || !p.isArchived
       return matchesSearch && matchesArchived
+    })
+
+    return [...filtered].sort((a, b) => {
+      switch (sortBy) {
+        case 'alphabetical':
+          return a.name.localeCompare(b.name)
+        case 'created':
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        case 'recent':
+        default:
+          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      }
     })
   }
 
@@ -291,6 +304,16 @@ export function DashboardContent({ user, apiToken }: { user: User; apiToken: str
                 className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-gray-600 bg-gray-50/50 dark:bg-gray-900/50 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 dark:focus:border-blue-400 transition-colors placeholder-gray-400 dark:placeholder-gray-500"
               />
             </div>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+              aria-label="Sort projects"
+              className="text-sm border border-gray-200 dark:border-gray-600 bg-gray-50/50 dark:bg-gray-900/50 text-gray-700 dark:text-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 cursor-pointer"
+            >
+              <option value="recent">Recently Modified</option>
+              <option value="alphabetical">Alphabetical</option>
+              <option value="created">Newest First</option>
+            </select>
             <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer select-none">
               <input
                 type="checkbox"
@@ -329,6 +352,7 @@ export function DashboardContent({ user, apiToken }: { user: User; apiToken: str
                 <SortableCollection
                   key={collection.id}
                   collection={{ ...collection, projects: filtered }}
+                  searchQuery={searchQuery}
                   onReorder={handleReorder}
                   onDeleteCollection={handleDeleteCollection}
                   onRemoveFromCollection={handleRemoveFromCollection}
@@ -339,13 +363,14 @@ export function DashboardContent({ user, apiToken }: { user: User; apiToken: str
             {/* Uncategorized projects */}
             {data?.uncategorized && filteredProjects(data.uncategorized).length > 0 && (
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-                <h2 className="font-display text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">Projects</h2>
+                <h2 className="font-display text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">All Projects</h2>
                 <div className="grid gap-3">
                   {filteredProjects(data.uncategorized).map((project) => (
                     <ProjectCard
                       key={project.id}
                       project={project}
                       collections={collectionsList}
+                      searchQuery={searchQuery}
                       onAddToCollection={handleAddToCollection}
                     />
                   ))}

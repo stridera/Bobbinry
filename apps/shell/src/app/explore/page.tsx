@@ -79,6 +79,15 @@ export default function ExplorePage() {
   const apiToken = (session as any)?.apiToken
   const userId = session?.user?.id
 
+  // Infinite scroll sentinels
+  const storySentinelRef = useRef<HTMLDivElement | null>(null)
+  const authorSentinelRef = useRef<HTMLDivElement | null>(null)
+  const loadProjectsRef = useRef<((append?: boolean) => void) | null>(null)
+  const loadAuthorsRef = useRef<((append?: boolean) => void) | null>(null)
+  const projectsHasMoreRef = useRef(projectsHasMore)
+  const authorsHasMoreRef = useRef(authorsHasMore)
+  const loadingMoreRef = useRef(loadingMore)
+
   // Detect if genre pills overflow one row
   useEffect(() => {
     const el = genreContainerRef.current
@@ -181,28 +190,73 @@ export default function ExplorePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedQuery, authorSort, activeTab])
 
-  // Check follow status for displayed authors
+  // Check follow status for displayed authors (batched)
   useEffect(() => {
     if (!userId || !apiToken || authors.length === 0) return
 
     const checkFollows = async () => {
-      const followed = new Set<string>()
-      for (const author of authors) {
-        if (author.userId === userId) continue
-        try {
+      const otherAuthors = authors.filter(a => a.userId !== userId)
+      const results = await Promise.allSettled(
+        otherAuthors.map(async (author) => {
           const res = await fetch(
             `${config.apiUrl}/api/users/${userId}/is-following/${author.userId}`
           )
-          if (res.ok) {
-            const data = await res.json()
-            if (data.isFollowing) followed.add(author.userId)
-          }
-        } catch {}
+          if (!res.ok) return null
+          const data = await res.json()
+          return data.isFollowing ? author.userId : null
+        })
+      )
+      const followed = new Set<string>()
+      for (const result of results) {
+        if (result.status === 'fulfilled' && result.value) {
+          followed.add(result.value)
+        }
       }
       setFollowedAuthors(followed)
     }
     checkFollows()
   }, [authors, userId, apiToken])
+
+  // Keep refs in sync for intersection observer callbacks
+  useEffect(() => { loadProjectsRef.current = loadProjects }, [loadProjects])
+  useEffect(() => { loadAuthorsRef.current = loadAuthors }, [loadAuthors])
+  useEffect(() => { projectsHasMoreRef.current = projectsHasMore }, [projectsHasMore])
+  useEffect(() => { authorsHasMoreRef.current = authorsHasMore }, [authorsHasMore])
+  useEffect(() => { loadingMoreRef.current = loadingMore }, [loadingMore])
+
+  // Infinite scroll for stories
+  useEffect(() => {
+    const el = storySentinelRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0]
+        if (entry && entry.isIntersecting && projectsHasMoreRef.current && !loadingMoreRef.current) {
+          loadProjectsRef.current?.(true)
+        }
+      },
+      { rootMargin: '200px' }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [projects.length])
+
+  // Infinite scroll for authors
+  useEffect(() => {
+    const el = authorSentinelRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0]
+        if (entry && entry.isIntersecting && authorsHasMoreRef.current && !loadingMoreRef.current) {
+          loadAuthorsRef.current?.(true)
+        }
+      },
+      { rootMargin: '200px' }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [authors.length])
 
   const handleFollow = async (authorId: string) => {
     if (!userId || !apiToken) return
@@ -511,16 +565,18 @@ export default function ExplorePage() {
                   ))}
                 </div>
 
-                {/* Load more */}
+                {/* Infinite scroll sentinel */}
                 {projectsHasMore && (
-                  <div className="text-center mt-8">
-                    <button
-                      onClick={() => loadProjects(true)}
-                      disabled={loadingMore}
-                      className="px-6 py-2.5 text-sm bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
-                    >
-                      {loadingMore ? 'Loading...' : 'Load More Stories'}
-                    </button>
+                  <div ref={storySentinelRef} className="flex justify-center py-8">
+                    {loadingMore && (
+                      <div className="flex items-center gap-2 text-sm text-gray-400 dark:text-gray-500">
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Loading more stories...
+                      </div>
+                    )}
                   </div>
                 )}
               </>
@@ -623,16 +679,18 @@ export default function ExplorePage() {
                   ))}
                 </div>
 
-                {/* Load more */}
+                {/* Infinite scroll sentinel */}
                 {authorsHasMore && (
-                  <div className="text-center mt-8">
-                    <button
-                      onClick={() => loadAuthors(true)}
-                      disabled={loadingMore}
-                      className="px-6 py-2.5 text-sm bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
-                    >
-                      {loadingMore ? 'Loading...' : 'Load More Authors'}
-                    </button>
+                  <div ref={authorSentinelRef} className="flex justify-center py-8">
+                    {loadingMore && (
+                      <div className="flex items-center gap-2 text-sm text-gray-400 dark:text-gray-500">
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Loading more authors...
+                      </div>
+                    )}
                   </div>
                 )}
               </>

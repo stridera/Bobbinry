@@ -48,12 +48,13 @@ interface Collection {
 
 interface SortableCollectionProps {
   collection: Collection
+  searchQuery?: string | undefined
   onReorder: (collectionId: string, projectIds: string[]) => Promise<void>
   onDeleteCollection?: (collectionId: string) => void
   onRemoveFromCollection?: (collectionId: string, projectId: string) => void
 }
 
-export function SortableCollection({ collection, onReorder, onDeleteCollection, onRemoveFromCollection }: SortableCollectionProps) {
+export function SortableCollection({ collection, searchQuery, onReorder, onDeleteCollection, onRemoveFromCollection }: SortableCollectionProps) {
   const [projects, setProjects] = useState(collection.projects)
   const [isDragging, setIsDragging] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -185,6 +186,7 @@ export function SortableCollection({ collection, onReorder, onDeleteCollection, 
                 key={project.id}
                 project={project}
                 isDragging={isDragging}
+                searchQuery={searchQuery}
                 {...(onRemoveFromCollection && {
                   onRemoveFromCollection: (projectId: string) => onRemoveFromCollection(collection.id, projectId)
                 })}

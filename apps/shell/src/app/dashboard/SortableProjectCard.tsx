@@ -28,10 +28,28 @@ interface Project {
 interface SortableProjectCardProps {
   project: Project
   isDragging: boolean
+  searchQuery?: string | undefined
   onRemoveFromCollection?: (projectId: string) => void
 }
 
-export function SortableProjectCard({ project, onRemoveFromCollection }: SortableProjectCardProps) {
+function HighlightText({ text, query }: { text: string; query?: string | undefined }) {
+  if (!query || !query.trim()) return <>{text}</>
+  const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
+  const parts = text.split(regex)
+  return (
+    <>
+      {parts.map((part, i) =>
+        regex.test(part) ? (
+          <mark key={i} className="bg-yellow-200 dark:bg-yellow-800/50 text-inherit rounded-sm px-0.5">{part}</mark>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </>
+  )
+}
+
+export function SortableProjectCard({ project, searchQuery, onRemoveFromCollection }: SortableProjectCardProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -131,7 +149,7 @@ export function SortableProjectCard({ project, onRemoveFromCollection }: Sortabl
               <div className="flex items-center gap-2 flex-wrap">
                 <Link href={`/projects/${project.id}`} className="group">
                   <h3 className="font-display font-semibold text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate">
-                    {project.name}
+                    <HighlightText text={project.name} query={searchQuery} />
                   </h3>
                 </Link>
                 {project.isArchived && (
@@ -151,7 +169,9 @@ export function SortableProjectCard({ project, onRemoveFromCollection }: Sortabl
               </div>
 
               {project.description && (
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-1">{project.description}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-1">
+                  <HighlightText text={project.description} query={searchQuery} />
+                </p>
               )}
 
               <div className="flex items-center gap-4 mt-2.5 text-xs text-gray-400 dark:text-gray-500">

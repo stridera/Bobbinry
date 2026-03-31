@@ -33,11 +33,29 @@ interface ProjectCardProps {
   project: Project
   collections?: CollectionInfo[]
   currentCollectionId?: string
+  searchQuery?: string
   onAddToCollection?: (collectionId: string, projectId: string) => void
   onRemoveFromCollection?: (collectionId: string, projectId: string) => void
 }
 
-export function ProjectCard({ project, collections, currentCollectionId, onAddToCollection, onRemoveFromCollection }: ProjectCardProps) {
+function HighlightText({ text, query }: { text: string; query?: string | undefined }) {
+  if (!query || !query.trim()) return <>{text}</>
+  const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
+  const parts = text.split(regex)
+  return (
+    <>
+      {parts.map((part, i) =>
+        regex.test(part) ? (
+          <mark key={i} className="bg-yellow-200 dark:bg-yellow-800/50 text-inherit rounded-sm px-0.5">{part}</mark>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </>
+  )
+}
+
+export function ProjectCard({ project, collections, currentCollectionId, searchQuery, onAddToCollection, onRemoveFromCollection }: ProjectCardProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -96,7 +114,7 @@ export function ProjectCard({ project, collections, currentCollectionId, onAddTo
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <h3 className="font-display font-semibold text-gray-900 dark:text-gray-100 truncate">
-                  {project.name}
+                  <HighlightText text={project.name} query={searchQuery} />
                 </h3>
                 {project.isArchived && (
                   <span className="flex-shrink-0 px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-xs rounded-full">
@@ -115,7 +133,9 @@ export function ProjectCard({ project, collections, currentCollectionId, onAddTo
               </div>
 
               {project.description && (
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{project.description}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
+                  <HighlightText text={project.description} query={searchQuery} />
+                </p>
               )}
 
               <div className="flex items-center gap-4 mt-2.5 text-xs text-gray-400 dark:text-gray-500">
