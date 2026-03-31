@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { config } from '@/lib/config'
@@ -72,9 +72,23 @@ export default function ExplorePage() {
   const [loadingProjects, setLoadingProjects] = useState(true)
   const [loadingAuthors, setLoadingAuthors] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [genresExpanded, setGenresExpanded] = useState(false)
+  const genreContainerRef = useRef<HTMLDivElement>(null)
+  const [genresOverflow, setGenresOverflow] = useState(false)
 
   const apiToken = (session as any)?.apiToken
   const userId = session?.user?.id
+
+  // Detect if genre pills overflow one row
+  useEffect(() => {
+    const el = genreContainerRef.current
+    if (!el || tags.length === 0) return
+    // A single row is ~40px; if scrollHeight exceeds that, we have overflow
+    const checkOverflow = () => setGenresOverflow(el.scrollHeight > 48)
+    checkOverflow()
+    window.addEventListener('resize', checkOverflow)
+    return () => window.removeEventListener('resize', checkOverflow)
+  }, [tags])
 
   // Debounce search query
   useEffect(() => {
@@ -280,31 +294,46 @@ export default function ExplorePage() {
 
         {/* Genre tag pills */}
         {activeTab === 'stories' && tags.length > 0 && (
-          <div className="flex flex-wrap justify-center gap-2 mb-6">
-            <button
-              onClick={() => setSelectedGenre(null)}
-              className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
-                !selectedGenre
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+          <div className="mb-6">
+            <div
+              ref={genreContainerRef}
+              className={`flex flex-wrap justify-center gap-2 overflow-hidden transition-[max-height] duration-300 ${
+                genresExpanded || !genresOverflow ? 'max-h-96' : 'max-h-[40px]'
               }`}
             >
-              All Genres
-            </button>
-            {tags.map(tag => (
               <button
-                key={tag.name}
-                onClick={() => setSelectedGenre(selectedGenre === tag.name ? null : tag.name)}
+                onClick={() => setSelectedGenre(null)}
                 className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
-                  selectedGenre === tag.name
+                  !selectedGenre
                     ? 'bg-blue-600 text-white'
                     : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
                 }`}
               >
-                {tag.name}
-                <span className="ml-1 opacity-60">({tag.projectCount})</span>
+                All Genres
               </button>
-            ))}
+              {tags.map(tag => (
+                <button
+                  key={tag.name}
+                  onClick={() => setSelectedGenre(selectedGenre === tag.name ? null : tag.name)}
+                  className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
+                    selectedGenre === tag.name
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {tag.name}
+                  <span className="ml-1 opacity-60">({tag.projectCount})</span>
+                </button>
+              ))}
+            </div>
+            {genresOverflow && (
+              <button
+                onClick={() => setGenresExpanded(!genresExpanded)}
+                className="mt-2 text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+              >
+                {genresExpanded ? 'Show fewer genres' : `Show all ${tags.length} genres`}
+              </button>
+            )}
           </div>
         )}
 
@@ -345,12 +374,15 @@ export default function ExplorePage() {
 
           {/* Sort dropdown */}
           <div className="flex items-center gap-2 pb-2">
-            <span className="text-xs text-gray-500 dark:text-gray-400">Sort:</span>
+            <svg className="w-4 h-4 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+            </svg>
             {activeTab === 'stories' ? (
               <select
                 value={storySort}
                 onChange={(e) => setStorySort(e.target.value as StorySort)}
-                className="text-sm border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                aria-label="Sort stories"
+                className="text-sm font-medium border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
               >
                 <option value="recent">Recent</option>
                 <option value="popular">Popular</option>
@@ -360,7 +392,8 @@ export default function ExplorePage() {
               <select
                 value={authorSort}
                 onChange={(e) => setAuthorSort(e.target.value as AuthorSort)}
-                className="text-sm border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                aria-label="Sort authors"
+                className="text-sm font-medium border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
               >
                 <option value="popular">Popular</option>
                 <option value="recent">Recent</option>
@@ -392,7 +425,7 @@ export default function ExplorePage() {
                     <Link
                       key={project.id}
                       href={getProjectUrl(project)}
-                      className="group bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-md transition-all overflow-hidden"
+                      className="group bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden"
                     >
                       {/* Cover image or placeholder */}
                       <div className="aspect-[16/9] bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 relative overflow-hidden">
@@ -516,7 +549,7 @@ export default function ExplorePage() {
                   {authors.map(author => (
                     <div
                       key={author.userId}
-                      className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-md transition-all p-5"
+                      className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 p-5"
                     >
                       <div className="flex items-start gap-4">
                         {/* Avatar */}

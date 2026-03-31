@@ -75,7 +75,7 @@ export function ProjectCard({ project, collections, currentCollectionId, onAddTo
   const hasMenuItems = collections && collections.length > 0 || currentCollectionId
 
   return (
-    <div className="group border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg overflow-hidden hover:shadow-md hover:border-blue-300/50 dark:hover:border-blue-700/50 transition-all">
+    <div className="group border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg overflow-hidden hover:shadow-md hover:border-blue-300/50 dark:hover:border-blue-700/50 hover:-translate-y-0.5 transition-all duration-200">
       <div className="flex">
         {/* Cover thumbnail or accent bar */}
         {project.coverImage ? (
