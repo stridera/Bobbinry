@@ -2,6 +2,8 @@
 
 A modular, open-source platform for writers and worldbuilders. Create projects, install powerful bobbins (modular extensions), and bring your stories to life.
 
+**Live at [bobbinry.com](https://bobbinry.com/)** — write, publish, and discover stories from a growing community of authors.
+
 ## 🚀 Quick Start
 
 ### Prerequisites
