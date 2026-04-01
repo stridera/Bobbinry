@@ -2,7 +2,7 @@
 FROM node:22-slim AS builder
 
 # Install bun
-RUN npm install -g bun@1.3.9
+RUN npm install -g bun@1.3.10
 
 WORKDIR /app
 
@@ -32,6 +32,7 @@ COPY bobbins/dictionary-panel/package.json bobbins/dictionary-panel/
 COPY bobbins/discord-notifier/package.json bobbins/discord-notifier/
 COPY bobbins/discord-roles/package.json bobbins/discord-roles/
 COPY bobbins/entities/package.json bobbins/entities/
+COPY bobbins/export/package.json bobbins/export/
 COPY bobbins/goals/package.json bobbins/goals/
 COPY bobbins/google-drive-backup/package.json bobbins/google-drive-backup/
 COPY bobbins/hello-world/package.json bobbins/hello-world/
