@@ -13,6 +13,7 @@ import { ChapterOverview } from './components/dashboard/ChapterOverview'
 import { ScheduledReleases } from './components/dashboard/ScheduledReleases'
 import { PublishingSettings } from './components/dashboard/PublishingSettings'
 import { ProjectManagement } from './components/dashboard/ProjectManagement'
+import { ExportProject } from './components/dashboard/ExportProject'
 
 interface Tag {
   id: string
@@ -234,6 +235,12 @@ export default function ProjectDashboardPage() {
           config={data.publishConfig}
           authorUsername={data.authorUsername}
           readerSlug={data.project.shortUrl}
+        />
+
+        <ExportProject
+          projectId={projectId}
+          projectName={data.project.name}
+          totalChapters={data.chapters.length}
         />
 
         <ProjectManagement

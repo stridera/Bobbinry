@@ -36,6 +36,7 @@ import { initDriveSyncHandler } from './jobs/drive-sync-handler'
 import { initDiscordNotifierHandler } from './jobs/discord-notifier-handler'
 import { initDiscordRolesHandler } from './jobs/discord-roles-handler'
 import apiKeysPlugin from './routes/api-keys'
+import exportPlugin from './routes/export'
 import { requireReadOnly, hashApiKey, getApiKeyTier } from './middleware/auth'
 
 export function build(opts = {}): FastifyInstance {
@@ -256,6 +257,7 @@ export function build(opts = {}): FastifyInstance {
   server.register(aiToolsPlugin, { prefix: '/api' })
   server.register(userBobbinsPlugin, { prefix: '/api' })
   server.register(apiKeysPlugin, { prefix: '/api' })
+  server.register(exportPlugin, { prefix: '/api' })
 
   // Safety net: block non-GET/HEAD for API key-authenticated requests (Phase 1 read-only)
   server.addHook('onRequest', requireReadOnly)

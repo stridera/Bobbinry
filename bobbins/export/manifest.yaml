@@ -1,0 +1,26 @@
+id: export
+name: Export
+version: 1.0.0
+author: Bobbinry Team
+description: Export your manuscript as PDF, EPUB, Markdown, or plain text
+tags:
+  - export
+  - pdf
+  - epub
+  - markdown
+  - writing-tools
+license: AGPL-3.0-only
+
+capabilities:
+  publishable: false
+  external: false
+  ai: false
+  customViews: false
+
+data:
+  collections: []
+
+compatibility:
+  minShellVersion: "0.1.0"
+  requiredBobbins:
+    - manuscript

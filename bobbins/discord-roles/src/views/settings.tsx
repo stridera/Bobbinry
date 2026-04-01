@@ -391,7 +391,7 @@ export default function DiscordRolesSettings({ context }: DiscordRolesSettingsPr
               {tiers.filter(t => config.tierRoleMap[t.id]).map(tier => (
                 <div key={tier.id} className="flex items-center justify-between text-xs">
                   <span className="text-gray-700 dark:text-gray-300">{tier.name}</span>
-                  <PanelPill>{config.tierRoleMap[tier.id].roleName}</PanelPill>
+                  <PanelPill>{config.tierRoleMap[tier.id]?.roleName}</PanelPill>
                 </div>
               ))}
             </div>

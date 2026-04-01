@@ -10,9 +10,9 @@
     "./actions/*": "./actions/*.ts"
   },
   "scripts": {
-    "build": "echo 'actions loaded at runtime by API'",
-    "dev": "echo 'consumed as source by shell'",
-    "typecheck": "echo 'consumed as source by shell'"
+    "build": "tsc",
+    "dev": "tsc --noEmit --watch --preserveWatchOutput",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@bobbinry/action-runtime": "workspace:*",
