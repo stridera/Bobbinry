@@ -21,6 +21,8 @@ Thumbs.db
 apps/api/src/**/*.js
 apps/api/src/**/*.js.map
 apps/api/src/**/*.d.ts
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
 
 # Logs
 npm-debug.log*

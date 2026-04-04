@@ -128,7 +128,7 @@ Browse the [`bobbins/`](bobbins/) directory for the full list. Each bobbin has i
 
 ### Architecture Documentation
 
-- **[Execution Modes](docs/EXECUTION_MODES.md)** - How bobbins run (native vs sandboxed)
+- **[API Reference](docs/API.md)** - Complete endpoint reference (auth, entities, publishing, subscriptions, etc.)
 - **[View Routing](docs/VIEW_ROUTING_ARCHITECTURE.md)** - View management and navigation
 - **[Compiler Spec](docs/bobbinry_compiler_spec_tiered_storage.md)** - Tiered storage architecture
 - **[Bobbin Development Guide](docs/BOBBIN_DEVELOPMENT_GUIDE.md)** - Creating custom bobbins

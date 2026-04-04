@@ -74,7 +74,7 @@ To create a new bobbin:
 1. Open a [Feature Request](https://github.com/stridera/Bobbinry/issues/new?template=feature_request.yml) with "New Bobbin idea" selected
 2. Discuss the design and scope
 3. Use an existing bobbin as a template for the file structure
-4. Include a valid bobbin manifest (`bobbin.json`)
+4. Include a valid bobbin manifest (`manifest.yaml`)
 5. Run `bun run lint:bobbins` to validate your manifest
 
 ## Guidelines
