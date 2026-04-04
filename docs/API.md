@@ -59,6 +59,28 @@ src/
 └── jobs/                 # Background handlers (notifications, Drive sync, Discord)
 ```
 
+## Authentication
+
+### JWT (Session)
+
+Shell issues JWTs via NextAuth. Pass as `Authorization: Bearer <token>`.
+
+### API Keys
+
+Read-only keys for programmatic access. Created via `/api/api-keys` or the Settings UI.
+
+```bash
+curl -H "Authorization: Bearer bby_..." https://api.bobbinry.com/api/projects
+```
+
+**Scopes**: `projects:read`, `entities:read`, `stats:read`, `profile:read`
+
+**Rate limits**: 100 req/min (free), 500 req/min (supporter). Keyed per API key (vs per-IP for browser sessions).
+
+### Internal
+
+Server-to-server calls authenticated via `X-Bobbins-Secret` header.
+
 ## API Endpoints
 
 All routes are prefixed with `/api` unless noted. Authentication is JWT-based (session) or API key (`bby_` prefix, read-only).
@@ -68,7 +90,7 @@ All routes are prefixed with `/api` unless noted. Authentication is JWT-based (s
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/health` | None | Health check with DB connectivity |
-| GET | `/internal/metrics` | Internal | Metrics snapshot |
+| GET | `/internal/metrics` | Internal | Metrics snapshot (requires `X-Bobbins-Secret`) |
 
 ### Authentication (`auth.ts`)
 
@@ -109,6 +131,39 @@ All routes are prefixed with `/api` unless noted. Authentication is JWT-based (s
 | PUT | `/api/entities/:entityId` | JWT | — | Update entity (optimistic locking) |
 | DELETE | `/api/entities/:entityId` | JWT | — | Delete entity |
 | POST | `/api/entities/batch/atomic` | JWT | — | Atomic batch create/update/delete |
+
+**Query parameters** for `GET /api/collections/:collection/entities`:
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `projectId` | UUID | required | Filter by project |
+| `limit` | number | 50 | Results per page (1–5000) |
+| `offset` | number | 0 | Pagination offset |
+| `search` | string | — | Full-text search across title, name, and entity data |
+| `filters` | JSON string | — | Field-level filters against entity data, e.g. `{"status":"draft"}` |
+
+**Entity response shape**: Entity data fields are spread at the top level, with metadata in a `_meta` envelope:
+
+```json
+{
+  "id": "b95eb059-...",
+  "title": "Chapter 1 - The Anomaly",
+  "body": "<p>...</p>",
+  "status": "draft",
+  "wordCount": 2431,
+  "order": 100,
+  "_meta": {
+    "bobbinId": "manuscript",
+    "collection": "content",
+    "scope": "project",
+    "version": 23,
+    "createdAt": "2026-03-10T08:30:42.968Z",
+    "updatedAt": "2026-03-21T20:53:31.780Z"
+  }
+}
+```
+
+**Common collection names**: `content` (chapters/scenes), `containers` (folders/parts), `characters`, `locations`, `items`, `lore`, `entity_type_definitions` (custom types).
 
 ### Dashboard (`dashboard.ts`)
 
@@ -154,29 +209,75 @@ All routes are prefixed with `/api` unless noted. Authentication is JWT-based (s
 
 ### Publishing (`publishing.ts`)
 
+#### Chapter Publication
+
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/api/projects/:projectId/chapters/:chapterId/publish` | JWT | Publish/schedule chapter |
-| POST | `/api/projects/:projectId/chapters/:chapterId/unpublish` | JWT | Unpublish to draft |
-| POST | `/api/projects/:projectId/chapters/:chapterId/mark-complete` | JWT | Mark chapter complete |
-| POST | `/api/projects/:projectId/chapters/:chapterId/embargo` | JWT | Create embargo schedule |
+| POST | `/api/projects/:projectId/chapters/:chapterId/publish` | JWT (verified) | Publish or schedule chapter |
+| POST | `/api/projects/:projectId/chapters/:chapterId/unpublish` | JWT | Revert chapter to draft |
+| POST | `/api/projects/:projectId/chapters/:chapterId/complete` | JWT | Mark chapter complete (auto-schedules if configured) |
+| POST | `/api/projects/:projectId/chapters/:chapterId/revert-to-draft` | JWT | Revert complete chapter to draft |
+| GET | `/api/projects/:projectId/chapters/:chapterId/publication` | JWT | Get publication record and status |
+| GET | `/api/projects/:projectId/chapters/:chapterId/next-release-slot` | JWT | Next available auto-release slot |
+| GET | `/api/projects/:projectId/publications` | JWT | List all chapter publications (`?status=draft,published,scheduled,complete,archived`) |
+
+#### Publish Configuration
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
 | GET | `/api/projects/:projectId/publish-config` | JWT | Get publish configuration |
-| POST | `/api/projects/:projectId/publish-config` | JWT | Create/update publish config |
-| GET | `/api/projects/:projectId/chapters` | JWT | List chapters with pub status |
-| GET | `/api/projects/:projectId/tier-delays` | JWT | Tier-based release delays |
+| PUT | `/api/projects/:projectId/publish-config` | JWT (verified) | Update publish config (visibility, auto-release, moderation) |
+
+#### Embargoes
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/projects/:projectId/embargoes` | JWT | Create embargo schedule with tier-based release dates |
+| GET | `/api/projects/:projectId/chapters/:chapterId/embargo` | JWT | Get chapter embargo schedule |
 | PUT | `/api/embargoes/:embargoId` | JWT | Update embargo |
 | DELETE | `/api/embargoes/:embargoId` | JWT | Delete embargo |
+
+#### Destinations
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
 | GET | `/api/projects/:projectId/destinations` | JWT | List publishing destinations |
 | POST | `/api/projects/:projectId/destinations` | JWT | Add destination |
 | PUT | `/api/destinations/:destinationId` | JWT | Update destination |
 | DELETE | `/api/destinations/:destinationId` | JWT | Remove destination |
+| POST | `/api/destinations/:destinationId/sync` | JWT | Record sync result |
+
+#### Content Warnings
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
 | GET | `/api/projects/:projectId/content-warnings` | JWT | List content warnings |
 | POST | `/api/projects/:projectId/content-warnings` | JWT | Add content warning |
-| DELETE | `/api/warnings/:warningId` | JWT | Remove content warning |
-| GET | `/api/projects/:projectId/publish-snapshots` | JWT | List snapshots |
-| POST | `/api/chapters/:chapterId/publish-snapshots` | JWT | Create snapshot |
-| GET | `/api/projects/:projectId/chapters/:chapterId/snapshot/:snapshotId` | JWT | Get snapshot |
-| POST | `/api/projects/:projectId/publish-check` | JWT | Validate for publishing |
+| DELETE | `/api/content-warnings/:warningId` | JWT | Remove content warning |
+
+#### Analytics
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/chapters/:chapterId/views` | JWT | Record chapter view |
+| PUT | `/api/chapter-views/:viewId/progress` | JWT | Update reading progress |
+| GET | `/api/projects/:projectId/chapters/:chapterId/analytics` | JWT | Chapter analytics (views, completions, read time) |
+| GET | `/api/projects/:projectId/chapters/:chapterId/analytics/breakdown` | JWT | Detailed breakdown by device, progress, referrers |
+| GET | `/api/projects/:projectId/analytics/chapters` | JWT | Cross-chapter analytics for project |
+| GET | `/api/projects/:projectId/analytics` | JWT | Project-level analytics summary |
+
+#### Snapshots (Version History)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/projects/:projectId/chapters/:chapterId/snapshots` | JWT | List publication snapshots |
+| GET | `/api/projects/:projectId/snapshots/:snapshotId` | JWT | Get snapshot content |
+
+#### Access Control
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/projects/:projectId/chapters/:chapterId/access` | JWT | Check chapter access (subscriptions, beta readers, embargoes) |
 
 ### Export (`export.ts`)
 
@@ -184,29 +285,87 @@ All routes are prefixed with `/api` unless noted. Authentication is JWT-based (s
 |--------|------|------|-------------|
 | GET | `/api/projects/:projectId/export/:format` | JWT | Export project (`pdf`, `epub`, `markdown`, `txt`; `?mode=full\|chapters`) |
 
-### Reader (`reader.ts`) — Public
+### Public Reader (`reader.ts`)
+
+Public-facing endpoints for reading published content. No authentication required unless noted.
+
+#### Content
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/api/reader/projects` | Optional | Browse published projects |
-| GET | `/api/reader/projects/:projectId` | Optional | Project details (published) |
-| GET | `/api/reader/projects/:projectId/chapters` | Optional | Chapter list with access control |
-| GET | `/api/reader/chapters/:chapterId` | Optional | Read chapter content |
-| GET | `/api/reader/chapters/:chapterId/next` | Optional | Next chapter |
-| POST | `/api/reader/chapters/:chapterId/view` | Optional | Record view |
-| POST | `/api/reader/chapters/:chapterId/comments` | JWT | Post comment |
-| GET | `/api/reader/chapters/:chapterId/comments` | Optional | Get comments |
-| POST | `/api/reader/comments/:commentId/reactions` | JWT | React to comment |
-| DELETE | `/api/reader/comments/:commentId` | JWT | Delete comment |
-| GET | `/api/reader/entities` | Optional | Search published entities |
+| GET | `/api/public/projects/:projectId/toc` | None | Table of contents for a published project |
+| GET | `/api/public/projects/:projectId/chapters/:chapterId` | None | Read a published chapter |
+| POST | `/api/public/projects/:projectId/chapters/:chapterId/view` | None | Record a view event |
 
-### Discover (`discover.ts`) — Public
+#### Stats & Metadata
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/public/projects/:projectId/stats` | None | Public aggregate stats (views, chapters) |
+| GET | `/api/public/projects/:projectId/metadata` | None | Project SEO metadata |
+| GET | `/api/public/projects/:projectId/chapters/:chapterId/metadata` | None | Chapter SEO metadata |
+
+#### SEO & Feeds
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/public/projects/:projectId/sitemap.xml` | None | XML sitemap |
+| GET | `/api/public/projects/:projectId/feed.xml` | None | RSS feed |
+
+#### Slug Lookups
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/public/projects/by-slug/:slug` | None | Resolve project by short URL slug |
+| POST | `/api/public/projects/by-slugs` | None | Batch resolve multiple slugs |
+| GET | `/api/public/projects/by-author-and-slug/:username/:projectSlug` | None | Resolve by author + project slug |
+| GET | `/api/public/authors/:username/projects` | None | List an author's published projects |
+
+#### Comments & Reactions
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/public/chapters/:chapterId/comments` | None | Get chapter comments |
+| POST | `/api/public/chapters/:chapterId/comments` | JWT | Post a comment |
+| GET | `/api/public/chapters/:chapterId/reactions` | None | Get chapter reactions |
+| POST | `/api/public/chapters/:chapterId/reactions` | JWT | Add or toggle reaction |
+| DELETE | `/api/public/chapters/:chapterId/reactions/:reactionType` | JWT | Remove reaction |
+
+### Discover (`discover.ts`)
+
+Public endpoints for browsing published content. No authentication required.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/api/discover/projects` | None | Browse/search published projects |
-| GET | `/api/discover/trending` | None | Trending projects |
-| GET | `/api/discover/recently-updated` | None | Recently updated projects |
+| GET | `/api/discover/authors` | None | Browse/search authors |
+| GET | `/api/discover/tags` | None | List popular tags |
+
+**Query parameters** for `GET /api/discover/projects`:
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `q` | string | — | Search project name and description |
+| `genre` | string | — | Filter by genre tag |
+| `sort` | string | `recent` | Sort order: `recent`, `popular`, `trending` |
+| `limit` | number | 20 | Results per page (1–50) |
+| `offset` | number | 0 | Pagination offset |
+
+**Query parameters** for `GET /api/discover/authors`:
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `q` | string | — | Search author name/username |
+| `sort` | string | `popular` | Sort: `popular`, `recent`, `alphabetical` |
+| `limit` | number | 20 | Results per page |
+| `offset` | number | 0 | Pagination offset |
+
+**Query parameters** for `GET /api/discover/tags`:
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `category` | string | — | Filter by tag category |
+| `limit` | number | 50 | Max tags to return |
 
 ### Subscriptions & Payments (`subscriptions.ts`, `stripe.ts`)
 
@@ -227,10 +386,6 @@ All routes are prefixed with `/api` unless noted. Authentication is JWT-based (s
 | GET | `/api/users/:userId/access-grants` | JWT (self) | Access grants |
 | POST | `/api/authors/:authorId/access-grants` | JWT (author) | Create access grant |
 | DELETE | `/api/access-grants/:grantId` | JWT (author) | Revoke access grant |
-| GET | `/api/users/:userId/subscription-tiers` | JWT (author) | List author's tiers |
-| POST | `/api/users/:userId/subscription-tiers` | JWT (author) | Create tier |
-| PUT | `/api/users/:userId/subscription-tiers/:tierId` | JWT (author) | Update tier |
-| DELETE | `/api/users/:userId/subscription-tiers/:tierId` | JWT (author) | Delete tier |
 | GET | `/api/users/:userId/payment-config` | JWT (self) | Get Stripe config |
 | PUT | `/api/users/:userId/payment-config` | JWT (self) | Update Stripe config |
 | POST | `/api/stripe/webhook` | None | Stripe webhook |
@@ -246,9 +401,74 @@ All routes are prefixed with `/api` unless noted. Authentication is JWT-based (s
 
 ### Users (`users.ts`)
 
+#### Profiles
+
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/api/users/by-email` | Internal | User lookup (NextAuth integration) |
+| GET | `/api/users/:userId/profile` | None | Public user profile |
+| GET | `/api/users/profiles/batch` | None | Batch resolve profiles (`?userIds=id1,id2`, max 100) |
+| PUT | `/api/users/:userId/profile` | JWT (self) | Update own profile |
+| GET | `/api/users/by-username/:username` | None | Lookup by username (with follower counts) |
+| GET | `/api/users/:userId/published-projects` | None | User's published projects |
+
+#### Followers
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/users/:userId/followers` | None | Followers or following list (`?type=followers\|following`) |
+| POST | `/api/users/:userId/follow` | JWT (self) | Follow a user |
+| DELETE | `/api/users/:userId/follow/:followingId` | JWT (self) | Unfollow a user |
+| GET | `/api/users/:userId/is-following/:targetId` | None | Check if following |
+
+#### Subscription Tiers
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/users/:userId/subscription-tiers` | None | List author's tiers |
+| POST | `/api/users/:userId/subscription-tiers` | JWT (self) | Create tier |
+| PUT | `/api/users/:userId/subscription-tiers/:tierId` | JWT (self) | Update tier |
+| DELETE | `/api/users/:userId/subscription-tiers/:tierId` | JWT (self) | Delete tier |
+
+#### Preferences
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/users/:userId/notification-preferences` | JWT (self) | Get notification preferences |
+| PUT | `/api/users/:userId/notification-preferences` | JWT (self) | Update notification preferences |
+| GET | `/api/users/:userId/reading-preferences` | JWT (self) | Get reading preferences |
+| PUT | `/api/users/:userId/reading-preferences` | JWT (self) | Update reading preferences |
+
+#### Beta Readers
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/users/:userId/beta-readers` | JWT (self) | List beta readers (`?projectId=` optional) |
+| POST | `/api/users/:userId/beta-readers` | JWT (self) | Add beta reader |
+| PUT | `/api/users/:userId/beta-readers/:betaReaderId` | JWT (self) | Update beta reader |
+| DELETE | `/api/users/:userId/beta-readers/:betaReaderId` | JWT (self) | Remove beta reader |
+
+#### Reader Bobbins
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/users/:userId/reader-bobbins` | JWT (self) | List reader bobbins |
+| POST | `/api/users/:userId/reader-bobbins` | JWT (self) | Install reader bobbin |
+| PUT | `/api/users/:userId/reader-bobbins/:bobbinInstallId` | JWT (self) | Update reader bobbin config |
+| DELETE | `/api/users/:userId/reader-bobbins/:bobbinInstallId` | JWT (self) | Uninstall reader bobbin |
+
+#### Feed & Reading Progress
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/users/:userId/feed` | JWT (self) | Recent publications from followed authors |
+| GET | `/api/users/:userId/reading-progress` | JWT (self) | In-progress reading |
+
+#### Email Unsubscribe
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/unsubscribe` | None (token) | One-click unsubscribe (RFC 8058) |
+| GET | `/api/unsubscribe` | None (token) | Unsubscribe confirmation page |
 
 ### Project Follows (`project-follows.ts`)
 
@@ -301,15 +521,19 @@ All routes are prefixed with `/api` unless noted. Authentication is JWT-based (s
 | POST | `/api/users/me/bobbins/install` | JWT | Install global bobbin |
 | DELETE | `/api/users/me/bobbins/:bobbinId` | JWT | Uninstall global bobbin |
 
-### Google Drive (`google-drive.ts`)
+### Backups (`google-drive.ts`)
+
+Google Drive backup integration for syncing project content to Drive.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/api/google-drive/auth-url` | JWT | Google OAuth URL |
-| GET | `/api/google-drive/callback` | None | OAuth callback |
-| GET | `/api/google-drive/sync/:projectId` | JWT | Sync status |
-| POST | `/api/google-drive/sync/:projectId` | JWT | Start sync |
-| DELETE | `/api/google-drive/disconnect/:projectId` | JWT | Disconnect |
+| GET | `/api/backups/google-drive/authorize` | JWT | Google OAuth consent URL |
+| GET | `/api/backups/google-drive/callback` | None | OAuth callback (exchanges code for tokens) |
+| GET | `/api/backups/status` | JWT | Backup connection status + all project backup states |
+| DELETE | `/api/backups/google-drive/disconnect` | JWT | Disconnect Google Drive |
+| POST | `/api/backups/projects/:projectId/sync` | JWT | Sync single project to Drive |
+| PUT | `/api/backups/projects/:projectId` | JWT | Toggle backup opt-in/out for project |
+| POST | `/api/backups/sync` | JWT | Sync all opted-in projects |
 
 ### AI Tools (`ai-tools.ts`)
 
@@ -333,6 +557,8 @@ All routes are prefixed with `/api` unless noted. Authentication is JWT-based (s
 | GET | `/api/api-keys` | JWT only | List API keys |
 | DELETE | `/api/api-keys/:keyId` | JWT only | Revoke API key |
 
+**Key limits**: 5 keys (free), 10 keys (supporter). Keys expire if `expiresInDays` is set at creation.
+
 ### Admin (`admin.ts`)
 
 | Method | Path | Auth | Description |
@@ -343,27 +569,70 @@ All routes are prefixed with `/api` unless noted. Authentication is JWT-based (s
 | POST | `/api/admin/users/:userId/supporter` | Owner | Grant/revoke supporter |
 | DELETE | `/api/admin/users/:userId/badges/:badge` | Owner | Remove badge |
 
-## Authentication
+## Quick Reference for API Consumers
 
-### JWT (Session)
-
-Shell issues JWTs via NextAuth. Pass as `Authorization: Bearer <token>`.
-
-### API Keys
-
-Read-only keys for programmatic access. Created via `/api/api-keys` or the Settings UI.
+### List projects (API key)
 
 ```bash
-curl -H "Authorization: Bearer bby_..." https://api.bobbinry.com/api/projects
+curl -H "Authorization: Bearer bby_..." \
+  https://api.bobbinry.com/api/projects
 ```
 
-**Scopes**: `projects:read`, `entities:read`, `stats:read`
+### Get dashboard stats
 
-**Rate limits**: 100 req/min (free), 500 req/min (supporter). Keyed per API key (vs per-IP for browser sessions).
+```bash
+curl -H "Authorization: Bearer bby_..." \
+  https://api.bobbinry.com/api/dashboard/stats
+```
 
-### Internal
+Returns: `{"stats":{"projects":{"total":"4","active":"4","archived":"0"},"collections":{"total":"1"},"entities":{"total":"28"},"trashed":{"total":"0"}}}`
 
-Server-to-server calls authenticated via `X-Bobbins-Secret` header.
+### Query entities with search
+
+```bash
+curl -H "Authorization: Bearer bby_..." \
+  "https://api.bobbinry.com/api/collections/content/entities?projectId=<UUID>&search=chapter&limit=10"
+```
+
+### Browse published projects (no auth)
+
+```bash
+curl "https://api.bobbinry.com/api/discover/projects?sort=trending&limit=5"
+```
+
+### Read a published chapter (no auth)
+
+```bash
+# Resolve by slug first
+curl "https://api.bobbinry.com/api/public/projects/by-slug/quantum-error"
+
+# Then read TOC
+curl "https://api.bobbinry.com/api/public/projects/<projectId>/toc"
+
+# Then read a chapter
+curl "https://api.bobbinry.com/api/public/projects/<projectId>/chapters/<chapterId>"
+```
+
+### Rate limits
+
+Responses include `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers. When exceeded, returns `429` with `Retry-After`.
+
+### Error format
+
+```json
+{
+  "error": "Short error type",
+  "message": "Human-readable description"
+}
+```
+
+### Read-only API keys
+
+API keys only support GET/HEAD/OPTIONS. Write operations return:
+
+```json
+{"error": "Read-only access", "message": "API keys only support read operations"}
+```
 
 ## Database
 
