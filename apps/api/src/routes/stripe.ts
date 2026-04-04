@@ -14,7 +14,7 @@ import {
 import { eq, and, sql } from 'drizzle-orm'
 import { requireAuth, requireSelf, requireVerified, denyApiKeyAuth } from '../middleware/auth'
 import { serverEventBus, subscriptionChanged } from '../lib/event-bus'
-import { getStripe, createExpressAccount, createOnboardingLink } from '../lib/stripe'
+import { getStripe, getSubscriptionPeriod, createExpressAccount, createOnboardingLink } from '../lib/stripe'
 
 function isValidUUID(uuid: string): boolean {
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -587,18 +587,6 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
 // WEBHOOK EVENT HANDLERS
 // ============================================================================
 
-/** Extract period dates from a Stripe subscription (handles both legacy and items-based APIs) */
-function getSubscriptionPeriod(sub: any): { start: Date; end: Date } {
-  const periodStart = sub.current_period_start
-    ?? sub.items?.data?.[0]?.current_period_start
-  const periodEnd = sub.current_period_end
-    ?? sub.items?.data?.[0]?.current_period_end
-  return {
-    start: periodStart ? new Date(periodStart * 1000) : new Date(),
-    end: periodEnd ? new Date(periodEnd * 1000) : new Date(),
-  }
-}
-
 /**
  * Fallback handler for author subscription checkout completion.
  * If the subscription was created as 'incomplete', this activates it
@@ -792,7 +780,18 @@ async function handlePaymentSucceeded(invoice: Stripe.Invoice, fastify: FastifyI
       paidAt: new Date()
     })
 
-    fastify.log.info({ subscriptionId: sub.id }, 'Payment recorded')
+    // Restore active status and sync period (covers missed subscription.updated webhooks)
+    const periodEnd = inv.lines?.data?.[0]?.period?.end
+    const updateData: Record<string, any> = {
+      status: 'active',
+      updatedAt: new Date(),
+    }
+    if (periodEnd) {
+      updateData.currentPeriodEnd = new Date(periodEnd * 1000)
+    }
+    await db.update(subscriptions).set(updateData).where(eq(subscriptions.id, sub.id))
+
+    fastify.log.info({ subscriptionId: sub.id }, 'Payment recorded, subscription status synced')
   } catch (error) {
     fastify.log.error(error, 'Failed to handle payment succeeded')
     throw error

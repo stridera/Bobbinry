@@ -1,4 +1,5 @@
 import { FastifyPluginAsync } from 'fastify'
+import { getStripe } from '../lib/stripe'
 import { db } from '../db/connection'
 import {
   subscriptions,
@@ -11,7 +12,7 @@ import {
   userNotificationPreferences
 } from '../db/schema'
 import { eq, and, or, desc, sql } from 'drizzle-orm'
-import { requireAuth, requireSelf } from '../middleware/auth'
+import { requireAuth, requireSelf, requireOwner, denyApiKeyAuth } from '../middleware/auth'
 import { sendEmail } from '../lib/email'
 
 // Helper to validate UUID
@@ -205,8 +206,8 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
         }
       }
 
-      // TODO: Create Stripe subscription
-      // For now, create a placeholder subscription
+      // Free tiers: no Stripe subscription needed — just track the relationship locally.
+      // Paid tiers are rejected above and must go through Stripe checkout.
       const now = new Date()
       const nextMonth = new Date(now)
       nextMonth.setMonth(nextMonth.getMonth() + 1)
@@ -221,7 +222,7 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
           currentPeriodStart: now,
           currentPeriodEnd: nextMonth,
           cancelAtPeriodEnd: false,
-          stripeSubscriptionId: null, // Will be set when Stripe is integrated
+          stripeSubscriptionId: null,
           patreonMemberId: null
         })
         .returning()
@@ -289,8 +290,7 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
 
       return reply.status(201).send({
         subscription,
-        message: 'Subscription created successfully',
-        note: 'Stripe integration pending - this is a placeholder subscription'
+        message: 'Subscription created successfully'
       })
     } catch (error) {
       fastify.log.error(error)
@@ -333,6 +333,7 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
       }
 
       const updateData: any = {}
+      const stripe = current[0]!.stripeSubscriptionId ? getStripe() : null
 
       // Change tier
       if (tierId) {
@@ -354,14 +355,74 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
           return reply.status(400).send({ error: 'Invalid tier for this author' })
         }
 
+        // Get current tier level to determine upgrade vs downgrade
+        const [currentTier] = await db
+          .select({ tierLevel: subscriptionTiers.tierLevel })
+          .from(subscriptionTiers)
+          .where(eq(subscriptionTiers.id, current[0]!.tierId))
+          .limit(1)
+
+        const oldLevel = currentTier?.tierLevel ?? 0
+        const newLevel = tier[0]!.tierLevel ?? 0
+        const isUpgrade = newLevel > oldLevel
+
+        if (!isUpgrade) {
+          // Downgrades are deferred — keep current access until period ends
+          return reply.status(400).send({
+            error: 'Downgrades take effect at the end of your current billing period. Use cancelAtPeriodEnd and resubscribe at the new tier.',
+          })
+        }
+
         updateData.tierId = tierId
-        // TODO: Update Stripe subscription tier
+
+        // Upgrades: swap immediately with prorated charge for the delta
+        if (stripe) {
+          const stripeSub = await stripe.subscriptions.retrieve(current[0]!.stripeSubscriptionId!)
+          const currentItem = stripeSub.items.data[0]
+          if (!currentItem) {
+            return reply.status(500).send({ error: 'Stripe subscription has no items' })
+          }
+
+          const interval = currentItem.price.recurring?.interval || 'month'
+          const price = interval === 'year'
+            ? Math.round(parseFloat(tier[0]!.priceYearly || '0') * 100)
+            : Math.round(parseFloat(tier[0]!.priceMonthly || '0') * 100)
+
+          if (price <= 0) {
+            return reply.status(400).send({ error: 'New tier has no price set for current billing interval' })
+          }
+
+          const newPrice = await stripe.prices.create({
+            currency: 'usd',
+            unit_amount: price,
+            recurring: { interval },
+            product_data: {
+              name: tier[0]!.name,
+              ...(tier[0]!.description ? { description: tier[0]!.description } : {}),
+            },
+          })
+
+          await stripe.subscriptions.update(current[0]!.stripeSubscriptionId!, {
+            items: [{ id: currentItem.id, price: newPrice.id }],
+            metadata: {
+              ...stripeSub.metadata,
+              bobbinry_tier_id: tierId,
+            },
+            proration_behavior: 'create_prorations',
+          })
+        }
       }
 
-      // Cancel subscription
+
+      // Cancel subscription at period end (or undo pending cancellation)
       if (typeof cancelAtPeriodEnd === 'boolean') {
         updateData.cancelAtPeriodEnd = cancelAtPeriodEnd
-        // TODO: Update Stripe subscription cancellation
+
+        if (stripe) {
+          await stripe.subscriptions.update(current[0]!.stripeSubscriptionId!, {
+            cancel_at_period_end: cancelAtPeriodEnd,
+          })
+        }
       }
 
       const [updated] = await db
@@ -380,11 +441,11 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // Cancel subscription immediately
+  // Force-cancel subscription immediately (admin only — for bans/rule violations)
   fastify.delete<{
     Params: { subscriptionId: string }
   }>('/subscriptions/:subscriptionId', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, requireOwner, denyApiKeyAuth]
   }, async (request, reply) => {
     try {
       const { subscriptionId } = request.params
@@ -393,7 +454,6 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Invalid subscription ID format' })
       }
 
-      // Verify ownership before canceling
       const [current] = await db
         .select()
         .from(subscriptions)
@@ -404,12 +464,14 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(404).send({ error: 'Subscription not found' })
       }
 
-      if (current.subscriberId !== request.user!.id) {
-        return reply.status(403).send({ error: 'You can only cancel your own subscriptions' })
+      // Cancel in Stripe first — if this fails, don't update locally
+      if (current.stripeSubscriptionId) {
+        const stripe = getStripe()
+        if (stripe) {
+          await stripe.subscriptions.cancel(current.stripeSubscriptionId)
+        }
       }
 
-      // TODO: Cancel in Stripe
-      // For now, just update status
       const [canceled] = await db
         .update(subscriptions)
         .set({
@@ -426,7 +488,7 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
 
       return reply.status(200).send({
         subscription: canceled,
-        message: 'Subscription canceled'
+        message: 'Subscription force-canceled by admin'
       })
     } catch (error) {
       fastify.log.error(error)

@@ -147,7 +147,8 @@ async function checkChapterAccess(
       and(
         eq(subscriptions.subscriberId, userId),
         eq(subscriptions.authorId, project.ownerId),
-        eq(subscriptions.status, 'active')
+        eq(subscriptions.status, 'active'),
+        sql`${subscriptions.currentPeriodEnd} > NOW()`
       )
     )
     .limit(1)

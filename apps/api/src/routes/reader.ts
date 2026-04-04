@@ -114,7 +114,8 @@ async function checkPublicChapterAccess(
         .where(and(
           eq(subscriptions.subscriberId, userId),
           eq(subscriptions.authorId, project.ownerId),
-          eq(subscriptions.status, 'active')
+          eq(subscriptions.status, 'active'),
+          sql`${subscriptions.currentPeriodEnd} > NOW()`
         ))
         .limit(1)
 
@@ -254,7 +255,8 @@ async function checkMultipleChaptersAccess(
           .where(and(
             eq(subscriptions.subscriberId, userId),
             eq(subscriptions.authorId, project.ownerId),
-            eq(subscriptions.status, 'active')
+            eq(subscriptions.status, 'active'),
+            sql`${subscriptions.currentPeriodEnd} > NOW()`
           ))
           .limit(1)
 

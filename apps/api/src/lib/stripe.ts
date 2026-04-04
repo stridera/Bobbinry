@@ -12,6 +12,18 @@ export function getStripe(): Stripe | null {
   return new Stripe(key)
 }
 
+/** Extract period dates from a Stripe subscription (handles both legacy and items-based APIs). */
+export function getSubscriptionPeriod(sub: any): { start: Date; end: Date } {
+  const periodStart = sub.current_period_start
+    ?? sub.items?.data?.[0]?.current_period_start
+  const periodEnd = sub.current_period_end
+    ?? sub.items?.data?.[0]?.current_period_end
+  return {
+    start: periodStart ? new Date(periodStart * 1000) : new Date(),
+    end: periodEnd ? new Date(periodEnd * 1000) : new Date(),
+  }
+}
+
 /** Split a display name into first/last for Stripe prefill. */
 export function splitName(fullName: string): { firstName: string; lastName: string } {
   const parts = fullName.trim().split(/\s+/)

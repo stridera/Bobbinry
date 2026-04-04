@@ -22,12 +22,22 @@ export type MembershipTier = 'free' | 'supporter'
  */
 export async function getUserMembershipTier(userId: string): Promise<MembershipTier> {
   const [membership] = await db
-    .select({ tier: siteMemberships.tier, status: siteMemberships.status })
+    .select({
+      tier: siteMemberships.tier,
+      status: siteMemberships.status,
+      currentPeriodEnd: siteMemberships.currentPeriodEnd,
+    })
     .from(siteMemberships)
     .where(eq(siteMemberships.userId, userId))
     .limit(1)
 
-  if (membership && membership.tier === 'supporter' && membership.status === 'active') {
+  if (
+    membership &&
+    membership.tier === 'supporter' &&
+    membership.status === 'active' &&
+    // null currentPeriodEnd = admin-granted, never expires
+    (!membership.currentPeriodEnd || membership.currentPeriodEnd > new Date())
+  ) {
     return 'supporter'
   }
 

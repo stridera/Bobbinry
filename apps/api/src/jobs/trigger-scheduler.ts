@@ -13,6 +13,7 @@ import { bobbinsInstalled, entities, projectDestinations, chapterPublications } 
 import { eq, and, gt, lte } from 'drizzle-orm'
 import { processEmbargoReleases, initTierDispatch } from './tier-dispatch'
 import { processTrashPurge } from './trash-purge'
+import { processSubscriptionExpiration } from './subscription-expiration'
 import { createActionRuntime, type ActionHandler, type ActionModule } from '@bobbinry/action-runtime'
 import { loadDiskManifests } from '../lib/disk-manifests'
 import { getDeclaredCustomAction } from '../lib/bobbin-actions'
@@ -353,6 +354,11 @@ export function startTriggerScheduler(): void {
     // Run trash purge hourly (at minute 0)
     if (new Date().getUTCMinutes() === 0) {
       tasks.push(processTrashPurge())
+    }
+
+    // Reconcile subscription state with Stripe every 15 minutes
+    if (new Date().getUTCMinutes() % 15 === 0) {
+      tasks.push(processSubscriptionExpiration())
     }
 
     await Promise.allSettled(tasks)
