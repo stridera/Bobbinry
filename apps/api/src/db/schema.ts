@@ -499,6 +499,65 @@ export const discountCodes = pgTable('discount_codes', {
   expiresAtIdx: index('discount_codes_expires_at_idx').on(table.expiresAt)
 }))
 
+// Site promo codes - shared discount codes for site membership (admin-created)
+export const sitePromoCodes = pgTable('site_promo_codes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  code: varchar('code', { length: 50 }).unique().notNull(),
+  stripeCouponId: varchar('stripe_coupon_id', { length: 255 }).notNull(),
+  discountType: varchar('discount_type', { length: 50 }).notNull(), // percent, fixed_amount
+  discountValue: decimal('discount_value', { precision: 10, scale: 2 }).notNull(),
+  discountDurationMonths: integer('discount_duration_months'), // null = one-time
+  maxRedemptions: integer('max_redemptions'), // null = unlimited
+  currentRedemptions: integer('current_redemptions').default(0).notNull(),
+  expiresAt: timestamp('expires_at'),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdBy: uuid('created_by').references(() => users.id).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull()
+}, (table) => ({
+  expiresAtIdx: index('site_promo_codes_expires_at_idx').on(table.expiresAt)
+}))
+
+// Site promo campaigns - HMAC-based gift key batches (no individual codes stored)
+export const sitePromoCampaigns = pgTable('site_promo_campaigns', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  name: varchar('name', { length: 100 }).notNull(),
+  prefix: varchar('prefix', { length: 20 }).unique().notNull(),
+  secret: varchar('secret', { length: 64 }).notNull(), // hex-encoded 32-byte HMAC key
+  codeCount: integer('code_count').default(0).notNull(),
+  giftDurationMonths: integer('gift_duration_months').notNull(),
+  maxRedemptions: integer('max_redemptions'), // null = unlimited
+  currentRedemptions: integer('current_redemptions').default(0).notNull(),
+  expiresAt: timestamp('expires_at'),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdBy: uuid('created_by').references(() => users.id).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull()
+}, (table) => ({
+  expiresAtIdx: index('site_promo_campaigns_expires_at_idx').on(table.expiresAt)
+}))
+
+// Site promo redemptions - audit trail for both discount codes and campaigns
+export const sitePromoRedemptions = pgTable('site_promo_redemptions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  promoCodeId: uuid('promo_code_id').references(() => sitePromoCodes.id, { onDelete: 'cascade' }),
+  campaignId: uuid('campaign_id').references(() => sitePromoCampaigns.id, { onDelete: 'cascade' }),
+  redeemedAt: timestamp('redeemed_at').defaultNow().notNull(),
+  resultType: varchar('result_type', { length: 50 }).notNull(), // membership_granted, checkout_discount
+  metadata: jsonb('metadata') // { stripeSessionId } or { giftExpiresAt, codeUsed }
+}, (table) => ({
+  userIdx: index('site_promo_redemptions_user_idx').on(table.userId),
+  promoCodeIdx: index('site_promo_redemptions_promo_code_idx').on(table.promoCodeId),
+  campaignIdx: index('site_promo_redemptions_campaign_idx').on(table.campaignId),
+  uniquePromoCodeUser: uniqueIndex('site_promo_redemptions_code_user_uniq')
+    .on(table.promoCodeId, table.userId)
+    .where(sql`promo_code_id IS NOT NULL`),
+  uniqueCampaignUser: uniqueIndex('site_promo_redemptions_campaign_user_uniq')
+    .on(table.campaignId, table.userId)
+    .where(sql`campaign_id IS NOT NULL`)
+}))
+
 // Project collections - series/grouping of related projects
 export const projectCollections = pgTable('project_collections', {
   id: uuid('id').defaultRandom().primaryKey(),

@@ -47,6 +47,21 @@ function MembershipContent() {
   const [portalLoading, setPortalLoading] = useState(false)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [errorToast, setErrorToast] = useState<string | null>(null)
+  const [promoInput, setPromoInput] = useState('')
+  const [promoValidation, setPromoValidation] = useState<{
+    valid: boolean
+    type?: 'discount' | 'gift'
+    discountType?: string
+    discountValue?: string
+    discountDurationMonths?: number | null
+    giftDurationMonths?: number
+    campaignName?: string
+    alreadyRedeemed?: boolean
+    error?: string
+  } | null>(null)
+  const [promoLoading, setPromoLoading] = useState(false)
+  const [redeemLoading, setRedeemLoading] = useState(false)
+  const [showPromoInput, setShowPromoInput] = useState(false)
   const dismissError = useCallback(() => setErrorToast(null), [])
 
   useEffect(() => {
@@ -94,10 +109,15 @@ function MembershipContent() {
     if (!session?.apiToken) return
     setCheckoutLoading(true)
     try {
+      const body: Record<string, string> = { billingPeriod }
+      // Include validated discount promo code
+      if (promoValidation?.valid && promoValidation.type === 'discount' && !promoValidation.alreadyRedeemed) {
+        body.promoCode = promoInput.trim()
+      }
       const res = await apiFetch('/api/membership/checkout', session.apiToken, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ billingPeriod }),
+        body: JSON.stringify(body),
       })
       if (res.ok) {
         const { checkoutUrl } = await res.json()
@@ -110,6 +130,53 @@ function MembershipContent() {
       setErrorToast('Failed to start checkout')
     } finally {
       setCheckoutLoading(false)
+    }
+  }
+
+  const handleValidatePromo = async () => {
+    if (!session?.apiToken || !promoInput.trim()) return
+    setPromoLoading(true)
+    setPromoValidation(null)
+    try {
+      const res = await apiFetch('/api/promo-codes/validate', session.apiToken, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: promoInput.trim() }),
+      })
+      const data = await res.json()
+      setPromoValidation(data)
+    } catch {
+      setPromoValidation({ valid: false, error: 'Failed to validate code' })
+    } finally {
+      setPromoLoading(false)
+    }
+  }
+
+  const handleRedeemGift = async () => {
+    if (!session?.apiToken || !promoInput.trim()) return
+    setRedeemLoading(true)
+    try {
+      const res = await apiFetch('/api/promo-codes/redeem', session.apiToken, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: promoInput.trim() }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setSuccessMessage(`Supporter membership activated! Expires ${new Date(data.membership.expiresAt).toLocaleDateString()}.`)
+        setPromoInput('')
+        setPromoValidation(null)
+        setShowPromoInput(false)
+        updateSession({ membershipTier: 'supporter' })
+        loadMembership()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        setErrorToast(data.error || 'Failed to redeem code')
+      }
+    } catch {
+      setErrorToast('Failed to redeem code')
+    } finally {
+      setRedeemLoading(false)
     }
   }
 
@@ -335,6 +402,88 @@ function MembershipContent() {
             )}
           </div>
         </div>
+
+        {/* Promo code section — only for non-supporters */}
+        {!isSupporter && (
+          <div className="mb-8">
+            {!showPromoInput ? (
+              <button
+                onClick={() => setShowPromoInput(true)}
+                className="text-sm text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 transition-colors"
+              >
+                Have a promo code?
+              </button>
+            ) : (
+              <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
+                <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-3">Enter promo code</h3>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={promoInput}
+                    onChange={(e) => {
+                      setPromoInput(e.target.value.toUpperCase())
+                      setPromoValidation(null)
+                    }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleValidatePromo() }}
+                    placeholder="e.g. COMICCON26 or COMICCON26-A3F2B1C9"
+                    className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono tracking-wider"
+                  />
+                  <button
+                    onClick={handleValidatePromo}
+                    disabled={promoLoading || !promoInput.trim()}
+                    className="px-4 py-2 text-sm font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                  >
+                    {promoLoading ? 'Checking...' : 'Apply'}
+                  </button>
+                </div>
+
+                {/* Validation result */}
+                {promoValidation && (
+                  <div className="mt-3">
+                    {!promoValidation.valid && (
+                      <p className="text-sm text-red-600 dark:text-red-400">{promoValidation.error}</p>
+                    )}
+
+                    {promoValidation.valid && promoValidation.alreadyRedeemed && (
+                      <p className="text-sm text-amber-600 dark:text-amber-400">You have already used this code.</p>
+                    )}
+
+                    {promoValidation.valid && !promoValidation.alreadyRedeemed && promoValidation.type === 'gift' && (
+                      <div className="flex items-center justify-between bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                        <p className="text-sm text-green-700 dark:text-green-300">
+                          This code gives you <strong>{promoValidation.giftDurationMonths} months</strong> of free Supporter membership!
+                        </p>
+                        <button
+                          onClick={handleRedeemGift}
+                          disabled={redeemLoading}
+                          className="ml-3 px-4 py-1.5 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors whitespace-nowrap"
+                        >
+                          {redeemLoading ? 'Redeeming...' : 'Redeem'}
+                        </button>
+                      </div>
+                    )}
+
+                    {promoValidation.valid && !promoValidation.alreadyRedeemed && promoValidation.type === 'discount' && (
+                      <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                        <p className="text-sm text-green-700 dark:text-green-300">
+                          {promoValidation.discountType === 'percent'
+                            ? `${promoValidation.discountValue}% off`
+                            : `$${promoValidation.discountValue} off`
+                          }
+                          {promoValidation.discountDurationMonths
+                            ? ` for ${promoValidation.discountDurationMonths} months`
+                            : ' (first payment)'
+                          }
+                          {' '}&mdash; discount will be applied at checkout.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
       {errorToast && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg border bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-900 dark:text-red-100 max-w-md">

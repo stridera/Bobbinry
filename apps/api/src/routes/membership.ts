@@ -12,11 +12,12 @@
 
 import { FastifyPluginAsync } from 'fastify'
 import { db } from '../db/connection'
-import { siteMemberships, users } from '../db/schema'
-import { eq } from 'drizzle-orm'
+import { siteMemberships, sitePromoCodes, sitePromoRedemptions, users } from '../db/schema'
+import { eq, and, sql } from 'drizzle-orm'
 import { requireAuth } from '../middleware/auth'
 import { getUserMembershipTier, getUserBadges } from '../lib/membership'
 import { getStripe } from '../lib/stripe'
+import type Stripe from 'stripe'
 
 function isValidUUID(uuid: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid)
@@ -69,13 +70,13 @@ const membershipPlugin: FastifyPluginAsync = async (fastify) => {
 
   // POST /membership/checkout — create Stripe Checkout session for supporter upgrade
   fastify.post<{
-    Body: { billingPeriod?: 'monthly' | 'yearly' }
+    Body: { billingPeriod?: 'monthly' | 'yearly'; promoCode?: string }
   }>('/membership/checkout', {
     preHandler: requireAuth,
   }, async (request, reply) => {
     try {
       const user = request.user!
-      const { billingPeriod = 'monthly' } = request.body || {}
+      const { billingPeriod = 'monthly', promoCode } = request.body || {}
 
       const stripe = getStripe()
       if (!stripe) {
@@ -125,7 +126,65 @@ const membershipPlugin: FastifyPluginAsync = async (fastify) => {
 
       const baseUrl = process.env.WEB_ORIGIN || 'http://localhost:3100'
 
-      const session = await stripe.checkout.sessions.create({
+      // Validate promo code if provided
+      let stripeCouponId: string | null = null
+      let validatedPromoCodeId: string | null = null
+
+      if (promoCode) {
+        const normalizedCode = promoCode.toUpperCase().trim()
+        const [code] = await db
+          .select()
+          .from(sitePromoCodes)
+          .where(and(
+            eq(sitePromoCodes.code, normalizedCode),
+            eq(sitePromoCodes.isActive, true)
+          ))
+          .limit(1)
+
+        if (!code) {
+          return reply.status(400).send({ error: 'Invalid promo code' })
+        }
+
+        if (code.expiresAt && new Date(code.expiresAt) < new Date()) {
+          return reply.status(400).send({ error: 'Promo code has expired' })
+        }
+
+        // Check if user already redeemed
+        const [existingRedemption] = await db
+          .select({ id: sitePromoRedemptions.id })
+          .from(sitePromoRedemptions)
+          .where(and(
+            eq(sitePromoRedemptions.promoCodeId, code.id),
+            eq(sitePromoRedemptions.userId, user.id)
+          ))
+          .limit(1)
+
+        if (existingRedemption) {
+          return reply.status(409).send({ error: 'You have already used this promo code' })
+        }
+
+        // Atomic: claim a redemption slot (prevents exceeding maxRedemptions under concurrency)
+        const [claimed] = await db
+          .update(sitePromoCodes)
+          .set({
+            currentRedemptions: sql`${sitePromoCodes.currentRedemptions} + 1`,
+            updatedAt: new Date(),
+          })
+          .where(and(
+            eq(sitePromoCodes.id, code.id),
+            sql`(${sitePromoCodes.maxRedemptions} IS NULL OR ${sitePromoCodes.currentRedemptions} < ${sitePromoCodes.maxRedemptions})`
+          ))
+          .returning({ id: sitePromoCodes.id })
+
+        if (!claimed) {
+          return reply.status(400).send({ error: 'Promo code is no longer available' })
+        }
+
+        stripeCouponId = code.stripeCouponId
+        validatedPromoCodeId = code.id
+      }
+
+      const sessionParams: Stripe.Checkout.SessionCreateParams = {
         mode: 'subscription',
         customer: customerId,
         line_items: [{ price: priceId, quantity: 1 }],
@@ -141,7 +200,20 @@ const membershipPlugin: FastifyPluginAsync = async (fastify) => {
         },
         success_url: `${baseUrl}/membership?upgraded=true`,
         cancel_url: `${baseUrl}/membership?upgraded=false`,
-      })
+        ...(stripeCouponId ? { discounts: [{ coupon: stripeCouponId }] } : {}),
+      }
+
+      const session = await stripe.checkout.sessions.create(sessionParams)
+
+      // Record redemption after successful session creation
+      if (validatedPromoCodeId) {
+        await db.insert(sitePromoRedemptions).values({
+          userId: user.id,
+          promoCodeId: validatedPromoCodeId,
+          resultType: 'checkout_discount',
+          metadata: { stripeSessionId: session.id },
+        })
+      }
 
       return reply.send({ checkoutUrl: session.url, sessionId: session.id })
     } catch (error) {

@@ -127,6 +127,13 @@
       "when": 1774848000000,
       "tag": "0018_add_missing_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1775020800000,
+      "tag": "0019_add_site_promo_codes",
+      "breakpoints": true
     }
   ]
 }
