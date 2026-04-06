@@ -45,7 +45,7 @@
     "@types/jest": "^30.0.0",
     "@types/node": "^25",
     "@types/supertest": "^7.2.0",
-    "eslint": "^9.39.4",
+    "eslint": "^10.2.0",
     "jest": "^30.3.0",
     "playwright": "^1.58.2",
     "prettier": "^3.6.2",
