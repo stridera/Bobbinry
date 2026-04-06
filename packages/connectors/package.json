@@ -23,7 +23,7 @@
     "@bobbinry/types": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^25",
+"@types/node": "^25",
     "typescript": "6.0.1-rc"
   }
 }
