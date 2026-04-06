@@ -1,4 +1,7 @@
-import Stripe from 'stripe'
+import StripeSDK from 'stripe'
+// Stripe v22's CJS types don't re-export sub-types (Account, Event, etc.)
+// into the StripeConstructor namespace. Import the full type from the core module.
+import type { Stripe } from 'stripe/cjs/stripe.core.js'
 
 /**
  * Shared Stripe helpers — single source of truth for account creation,
@@ -9,7 +12,10 @@ import Stripe from 'stripe'
 export function getStripe(): Stripe | null {
   const key = process.env.STRIPE_SECRET_KEY
   if (!key) return null
-  return new Stripe(key)
+  // StripeSDK's CJS types declare a plain function instead of a class,
+  // but at runtime it is constructable. Cast to get proper typing.
+  const StripeClient = StripeSDK as unknown as new (key: string) => Stripe
+  return new StripeClient(key)
 }
 
 /** Extract period dates from a Stripe subscription (handles both legacy and items-based APIs). */

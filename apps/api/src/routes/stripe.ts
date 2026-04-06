@@ -1,5 +1,5 @@
 import { FastifyPluginAsync, FastifyInstance } from 'fastify'
-import Stripe from 'stripe'
+import type { Stripe } from 'stripe/cjs/stripe.core.js'
 import { db } from '../db/connection'
 import {
   subscriptions,
@@ -192,7 +192,7 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
       const baseUrl = process.env.WEB_ORIGIN || 'http://localhost:3100'
       const accountLink = await createOnboardingLink(
         stripe,
-        stripeAccountId,
+        stripeAccountId!,
         returnUrl || `${baseUrl}/settings/monetization?stripe=complete`,
         refreshUrl || `${baseUrl}/settings/monetization?stripe=refresh`
       )

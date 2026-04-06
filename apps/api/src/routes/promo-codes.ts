@@ -33,7 +33,7 @@ import {
 import { eq, and, desc, sql } from 'drizzle-orm'
 import { requireAuth, requireOwner, denyApiKeyAuth } from '../middleware/auth'
 import { getStripe } from '../lib/stripe'
-import type Stripe from 'stripe'
+import type { Stripe } from 'stripe/cjs/stripe.core.js'
 import {
   generateCampaignSecret,
   generateCampaignCodes,
