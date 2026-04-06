@@ -18,12 +18,11 @@ export function getStripe(): Stripe | null {
   return new StripeClient(key)
 }
 
-/** Extract period dates from a Stripe subscription (handles both legacy and items-based APIs). */
-export function getSubscriptionPeriod(sub: any): { start: Date; end: Date } {
-  const periodStart = sub.current_period_start
-    ?? sub.items?.data?.[0]?.current_period_start
-  const periodEnd = sub.current_period_end
-    ?? sub.items?.data?.[0]?.current_period_end
+/** Extract period dates from a Stripe subscription's first item. */
+export function getSubscriptionPeriod(sub: Stripe.Subscription): { start: Date; end: Date } {
+  const item = sub.items?.data?.[0]
+  const periodStart = item?.current_period_start
+  const periodEnd = item?.current_period_end
   return {
     start: periodStart ? new Date(periodStart * 1000) : new Date(),
     end: periodEnd ? new Date(periodEnd * 1000) : new Date(),
@@ -83,7 +82,7 @@ export async function createExpressAccount(
       ...(profileUrl ? { url: profileUrl } : {}),
       ...(profile?.bio ? { product_description: profile.bio } : {}),
     },
-  } as Stripe.AccountCreateParams)
+  })
 }
 
 /**
@@ -106,5 +105,5 @@ export async function createOnboardingLink(
       fields: 'currently_due',
       future_requirements: 'omit',
     },
-  } as Stripe.AccountLinkCreateParams)
+  })
 }
