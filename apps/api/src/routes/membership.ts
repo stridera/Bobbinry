@@ -17,7 +17,7 @@ import { eq, and, sql } from 'drizzle-orm'
 import { requireAuth } from '../middleware/auth'
 import { getUserMembershipTier, getUserBadges } from '../lib/membership'
 import { getStripe } from '../lib/stripe'
-import type Stripe from 'stripe'
+import type { Checkout } from 'stripe/cjs/resources/Checkout/Sessions.js'
 
 function isValidUUID(uuid: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid)
@@ -184,7 +184,7 @@ const membershipPlugin: FastifyPluginAsync = async (fastify) => {
         validatedPromoCodeId = code.id
       }
 
-      const sessionParams: Stripe.Checkout.SessionCreateParams = {
+      const sessionParams: Checkout.SessionCreateParams = {
         mode: 'subscription',
         customer: customerId,
         line_items: [{ price: priceId, quantity: 1 }],
