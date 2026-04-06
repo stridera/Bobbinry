@@ -665,6 +665,27 @@ function checkTsconfigExists(ctx: BobbinContext): Diagnostic[] {
   return [];
 }
 
+function checkTsconfigNoIncremental(ctx: BobbinContext): Diagnostic[] {
+  const tsconfigPath = path.join(ctx.dirPath, "tsconfig.json");
+  if (!fs.existsSync(tsconfigPath)) return [];
+  try {
+    const tsconfig = JSON.parse(fs.readFileSync(tsconfigPath, "utf8"));
+    const opts = tsconfig.compilerOptions || {};
+    // Bobbins that emit (noEmit: false) must disable incremental to avoid
+    // Vercel ENOENT crashes on tsconfig.tsbuildinfo during output tracing.
+    if (opts.noEmit === false && opts.incremental !== false) {
+      return [{
+        rule: "tsconfig-no-incremental",
+        message: "tsconfig has noEmit: false but missing incremental: false — Vercel deploys will fail",
+        severity: "error",
+      }];
+    }
+  } catch {
+    // Malformed tsconfig — other rules will catch it
+  }
+  return [];
+}
+
 function checkKebabCaseFiles(ctx: BobbinContext): Diagnostic[] {
   const diags: Diagnostic[] = [];
   const checkDirs = ["src/views", "src/panels", "views", "panels"];
@@ -804,6 +825,7 @@ const perBobbinRules = [
   checkViewFileExists,
   checkPanelIdNamespaced,
   checkTsconfigExists,
+  checkTsconfigNoIncremental,
   checkKebabCaseFiles,
   checkManifestVersionBumped,
 ];
