@@ -257,7 +257,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
       priceMonthly?: string
       priceYearly?: string
       benefits?: string[]
-      chapterDelayDays?: number | string
+      earlyAccessDays?: number | string
       tierLevel: number | string
     }
   }>('/users/:userId/subscription-tiers', {
@@ -283,7 +283,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
           priceMonthly: tierData.priceMonthly,
           priceYearly: tierData.priceYearly,
           benefits: tierData.benefits,
-          chapterDelayDays: Number(tierData.chapterDelayDays) || 0,
+          earlyAccessDays: Number(tierData.earlyAccessDays) || 0,
           tierLevel: Number(tierData.tierLevel),
           isActive: true
         })
@@ -343,7 +343,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
       priceMonthly?: string
       priceYearly?: string
       benefits?: string[]
-      chapterDelayDays?: number | string
+      earlyAccessDays?: number | string
       tierLevel?: number | string
       isActive?: boolean
     }
@@ -369,7 +369,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
           priceMonthly: tierData.priceMonthly,
           priceYearly: tierData.priceYearly,
           benefits: tierData.benefits,
-          ...(tierData.chapterDelayDays !== undefined ? { chapterDelayDays: Number(tierData.chapterDelayDays) } : {}),
+          ...(tierData.earlyAccessDays !== undefined ? { earlyAccessDays: Number(tierData.earlyAccessDays) } : {}),
           ...(tierData.tierLevel !== undefined ? { tierLevel: Number(tierData.tierLevel) } : {}),
           isActive: tierData.isActive,
           updatedAt: new Date()

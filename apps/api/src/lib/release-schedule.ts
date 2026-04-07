@@ -110,7 +110,7 @@ function nextMatchingSlot(after: Date, schedule: ProjectReleaseSchedule): Date |
   return null
 }
 
-export async function getProjectTierDelayInfo(projectId: string): Promise<{ maxDelayDays: number }> {
+export async function getProjectMaxEarlyAccessDays(projectId: string): Promise<{ maxEarlyAccessDays: number }> {
   const [project] = await db
     .select({ ownerId: projects.ownerId })
     .from(projects)
@@ -118,11 +118,11 @@ export async function getProjectTierDelayInfo(projectId: string): Promise<{ maxD
     .limit(1)
 
   if (!project) {
-    return { maxDelayDays: 0 }
+    return { maxEarlyAccessDays: 0 }
   }
 
   const tiers = await db
-    .select({ chapterDelayDays: subscriptionTiers.chapterDelayDays })
+    .select({ earlyAccessDays: subscriptionTiers.earlyAccessDays })
     .from(subscriptionTiers)
     .where(and(
       eq(subscriptionTiers.authorId, project.ownerId as any),
@@ -130,8 +130,14 @@ export async function getProjectTierDelayInfo(projectId: string): Promise<{ maxD
     ))
 
   return {
-    maxDelayDays: tiers.reduce((max, tier) => Math.max(max, tier.chapterDelayDays ?? 0), 0)
+    maxEarlyAccessDays: tiers.reduce((max, tier) => Math.max(max, tier.earlyAccessDays ?? 0), 0)
   }
+}
+
+/** @deprecated Use getProjectMaxEarlyAccessDays — kept for backward compat during migration */
+export async function getProjectTierDelayInfo(projectId: string): Promise<{ maxDelayDays: number }> {
+  const { maxEarlyAccessDays } = await getProjectMaxEarlyAccessDays(projectId)
+  return { maxDelayDays: maxEarlyAccessDays }
 }
 
 export async function getProjectReleaseSchedule(projectId: string): Promise<ProjectReleaseSchedule | null> {
@@ -211,8 +217,7 @@ export async function upsertScheduledChapterPublication(
   scheduledAt: Date,
   publishedVersion = '1.0'
 ) {
-  const { maxDelayDays } = await getProjectTierDelayInfo(projectId)
-  const publicReleaseDate = addDays(scheduledAt, maxDelayDays)
+  const publicReleaseDate = scheduledAt // public release = scheduled date
 
   const [existing] = await db
     .select()
@@ -262,8 +267,6 @@ export async function shiftFollowingScheduledChaptersUp(
   vacatedSlot: Date,
   options: { excludeChapterId?: string } = {}
 ) {
-  const { maxDelayDays } = await getProjectTierDelayInfo(projectId)
-
   const scheduledRows = await db
     .select({
       id: chapterPublications.id,
@@ -291,7 +294,7 @@ export async function shiftFollowingScheduledChaptersUp(
       .update(chapterPublications)
       .set({
         publishedAt: nextSlot,
-        publicReleaseDate: addDays(nextSlot, maxDelayDays),
+        publicReleaseDate: nextSlot,
         updatedAt: new Date(),
       })
       .where(eq(chapterPublications.id, row.id))

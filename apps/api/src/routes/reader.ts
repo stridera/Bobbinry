@@ -107,7 +107,7 @@ async function checkPublicChapterAccess(
         .select({
           tierId: subscriptions.tierId,
           status: subscriptions.status,
-          chapterDelayDays: subscriptionTiers.chapterDelayDays
+          earlyAccessDays: subscriptionTiers.earlyAccessDays
         })
         .from(subscriptions)
         .innerJoin(subscriptionTiers, eq(subscriptionTiers.id, subscriptions.tierId))
@@ -120,10 +120,10 @@ async function checkPublicChapterAccess(
         .limit(1)
 
       if (sub) {
-        // Subscriber: check if their tier delay has passed since publication
+        // Subscriber: can access chapters earlyAccessDays before the public release
         if (chapterPub.publishedAt) {
-          const delayMs = (sub.chapterDelayDays ?? 0) * 24 * 60 * 60 * 1000
-          const accessDate = new Date(chapterPub.publishedAt.getTime() + delayMs)
+          const earlyMs = (sub.earlyAccessDays ?? 0) * 24 * 60 * 60 * 1000
+          const accessDate = new Date(chapterPub.publishedAt.getTime() - earlyMs)
           const now = new Date()
           if (now >= accessDate) {
             return { canAccess: true }
@@ -183,7 +183,7 @@ async function checkMultipleChaptersAccess(
   let accessGrantMap = new Map<string, boolean>() // chapterId -> has grant (or project-wide grant)
   let hasProjectWideGrant = false
   let isOwner = false
-  let subscription: { chapterDelayDays: number | null } | null = null
+  let subscription: { earlyAccessDays: number | null } | null = null
 
   if (userId) {
     // Query 1: Beta readers for this project + user
@@ -248,7 +248,7 @@ async function checkMultipleChaptersAccess(
         // Query 4: Active subscription for this user -> project owner
         const [sub] = await db
           .select({
-            chapterDelayDays: subscriptionTiers.chapterDelayDays
+            earlyAccessDays: subscriptionTiers.earlyAccessDays
           })
           .from(subscriptions)
           .innerJoin(subscriptionTiers, eq(subscriptionTiers.id, subscriptions.tierId))
@@ -284,8 +284,8 @@ async function checkMultipleChaptersAccess(
     // Subscription tier-based access
     if (subscription) {
       if (ch.publishedAt) {
-        const delayMs = (subscription.chapterDelayDays ?? 0) * 24 * 60 * 60 * 1000
-        const accessDate = new Date(ch.publishedAt.getTime() + delayMs)
+        const earlyMs = (subscription.earlyAccessDays ?? 0) * 24 * 60 * 60 * 1000
+        const accessDate = new Date(ch.publishedAt.getTime() - earlyMs)
         if (now >= accessDate) {
           results.set(ch.chapterId, { canAccess: true })
           continue

@@ -19,10 +19,8 @@ import { eq, and, desc, sql } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { serverEventBus, contentPublished, contentStatusChange } from '../lib/event-bus'
 import {
-  addDays,
   getNextAvailableReleaseSlot,
   getProjectReleaseSchedule,
-  getProjectTierDelayInfo,
   shiftFollowingScheduledChaptersUp,
   upsertScheduledChapterPublication
 } from '../lib/release-schedule'
@@ -139,7 +137,7 @@ async function checkChapterAccess(
   // Check active subscription
   const [subscription] = await db
     .select({
-      chapterDelayDays: subscriptionTiers.chapterDelayDays
+      earlyAccessDays: subscriptionTiers.earlyAccessDays
     })
     .from(subscriptions)
     .innerJoin(subscriptionTiers, eq(subscriptions.tierId, subscriptionTiers.id))
@@ -155,8 +153,8 @@ async function checkChapterAccess(
 
   if (subscription) {
     if (chapterPub.publishedAt) {
-      const delayMs = (subscription.chapterDelayDays ?? 0) * 24 * 60 * 60 * 1000
-      const accessDate = new Date(chapterPub.publishedAt.getTime() + delayMs)
+      const earlyMs = (subscription.earlyAccessDays ?? 0) * 24 * 60 * 60 * 1000
+      const accessDate = new Date(chapterPub.publishedAt.getTime() - earlyMs)
       const now = new Date()
 
       if (now < accessDate) {
@@ -248,8 +246,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
         existing.publishedAt.getTime() > now.getTime()
           ? existing.publishedAt
           : null
-      const { maxDelayDays } = await getProjectTierDelayInfo(projectId)
-      const publicReleaseDate = addDays(baseReleaseDate, maxDelayDays)
+      const publicReleaseDate = baseReleaseDate // public release = publish date
 
       if (publishStatus === 'scheduled' && (!scheduledDate || Number.isNaN(scheduledDate.getTime()))) {
         return reply.status(400).send({ error: 'scheduledFor is required for scheduled publication', correlationId })

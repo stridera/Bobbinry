@@ -149,7 +149,7 @@ export default function ReleaseConfig({ sdk, projectId }: ReleaseConfigProps) {
               id: tier.id,
               name: tier.name || `Tier ${tier.tierLevel}`,
               tierLevel: Number(tier.tierLevel) || 0,
-              delayDays: Number(tier.chapterDelayDays) || 0,
+              delayDays: Number(tier.earlyAccessDays) || 0,
             }))
             .sort((a: TierDelay, b: TierDelay) => a.tierLevel - b.tierLevel)
         )

@@ -45,7 +45,7 @@ interface SubscriptionTier {
   priceMonthly: string | null
   priceYearly: string | null
   benefits: string[] | null
-  chapterDelayDays: number
+  earlyAccessDays: number
   tierLevel: number
 }
 
@@ -171,7 +171,7 @@ function ProjectReadingContent() {
   useEffect(() => {
     loadProject()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authorUsername, projectSlug])
+  }, [authorUsername, projectSlug, session?.user?.id])
 
   // Load follow status when project and session are ready
   useEffect(() => {
@@ -553,42 +553,74 @@ function ProjectReadingContent() {
           <p className="text-gray-500 dark:text-gray-400 italic">No published chapters yet.</p>
         ) : (
           <div className="space-y-1">
-            {toc.map((chapter, index) => (
-              <div key={chapter.id}>
-                {chapter.locked ? (
-                  <div className="flex items-center justify-between px-4 py-3 rounded-lg bg-gray-50 dark:bg-gray-900/30 opacity-60">
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm text-gray-400 dark:text-gray-500 w-8 text-right">{index + 1}</span>
-                      <span className="text-gray-500 dark:text-gray-400">{chapter.title || 'Untitled'}</span>
+            {toc.map((chapter, index) => {
+              if (chapter.locked) {
+                // Find the cheapest tier that could grant access
+                const cheapestTier = tiers.length > 0
+                  ? tiers.reduce((cheapest, t) => {
+                      const price = parseFloat(t.priceMonthly || '0')
+                      const cheapestPrice = parseFloat(cheapest.priceMonthly || '0')
+                      return price < cheapestPrice ? t : cheapest
+                    })
+                  : null
+
+                const showSubscribeCta = !subscribedTierId && !isOwnProject && cheapestTier
+
+                return (
+                  <div key={chapter.id} className="relative flex items-center justify-between px-4 py-3 rounded-lg bg-gray-50/80 dark:bg-gray-900/20 border border-gray-200/60 dark:border-gray-800/40">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-sm text-gray-300 dark:text-gray-600 w-8 text-right shrink-0">{index + 1}</span>
+                      <svg className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      </svg>
+                      <span className="text-gray-400 dark:text-gray-500 truncate">{chapter.title || 'Untitled'}</span>
                     </div>
-                    <span className="text-xs text-gray-400 dark:text-gray-500">
-                      {chapter.lockReason === 'subscription_required'
-                        ? 'Subscribe to read'
-                        : chapter.embargoUntil
-                          ? new Date(chapter.embargoUntil).toLocaleString()
-                          : 'Scheduled'}
+                    <div className="flex items-center gap-3 shrink-0 ml-3">
+                      {chapter.embargoUntil && (
+                        <span className="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline">
+                          {chapter.lockReason === 'subscription_required'
+                            ? 'Subscribers only'
+                            : new Date(chapter.embargoUntil).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                        </span>
+                      )}
+                      {showSubscribeCta && (
+                        <button
+                          onClick={scrollToSupport}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          {chapter.lockReason === 'subscription_required'
+                            ? `Subscribe — $${cheapestTier.priceMonthly}/mo`
+                            : `Read now — ${cheapestTier.name}`}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              }
+
+              return (
+                <Link
+                  key={chapter.id}
+                  href={`/read/${authorUsername}/${projectSlug}/${chapter.id}`}
+                  className="flex items-center justify-between px-4 py-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-900/30 transition-colors group"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-gray-400 dark:text-gray-500 w-8 text-right">{index + 1}</span>
+                    <span className="text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                      {chapter.title || 'Untitled'}
                     </span>
                   </div>
-                ) : (
-                  <Link
-                    href={`/read/${authorUsername}/${projectSlug}/${chapter.id}`}
-                    className="flex items-center justify-between px-4 py-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-900/30 transition-colors group"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm text-gray-400 dark:text-gray-500 w-8 text-right">{index + 1}</span>
-                      <span className="text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400">
-                        {chapter.title || 'Untitled'}
-                      </span>
-                    </div>
-                    {chapter.publishedAt && (
-                      <span className="text-xs text-gray-400 dark:text-gray-500">
-                        {new Date(chapter.publishedAt).toLocaleDateString()}
-                      </span>
-                    )}
-                  </Link>
-                )}
-              </div>
-            ))}
+                  {chapter.publishedAt && (
+                    <span className="text-xs text-gray-400 dark:text-gray-500">
+                      {new Date(chapter.publishedAt).toLocaleDateString()}
+                    </span>
+                  )}
+                </Link>
+              )
+            })}
           </div>
         )}
       </div>
@@ -664,7 +696,7 @@ function ProjectReadingContent() {
                     </ul>
                   )}
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    {tier.chapterDelayDays === 0 ? 'Immediate access' : `${tier.chapterDelayDays}d early access`}
+                    {tier.earlyAccessDays >= 99999 ? 'Instant access' : tier.earlyAccessDays === 0 ? 'Access on release day' : `${tier.earlyAccessDays}d early access`}
                   </p>
                   {subscribedTierId === tier.id ? (
                     <Link

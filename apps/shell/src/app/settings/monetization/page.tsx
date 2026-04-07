@@ -16,7 +16,7 @@ interface SubscriptionTier {
   priceMonthly: string | null
   priceYearly: string | null
   benefits: string[] | null
-  chapterDelayDays: number
+  earlyAccessDays: number
   tierLevel: number
   isActive: boolean
 }
@@ -45,7 +45,7 @@ const emptyTier = {
   priceMonthly: '',
   priceYearly: '',
   benefits: [] as string[],
-  chapterDelayDays: 0,
+  earlyAccessDays: 0,
   tierLevel: 1
 }
 
@@ -172,7 +172,7 @@ function MonetizationContent() {
         priceMonthly: editingTier.priceMonthly || undefined,
         priceYearly: editingTier.priceYearly || undefined,
         benefits: editingTier.benefits,
-        chapterDelayDays: String(editingTier.chapterDelayDays),
+        earlyAccessDays: String(editingTier.earlyAccessDays),
         tierLevel: String(editingTier.tierLevel)
       }
 
@@ -462,7 +462,7 @@ function MonetizationContent() {
                     ${tier.priceMonthly || '0'}/mo
                     {tier.priceYearly && ` | $${tier.priceYearly}/yr`}
                     {' | '}
-                    {tier.chapterDelayDays === 0 ? 'Immediate access' : `${tier.chapterDelayDays}d delay`}
+                    {tier.earlyAccessDays >= 99999 ? 'Instant access' : tier.earlyAccessDays === 0 ? 'Access on release day' : `${tier.earlyAccessDays}d early access`}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -474,7 +474,7 @@ function MonetizationContent() {
                       priceMonthly: tier.priceMonthly || '',
                       priceYearly: tier.priceYearly || '',
                       benefits: (tier.benefits as string[]) || [],
-                      chapterDelayDays: tier.chapterDelayDays,
+                      earlyAccessDays: tier.earlyAccessDays,
                       tierLevel: tier.tierLevel
                     })}
                     className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
@@ -499,8 +499,8 @@ function MonetizationContent() {
                 {editingTier.id ? 'Edit Tier' : 'New Tier'}
               </h3>
               <div className="space-y-3">
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
+                <div className="flex gap-3">
+                  <div className="flex-1">
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Name</label>
                     <input
                       type="text"
@@ -510,25 +510,93 @@ function MonetizationContent() {
                       placeholder="e.g. Supporter"
                     />
                   </div>
-                  <div>
+                  <div className="w-16">
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Level</label>
                     <input
                       type="number"
                       min="1"
                       value={editingTier.tierLevel}
                       onChange={e => setEditingTier({ ...editingTier, tierLevel: parseInt(e.target.value) || 1 })}
-                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900/50 text-gray-900 dark:text-gray-100 rounded-lg text-sm"
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900/50 text-gray-900 dark:text-gray-100 rounded-lg text-sm text-center"
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Chapter Delay (days)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={editingTier.chapterDelayDays}
-                      onChange={e => setEditingTier({ ...editingTier, chapterDelayDays: parseInt(e.target.value) || 0 })}
-                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900/50 text-gray-900 dark:text-gray-100 rounded-lg text-sm"
-                    />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Chapter Access</label>
+                  <div className="grid grid-cols-3 rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setEditingTier({ ...editingTier, earlyAccessDays: 0 })}
+                      className={`px-3 py-2.5 text-left transition-colors ${
+                        editingTier.earlyAccessDays === 0
+                          ? 'bg-gray-800 text-white dark:bg-gray-100 dark:text-gray-900'
+                          : 'bg-white dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                      }`}
+                    >
+                      <span className="block text-sm font-medium">Same as public</span>
+                      <span className={`block text-xs mt-0.5 ${
+                        editingTier.earlyAccessDays === 0
+                          ? 'text-gray-300 dark:text-gray-500'
+                          : 'text-gray-400 dark:text-gray-500'
+                      }`}>Read when everyone else does</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (editingTier.earlyAccessDays === 0 || editingTier.earlyAccessDays >= 99999) {
+                          setEditingTier({ ...editingTier, earlyAccessDays: 7 })
+                        }
+                      }}
+                      className={`px-3 py-2.5 text-left border-x border-gray-200 dark:border-gray-600 transition-colors ${
+                        editingTier.earlyAccessDays > 0 && editingTier.earlyAccessDays < 99999
+                          ? 'bg-gray-800 text-white dark:bg-gray-100 dark:text-gray-900'
+                          : 'bg-white dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                      }`}
+                    >
+                      <span className="block text-sm font-medium">
+                        {editingTier.earlyAccessDays > 0 && editingTier.earlyAccessDays < 99999 ? (
+                          <span className="inline-flex items-center gap-1">
+                            <input
+                              type="number"
+                              min="1"
+                              value={editingTier.earlyAccessDays}
+                              onChange={e => setEditingTier({ ...editingTier, earlyAccessDays: Math.max(1, parseInt(e.target.value) || 1) })}
+                              onClick={e => e.stopPropagation()}
+                              className="w-8 bg-transparent text-center font-medium outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
+                            days early
+                          </span>
+                        ) : (
+                          'Early access'
+                        )}
+                      </span>
+                      <span className={`block text-xs mt-0.5 ${
+                        editingTier.earlyAccessDays > 0 && editingTier.earlyAccessDays < 99999
+                          ? 'text-gray-300 dark:text-gray-500'
+                          : 'text-gray-400 dark:text-gray-500'
+                      }`}>Read before the public release</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingTier({ ...editingTier, earlyAccessDays: 99999 })}
+                      className={`px-3 py-2.5 text-left transition-colors ${
+                        editingTier.earlyAccessDays >= 99999
+                          ? 'bg-purple-600 text-white'
+                          : 'bg-white dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                      }`}
+                    >
+                      <span className="flex items-center gap-1 text-sm font-medium">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        Instant
+                      </span>
+                      <span className={`block text-xs mt-0.5 ${
+                        editingTier.earlyAccessDays >= 99999
+                          ? 'text-purple-200'
+                          : 'text-gray-400 dark:text-gray-500'
+                      }`}>Read the moment it&apos;s ready</span>
+                    </button>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">

@@ -41,7 +41,7 @@ interface SubscriptionTier {
   priceMonthly: string | null
   priceYearly: string | null
   benefits: string[] | null
-  chapterDelayDays: number
+  earlyAccessDays: number
   tierLevel: number
 }
 
@@ -694,11 +694,13 @@ function PublicProfileContent() {
                       </ul>
                     )}
                     <div className="mt-auto">
-                      {tier.chapterDelayDays === 0 ? (
-                        <p className="text-xs text-green-600 dark:text-green-400 mb-3">Immediate access to new chapters</p>
+                      {tier.earlyAccessDays >= 99999 ? (
+                        <p className="text-xs text-green-600 dark:text-green-400 mb-3">Instant access to all chapters</p>
+                      ) : tier.earlyAccessDays === 0 ? (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Access on release day</p>
                       ) : (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                          New chapters {tier.chapterDelayDays} day{tier.chapterDelayDays !== 1 ? 's' : ''} after release
+                        <p className="text-xs text-green-600 dark:text-green-400 mb-3">
+                          {tier.earlyAccessDays} day{tier.earlyAccessDays !== 1 ? 's' : ''} early access
                         </p>
                       )}
                       {subscribedTierId === tier.id ? (

@@ -90,7 +90,7 @@ export const subscriptionTiers = pgTable('subscription_tiers', {
   priceMonthly: decimal('price_monthly', { precision: 10, scale: 2 }), // Monthly price
   priceYearly: decimal('price_yearly', { precision: 10, scale: 2 }), // Yearly price
   benefits: jsonb('benefits'), // Array of benefit strings
-  chapterDelayDays: integer('chapter_delay_days').default(0).notNull(), // Delay in days for new content
+  earlyAccessDays: integer('early_access_days').default(0).notNull(), // Days of early access for subscribers (0 = same as public)
   tierLevel: integer('tier_level').notNull(), // For ordering: 1, 2, 3, etc.
   isActive: boolean('is_active').default(true).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),

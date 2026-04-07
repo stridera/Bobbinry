@@ -122,7 +122,7 @@ async function seedTestFollows() {
         priceMonthly: '3.00',
         priceYearly: '30.00',
         benefits: ['Early chapter access', 'Author updates'],
-        chapterDelayDays: 3,
+        earlyAccessDays: 3,
         tierLevel: 1,
         isActive: true
       },
@@ -133,7 +133,7 @@ async function seedTestFollows() {
         priceMonthly: '7.00',
         priceYearly: '70.00',
         benefits: ['Immediate chapter access', 'Bonus short stories', 'Discord role', 'Name in acknowledgments'],
-        chapterDelayDays: 0,
+        earlyAccessDays: 30,
         tierLevel: 2,
         isActive: true
       }

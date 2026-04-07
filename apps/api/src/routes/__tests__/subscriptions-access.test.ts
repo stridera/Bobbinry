@@ -27,7 +27,7 @@ describe('Subscriptions Access Control', () => {
       authorId: author.id,
       name: 'Supporter',
       tierLevel: 1,
-      chapterDelayDays: 0
+      earlyAccessDays: 0
     }).returning()
 
     await db.insert(subscriptions).values({
@@ -58,7 +58,7 @@ describe('Subscriptions Access Control', () => {
       authorId: author.id,
       name: 'Premium',
       tierLevel: 2,
-      chapterDelayDays: 0
+      earlyAccessDays: 0
     }).returning()
 
     await db.insert(subscriptions).values({

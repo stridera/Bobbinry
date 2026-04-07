@@ -7,38 +7,6 @@
 
 import type { ActionContext, ActionResult, ActionRuntimeHost } from '@bobbinry/action-runtime'
 
-async function getMaxTierDelayDays(projectId: string): Promise<number> {
-  const { db } = await import('../../../apps/api/src/db/connection')
-  const { projects, subscriptionTiers } = await import('../../../apps/api/src/db/schema')
-  const { eq, and } = await import('drizzle-orm')
-
-  const [project] = await db
-    .select({ ownerId: projects.ownerId })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1)
-
-  if (!project) {
-    return 0
-  }
-
-  const tiers = await db
-    .select({ chapterDelayDays: subscriptionTiers.chapterDelayDays })
-    .from(subscriptionTiers)
-    .where(and(
-      eq(subscriptionTiers.authorId, project.ownerId),
-      eq(subscriptionTiers.isActive, true)
-    ))
-
-  return tiers.reduce((max, tier) => Math.max(max, tier.chapterDelayDays ?? 0), 0)
-}
-
-function addDays(date: Date, days: number): Date {
-  const next = new Date(date)
-  next.setDate(next.getDate() + days)
-  return next
-}
-
 /**
  * Action: publishChapter
  * Make chapter available to readers based on access rules
@@ -72,10 +40,9 @@ export async function publishChapter(
     }
 
     const publishedAt = new Date()
-    const maxDelayDays = await getMaxTierDelayDays(context.projectId)
     const publicReleaseDate = embargoUntil
       ? new Date(embargoUntil)
-      : addDays(publishedAt, maxDelayDays)
+      : publishedAt // public release = publish date
 
     // Create or update chapter publication record
     const [publication] = await db

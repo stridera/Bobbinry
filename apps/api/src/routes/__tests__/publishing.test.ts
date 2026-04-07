@@ -94,14 +94,14 @@ describe('Publishing API', () => {
       expect(body.publication.publishStatus).toBe('published')
     })
 
-    it('uses the author tier delay for public release timing', async () => {
+    it('sets public release date equal to publish date (no delay offset)', async () => {
       const { user, project, token, chapter } = await setupPublishingScenario()
 
       await db.insert(subscriptionTiers).values({
         authorId: user.id,
         name: 'Supporter',
         tierLevel: 1,
-        chapterDelayDays: 30,
+        earlyAccessDays: 30,
         isActive: true
       })
 
@@ -116,8 +116,9 @@ describe('Publishing API', () => {
       expect([200, 201]).toContain(res.statusCode)
       const body = JSON.parse(res.payload)
       const publicReleaseDate = new Date(body.publication.publicReleaseDate).getTime()
-      const expectedMin = before + (29 * 24 * 60 * 60 * 1000)
-      expect(publicReleaseDate).toBeGreaterThan(expectedMin)
+      // publicReleaseDate should be approximately now (no delay added)
+      expect(publicReleaseDate).toBeGreaterThanOrEqual(before - 1000)
+      expect(publicReleaseDate).toBeLessThan(before + 5000)
     })
 
     it('blocks subscriber access until the scheduled release date', async () => {
@@ -126,9 +127,9 @@ describe('Publishing API', () => {
 
       const [tier] = await db.insert(subscriptionTiers).values({
         authorId: user.id,
-        name: 'Instant',
+        name: 'Basic',
         tierLevel: 1,
-        chapterDelayDays: 0,
+        earlyAccessDays: 0,
         isActive: true
       }).returning()
 
@@ -191,75 +192,79 @@ describe('Publishing API', () => {
       expect(publication!.lastPublishedAt).toBeTruthy()
     })
 
-    it('enforces reader access by subscription delay across tiers', async () => {
+    it('enforces early access by subscription tier for scheduled chapters', async () => {
       const { user, project, token, chapter } = await setupPublishingScenario()
-      const immediateReader = await createTestUser({ name: 'Immediate Reader' })
-      const delayedReader = await createTestUser({ name: 'Delayed Reader' })
+      const earlyReader = await createTestUser({ name: 'Early Access Reader' })
+      const basicReader = await createTestUser({ name: 'Basic Reader' })
       const publicReader = await createTestUser({ name: 'Public Reader' })
 
-      const [instantTier, delayedTier] = await db.insert(subscriptionTiers).values([
+      // High tier gets 30d early, low tier gets 7d early
+      const [earlyTier, basicTier] = await db.insert(subscriptionTiers).values([
         {
           authorId: user.id,
-          name: 'Instant Access',
+          name: 'Early Access',
           tierLevel: 2,
-          chapterDelayDays: 0,
+          earlyAccessDays: 30,
           isActive: true
         },
         {
           authorId: user.id,
-          name: 'Week Delay',
+          name: 'Basic',
           tierLevel: 1,
-          chapterDelayDays: 7,
+          earlyAccessDays: 7,
           isActive: true
         }
       ]).returning()
 
       await db.insert(subscriptions).values([
         {
-          subscriberId: immediateReader.id,
+          subscriberId: earlyReader.id,
           authorId: user.id,
-          tierId: instantTier!.id,
+          tierId: earlyTier!.id,
           status: 'active',
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
         },
         {
-          subscriberId: delayedReader.id,
+          subscriberId: basicReader.id,
           authorId: user.id,
-          tierId: delayedTier!.id,
+          tierId: basicTier!.id,
           status: 'active',
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
         }
       ])
 
+      // Schedule chapter 14 days from now
+      const scheduledFor = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
       const publishRes = await app.inject({
         method: 'POST',
         url: `/api/projects/${project.id}/chapters/${chapter.id}/publish`,
         headers: { authorization: `Bearer ${token}` },
-        payload: { publishStatus: 'published' }
+        payload: { publishStatus: 'scheduled', scheduledFor }
       })
 
       expect([200, 201]).toContain(publishRes.statusCode)
-      const publication = JSON.parse(publishRes.payload).publication
-      expect(publication.publicReleaseDate).toBeDefined()
 
-      const instantReaderRes = await app.inject({
+      // Early Access (30d early): accessDate = 14d from now - 30d = 16d ago → CAN access
+      const earlyReaderRes = await app.inject({
         method: 'GET',
-        url: `/api/public/projects/${project.id}/chapters/${chapter.id}?userId=${immediateReader.id}`
+        url: `/api/public/projects/${project.id}/chapters/${chapter.id}?userId=${earlyReader.id}`
       })
-      expect(instantReaderRes.statusCode).toBe(200)
-      expect(JSON.parse(instantReaderRes.payload).chapter.id).toBe(chapter.id)
+      expect(earlyReaderRes.statusCode).toBe(200)
+      expect(JSON.parse(earlyReaderRes.payload).chapter.id).toBe(chapter.id)
 
-      const delayedReaderRes = await app.inject({
+      // Basic (7d early): accessDate = 14d from now - 7d = 7d from now → BLOCKED
+      const basicReaderRes = await app.inject({
         method: 'GET',
-        url: `/api/public/projects/${project.id}/chapters/${chapter.id}?userId=${delayedReader.id}`
+        url: `/api/public/projects/${project.id}/chapters/${chapter.id}?userId=${basicReader.id}`
       })
-      expect(delayedReaderRes.statusCode).toBe(403)
-      const delayedPayload = JSON.parse(delayedReaderRes.payload)
-      expect(delayedPayload.error).toBe('Chapter not yet available for your tier')
-      expect(delayedPayload.embargoUntil).toBeDefined()
+      expect(basicReaderRes.statusCode).toBe(403)
+      const basicPayload = JSON.parse(basicReaderRes.payload)
+      expect(basicPayload.error).toBe('Chapter not yet available for your tier')
+      expect(basicPayload.embargoUntil).toBeDefined()
 
+      // Public reader: publicReleaseDate = 14d from now → BLOCKED
       const publicReaderRes = await app.inject({
         method: 'GET',
         url: `/api/public/projects/${project.id}/chapters/${chapter.id}?userId=${publicReader.id}`
