@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { config } from '@/lib/config'
 import { apiFetch } from '@/lib/api'
 import { SiteNav } from '@/components/SiteNav'
@@ -29,6 +30,8 @@ interface DiscoverProject {
   totalViews: number
   authorBadges?: string[]
   subscriberOnly?: boolean
+  collectionId?: string | null
+  collectionName?: string | null
 }
 
 interface DiscoverAuthor {
@@ -54,6 +57,7 @@ type AuthorSort = 'popular' | 'recent' | 'alphabetical'
 
 export default function ExplorePage() {
   const { data: session } = useSession()
+  const router = useRouter()
   const [activeTab, setActiveTab] = useState<ActiveTab>('stories')
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
@@ -490,6 +494,32 @@ export default function ExplorePage() {
                             </span>
                           )}
                         </div>
+
+                        {/* Collection */}
+                        {project.collectionName && project.collectionId && (
+                          <span
+                            role="link"
+                            tabIndex={0}
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              router.push(`/read/${project.authorUsername}/collection/${project.collectionId}`)
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                router.push(`/read/${project.authorUsername}/collection/${project.collectionId}`)
+                              }
+                            }}
+                            className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 flex items-center gap-1 hover:text-blue-500 dark:hover:text-blue-400 transition-colors cursor-pointer"
+                          >
+                            <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                            </svg>
+                            <span className="truncate">{project.collectionName}</span>
+                          </span>
+                        )}
 
                         {/* Author */}
                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1.5">

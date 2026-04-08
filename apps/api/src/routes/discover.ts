@@ -2,6 +2,8 @@ import { FastifyPluginAsync } from 'fastify'
 import { db } from '../db/connection'
 import {
   projects,
+  projectCollections,
+  projectCollectionMemberships,
   projectPublishConfig,
   userProfiles,
   userFollowers,
@@ -10,7 +12,7 @@ import {
   siteMemberships,
   userBadges,
 } from '../db/schema'
-import { eq, and, or, ilike, sql, desc, asc, count, countDistinct, isNull } from 'drizzle-orm'
+import { eq, and, or, ilike, sql, desc, asc, count, countDistinct, isNull, inArray } from 'drizzle-orm'
 
 const discoverPlugin: FastifyPluginAsync = async (fastify) => {
 
@@ -494,9 +496,58 @@ async function enrichProjects(rows: Array<{
     badgesByUser.set(b.userId, existing)
   }
 
+  // Batch-load collection memberships for all projects
+  const allMemberships = await db
+    .select({
+      projectId: projectCollectionMemberships.projectId,
+      collectionId: projectCollectionMemberships.collectionId,
+      collectionName: projectCollections.name,
+    })
+    .from(projectCollectionMemberships)
+    .innerJoin(projectCollections, eq(projectCollections.id, projectCollectionMemberships.collectionId))
+    .where(and(
+      inArray(projectCollectionMemberships.projectId, projectIds),
+      isNull(projectCollections.deletedAt),
+    ))
+
+  // Count published projects per collection to filter to 2+
+  const collectionIds = [...new Set(allMemberships.map(m => m.collectionId))]
+  const collPubCounts = new Map<string, number>()
+  if (collectionIds.length > 0) {
+    const counts = await db
+      .select({
+        collectionId: projectCollectionMemberships.collectionId,
+        count: count(),
+      })
+      .from(projectCollectionMemberships)
+      .innerJoin(projects, eq(projects.id, projectCollectionMemberships.projectId))
+      .innerJoin(projectPublishConfig, eq(projectPublishConfig.projectId, projects.id))
+      .where(and(
+        inArray(projectCollectionMemberships.collectionId, collectionIds),
+        isNull(projects.deletedAt),
+        eq(projectPublishConfig.publishingMode, 'live'),
+        sql`EXISTS (SELECT 1 FROM ${chapterPublications} WHERE ${chapterPublications.projectId} = ${projects.id} AND ${chapterPublications.isPublished} = true)`
+      ))
+      .groupBy(projectCollectionMemberships.collectionId)
+
+    for (const c of counts) {
+      collPubCounts.set(c.collectionId, Number(c.count))
+    }
+  }
+
+  // Build map: projectId -> collection info (only for collections with 2+ published projects)
+  const collectionByProject = new Map<string, { id: string; name: string }>()
+  for (const m of allMemberships) {
+    const pubCount = collPubCounts.get(m.collectionId) || 0
+    if (pubCount >= 2) {
+      collectionByProject.set(m.projectId, { id: m.collectionId, name: m.collectionName })
+    }
+  }
+
   return rows.map(row => {
     const tags = tagsByProject.get(row.id) || []
     const stats = statsByProject.get(row.id) || { chapterCount: 0, totalViews: 0 }
+    const coll = collectionByProject.get(row.id)
 
     return {
       id: row.id,
@@ -515,6 +566,8 @@ async function enrichProjects(rows: Array<{
       totalViews: stats.totalViews,
       authorBadges: badgesByUser.get(row.ownerId) || [],
       subscriberOnly: row.defaultVisibility === 'subscribers_only',
+      collectionId: coll?.id ?? null,
+      collectionName: coll?.name ?? null,
     }
   })
 }

@@ -14,6 +14,8 @@ import {
   betaReaders,
   accessGrants,
   projects,
+  projectCollections,
+  projectCollectionMemberships,
   projectPublishConfig,
   subscriptions,
   subscriptionTiers,
@@ -1241,9 +1243,55 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         .where(eq(projectPublishConfig.projectId, project.id))
         .limit(1)
 
+      // Look up qualifying collection (2+ published projects) for this project
+      let collectionInfo: {
+        id: string
+        name: string
+        description: string | null
+        coverImage: string | null
+        colorTheme: string | null
+        publishedProjectCount: number
+      } | null = null
+
+      const [collMatch] = await db
+        .select({
+          id: projectCollections.id,
+          name: projectCollections.name,
+          description: projectCollections.description,
+          coverImage: projectCollections.coverImage,
+          colorTheme: projectCollections.colorTheme,
+        })
+        .from(projectCollectionMemberships)
+        .innerJoin(projectCollections, eq(projectCollections.id, projectCollectionMemberships.collectionId))
+        .where(and(
+          eq(projectCollectionMemberships.projectId, project.id),
+          isNull(projectCollections.deletedAt),
+        ))
+        .limit(1)
+
+      if (collMatch) {
+        const [publishedCount] = await db
+          .select({ count: count() })
+          .from(projectCollectionMemberships)
+          .innerJoin(projects, eq(projects.id, projectCollectionMemberships.projectId))
+          .innerJoin(projectPublishConfig, eq(projectPublishConfig.projectId, projects.id))
+          .where(and(
+            eq(projectCollectionMemberships.collectionId, collMatch.id),
+            isNull(projects.deletedAt),
+            eq(projectPublishConfig.publishingMode, 'live'),
+            sql`EXISTS (SELECT 1 FROM ${chapterPublications} WHERE ${chapterPublications.projectId} = ${projects.id} AND ${chapterPublications.isPublished} = true)`
+          ))
+
+        const pubCount = Number(publishedCount?.count ?? 0)
+        if (pubCount >= 2) {
+          collectionInfo = { ...collMatch, publishedProjectCount: pubCount }
+        }
+      }
+
       return reply.send({
         project: { ...project, defaultVisibility: projPublishConfig?.defaultVisibility || 'public' },
         author,
+        collection: collectionInfo,
         correlationId
       })
     } catch (error) {
@@ -1332,10 +1380,178 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         ))
         .orderBy(desc(projects.createdAt))
 
-      return reply.send({ author, projects: publishedProjects, correlationId })
+      // Get collections that contain published projects (for grouping on author page)
+      const publishedIds = publishedProjects.map(p => p.id)
+      let collections: {
+        id: string
+        name: string
+        description: string | null
+        coverImage: string | null
+        colorTheme: string | null
+        projectIds: string[]
+      }[] = []
+
+      if (publishedIds.length > 0) {
+        const memberships = await db
+          .select({
+            collectionId: projectCollectionMemberships.collectionId,
+            projectId: projectCollectionMemberships.projectId,
+            orderIndex: projectCollectionMemberships.orderIndex,
+            name: projectCollections.name,
+            description: projectCollections.description,
+            coverImage: projectCollections.coverImage,
+            colorTheme: projectCollections.colorTheme,
+          })
+          .from(projectCollectionMemberships)
+          .innerJoin(projectCollections, eq(projectCollections.id, projectCollectionMemberships.collectionId))
+          .where(and(
+            inArray(projectCollectionMemberships.projectId, publishedIds),
+            isNull(projectCollections.deletedAt),
+          ))
+          .orderBy(asc(projectCollectionMemberships.orderIndex))
+
+        // Group by collection, only include those with 2+ published projects
+        const collMap = new Map<string, typeof memberships>()
+        for (const m of memberships) {
+          const list = collMap.get(m.collectionId) || []
+          list.push(m)
+          collMap.set(m.collectionId, list)
+        }
+
+        for (const [collId, members] of collMap) {
+          if (members.length >= 2) {
+            const first = members[0]!
+            collections.push({
+              id: collId,
+              name: first.name,
+              description: first.description,
+              coverImage: first.coverImage,
+              colorTheme: first.colorTheme,
+              projectIds: members.map(m => m.projectId),
+            })
+          }
+        }
+      }
+
+      return reply.send({ author, projects: publishedProjects, collections, correlationId })
     } catch (error) {
       fastify.log.error({ error, correlationId }, 'Failed to get author projects')
       return reply.status(500).send({ error: 'Failed to get author projects', correlationId })
+    }
+  })
+
+  // ============================================
+  // COLLECTIONS (public reader)
+  // ============================================
+
+  /**
+   * Get collection details and published projects for reader page
+   * GET /public/collections/by-author/:username/:collectionId
+   */
+  fastify.get<{
+    Params: { username: string; collectionId: string }
+  }>('/public/collections/by-author/:username/:collectionId', async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const { username, collectionId } = request.params
+
+      // Resolve author by username (same pattern as other public endpoints)
+      let [author] = await db
+        .select({
+          userId: userProfiles.userId,
+          username: userProfiles.username,
+          displayName: userProfiles.displayName,
+          avatarUrl: userProfiles.avatarUrl,
+          userName: users.name
+        })
+        .from(userProfiles)
+        .innerJoin(users, eq(users.id, userProfiles.userId))
+        .where(eq(userProfiles.username, username))
+        .limit(1)
+
+      if (!author) {
+        [author] = await db
+          .select({
+            userId: userProfiles.userId,
+            username: userProfiles.username,
+            displayName: userProfiles.displayName,
+            avatarUrl: userProfiles.avatarUrl,
+            userName: users.name
+          })
+          .from(userProfiles)
+          .innerJoin(users, eq(users.id, userProfiles.userId))
+          .where(eq(userProfiles.userId, username))
+          .limit(1)
+      }
+
+      // Last resort: check users table directly (no profile created yet)
+      if (!author) {
+        const [user] = await db
+          .select({ id: users.id, name: users.name })
+          .from(users)
+          .where(eq(users.id, username))
+          .limit(1)
+        if (user) {
+          author = { userId: user.id, username: null, displayName: null, avatarUrl: null, userName: user.name }
+        }
+      }
+
+      if (!author) {
+        return reply.status(404).send({ error: 'Author not found', correlationId })
+      }
+
+      // Fetch collection owned by this author
+      const [collection] = await db
+        .select({
+          id: projectCollections.id,
+          name: projectCollections.name,
+          description: projectCollections.description,
+          coverImage: projectCollections.coverImage,
+          colorTheme: projectCollections.colorTheme,
+        })
+        .from(projectCollections)
+        .where(and(
+          eq(projectCollections.id, collectionId),
+          eq(projectCollections.userId, author.userId),
+          isNull(projectCollections.deletedAt),
+        ))
+        .limit(1)
+
+      if (!collection) {
+        return reply.status(404).send({ error: 'Collection not found', correlationId })
+      }
+
+      // Fetch ordered published projects in this collection
+      const publishedProjects = await db
+        .select({
+          id: projects.id,
+          name: projects.name,
+          description: projects.description,
+          coverImage: projects.coverImage,
+          shortUrl: projects.shortUrl,
+          createdAt: projects.createdAt,
+          orderIndex: projectCollectionMemberships.orderIndex,
+        })
+        .from(projectCollectionMemberships)
+        .innerJoin(projects, eq(projects.id, projectCollectionMemberships.projectId))
+        .innerJoin(projectPublishConfig, eq(projectPublishConfig.projectId, projects.id))
+        .where(and(
+          eq(projectCollectionMemberships.collectionId, collection.id),
+          isNull(projects.deletedAt),
+          eq(projectPublishConfig.publishingMode, 'live'),
+          sql`EXISTS (SELECT 1 FROM ${chapterPublications} WHERE ${chapterPublications.projectId} = ${projects.id} AND ${chapterPublications.isPublished} = true)`
+        ))
+        .orderBy(asc(projectCollectionMemberships.orderIndex))
+
+      // Only expose collection if it has 2+ published projects
+      if (publishedProjects.length < 2) {
+        return reply.status(404).send({ error: 'Collection not found', correlationId })
+      }
+
+      return reply.send({ collection, author, projects: publishedProjects, correlationId })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to get public collection')
+      return reply.status(500).send({ error: 'Failed to get collection', correlationId })
     }
   })
 

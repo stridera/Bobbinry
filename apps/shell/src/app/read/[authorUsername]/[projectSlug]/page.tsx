@@ -49,6 +49,15 @@ interface SubscriptionTier {
   tierLevel: number
 }
 
+interface CollectionInfo {
+  id: string
+  name: string
+  description: string | null
+  coverImage: string | null
+  colorTheme: string | null
+  publishedProjectCount: number
+}
+
 export default function ProjectReadingPage() {
   return (
     <Suspense fallback={
@@ -92,6 +101,7 @@ function ProjectReadingContent() {
   const [muteLoading, setMuteLoading] = useState(false)
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly')
   const [justSubscribed, setJustSubscribed] = useState(false)
+  const [collection, setCollection] = useState<CollectionInfo | null>(null)
   const supportRef = useRef<HTMLDivElement>(null)
 
   const scrollToSupport = useCallback(() => {
@@ -234,6 +244,7 @@ function ProjectReadingContent() {
       const data = await res.json()
       setProject(data.project)
       setAuthor(data.author)
+      setCollection(data.collection || null)
 
       // Load TOC and tiers in parallel
       const uid = session?.user?.id
@@ -410,6 +421,7 @@ function ProjectReadingContent() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       <ReaderNav crumbs={[
         { label: authorName, href: `/read/${authorUsername}` },
+        ...(collection ? [{ label: collection.name, href: `/read/${authorUsername}/collection/${collection.id}` }] : []),
         { label: project.name }
       ]} />
 
@@ -435,7 +447,7 @@ function ProjectReadingContent() {
           />
         )}
         <div className="min-w-0">
-          <div className="flex items-center gap-3 mb-2">
+          <div className="flex items-center gap-3 mb-1">
             <h1 className="font-display text-3xl font-bold text-gray-900 dark:text-gray-100">
               {project.name}
             </h1>
@@ -445,10 +457,21 @@ function ProjectReadingContent() {
               </span>
             )}
           </div>
+          {collection && (
+            <Link
+              href={`/read/${authorUsername}/collection/${collection.id}`}
+              className="inline-flex items-center gap-1.5 mb-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+              Part of {collection.name} ({collection.publishedProjectCount} books)
+            </Link>
+          )}
           {author && (
             <Link
               href={author.username ? `/read/${author.username}` : '#'}
-              className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+              className="block text-sm text-blue-600 dark:text-blue-400 hover:underline"
             >
               by {authorName}
             </Link>
