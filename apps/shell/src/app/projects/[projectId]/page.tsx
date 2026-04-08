@@ -79,7 +79,7 @@ interface DashboardData {
     annotationAccess: string
     moderationMode: string
   }
-  annotationStats: {
+  annotationStats?: {
     open: number
     acknowledged: number
     resolved: number
@@ -272,14 +272,14 @@ export default function ProjectDashboardPage() {
                   {data.publishConfig.enableAnnotations ? `On (${data.publishConfig.annotationAccess.replace('_', ' ')})` : 'Disabled'}
                 </span>
               </div>
-              {data.annotationStats.total > 0 ? (
+              {(data.annotationStats?.total ?? 0) > 0 ? (
                 <>
                   <div className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">
-                    {data.annotationStats.open + data.annotationStats.acknowledged}
+                    {(data.annotationStats?.open ?? 0) + (data.annotationStats?.acknowledged ?? 0)}
                     <span className="text-sm font-normal text-gray-500 dark:text-gray-400 ml-1">open</span>
                   </div>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {data.annotationStats.total} total &middot; {data.annotationStats.resolved} resolved
+                    {data.annotationStats?.total ?? 0} total &middot; {data.annotationStats?.resolved ?? 0} resolved
                   </p>
                   <Link
                     href={`/projects/${projectId}/feedback`}
