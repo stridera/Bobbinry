@@ -30,6 +30,68 @@ import { env } from '../lib/env'
 import { optionalAuth } from '../middleware/auth'
 
 // ============================================
+// AUTHOR RESOLUTION
+// ============================================
+
+interface ResolvedAuthor {
+  userId: string
+  username: string | null
+  displayName: string | null
+  avatarUrl: string | null
+  bio: string | null
+  userName: string | null
+}
+
+/** Resolve a public author by username or user ID (3-step fallback). */
+async function resolveAuthor(identifier: string): Promise<ResolvedAuthor | null> {
+  // 1. Try by username
+  let [author] = await db
+    .select({
+      userId: userProfiles.userId,
+      username: userProfiles.username,
+      displayName: userProfiles.displayName,
+      avatarUrl: userProfiles.avatarUrl,
+      bio: userProfiles.bio,
+      userName: users.name,
+    })
+    .from(userProfiles)
+    .innerJoin(users, eq(users.id, userProfiles.userId))
+    .where(eq(userProfiles.username, identifier))
+    .limit(1)
+
+  // 2. Try as a user ID
+  if (!author) {
+    [author] = await db
+      .select({
+        userId: userProfiles.userId,
+        username: userProfiles.username,
+        displayName: userProfiles.displayName,
+        avatarUrl: userProfiles.avatarUrl,
+        bio: userProfiles.bio,
+        userName: users.name,
+      })
+      .from(userProfiles)
+      .innerJoin(users, eq(users.id, userProfiles.userId))
+      .where(eq(userProfiles.userId, identifier))
+      .limit(1)
+  }
+
+  // 3. Last resort: users table directly (no profile created yet)
+  if (!author) {
+    const [user] = await db
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(eq(users.id, identifier))
+      .limit(1)
+    if (user) {
+      return { userId: user.id, username: null, displayName: null, avatarUrl: null, bio: null, userName: user.name }
+    }
+  }
+
+  return author ?? null
+}
+
+// ============================================
 // ACCESS CONTROL
 // ============================================
 
@@ -1167,48 +1229,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
     try {
       const { username, projectSlug } = request.params
 
-      // Try username first, then fall back to user ID (UUID)
-      let [author] = await db
-        .select({
-          userId: userProfiles.userId,
-          username: userProfiles.username,
-          displayName: userProfiles.displayName,
-          avatarUrl: userProfiles.avatarUrl,
-          userName: users.name
-        })
-        .from(userProfiles)
-        .innerJoin(users, eq(users.id, userProfiles.userId))
-        .where(eq(userProfiles.username, username))
-        .limit(1)
-
-      // If not found by username, try as a user ID
-      if (!author) {
-        [author] = await db
-          .select({
-            userId: userProfiles.userId,
-            username: userProfiles.username,
-            displayName: userProfiles.displayName,
-            avatarUrl: userProfiles.avatarUrl,
-            userName: users.name
-          })
-          .from(userProfiles)
-          .innerJoin(users, eq(users.id, userProfiles.userId))
-          .where(eq(userProfiles.userId, username))
-          .limit(1)
-      }
-
-      // Last resort: check users table directly (no profile created yet)
-      if (!author) {
-        const [user] = await db
-          .select({ id: users.id, name: users.name })
-          .from(users)
-          .where(eq(users.id, username))
-          .limit(1)
-        if (user) {
-          author = { userId: user.id, username: null, displayName: null, avatarUrl: null, userName: user.name }
-        }
-      }
-
+      const author = await resolveAuthor(username)
       if (!author) {
         return reply.status(404).send({ error: 'Author not found', correlationId })
       }
@@ -1312,50 +1333,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
     try {
       const { username } = request.params
 
-      // Try username first, then fall back to user ID (UUID)
-      let [author] = await db
-        .select({
-          userId: userProfiles.userId,
-          username: userProfiles.username,
-          displayName: userProfiles.displayName,
-          avatarUrl: userProfiles.avatarUrl,
-          bio: userProfiles.bio,
-          userName: users.name
-        })
-        .from(userProfiles)
-        .innerJoin(users, eq(users.id, userProfiles.userId))
-        .where(eq(userProfiles.username, username))
-        .limit(1)
-
-      // If not found by username, try as a user ID
-      if (!author) {
-        [author] = await db
-          .select({
-            userId: userProfiles.userId,
-            username: userProfiles.username,
-            displayName: userProfiles.displayName,
-            avatarUrl: userProfiles.avatarUrl,
-            bio: userProfiles.bio,
-            userName: users.name
-          })
-          .from(userProfiles)
-          .innerJoin(users, eq(users.id, userProfiles.userId))
-          .where(eq(userProfiles.userId, username))
-          .limit(1)
-      }
-
-      // Last resort: check users table directly (no profile created yet)
-      if (!author) {
-        const [user] = await db
-          .select({ id: users.id, name: users.name })
-          .from(users)
-          .where(eq(users.id, username))
-          .limit(1)
-        if (user) {
-          author = { userId: user.id, username: null, displayName: null, avatarUrl: null, bio: null, userName: user.name }
-        }
-      }
-
+      const author = await resolveAuthor(username)
       if (!author) {
         return reply.status(404).send({ error: 'Author not found', correlationId })
       }
@@ -1455,47 +1433,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
     try {
       const { username, collectionId } = request.params
 
-      // Resolve author by username (same pattern as other public endpoints)
-      let [author] = await db
-        .select({
-          userId: userProfiles.userId,
-          username: userProfiles.username,
-          displayName: userProfiles.displayName,
-          avatarUrl: userProfiles.avatarUrl,
-          userName: users.name
-        })
-        .from(userProfiles)
-        .innerJoin(users, eq(users.id, userProfiles.userId))
-        .where(eq(userProfiles.username, username))
-        .limit(1)
-
-      if (!author) {
-        [author] = await db
-          .select({
-            userId: userProfiles.userId,
-            username: userProfiles.username,
-            displayName: userProfiles.displayName,
-            avatarUrl: userProfiles.avatarUrl,
-            userName: users.name
-          })
-          .from(userProfiles)
-          .innerJoin(users, eq(users.id, userProfiles.userId))
-          .where(eq(userProfiles.userId, username))
-          .limit(1)
-      }
-
-      // Last resort: check users table directly (no profile created yet)
-      if (!author) {
-        const [user] = await db
-          .select({ id: users.id, name: users.name })
-          .from(users)
-          .where(eq(users.id, username))
-          .limit(1)
-        if (user) {
-          author = { userId: user.id, username: null, displayName: null, avatarUrl: null, userName: user.name }
-        }
-      }
-
+      const author = await resolveAuthor(username)
       if (!author) {
         return reply.status(404).send({ error: 'Author not found', correlationId })
       }

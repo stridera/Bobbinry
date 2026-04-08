@@ -8,6 +8,7 @@ import { config } from '@/lib/config'
 import { apiFetch } from '@/lib/api'
 import { ReaderNav } from '@/components/ReaderNav'
 import { OptimizedImage } from '@/components/OptimizedImage'
+import { ReaderProjectCard } from '@/components/ReaderProjectCard'
 
 interface AuthorInfo {
   userId: string
@@ -196,87 +197,54 @@ export default function AuthorReadPage() {
   const uncategorizedProjects = projects.filter(p => !collectionProjectIds.has(p.id))
 
   const renderProjectCard = (project: PublishedProject, badge?: string) => (
-    <div
+    <ReaderProjectCard
       key={project.id}
-      className="group bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-md transition-all overflow-hidden"
+      href={`/read/${author.username}/${project.shortUrl}`}
+      name={project.name}
+      coverImage={project.coverImage}
+      description={project.description}
+      badge={badge}
     >
-      <Link href={`/read/${author.username}/${project.shortUrl}`}>
-        <div className="aspect-[16/9] bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 relative overflow-hidden">
-          {project.coverImage ? (
-            <OptimizedImage
-              src={project.coverImage}
-              variant="thumb"
-              alt={project.name}
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <span className="text-4xl font-bold text-blue-300 dark:text-blue-700 opacity-50">
-                {project.name.charAt(0).toUpperCase()}
-              </span>
-            </div>
-          )}
-          {badge && (
-            <span className="absolute top-2 left-2 bg-black/60 text-white text-xs font-medium px-2 py-0.5 rounded">
-              {badge}
+      {!isOwnPage && (
+        <div className="flex items-center gap-2 mt-3">
+          {isSubscribed ? (
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+              Subscribed
             </span>
+          ) : (
+            <>
+              {userId ? (
+                <button
+                  onClick={() => handleFollowProject(project.id)}
+                  className={`text-xs px-2.5 py-1 rounded-full transition-colors ${
+                    followedProjects.has(project.id)
+                      ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400'
+                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                  }`}
+                >
+                  {followedProjects.has(project.id) ? 'Following' : 'Follow'}
+                </button>
+              ) : (
+                <Link
+                  href="/login"
+                  className="text-xs px-2.5 py-1 rounded-full bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                >
+                  Follow
+                </Link>
+              )}
+              {hasPaidTiers && (
+                <Link
+                  href={`/read/${author.username}/${project.shortUrl}#support`}
+                  className="text-xs px-2.5 py-1 rounded-full bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+                >
+                  Subscribe
+                </Link>
+              )}
+            </>
           )}
         </div>
-      </Link>
-      <div className="p-4">
-        <Link href={`/read/${author.username}/${project.shortUrl}`}>
-          <h3 className="font-semibold text-gray-900 dark:text-gray-100 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-            {project.name}
-          </h3>
-        </Link>
-        {project.description && (
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
-            {project.description}
-          </p>
-        )}
-
-        {/* Follow / Subscribe buttons */}
-        {!isOwnPage && (
-          <div className="flex items-center gap-2 mt-3">
-            {isSubscribed ? (
-              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                Subscribed
-              </span>
-            ) : (
-              <>
-                {userId ? (
-                  <button
-                    onClick={() => handleFollowProject(project.id)}
-                    className={`text-xs px-2.5 py-1 rounded-full transition-colors ${
-                      followedProjects.has(project.id)
-                        ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400'
-                        : 'bg-blue-600 text-white hover:bg-blue-700'
-                    }`}
-                  >
-                    {followedProjects.has(project.id) ? 'Following' : 'Follow'}
-                  </button>
-                ) : (
-                  <Link
-                    href="/login"
-                    className="text-xs px-2.5 py-1 rounded-full bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-                  >
-                    Follow
-                  </Link>
-                )}
-                {hasPaidTiers && (
-                  <Link
-                    href={`/read/${author.username}/${project.shortUrl}#support`}
-                    className="text-xs px-2.5 py-1 rounded-full bg-purple-600 text-white hover:bg-purple-700 transition-colors"
-                  >
-                    Subscribe
-                  </Link>
-                )}
-              </>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
+      )}
+    </ReaderProjectCard>
   )
 
   return (
