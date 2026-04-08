@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
-import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
 import { OptimizedImage } from '@/components/OptimizedImage'
 
@@ -11,17 +10,26 @@ interface DashboardHeroProps {
   name: string
   description: string | null
   coverImage: string | null
-  readerUrl: string | null
   onUpdate: (updates: { name?: string; description?: string | null; coverImage?: string | null }) => void
 }
 
-export function DashboardHero({ projectId, name, description, coverImage, readerUrl, onUpdate }: DashboardHeroProps) {
+export function DashboardHero({ projectId, name, description, coverImage, onUpdate }: DashboardHeroProps) {
   const { data: session } = useSession()
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState(name)
   const [editDescription, setEditDescription] = useState(description || '')
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [viewingCover, setViewingCover] = useState(false)
+
+  useEffect(() => {
+    if (!viewingCover) return
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setViewingCover(false)
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [viewingCover])
 
   const handleSave = async () => {
     if (!editName.trim() || !session?.apiToken) return
@@ -111,6 +119,7 @@ export function DashboardHero({ projectId, name, description, coverImage, reader
   }
 
   return (
+    <>
     <div className="relative rounded-xl overflow-hidden shadow-sm border border-gray-200 dark:border-gray-700 animate-fade-in">
       {/* Cover image area */}
       <div
@@ -141,12 +150,20 @@ export function DashboardHero({ projectId, name, description, coverImage, reader
         {/* Cover image controls */}
         <div className="absolute top-3 right-3 flex gap-2">
           {coverImage && (
-            <button
-              onClick={handleRemoveCover}
-              className="px-3 py-1.5 bg-red-600/90 hover:bg-red-700 text-white text-xs rounded-lg backdrop-blur-sm transition-colors cursor-pointer"
-            >
-              Remove Cover
-            </button>
+            <>
+              <button
+                onClick={() => setViewingCover(true)}
+                className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white text-xs rounded-lg backdrop-blur-sm transition-colors cursor-pointer"
+              >
+                View
+              </button>
+              <button
+                onClick={handleRemoveCover}
+                className="px-3 py-1.5 bg-red-600/90 hover:bg-red-700 text-white text-xs rounded-lg backdrop-blur-sm transition-colors cursor-pointer"
+              >
+                Remove Cover
+              </button>
+            </>
           )}
           <label className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white text-xs rounded-lg backdrop-blur-sm transition-colors cursor-pointer">
             {uploading ? 'Uploading...' : coverImage ? 'Change Cover' : 'Add Cover'}
@@ -175,26 +192,13 @@ export function DashboardHero({ projectId, name, description, coverImage, reader
               autoFocus
             />
           ) : (
-            <div className="flex items-end justify-between gap-4">
-              <h1
-                className="font-display text-3xl font-bold text-white cursor-pointer hover:underline decoration-white/40"
-                onClick={() => setEditing(true)}
-                title="Click to edit"
-              >
-                {name}
-              </h1>
-              {readerUrl && (
-                <Link
-                  href={readerUrl}
-                  className="flex-shrink-0 px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white text-xs rounded-lg backdrop-blur-sm transition-colors flex items-center gap-1.5"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                  </svg>
-                  View Reader Page
-                </Link>
-              )}
-            </div>
+            <h1
+              className="font-display text-3xl font-bold text-white cursor-pointer hover:underline decoration-white/40"
+              onClick={() => setEditing(true)}
+              title="Click to edit"
+            >
+              {name}
+            </h1>
           )}
         </div>
       </div>
@@ -236,6 +240,31 @@ export function DashboardHero({ projectId, name, description, coverImage, reader
           </p>
         )}
       </div>
+
     </div>
+
+    {/* Cover lightbox — must be outside animate-fade-in container, which creates a containing block that traps fixed positioning */}
+    {coverImage && (
+      <div
+        className={`fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm transition-opacity duration-300 ${viewingCover ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        onClick={() => setViewingCover(false)}
+      >
+        <button
+          onClick={() => setViewingCover(false)}
+          className="absolute top-4 right-4 text-white/70 hover:text-white transition-colors cursor-pointer"
+        >
+          <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+        <OptimizedImage
+          src={coverImage}
+          variant="medium"
+          alt="Project cover"
+          className={`max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl transition-transform duration-300 ${viewingCover ? 'scale-100' : 'scale-95'}`}
+        />
+      </div>
+    )}
+    </>
   )
 }

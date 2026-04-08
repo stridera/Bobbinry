@@ -9,7 +9,6 @@ import { apiFetch } from '@/lib/api'
 import { DashboardHero } from './components/dashboard/DashboardHero'
 import { TagsEditor } from './components/dashboard/TagsEditor'
 import { ChapterOverview } from './components/dashboard/ChapterOverview'
-import { PublishingSettings } from './components/dashboard/PublishingSettings'
 import { ProjectManagement } from './components/dashboard/ProjectManagement'
 import { ExportProject } from './components/dashboard/ExportProject'
 
@@ -187,16 +186,44 @@ export default function ProjectDashboardPage() {
             <span className="text-gray-900 dark:text-gray-100">{data.project.name}</span>
           </div>
           <div className="flex items-center justify-between">
-            <h1 className="font-display text-2xl font-bold text-gray-900 dark:text-gray-100">Project Dashboard</h1>
-            <Link
-              href={`/projects/${projectId}/write`}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white rounded-lg font-medium text-sm transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-              Write
-            </Link>
+            <div className="flex items-center gap-3">
+              <h1 className="font-display text-2xl font-bold text-gray-900 dark:text-gray-100">Project Dashboard</h1>
+              {data.publishConfig.publishingMode === 'live' && (
+                <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
+                  Live
+                </span>
+              )}
+            </div>
+            <div className="flex items-center">
+              <div className="flex items-center gap-2">
+                {data.publishConfig.publishingMode === 'live' && data.authorUsername && data.project.shortUrl && (
+                  <Link
+                    href={`/read/${data.authorUsername}/${data.project.shortUrl}`}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg font-medium text-sm transition-colors"
+                  >
+                    Reader Page
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </Link>
+                )}
+                <Link
+                  href={`/publish/${projectId}`}
+                  className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg font-medium text-sm transition-colors"
+                >
+                  Publisher
+                </Link>
+              </div>
+              <Link
+                href={`/projects/${projectId}/write`}
+                className="inline-flex items-center gap-2 ml-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white rounded-lg font-medium text-sm transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Write
+              </Link>
+            </div>
           </div>
         </div>
       </header>
@@ -208,9 +235,6 @@ export default function ProjectDashboardPage() {
           name={data.project.name}
           description={data.project.description}
           coverImage={data.project.coverImage}
-          readerUrl={data.authorUsername && data.project.shortUrl
-            ? `/read/${data.authorUsername}/${data.project.shortUrl}`
-            : null}
           onUpdate={(updates) => {
             setData(prev => prev ? {
               ...prev,
@@ -324,13 +348,6 @@ export default function ProjectDashboardPage() {
             </div>
           </div>
         </div>
-
-        <PublishingSettings
-          projectId={projectId}
-          config={data.publishConfig}
-          authorUsername={data.authorUsername}
-          readerSlug={data.project.shortUrl}
-        />
 
         <ExportProject
           projectId={projectId}
