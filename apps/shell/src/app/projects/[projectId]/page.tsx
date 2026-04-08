@@ -46,6 +46,7 @@ interface DashboardData {
     collectionName: string
     commentCount: number
     reactionCount: number
+    annotationCount: number
     publication: {
       publishStatus: string
       publishedAt: string | null
@@ -74,7 +75,16 @@ interface DashboardData {
     ogImageUrl?: string
     enableComments: boolean
     enableReactions: boolean
+    enableAnnotations: boolean
+    annotationAccess: string
     moderationMode: string
+  }
+  annotationStats: {
+    open: number
+    acknowledged: number
+    resolved: number
+    dismissed: number
+    total: number
   }
   bobbins: Array<{
     id: string
@@ -225,6 +235,95 @@ export default function ProjectDashboardPage() {
             : null}
           onStatusChange={() => loadDashboard()}
         />
+
+        {/* Reader Engagement */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 animate-fade-in">
+          <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Reader Engagement</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Comments */}
+            <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Comments</h3>
+                <span className={`text-xs px-2 py-0.5 rounded-full ${data.publishConfig.enableComments ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'}`}>
+                  {data.publishConfig.enableComments ? 'Enabled' : 'Disabled'}
+                </span>
+              </div>
+              <div className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">
+                {data.chapters.reduce((sum, ch) => sum + ch.commentCount, 0)}
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                across {data.chapters.filter(ch => ch.commentCount > 0).length} chapters
+              </p>
+              {data.authorUsername && data.project.shortUrl && (
+                <Link
+                  href={`/read/${data.authorUsername}/${data.project.shortUrl}`}
+                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-2 inline-block"
+                >
+                  View on reader page &rarr;
+                </Link>
+              )}
+            </div>
+
+            {/* Feedback / Annotations */}
+            <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Feedback</h3>
+                <span className={`text-xs px-2 py-0.5 rounded-full ${data.publishConfig.enableAnnotations ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'}`}>
+                  {data.publishConfig.enableAnnotations ? `On (${data.publishConfig.annotationAccess.replace('_', ' ')})` : 'Disabled'}
+                </span>
+              </div>
+              {data.annotationStats.total > 0 ? (
+                <>
+                  <div className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">
+                    {data.annotationStats.open + data.annotationStats.acknowledged}
+                    <span className="text-sm font-normal text-gray-500 dark:text-gray-400 ml-1">open</span>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {data.annotationStats.total} total &middot; {data.annotationStats.resolved} resolved
+                  </p>
+                  <Link
+                    href={`/projects/${projectId}/feedback`}
+                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-2 inline-block"
+                  >
+                    View feedback dashboard &rarr;
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                    {data.publishConfig.enableAnnotations
+                      ? 'No feedback yet. Readers with access can select text and leave annotations.'
+                      : 'Let readers mark errors, suggest changes, and leave notes on your chapters.'}
+                  </p>
+                  {!data.publishConfig.enableAnnotations && (
+                    <Link
+                      href={`/publish/${projectId}`}
+                      className="text-xs text-blue-600 dark:text-blue-400 hover:underline inline-block mb-1"
+                    >
+                      Enable in Publisher &rarr;
+                    </Link>
+                  )}
+                  {data.publishConfig.enableAnnotations && data.bobbins.some(b => b.bobbinId === 'feedback') && (
+                    <Link
+                      href={`/projects/${projectId}/feedback`}
+                      className="text-xs text-blue-600 dark:text-blue-400 hover:underline inline-block"
+                    >
+                      View feedback dashboard &rarr;
+                    </Link>
+                  )}
+                  {data.publishConfig.enableAnnotations && !data.bobbins.some(b => b.bobbinId === 'feedback') && (
+                    <Link
+                      href={`/projects/${projectId}/bobbins`}
+                      className="text-xs text-blue-600 dark:text-blue-400 hover:underline inline-block"
+                    >
+                      Install feedback bobbin for editor integration &rarr;
+                    </Link>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
 
         <PublishingSettings
           projectId={projectId}

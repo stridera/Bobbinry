@@ -10,7 +10,8 @@ import {
   bobbinsInstalled,
   userProfiles,
   comments,
-  reactions
+  reactions,
+  chapterAnnotations
 } from '../db/schema'
 import { eq, and, sql } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
@@ -176,7 +177,9 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
         bobbinsResult,
         authorProfileResult,
         commentCountsResult,
-        reactionCountsResult
+        reactionCountsResult,
+        annotationStatsResult,
+        annotationCountsResult
       ] = await Promise.all([
         // 1. Project details
         db
@@ -294,7 +297,30 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
           .from(reactions)
           .innerJoin(entities, eq(entities.id, reactions.chapterId))
           .where(eq(entities.projectId, projectId))
-          .groupBy(reactions.chapterId)
+          .groupBy(reactions.chapterId),
+
+        // 11. Annotation stats (open/total)
+        db
+          .select({
+            status: chapterAnnotations.status,
+            count: sql<number>`count(*)::int`.as('count')
+          })
+          .from(chapterAnnotations)
+          .where(eq(chapterAnnotations.projectId, projectId))
+          .groupBy(chapterAnnotations.status),
+
+        // 12. Annotation counts per chapter (open + acknowledged only)
+        db
+          .select({
+            chapterId: chapterAnnotations.chapterId,
+            count: sql<number>`count(*)::int`.as('count')
+          })
+          .from(chapterAnnotations)
+          .where(and(
+            eq(chapterAnnotations.projectId, projectId),
+            sql`${chapterAnnotations.status} IN ('open', 'acknowledged')`
+          ))
+          .groupBy(chapterAnnotations.chapterId)
       ])
 
       const project = projectResult[0]
@@ -307,9 +333,10 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
       const totalCompletions = publicationsResult.reduce((sum, p) => sum + (p.completionCount ?? 0), 0)
       const publishedCount = publicationsResult.filter(p => p.publishStatus === 'published').length
 
-      // Build lookup maps for comment/reaction counts
+      // Build lookup maps for comment/reaction/annotation counts
       const commentCountMap = new Map(commentCountsResult.map(c => [c.chapterId, c.count]))
       const reactionCountMap = new Map(reactionCountsResult.map(r => [r.chapterId, r.count]))
+      const annotationCountMap = new Map(annotationCountsResult.map(a => [a.chapterId, a.count]))
 
       // Format chapters
       const chapters = chaptersResult.map(ch => {
@@ -321,6 +348,7 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
           collectionName: ch.collectionName,
           commentCount: commentCountMap.get(ch.id) ?? 0,
           reactionCount: reactionCountMap.get(ch.id) ?? 0,
+          annotationCount: annotationCountMap.get(ch.id) ?? 0,
           publication: ch.pubId ? {
             publishStatus: ch.publishStatus,
             publishedAt: ch.publishedAt,
@@ -370,6 +398,20 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
 
       const authorUsername = authorProfileResult[0]?.username || null
 
+      // Build annotation stats
+      const annotationStats = {
+        open: 0,
+        acknowledged: 0,
+        resolved: 0,
+        dismissed: 0,
+        total: 0
+      }
+      for (const row of annotationStatsResult) {
+        const key = row.status as keyof typeof annotationStats
+        if (key in annotationStats) annotationStats[key] = row.count
+        annotationStats.total += row.count
+      }
+
       return reply.send({
         project: {
           id: project.id,
@@ -394,6 +436,7 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
         scheduledReleases,
         publishConfig: config,
         bobbins,
+        annotationStats,
         correlationId
       })
     } catch (error) {

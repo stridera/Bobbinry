@@ -148,6 +148,13 @@
       "when": 1775366400000,
       "tag": "0021_add_discount_code_project_id",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1775539200000,
+      "tag": "0022_add_chapter_annotations",
+      "breakpoints": true
     }
   ]
 }

@@ -21,6 +21,7 @@
     "@bobbinry/discord-notifier": "workspace:*",
     "@bobbinry/discord-roles": "workspace:*",
     "@bobbinry/entities": "workspace:*",
+    "@bobbinry/feedback": "workspace:*",
     "@bobbinry/goals": "workspace:*",
     "@bobbinry/google-drive-backup": "workspace:*",
     "@bobbinry/manuscript": "workspace:*",

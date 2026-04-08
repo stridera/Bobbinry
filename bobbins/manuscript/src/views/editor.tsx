@@ -676,6 +676,107 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
     return () => window.removeEventListener('bobbinry:entity-updated', handleExternalRename)
   }, [entityId])
 
+  // --- Text focus: scroll editor to specific text when requested by any bobbin ---
+  // Dispatchers send: { quote: string, paragraphIndex?: number }
+  const editorRef = useRef(editor)
+  editorRef.current = editor
+
+  useEffect(() => {
+    function handleFocus(e: Event) {
+      const { quote, paragraphIndex } = (e as CustomEvent).detail
+      const ed = editorRef.current
+      if (!quote || !ed) return
+      const doc = ed.state.doc
+      let found = false
+
+      // Search for the quote text in the document
+      doc.descendants((node, pos) => {
+        if (found || !node.isText || !node.text) return
+        const idx = node.text.indexOf(quote)
+        if (idx !== -1) {
+          const from = pos + idx
+          const to = from + quote.length
+          ed.commands.setTextSelection({ from, to })
+          ed.commands.focus()
+
+          // Scroll into view
+          requestAnimationFrame(() => {
+            try {
+              const domAtPos = ed.view.domAtPos(from)
+              const targetNode = domAtPos.node instanceof HTMLElement
+                ? domAtPos.node
+                : domAtPos.node.parentElement
+              if (targetNode) {
+                targetNode.scrollIntoView({ behavior: 'smooth', block: 'center' })
+              }
+            } catch {
+              const coords = ed.view.coordsAtPos(from)
+              const scrollParent = ed.view.dom.closest('.overflow-y-auto')
+              if (scrollParent) {
+                const parentRect = scrollParent.getBoundingClientRect()
+                scrollParent.scrollTo({
+                  top: scrollParent.scrollTop + (coords.top - parentRect.top) - parentRect.height / 3,
+                  behavior: 'smooth'
+                })
+              }
+            }
+          })
+
+          found = true
+        }
+      })
+
+      // If not found by exact match, try searching block by paragraph index
+      if (!found && paragraphIndex != null) {
+        let blockIdx = 0
+        doc.descendants((node, pos) => {
+          if (found) return
+          if (node.isBlock && node.isTextblock) {
+            if (blockIdx === paragraphIndex) {
+              ed.chain()
+                .setTextSelection(pos + 1)
+                .scrollIntoView()
+                .run()
+              found = true
+            }
+            blockIdx++
+          }
+        })
+      }
+    }
+
+    window.addEventListener('bobbinry:editor-focus-text', handleFocus)
+    return () => window.removeEventListener('bobbinry:editor-focus-text', handleFocus)
+  }, [])
+
+  // --- Text replace: find and replace text in the live editor document ---
+  useEffect(() => {
+    function handleReplace(e: Event) {
+      const { find, replace } = (e as CustomEvent).detail
+      const ed = editorRef.current
+      if (!find || !replace || !ed) return
+
+      const doc = ed.state.doc
+      let replaced = false
+      doc.descendants((node, pos) => {
+        if (replaced || !node.isText || !node.text) return
+        const idx = node.text.indexOf(find)
+        if (idx !== -1) {
+          const from = pos + idx
+          const to = from + find.length
+          ed.chain()
+            .setTextSelection({ from, to })
+            .insertContent(replace)
+            .run()
+          replaced = true
+        }
+      })
+    }
+
+    window.addEventListener('bobbinry:editor-replace-text', handleReplace)
+    return () => window.removeEventListener('bobbinry:editor-replace-text', handleReplace)
+  }, [])
+
   // Focus and select title when creating new content
   useEffect(() => {
     if (!loading && metadata?.focusTitle && titleInputRef.current) {

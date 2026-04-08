@@ -235,6 +235,8 @@ export const projectPublishConfig = pgTable('project_publish_config', {
   ogImageUrl: text('og_image_url'),
   enableComments: boolean('enable_comments').default(true).notNull(),
   enableReactions: boolean('enable_reactions').default(true).notNull(),
+  enableAnnotations: boolean('enable_annotations').default(false).notNull(),
+  annotationAccess: varchar('annotation_access', { length: 50 }).default('beta_only').notNull(), // beta_only, subscribers, all_authenticated
   moderationMode: varchar('moderation_mode', { length: 50 }).default('open').notNull(), // open, approval_required, disabled
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull()
@@ -405,6 +407,35 @@ export const authorNotes = pgTable('author_notes', {
   updatedAt: timestamp('updated_at').defaultNow().notNull()
 }, (table) => ({
   chapterIdx: index('author_notes_chapter_idx').on(table.chapterId)
+}))
+
+// Chapter annotations - reader feedback anchored to text
+export const chapterAnnotations = pgTable('chapter_annotations', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  chapterId: uuid('chapter_id').notNull(), // FK to entities table
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  authorId: uuid('author_id').references(() => users.id, { onDelete: 'cascade' }).notNull(), // the reader who left the annotation
+  anchorParagraphIndex: integer('anchor_paragraph_index'), // 0-based block element index
+  anchorQuote: text('anchor_quote').notNull(), // exact selected text
+  anchorCharOffset: integer('anchor_char_offset'), // char offset within paragraph
+  anchorCharLength: integer('anchor_char_length'), // selection length
+  annotationType: varchar('annotation_type', { length: 50 }).notNull(), // error, suggestion, feedback
+  errorCategory: varchar('error_category', { length: 50 }), // typo, formatting, continuity, grammar, other
+  content: text('content').notNull(), // reader's note
+  suggestedText: text('suggested_text'), // for suggestions: proposed replacement
+  status: varchar('status', { length: 50 }).default('open').notNull(), // open, acknowledged, resolved, dismissed
+  authorResponse: text('author_response'), // project author's reply
+  resolvedAt: timestamp('resolved_at'),
+  resolvedBy: uuid('resolved_by').references(() => users.id),
+  chapterVersion: integer('chapter_version').notNull(), // entities.version at annotation time
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull()
+}, (table) => ({
+  chapterIdx: index('chapter_annotations_chapter_idx').on(table.chapterId),
+  projectIdx: index('chapter_annotations_project_idx').on(table.projectId),
+  authorIdx: index('chapter_annotations_author_idx').on(table.authorId),
+  statusIdx: index('chapter_annotations_status_idx').on(table.status),
+  projectStatusIdx: index('chapter_annotations_project_status_idx').on(table.projectId, table.status)
 }))
 
 // Content tags - genre, theme, metadata

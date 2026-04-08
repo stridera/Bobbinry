@@ -12,6 +12,7 @@ interface Chapter {
   collectionName: string
   commentCount: number
   reactionCount: number
+  annotationCount: number
   publication: {
     publishStatus: string
     publishedAt: string | null
@@ -93,8 +94,11 @@ export function ChapterOverview({ chapters, projectId, readerBaseUrl, onStatusCh
               <th className="text-right py-2 pr-4 text-gray-500 dark:text-gray-400 font-medium">
                 <span title="Reactions">Reactions</span>
               </th>
-              <th className="text-right py-2 text-gray-500 dark:text-gray-400 font-medium">
+              <th className="text-right py-2 pr-4 text-gray-500 dark:text-gray-400 font-medium">
                 <span title="Comments">Comments</span>
+              </th>
+              <th className="text-right py-2 text-gray-500 dark:text-gray-400 font-medium">
+                <span title="Open feedback annotations">Feedback</span>
               </th>
             </tr>
           </thead>
@@ -158,8 +162,31 @@ export function ChapterOverview({ chapters, projectId, readerBaseUrl, onStatusCh
                   <td className="py-2.5 pr-4 text-right text-gray-600 dark:text-gray-400 tabular-nums">
                     {chapter.reactionCount > 0 ? chapter.reactionCount.toLocaleString() : '-'}
                   </td>
-                  <td className="py-2.5 text-right text-gray-600 dark:text-gray-400 tabular-nums">
-                    {chapter.commentCount > 0 ? chapter.commentCount.toLocaleString() : '-'}
+                  <td className="py-2.5 pr-4 text-right tabular-nums">
+                    {chapter.commentCount > 0 && readerUrl ? (
+                      <a
+                        href={`${readerUrl}#comments`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 dark:text-blue-400 hover:underline"
+                      >
+                        {chapter.commentCount.toLocaleString()}
+                      </a>
+                    ) : (
+                      <span className="text-gray-600 dark:text-gray-400">{chapter.commentCount > 0 ? chapter.commentCount.toLocaleString() : '-'}</span>
+                    )}
+                  </td>
+                  <td className="py-2.5 text-right tabular-nums">
+                    {chapter.annotationCount > 0 ? (
+                      <Link
+                        href={`/projects/${projectId}/feedback?chapterId=${chapter.id}`}
+                        className="text-blue-600 dark:text-blue-400 hover:underline"
+                      >
+                        {chapter.annotationCount.toLocaleString()}
+                      </Link>
+                    ) : (
+                      <span className="text-gray-600 dark:text-gray-400">-</span>
+                    )}
                   </td>
                 </tr>
               )

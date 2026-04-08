@@ -30,6 +30,8 @@ interface PublishConfig {
   defaultVisibility: string
   enableComments: boolean
   enableReactions: boolean
+  enableAnnotations: boolean
+  annotationAccess: string
 }
 
 export function ProjectPublisherDashboard({
@@ -117,14 +119,14 @@ export function ProjectPublisherDashboard({
     }
   }
 
-  const updateReaderExperience = async (field: 'enableComments' | 'enableReactions', value: boolean) => {
+  const updateReaderExperience = async (field: string, value: boolean | string) => {
     try {
       await apiFetch(`/api/projects/${projectId}/publish-config`, apiToken, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [field]: value }),
       })
-      setPublishConfig((c) => c ? { ...c, [field]: value } : c)
+      setPublishConfig((c) => c ? { ...c, [field]: value } as PublishConfig : c)
     } catch {
       setMessage({ type: 'error', text: 'Failed to update reader experience.' })
     }
@@ -322,6 +324,29 @@ export function ProjectPublisherDashboard({
                       className="rounded border-gray-300 dark:border-gray-600"
                     />
                   </label>
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Feedback</span>
+                    <input
+                      type="checkbox"
+                      checked={publishConfig?.enableAnnotations ?? false}
+                      onChange={(e) => void updateReaderExperience('enableAnnotations', e.target.checked)}
+                      className="rounded border-gray-300 dark:border-gray-600"
+                    />
+                  </label>
+                  {publishConfig?.enableAnnotations && (
+                    <div className="flex items-center justify-between pl-4">
+                      <span className="text-xs text-gray-500 dark:text-gray-400">Who can give feedback</span>
+                      <select
+                        value={publishConfig?.annotationAccess || 'beta_only'}
+                        onChange={(e) => void updateReaderExperience('annotationAccess', e.target.value)}
+                        className="rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                      >
+                        <option value="beta_only">Beta readers only</option>
+                        <option value="subscribers">Subscribers</option>
+                        <option value="all_authenticated">All signed-in readers</option>
+                      </select>
+                    </div>
+                  )}
                 </div>
               </section>
             </div>

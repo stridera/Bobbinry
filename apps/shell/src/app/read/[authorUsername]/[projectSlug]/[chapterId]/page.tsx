@@ -8,6 +8,8 @@ import { getSanitizedHtmlProps } from '@bobbinry/sdk'
 import { config } from '@/lib/config'
 import { ReaderNav } from '@/components/ReaderNav'
 import { ExtensionSlot } from '@/components/ExtensionSlot'
+import { AnnotationSelectionPopover, type TextAnchor } from '@/components/AnnotationSelectionPopover'
+import { AnnotationForm } from '@/components/AnnotationForm'
 
 interface ChapterData {
   id: string
@@ -36,6 +38,22 @@ interface Comment {
   likeCount: number
   createdAt: string
   replies: Comment[]
+}
+
+interface Annotation {
+  id: string
+  anchorParagraphIndex: number | null
+  anchorQuote: string
+  anchorCharOffset: number | null
+  anchorCharLength: number | null
+  annotationType: string
+  errorCategory: string | null
+  content: string
+  suggestedText: string | null
+  status: string
+  authorResponse: string | null
+  chapterVersion: number
+  createdAt: string
 }
 
 type FontSize = 'small' | 'medium' | 'large' | 'xlarge'
@@ -193,6 +211,13 @@ export default function ChapterReaderPage() {
   const [error, setError] = useState<string | null>(null)
   const [embargoUntil, setEmbargoUntil] = useState<string | null>(null)
 
+  // Annotations
+  const [annotations, setAnnotations] = useState<Annotation[]>([])
+  const [canAnnotate, setCanAnnotate] = useState(false)
+  const [pendingAnchor, setPendingAnchor] = useState<TextAnchor | null>(null)
+  const [showAnnotationSidebar, setShowAnnotationSidebar] = useState(false)
+  const chapterContentRef = useRef<HTMLDivElement>(null)
+
   // Reading preferences — detect system theme as default
   const [fontSize, setFontSize] = useState<FontSize>('medium')
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>(() => {
@@ -257,6 +282,27 @@ export default function ChapterReaderPage() {
     loadChapter()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorUsername, projectSlug, chapterId])
+
+  // Load annotation access separately — session loads async after chapter
+  useEffect(() => {
+    if (!session?.apiToken || !projectId) return
+    const headers = { Authorization: `Bearer ${session.apiToken}` }
+
+    fetch(`${config.apiUrl}/api/public/projects/${projectId}/can-annotate`, { headers })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (!data) return
+        setCanAnnotate(data.canAnnotate)
+        if (data.canAnnotate) {
+          fetch(`${config.apiUrl}/api/public/chapters/${chapterId}/annotations`, { headers })
+            .then(res => res.ok ? res.json() : null)
+            .then(annData => {
+              if (annData) setAnnotations(annData.annotations || [])
+            })
+        }
+      })
+      .catch(() => {})
+  }, [session?.apiToken, projectId, chapterId])
 
   useEffect(() => {
     // Load remaining preferences from localStorage
@@ -345,6 +391,88 @@ export default function ChapterReaderPage() {
       saveOnLeave()  // Also fire on component unmount (SPA navigation)
     }
   }, [projectId, chapterId, session?.user?.id])
+
+  // Apply annotation highlights to rendered chapter content
+  const applyHighlights = useCallback(() => {
+    const proseEl = chapterContentRef.current
+    if (!proseEl || annotations.length === 0) return
+
+    // Skip if already applied (check for existing marks)
+    if (proseEl.querySelectorAll('mark[data-annotation-id]').length > 0) return
+
+    // Clean up previous highlights (safety)
+    proseEl.querySelectorAll('mark[data-annotation-id]').forEach(el => {
+      const parent = el.parentNode
+      if (parent) {
+        parent.replaceChild(document.createTextNode(el.textContent || ''), el)
+        parent.normalize()
+      }
+    })
+
+    // Theme-aware highlight colors (inline styles, not Tailwind dark: which doesn't match reader theme)
+    const dark = readerTheme === 'dark'
+    const highlightColors = {
+      error: dark ? 'rgba(239,68,68,0.2)' : 'rgba(239,68,68,0.15)',
+      suggestion: dark ? 'rgba(59,130,246,0.2)' : 'rgba(59,130,246,0.15)',
+      feedback: dark ? 'rgba(234,179,8,0.2)' : 'rgba(234,179,8,0.15)'
+    }
+
+    // Apply new highlights
+    const blocks = proseEl.querySelectorAll('p, h1, h2, h3, h4, h5, h6, blockquote, li, pre')
+    for (const ann of annotations) {
+      if (ann.anchorParagraphIndex == null) continue
+      const block = blocks[ann.anchorParagraphIndex]
+      if (!block) continue
+
+      const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT)
+      let charCount = 0
+      let node: Text | null
+      while ((node = walker.nextNode() as Text | null)) {
+        const nodeText = node.textContent || ''
+        const quoteStart = nodeText.indexOf(ann.anchorQuote, Math.max(0, (ann.anchorCharOffset ?? 0) - charCount))
+
+        if (quoteStart !== -1) {
+          const range = document.createRange()
+          range.setStart(node, quoteStart)
+          range.setEnd(node, quoteStart + ann.anchorQuote.length)
+
+          const mark = document.createElement('mark')
+          mark.setAttribute('data-annotation-id', ann.id)
+          mark.style.backgroundColor = highlightColors[ann.annotationType as keyof typeof highlightColors] || highlightColors.feedback
+          mark.style.borderRadius = '2px'
+          mark.style.cursor = 'pointer'
+          // Inherit text color from parent so it stays readable
+          mark.style.color = 'inherit'
+          mark.title = `${ann.annotationType}: ${ann.content}`
+
+          range.surroundContents(mark)
+          break
+        }
+        charCount += nodeText.length
+      }
+    }
+
+  }, [annotations, readerTheme])
+
+  // Apply highlights when annotations or chapter change
+  useEffect(() => {
+    applyHighlights()
+  }, [applyHighlights, chapter])
+
+  // Re-apply highlights when React re-renders the content (e.g., tab focus/blur)
+  useEffect(() => {
+    const proseEl = chapterContentRef.current
+    if (!proseEl || annotations.length === 0) return
+
+    const observer = new MutationObserver(() => {
+      // React re-rendered the innerHTML, wiping our marks — reapply
+      if (proseEl.querySelectorAll('mark[data-annotation-id]').length === 0) {
+        applyHighlights()
+      }
+    })
+    observer.observe(proseEl, { childList: true })
+    return () => observer.disconnect()
+  }, [annotations, applyHighlights])
 
   const loadChapter = async () => {
     setLoading(true)
@@ -465,6 +593,55 @@ export default function ChapterReaderPage() {
         }
       }
     } catch {}
+  }
+
+  const submitAnnotation = async (data: {
+    anchor: TextAnchor
+    annotationType: string
+    errorCategory?: string
+    content: string
+    suggestedText?: string
+  }) => {
+    if (!session?.apiToken || !projectId) return
+    const res = await fetch(`${config.apiUrl}/api/public/chapters/${chapterId}/annotations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.apiToken}`
+      },
+      body: JSON.stringify({
+        projectId,
+        anchorParagraphIndex: data.anchor.paragraphIndex,
+        anchorQuote: data.anchor.quote,
+        anchorCharOffset: data.anchor.charOffset,
+        anchorCharLength: data.anchor.charLength,
+        annotationType: data.annotationType,
+        errorCategory: data.errorCategory,
+        content: data.content,
+        suggestedText: data.suggestedText,
+        chapterVersion: 1 // TODO: track actual entity version
+      })
+    })
+    if (res.ok) {
+      setPendingAnchor(null)
+      // Reload annotations
+      const annRes = await fetch(`${config.apiUrl}/api/public/chapters/${chapterId}/annotations`, {
+        headers: { Authorization: `Bearer ${session.apiToken}` }
+      })
+      if (annRes.ok) {
+        const annData = await annRes.json()
+        setAnnotations(annData.annotations || [])
+      }
+    }
+  }
+
+  const deleteAnnotation = async (annotationId: string) => {
+    if (!session?.apiToken) return
+    await fetch(`${config.apiUrl}/api/public/chapters/${chapterId}/annotations/${annotationId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${session.apiToken}` }
+    })
+    setAnnotations(prev => prev.filter(a => a.id !== annotationId))
   }
 
   if (loading) {
@@ -594,6 +771,23 @@ export default function ChapterReaderPage() {
                 </svg>
               </button>
             )}
+            {/* Annotation sidebar toggle */}
+            {canAnnotate && (
+              <button
+                onClick={() => setShowAnnotationSidebar(!showAnnotationSidebar)}
+                className={`p-1.5 rounded ${hoverBg} transition-colors relative`}
+                title={showAnnotationSidebar ? 'Hide feedback panel' : 'Show feedback panel'}
+              >
+                <svg className={`w-4 h-4 ${showAnnotationSidebar ? 'text-blue-500' : mutedText}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+                </svg>
+                {annotations.length > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 text-[9px] font-bold rounded-full bg-blue-600 text-white flex items-center justify-center">
+                    {annotations.length}
+                  </span>
+                )}
+              </button>
+            )}
             {/* Settings toggle */}
             <button
               onClick={() => setShowSettings(!showSettings)}
@@ -658,131 +852,206 @@ export default function ChapterReaderPage() {
         )}
       </div>
 
-      {/* Chapter content */}
-      <div ref={contentRef} className={`${WIDTHS[readerWidth]} mx-auto px-4 py-8`}>
-        <h1 className="font-display text-3xl font-bold mb-6">{chapter.title}</h1>
+      {/* Chapter content + annotation sidebar layout */}
+      <div className="flex justify-center">
+        <div ref={contentRef} className={`${WIDTHS[readerWidth]} flex-1 min-w-0 px-4 py-8`}>
+          <h1 className="font-display text-3xl font-bold mb-6">{chapter.title}</h1>
 
-        <div
-          className={`${FONT_SIZES[fontSize]} prose ${proseClass} max-w-none`}
-          dangerouslySetInnerHTML={getSanitizedHtmlProps(chapter.content)}
-        />
+          <div
+            ref={chapterContentRef}
+            className={`${FONT_SIZES[fontSize]} prose ${proseClass} max-w-none`}
+            dangerouslySetInnerHTML={getSanitizedHtmlProps(chapter.content)}
+          />
 
-        {/* Reactions — only show if user is signed in or there are existing reactions */}
-        {(session?.user || reactions.some(r => r.count > 0)) && (
-          <div className={`mt-12 pt-6 border-t ${borderColor}`}>
-            <div className="flex flex-wrap gap-2">
-              {session?.user ? (
-                Object.entries(REACTION_EMOJIS).map(([type, emoji]) => {
-                  const count = reactions.find(r => r.reactionType === type)?.count ?? 0
-                  return (
-                    <button
-                      key={type}
-                      onClick={() => toggleReaction(type)}
-                      className={`px-3 py-1.5 rounded-full border text-sm transition-colors ${
-                        count > 0
-                          ? isDark ? 'border-blue-800 bg-blue-950/30' : 'border-blue-200 bg-blue-50'
-                          : `${borderColor} ${hoverBg}`
+          {/* Annotation selection popover */}
+          {canAnnotate && (
+            <AnnotationSelectionPopover
+              contentRef={contentRef}
+              onAnnotate={setPendingAnchor}
+              isDark={isDark}
+              isSepia={isSepia}
+            />
+          )}
+
+          {/* Annotation form modal */}
+          {pendingAnchor && (
+            <AnnotationForm
+              anchor={pendingAnchor}
+              onSubmit={submitAnnotation}
+              onClose={() => setPendingAnchor(null)}
+              isDark={isDark}
+              isSepia={isSepia}
+            />
+          )}
+
+          {/* Reactions — only show if user is signed in or there are existing reactions */}
+          {(session?.user || reactions.some(r => r.count > 0)) && (
+            <div className={`mt-12 pt-6 border-t ${borderColor}`}>
+              <div className="flex flex-wrap gap-2">
+                {session?.user ? (
+                  Object.entries(REACTION_EMOJIS).map(([type, emoji]) => {
+                    const count = reactions.find(r => r.reactionType === type)?.count ?? 0
+                    return (
+                      <button
+                        key={type}
+                        onClick={() => toggleReaction(type)}
+                        className={`px-3 py-1.5 rounded-full border text-sm transition-colors ${
+                          count > 0
+                            ? isDark ? 'border-blue-800 bg-blue-950/30' : 'border-blue-200 bg-blue-50'
+                            : `${borderColor} ${hoverBg}`
+                        }`}
+                      >
+                        {emoji} {count > 0 && count}
+                      </button>
+                    )
+                  })
+                ) : (
+                  reactions.filter(r => r.count > 0).map(r => (
+                    <span
+                      key={r.reactionType}
+                      className={`px-3 py-1.5 rounded-full border text-sm ${
+                        isDark ? 'border-blue-800 bg-blue-950/30' : 'border-blue-200 bg-blue-50'
                       }`}
                     >
-                      {emoji} {count > 0 && count}
-                    </button>
-                  )
-                })
-              ) : (
-                reactions.filter(r => r.count > 0).map(r => (
-                  <span
-                    key={r.reactionType}
-                    className={`px-3 py-1.5 rounded-full border text-sm ${
-                      isDark ? 'border-blue-800 bg-blue-950/30' : 'border-blue-200 bg-blue-50'
-                    }`}
+                      {REACTION_EMOJIS[r.reactionType] || r.reactionType} {r.count}
+                    </span>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Reader bobbin after-chapter panels */}
+          <ExtensionSlot
+            slotId="reader.afterChapter"
+            context={{ chapterId, projectId, readerTheme }}
+            className={`mt-8 pt-6 border-t ${borderColor} space-y-4`}
+            fallback={null}
+          />
+
+          {/* Navigation */}
+          <div className="mt-8 flex justify-between">
+            {nav.previous ? (
+              <Link
+                href={`${basePath}/${nav.previous}`}
+                className={`text-sm ${linkColor} hover:underline`}
+              >
+                &larr; Previous Chapter
+              </Link>
+            ) : <div />}
+            {nav.next ? (
+              <Link
+                href={`${basePath}/${nav.next}`}
+                className={`text-sm ${linkColor} hover:underline`}
+              >
+                Next Chapter &rarr;
+              </Link>
+            ) : <div />}
+          </div>
+
+          {/* Comments */}
+          <div className={`mt-12 pt-6 border-t ${borderColor}`}>
+            <h2 className="font-display text-lg font-semibold mb-4">Comments ({commentsList.length})</h2>
+
+            {/* New comment */}
+            {session?.user ? (
+              <div className="mb-6">
+                <textarea
+                  value={newComment}
+                  onChange={e => setNewComment(e.target.value)}
+                  placeholder="Share your thoughts..."
+                  rows={3}
+                  className={`w-full px-3 py-2 border ${borderColor} bg-transparent rounded-lg text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
+                />
+                <div className="flex justify-end mt-2">
+                  <button
+                    onClick={() => postComment()}
+                    disabled={!newComment.trim()}
+                    className="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors disabled:opacity-50"
                   >
-                    {REACTION_EMOJIS[r.reactionType] || r.reactionType} {r.count}
-                  </span>
-                ))
+                    Comment
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className={`text-sm ${mutedText} mb-6`}>
+                <Link href="/login" className={`${linkColor} hover:underline`}>Sign in</Link> to comment.
+              </p>
+            )}
+
+            {/* Threaded comment list */}
+            <div className="space-y-4">
+              {commentsList.map(comment => (
+                <CommentThread
+                  key={comment.id}
+                  comment={comment}
+                  depth={0}
+                  isDark={isDark}
+                  isSepia={isSepia}
+                  mutedText={mutedText}
+                  borderColor={borderColor}
+                  isLoggedIn={!!session?.user}
+                  replyingTo={replyingTo}
+                  replyContent={replyContent}
+                  onSetReplyingTo={setReplyingTo}
+                  onSetReplyContent={setReplyContent}
+                  onPostReply={postComment}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Annotation sidebar */}
+        {canAnnotate && showAnnotationSidebar && (
+          <div className={`w-72 flex-shrink-0 border-l ${borderColor} overflow-y-auto max-h-screen sticky top-8 hidden lg:block`}>
+            <div className="p-3">
+              <h3 className="text-sm font-semibold mb-3">Your Feedback ({annotations.length})</h3>
+              {annotations.length === 0 ? (
+                <p className={`text-xs ${mutedText}`}>Select text in the chapter to add feedback.</p>
+              ) : (
+                <div className="space-y-2">
+                  {annotations.map(ann => (
+                    <div
+                      key={ann.id}
+                      className={`p-2 rounded border text-xs ${isDark ? 'border-gray-700 bg-gray-800/50' : isSepia ? 'border-amber-200 bg-amber-100/50' : 'border-gray-200 bg-gray-50'}`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className={`font-medium px-1.5 py-0.5 rounded text-[10px] ${
+                          ann.annotationType === 'error' ? 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300'
+                            : ann.annotationType === 'suggestion' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
+                              : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300'
+                        }`}>
+                          {ann.annotationType}{ann.errorCategory ? `: ${ann.errorCategory}` : ''}
+                        </span>
+                        <span className={`text-[10px] ${mutedText}`}>
+                          {ann.status}
+                        </span>
+                      </div>
+                      <div className={`italic ${mutedText} line-clamp-2 mb-1`}>
+                        &ldquo;{ann.anchorQuote}&rdquo;
+                      </div>
+                      <div className="mb-1.5">{ann.content}</div>
+                      {ann.authorResponse && (
+                        <div className={`pl-2 border-l-2 ${isDark ? 'border-blue-700' : 'border-blue-300'} ${mutedText} mt-1`}>
+                          <span className="font-medium">Author:</span> {ann.authorResponse}
+                        </div>
+                      )}
+                      {ann.status === 'open' && (
+                        <button
+                          onClick={() => deleteAnnotation(ann.id)}
+                          className={`text-[10px] ${mutedText} hover:text-red-500 mt-1`}
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </div>
         )}
-
-        {/* Reader bobbin after-chapter panels */}
-        <ExtensionSlot
-          slotId="reader.afterChapter"
-          context={{ chapterId, projectId, readerTheme }}
-          className={`mt-8 pt-6 border-t ${borderColor} space-y-4`}
-          fallback={null}
-        />
-
-        {/* Navigation */}
-        <div className="mt-8 flex justify-between">
-          {nav.previous ? (
-            <Link
-              href={`${basePath}/${nav.previous}`}
-              className={`text-sm ${linkColor} hover:underline`}
-            >
-              &larr; Previous Chapter
-            </Link>
-          ) : <div />}
-          {nav.next ? (
-            <Link
-              href={`${basePath}/${nav.next}`}
-              className={`text-sm ${linkColor} hover:underline`}
-            >
-              Next Chapter &rarr;
-            </Link>
-          ) : <div />}
-        </div>
-
-        {/* Comments */}
-        <div className={`mt-12 pt-6 border-t ${borderColor}`}>
-          <h2 className="font-display text-lg font-semibold mb-4">Comments ({commentsList.length})</h2>
-
-          {/* New comment */}
-          {session?.user ? (
-            <div className="mb-6">
-              <textarea
-                value={newComment}
-                onChange={e => setNewComment(e.target.value)}
-                placeholder="Share your thoughts..."
-                rows={3}
-                className={`w-full px-3 py-2 border ${borderColor} bg-transparent rounded-lg text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
-              />
-              <div className="flex justify-end mt-2">
-                <button
-                  onClick={() => postComment()}
-                  disabled={!newComment.trim()}
-                  className="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors disabled:opacity-50"
-                >
-                  Comment
-                </button>
-              </div>
-            </div>
-          ) : (
-            <p className={`text-sm ${mutedText} mb-6`}>
-              <Link href="/login" className={`${linkColor} hover:underline`}>Sign in</Link> to comment.
-            </p>
-          )}
-
-          {/* Threaded comment list */}
-          <div className="space-y-4">
-            {commentsList.map(comment => (
-              <CommentThread
-                key={comment.id}
-                comment={comment}
-                depth={0}
-                isDark={isDark}
-                isSepia={isSepia}
-                mutedText={mutedText}
-                borderColor={borderColor}
-                isLoggedIn={!!session?.user}
-                replyingTo={replyingTo}
-                replyContent={replyContent}
-                onSetReplyingTo={setReplyingTo}
-                onSetReplyContent={setReplyContent}
-                onPostReply={postComment}
-              />
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   )

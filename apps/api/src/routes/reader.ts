@@ -22,12 +22,13 @@ import {
   userProfiles,
   users,
   comments,
-  reactions
+  reactions,
+  chapterAnnotations
 } from '../db/schema'
 import { eq, and, desc, asc, sql, isNull, or, count, inArray } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { env } from '../lib/env'
-import { optionalAuth } from '../middleware/auth'
+import { optionalAuth, requireAuth, requireProjectOwnership } from '../middleware/auth'
 
 // ============================================
 // AUTHOR RESOLUTION
@@ -390,6 +391,70 @@ async function checkMultipleChaptersAccess(
   }
 
   return results
+}
+
+/**
+ * Check whether a user can leave annotations on a project's chapters.
+ * Annotations must be enabled via projectPublishConfig (like comments/reactions),
+ * then annotationAccess controls who can annotate.
+ */
+async function canUserAnnotate(
+  userId: string,
+  projectId: string
+): Promise<boolean> {
+  const [config] = await db
+    .select({
+      enableAnnotations: projectPublishConfig.enableAnnotations,
+      annotationAccess: projectPublishConfig.annotationAccess
+    })
+    .from(projectPublishConfig)
+    .where(eq(projectPublishConfig.projectId, projectId))
+    .limit(1)
+
+  if (!config || !config.enableAnnotations) return false
+
+  const access = config.annotationAccess ?? 'beta_only'
+
+  if (access === 'all_authenticated') return true
+
+  // Check beta reader status
+  const [betaReader] = await db
+    .select({ id: betaReaders.id })
+    .from(betaReaders)
+    .where(and(
+      or(eq(betaReaders.projectId, projectId), isNull(betaReaders.projectId)),
+      eq(betaReaders.readerId, userId),
+      eq(betaReaders.isActive, true)
+    ))
+    .limit(1)
+
+  if (betaReader) return true
+
+  if (access === 'subscribers') {
+    // Check active subscription to the project owner
+    const [project] = await db
+      .select({ ownerId: projects.ownerId })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1)
+
+    if (project) {
+      const [sub] = await db
+        .select({ id: subscriptions.id })
+        .from(subscriptions)
+        .where(and(
+          eq(subscriptions.subscriberId, userId),
+          eq(subscriptions.authorId, project.ownerId),
+          eq(subscriptions.status, 'active'),
+          sql`${subscriptions.currentPeriodEnd} > NOW()`
+        ))
+        .limit(1)
+
+      if (sub) return true
+    }
+  }
+
+  return false
 }
 
 const readerPlugin: FastifyPluginAsync = async (fastify) => {
@@ -1718,6 +1783,631 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
     } catch (error) {
       fastify.log.error({ error, correlationId }, 'Failed to delete reaction')
       return reply.status(500).send({ error: 'Failed to delete reaction', correlationId })
+    }
+  })
+
+  // ============================================
+  // ANNOTATIONS (READER FEEDBACK)
+  // ============================================
+
+  /**
+   * Check if current user can annotate a project
+   */
+  fastify.get<{
+    Params: { projectId: string }
+  }>('/public/projects/:projectId/can-annotate', {
+    preHandler: optionalAuth
+  }, async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const { projectId } = request.params
+      if (!request.user) {
+        return reply.send({ canAnnotate: false, correlationId })
+      }
+
+      // Project owner can always annotate (for testing)
+      const [project] = await db
+        .select({ ownerId: projects.ownerId })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1)
+
+      if (project?.ownerId === request.user.id) {
+        return reply.send({ canAnnotate: true, correlationId })
+      }
+
+      const allowed = await canUserAnnotate(request.user.id, projectId)
+      return reply.send({ canAnnotate: allowed, correlationId })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to check annotation access')
+      return reply.status(500).send({ error: 'Failed to check annotation access', correlationId })
+    }
+  })
+
+  /**
+   * Get annotations for a chapter (reader's own annotations)
+   */
+  fastify.get<{
+    Params: { chapterId: string }
+  }>('/public/chapters/:chapterId/annotations', {
+    preHandler: optionalAuth
+  }, async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const { chapterId } = request.params
+
+      if (!request.user) {
+        return reply.send({ annotations: [], correlationId })
+      }
+
+      const annotations = await db
+        .select({
+          id: chapterAnnotations.id,
+          chapterId: chapterAnnotations.chapterId,
+          authorId: chapterAnnotations.authorId,
+          anchorParagraphIndex: chapterAnnotations.anchorParagraphIndex,
+          anchorQuote: chapterAnnotations.anchorQuote,
+          anchorCharOffset: chapterAnnotations.anchorCharOffset,
+          anchorCharLength: chapterAnnotations.anchorCharLength,
+          annotationType: chapterAnnotations.annotationType,
+          errorCategory: chapterAnnotations.errorCategory,
+          content: chapterAnnotations.content,
+          suggestedText: chapterAnnotations.suggestedText,
+          status: chapterAnnotations.status,
+          authorResponse: chapterAnnotations.authorResponse,
+          chapterVersion: chapterAnnotations.chapterVersion,
+          createdAt: chapterAnnotations.createdAt,
+          updatedAt: chapterAnnotations.updatedAt
+        })
+        .from(chapterAnnotations)
+        .where(and(
+          eq(chapterAnnotations.chapterId, chapterId),
+          eq(chapterAnnotations.authorId, request.user.id)
+        ))
+        .orderBy(asc(chapterAnnotations.anchorParagraphIndex), asc(chapterAnnotations.createdAt))
+
+      return reply.send({ annotations, correlationId })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to get annotations')
+      return reply.status(500).send({ error: 'Failed to get annotations', correlationId })
+    }
+  })
+
+  /**
+   * Create an annotation (requires auth + annotation access)
+   */
+  fastify.post<{
+    Params: { chapterId: string }
+    Body: {
+      projectId: string
+      anchorParagraphIndex?: number
+      anchorQuote: string
+      anchorCharOffset?: number
+      anchorCharLength?: number
+      annotationType: string
+      errorCategory?: string
+      content: string
+      suggestedText?: string
+      chapterVersion: number
+    }
+  }>('/public/chapters/:chapterId/annotations', {
+    preHandler: optionalAuth
+  }, async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const { chapterId } = request.params
+      const body = request.body
+
+      if (!request.user) {
+        return reply.status(401).send({ error: 'Authentication required to annotate', correlationId })
+      }
+
+      if (!body.anchorQuote || body.anchorQuote.trim().length === 0) {
+        return reply.status(400).send({ error: 'Selected text (anchorQuote) is required', correlationId })
+      }
+
+      if (!body.content || body.content.trim().length === 0) {
+        return reply.status(400).send({ error: 'Annotation content is required', correlationId })
+      }
+
+      const validTypes = ['error', 'suggestion', 'feedback']
+      if (!validTypes.includes(body.annotationType)) {
+        return reply.status(400).send({ error: 'Invalid annotation type', correlationId })
+      }
+
+      if (body.annotationType === 'error' && body.errorCategory) {
+        const validCategories = ['typo', 'formatting', 'continuity', 'grammar', 'other']
+        if (!validCategories.includes(body.errorCategory)) {
+          return reply.status(400).send({ error: 'Invalid error category', correlationId })
+        }
+      }
+
+      // Check project owner (always allowed) or annotation access
+      const [project] = await db
+        .select({ ownerId: projects.ownerId })
+        .from(projects)
+        .where(eq(projects.id, body.projectId))
+        .limit(1)
+
+      const isOwner = project?.ownerId === request.user.id
+      if (!isOwner) {
+        const allowed = await canUserAnnotate(request.user.id, body.projectId)
+        if (!allowed) {
+          return reply.status(403).send({ error: 'You do not have permission to annotate this project', correlationId })
+        }
+      }
+
+      const [annotation] = await db
+        .insert(chapterAnnotations)
+        .values({
+          chapterId,
+          projectId: body.projectId,
+          authorId: request.user.id,
+          anchorParagraphIndex: body.anchorParagraphIndex ?? null,
+          anchorQuote: body.anchorQuote.trim(),
+          anchorCharOffset: body.anchorCharOffset ?? null,
+          anchorCharLength: body.anchorCharLength ?? null,
+          annotationType: body.annotationType,
+          errorCategory: body.errorCategory ?? null,
+          content: body.content.trim(),
+          suggestedText: body.suggestedText?.trim() || null,
+          chapterVersion: body.chapterVersion
+        })
+        .returning()
+
+      return reply.status(201).send({ annotation, correlationId })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to create annotation')
+      return reply.status(500).send({ error: 'Failed to create annotation', correlationId })
+    }
+  })
+
+  /**
+   * Update own annotation
+   */
+  fastify.put<{
+    Params: { chapterId: string; annotationId: string }
+    Body: {
+      content?: string
+      annotationType?: string
+      errorCategory?: string | null
+      suggestedText?: string | null
+    }
+  }>('/public/chapters/:chapterId/annotations/:annotationId', {
+    preHandler: optionalAuth
+  }, async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const { annotationId } = request.params
+      const body = request.body
+
+      if (!request.user) {
+        return reply.status(401).send({ error: 'Authentication required', correlationId })
+      }
+
+      // Verify ownership
+      const [existing] = await db
+        .select({ authorId: chapterAnnotations.authorId })
+        .from(chapterAnnotations)
+        .where(eq(chapterAnnotations.id, annotationId))
+        .limit(1)
+
+      if (!existing) {
+        return reply.status(404).send({ error: 'Annotation not found', correlationId })
+      }
+      if (existing.authorId !== request.user.id) {
+        return reply.status(403).send({ error: 'You can only edit your own annotations', correlationId })
+      }
+
+      const updates: Record<string, unknown> = { updatedAt: new Date() }
+
+      if (body.content !== undefined) {
+        if (!body.content || body.content.trim().length === 0) {
+          return reply.status(400).send({ error: 'Content cannot be empty', correlationId })
+        }
+        updates.content = body.content.trim()
+      }
+      if (body.annotationType !== undefined) {
+        const validTypes = ['error', 'suggestion', 'feedback']
+        if (!validTypes.includes(body.annotationType)) {
+          return reply.status(400).send({ error: 'Invalid annotation type', correlationId })
+        }
+        updates.annotationType = body.annotationType
+      }
+      if (body.errorCategory !== undefined) updates.errorCategory = body.errorCategory
+      if (body.suggestedText !== undefined) updates.suggestedText = body.suggestedText?.trim() || null
+
+      const [updated] = await db
+        .update(chapterAnnotations)
+        .set(updates)
+        .where(eq(chapterAnnotations.id, annotationId))
+        .returning()
+
+      return reply.send({ annotation: updated, correlationId })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to update annotation')
+      return reply.status(500).send({ error: 'Failed to update annotation', correlationId })
+    }
+  })
+
+  /**
+   * Delete own annotation
+   */
+  fastify.delete<{
+    Params: { chapterId: string; annotationId: string }
+  }>('/public/chapters/:chapterId/annotations/:annotationId', {
+    preHandler: optionalAuth
+  }, async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const { annotationId } = request.params
+
+      if (!request.user) {
+        return reply.status(401).send({ error: 'Authentication required', correlationId })
+      }
+
+      const [existing] = await db
+        .select({ authorId: chapterAnnotations.authorId })
+        .from(chapterAnnotations)
+        .where(eq(chapterAnnotations.id, annotationId))
+        .limit(1)
+
+      if (!existing) {
+        return reply.status(404).send({ error: 'Annotation not found', correlationId })
+      }
+      if (existing.authorId !== request.user.id) {
+        return reply.status(403).send({ error: 'You can only delete your own annotations', correlationId })
+      }
+
+      await db.delete(chapterAnnotations).where(eq(chapterAnnotations.id, annotationId))
+
+      return reply.send({ success: true, correlationId })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to delete annotation')
+      return reply.status(500).send({ error: 'Failed to delete annotation', correlationId })
+    }
+  })
+
+  // ============================================
+  // ANNOTATIONS — AUTHOR DASHBOARD
+  // ============================================
+
+  /**
+   * Get all annotations for a project (author only)
+   */
+  fastify.get<{
+    Params: { projectId: string }
+    Querystring: { status?: string; annotationType?: string; chapterId?: string; limit?: number; offset?: number }
+  }>('/projects/:projectId/annotations', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const { projectId } = request.params
+      const { status: statusFilter, annotationType, chapterId, limit = 50, offset = 0 } = request.query
+
+      const isOwner = await requireProjectOwnership(request, reply, projectId)
+      if (!isOwner) return
+
+      const conditions = [eq(chapterAnnotations.projectId, projectId)]
+      if (statusFilter) conditions.push(eq(chapterAnnotations.status, statusFilter))
+      if (annotationType) conditions.push(eq(chapterAnnotations.annotationType, annotationType))
+      if (chapterId) conditions.push(eq(chapterAnnotations.chapterId, chapterId))
+
+      const annotations = await db
+        .select({
+          id: chapterAnnotations.id,
+          chapterId: chapterAnnotations.chapterId,
+          chapterTitle: sql<string>`(${entities.entityData}->>'title')`,
+          authorId: chapterAnnotations.authorId,
+          authorName: users.name,
+          anchorParagraphIndex: chapterAnnotations.anchorParagraphIndex,
+          anchorQuote: chapterAnnotations.anchorQuote,
+          anchorCharOffset: chapterAnnotations.anchorCharOffset,
+          anchorCharLength: chapterAnnotations.anchorCharLength,
+          annotationType: chapterAnnotations.annotationType,
+          errorCategory: chapterAnnotations.errorCategory,
+          content: chapterAnnotations.content,
+          suggestedText: chapterAnnotations.suggestedText,
+          status: chapterAnnotations.status,
+          authorResponse: chapterAnnotations.authorResponse,
+          resolvedAt: chapterAnnotations.resolvedAt,
+          chapterVersion: chapterAnnotations.chapterVersion,
+          createdAt: chapterAnnotations.createdAt,
+          updatedAt: chapterAnnotations.updatedAt
+        })
+        .from(chapterAnnotations)
+        .innerJoin(users, eq(users.id, chapterAnnotations.authorId))
+        .leftJoin(entities, eq(entities.id, chapterAnnotations.chapterId))
+        .where(and(...conditions))
+        .orderBy(desc(chapterAnnotations.createdAt))
+        .limit(limit)
+        .offset(offset)
+
+      // Extract surrounding paragraph context for each annotation
+      const chapterIds = [...new Set(annotations.map(a => a.chapterId))]
+      const chapterBodies = new Map<string, string>()
+      if (chapterIds.length > 0) {
+        const bodyRows = await db
+          .select({
+            id: entities.id,
+            body: sql<string>`(${entities.entityData}->>'body')`
+          })
+          .from(entities)
+          .where(inArray(entities.id, chapterIds))
+
+        for (const row of bodyRows) {
+          if (row.body) chapterBodies.set(row.id, row.body)
+        }
+      }
+
+      // Simple HTML paragraph extractor — splits on block tags
+      function extractParagraphText(html: string, index: number): string | null {
+        const blockRegex = /<(?:p|h[1-6]|blockquote|li|pre)[^>]*>([\s\S]*?)<\/(?:p|h[1-6]|blockquote|li|pre)>/gi
+        let match: RegExpExecArray | null
+        let i = 0
+        while ((match = blockRegex.exec(html)) !== null) {
+          if (i === index) {
+            // Strip inner HTML tags to get plain text
+            return match[1]!.replace(/<[^>]+>/g, '').trim()
+          }
+          i++
+        }
+        return null
+      }
+
+      const annotationsWithContext = annotations.map(ann => {
+        let anchorContext: string | null = null
+        if (ann.anchorParagraphIndex != null) {
+          const body = chapterBodies.get(ann.chapterId)
+          if (body) {
+            anchorContext = extractParagraphText(body, ann.anchorParagraphIndex)
+          }
+        }
+        return { ...ann, anchorContext }
+      })
+
+      const [total] = await db
+        .select({ count: count() })
+        .from(chapterAnnotations)
+        .where(and(...conditions))
+
+      // Get distinct chapters that have annotations (for filter dropdown)
+      const chapters = await db
+        .select({
+          chapterId: chapterAnnotations.chapterId,
+          chapterTitle: sql<string>`(${entities.entityData}->>'title')`,
+          count: count()
+        })
+        .from(chapterAnnotations)
+        .leftJoin(entities, eq(entities.id, chapterAnnotations.chapterId))
+        .where(eq(chapterAnnotations.projectId, projectId))
+        .groupBy(chapterAnnotations.chapterId, sql`(${entities.entityData}->>'title')`)
+
+      // Get reader URL info for linking
+      const [projectInfo] = await db
+        .select({
+          shortUrl: projects.shortUrl,
+          ownerId: projects.ownerId
+        })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1)
+
+      let readerBaseUrl: string | null = null
+      if (projectInfo?.shortUrl) {
+        const [profile] = await db
+          .select({ username: userProfiles.username })
+          .from(userProfiles)
+          .where(eq(userProfiles.userId, projectInfo.ownerId))
+          .limit(1)
+        if (profile?.username) {
+          readerBaseUrl = `/read/${profile.username}/${projectInfo.shortUrl}`
+        }
+      }
+
+      return reply.send({ annotations: annotationsWithContext, chapters, readerBaseUrl, total: total?.count ?? 0, correlationId })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to get project annotations')
+      return reply.status(500).send({ error: 'Failed to get project annotations', correlationId })
+    }
+  })
+
+  /**
+   * Get annotation stats for a project (author only)
+   */
+  fastify.get<{
+    Params: { projectId: string }
+  }>('/projects/:projectId/annotations/stats', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const { projectId } = request.params
+
+      const isOwner = await requireProjectOwnership(request, reply, projectId)
+      if (!isOwner) return
+
+      const byStatus = await db
+        .select({
+          status: chapterAnnotations.status,
+          count: count()
+        })
+        .from(chapterAnnotations)
+        .where(eq(chapterAnnotations.projectId, projectId))
+        .groupBy(chapterAnnotations.status)
+
+      const byType = await db
+        .select({
+          annotationType: chapterAnnotations.annotationType,
+          count: count()
+        })
+        .from(chapterAnnotations)
+        .where(eq(chapterAnnotations.projectId, projectId))
+        .groupBy(chapterAnnotations.annotationType)
+
+      const byChapter = await db
+        .select({
+          chapterId: chapterAnnotations.chapterId,
+          count: count()
+        })
+        .from(chapterAnnotations)
+        .where(and(
+          eq(chapterAnnotations.projectId, projectId),
+          or(eq(chapterAnnotations.status, 'open'), eq(chapterAnnotations.status, 'acknowledged'))
+        ))
+        .groupBy(chapterAnnotations.chapterId)
+
+      return reply.send({ byStatus, byType, byChapter, correlationId })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to get annotation stats')
+      return reply.status(500).send({ error: 'Failed to get annotation stats', correlationId })
+    }
+  })
+
+  /**
+   * Update annotation status (author only — acknowledge/resolve/dismiss)
+   */
+  fastify.put<{
+    Params: { projectId: string; annotationId: string }
+    Body: { status: string; authorResponse?: string }
+  }>('/projects/:projectId/annotations/:annotationId/status', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const { projectId, annotationId } = request.params
+      const { status: newStatus, authorResponse } = request.body
+
+      const isOwner = await requireProjectOwnership(request, reply, projectId)
+      if (!isOwner) return
+
+      const validStatuses = ['open', 'acknowledged', 'resolved', 'dismissed']
+      if (!validStatuses.includes(newStatus)) {
+        return reply.status(400).send({ error: 'Invalid status', correlationId })
+      }
+
+      // Verify the annotation belongs to this project
+      const [existing] = await db
+        .select({ id: chapterAnnotations.id })
+        .from(chapterAnnotations)
+        .where(and(
+          eq(chapterAnnotations.id, annotationId),
+          eq(chapterAnnotations.projectId, projectId)
+        ))
+        .limit(1)
+
+      if (!existing) {
+        return reply.status(404).send({ error: 'Annotation not found', correlationId })
+      }
+
+      const updates: Record<string, unknown> = {
+        status: newStatus,
+        updatedAt: new Date()
+      }
+
+      if (authorResponse !== undefined) {
+        updates.authorResponse = authorResponse.trim() || null
+      }
+
+      if (newStatus === 'resolved' || newStatus === 'dismissed') {
+        updates.resolvedAt = new Date()
+        updates.resolvedBy = request.user!.id
+      } else {
+        updates.resolvedAt = null
+        updates.resolvedBy = null
+      }
+
+      const [updated] = await db
+        .update(chapterAnnotations)
+        .set(updates)
+        .where(eq(chapterAnnotations.id, annotationId))
+        .returning()
+
+      return reply.send({ annotation: updated, correlationId })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to update annotation status')
+      return reply.status(500).send({ error: 'Failed to update annotation status', correlationId })
+    }
+  })
+
+  /**
+   * Accept a suggestion — apply the text replacement and resolve the annotation
+   */
+  fastify.post<{
+    Params: { projectId: string; annotationId: string }
+  }>('/projects/:projectId/annotations/:annotationId/accept', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    const correlationId = randomUUID()
+    try {
+      const { projectId, annotationId } = request.params
+
+      const isOwner = await requireProjectOwnership(request, reply, projectId)
+      if (!isOwner) return
+
+      // Verify the annotation exists and has suggested text
+      const [annotation] = await db
+        .select()
+        .from(chapterAnnotations)
+        .where(and(
+          eq(chapterAnnotations.id, annotationId),
+          eq(chapterAnnotations.projectId, projectId)
+        ))
+        .limit(1)
+
+      if (!annotation) {
+        return reply.status(404).send({ error: 'Annotation not found', correlationId })
+      }
+
+      if (!annotation.suggestedText) {
+        return reply.status(400).send({ error: 'Annotation has no suggested text to accept', correlationId })
+      }
+
+      // Apply the text replacement in the DB unless the caller handles it
+      // (the editor panel dispatches bobbinry:editor-replace-text instead)
+      const body = request.body as { editorWillApply?: boolean } | undefined
+      if (!body?.editorWillApply) {
+        const [chapter] = await db
+          .select({ id: entities.id, entityData: entities.entityData, version: entities.version })
+          .from(entities)
+          .where(eq(entities.id, annotation.chapterId))
+          .limit(1)
+
+        if (chapter) {
+          const data = chapter.entityData as Record<string, any>
+          const chapterBody = data?.body as string | undefined
+          if (chapterBody?.includes(annotation.anchorQuote)) {
+            const updatedBody = chapterBody.replace(annotation.anchorQuote, annotation.suggestedText)
+            await db
+              .update(entities)
+              .set({
+                entityData: { ...data, body: updatedBody },
+                version: (chapter.version ?? 0) + 1,
+                lastEditedAt: new Date()
+              })
+              .where(eq(entities.id, chapter.id))
+          }
+        }
+      }
+
+      // Resolve the annotation
+      const [resolved] = await db
+        .update(chapterAnnotations)
+        .set({
+          status: 'resolved',
+          authorResponse: 'Suggestion accepted',
+          resolvedAt: new Date(),
+          resolvedBy: request.user!.id,
+          updatedAt: new Date()
+        })
+        .where(eq(chapterAnnotations.id, annotationId))
+        .returning()
+
+      return reply.send({ annotation: resolved, applied: true, correlationId })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to accept annotation')
+      return reply.status(500).send({ error: 'Failed to accept annotation', correlationId })
     }
   })
 }

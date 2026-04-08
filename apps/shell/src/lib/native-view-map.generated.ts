@@ -39,4 +39,5 @@ export const NATIVE_VIEW_MAP: Record<string, () => Promise<any>> = {
   'goals.panels/progress': () => import('@bobbinry/goals/panels/progress'),
   'web-publisher.release-config': () => import('@bobbinry/web-publisher/views/release-config'),
   'web-publisher.panels/chapter-publish': () => import('@bobbinry/web-publisher/panels/chapter-publish'),
+  'feedback.panels/annotation-panel': () => import('@bobbinry/feedback/panels/annotation-panel'),
 }

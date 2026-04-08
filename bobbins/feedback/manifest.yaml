@@ -1,0 +1,43 @@
+id: feedback
+name: Reader Feedback
+version: 1.0.0
+author: "Bobbins Core"
+description: "View and manage reader annotations, error reports, and suggestions in the editor"
+tags: [feedback, annotations, beta-readers, editing]
+license: MIT
+
+capabilities:
+  publishable: false
+  external: false
+  ai: false
+  customViews: true
+
+data:
+  collections: []
+
+ui:
+  views: []
+
+interactions:
+  actions: []
+
+extensions:
+  contributions:
+    - slot: shell.rightPanel
+      type: panel
+      id: reader-feedback
+      title: "Reader Feedback"
+      entry: panels/annotation-panel
+      when:
+        entityType: content
+
+external: null
+
+linking:
+  entities: []
+
+publish: null
+
+compatibility:
+  minShellVersion: 1.0.0
+  migrations: []
