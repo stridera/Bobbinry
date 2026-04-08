@@ -119,7 +119,7 @@ export function ChapterOverview({ chapters, projectId, readerBaseUrl, onStatusCh
                   <td className="py-2.5 pr-4 font-medium">
                     <div className="flex items-center gap-2">
                       <Link
-                        href={`/projects/${projectId}/write`}
+                        href={`/projects/${projectId}/manuscript/content/${chapter.id}`}
                         className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline transition-colors"
                       >
                         {chapter.title}

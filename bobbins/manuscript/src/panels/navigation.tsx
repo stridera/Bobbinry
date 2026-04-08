@@ -340,8 +340,12 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
       if (!hasAutoSelectedRef.current && treeData.length > 0) {
         hasAutoSelectedRef.current = true
 
-        // Check if ViewRouter already restored a selection (e.g. from history state)
-        if (!selectedNodeIdRef.current) {
+        // Check if ViewRouter already restored a selection (e.g. from history state).
+        // Also check window.history.state — on deep-link pages, ViewRouter writes
+        // nav state to history synchronously before view-context-change fires, so
+        // selectedNodeIdRef may still be null even though a chapter is targeted.
+        const historyHasNav = typeof window !== 'undefined' && window.history.state?.entityId
+        if (!selectedNodeIdRef.current && !historyHasNav) {
           // Try to restore the last-visited chapter from localStorage
           let targetNode: TreeNode | null = null
           try {

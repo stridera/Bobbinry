@@ -134,19 +134,27 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
       }
     }
 
-    // Fall back to last-visited chapter from localStorage
-    // Note: don't call replaceState here — changing the URL to the deep-link
-    // format would cause Next.js to re-route to the [...slug] page component.
-    try {
-      const saved = localStorage.getItem(lastNavKey)
-      if (saved) {
-        const state = JSON.parse(saved) as NavigationState
-        if (state.entityType && state.entityId && state.bobbinId) {
-          console.log('[ViewRouter] Restoring last-visited from localStorage:', state)
-          updateNav(state)
+    // Fall back to last-visited chapter from localStorage — but only on
+    // non-deep-link pages (e.g. /projects/{id}/write). On deep-link pages
+    // (/projects/{id}/{bobbinId}/{entityType}/{entityId}), the [...slug]
+    // page component will dispatch the correct navigation event once bobbins
+    // finish loading. Restoring from localStorage here would race with that
+    // dispatch and navigate to the wrong chapter.
+    const pathParts = window.location.pathname.split('/').filter(Boolean)
+    const isDeepLink = pathParts.length >= 5 && pathParts[0] === 'projects'
+    if (!isDeepLink) {
+      try {
+        const saved = localStorage.getItem(lastNavKey)
+        if (saved) {
+          const state = JSON.parse(saved) as NavigationState
+          if (state.entityType && state.entityId && state.bobbinId) {
+            console.log('[ViewRouter] Restoring last-visited from localStorage:', state)
+            window.history.replaceState(state, '')
+            updateNav(state)
+          }
         }
-      }
-    } catch {}
+      } catch {}
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -159,7 +167,14 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
       console.log('[ViewRouter] Navigation event received:', navState)
 
       if (!isNavigatingRef.current) {
-        window.history.pushState(navState, '', buildNavUrl(navState))
+        const targetUrl = buildNavUrl(navState)
+        if (window.location.pathname === targetUrl) {
+          // Already at the correct URL (e.g. deep-link page) — store state
+          // without creating a duplicate history entry
+          window.history.replaceState(navState, '', targetUrl)
+        } else {
+          window.history.pushState(navState, '', targetUrl)
+        }
       }
 
       updateNav(navState)
