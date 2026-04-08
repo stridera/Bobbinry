@@ -12,7 +12,6 @@ import Google from 'next-auth/providers/google'
 import { SignJWT } from 'jose'
 import type { User } from 'next-auth'
 import { config } from '@/lib/config'
-import { createHash, createHmac } from 'crypto'
 import { PHASE_PRODUCTION_BUILD } from 'next/constants'
 
 /** Shared secret used by both NextAuth and the API for JWT verification */
@@ -28,7 +27,24 @@ async function signApiToken(userId: string): Promise<string> {
     .sign(jwtSecret)
 }
 
-function buildInternalSignedHeaders(method: string, urlString: string, body?: unknown): Record<string, string> {
+function toHex(buffer: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+async function sha256Hex(data: string): Promise<string> {
+  const encoded = new TextEncoder().encode(data)
+  const hash = await crypto.subtle.digest('SHA-256', encoded)
+  return toHex(hash)
+}
+
+async function hmacSha256Hex(key: string, data: string): Promise<string> {
+  const enc = new TextEncoder()
+  const cryptoKey = await crypto.subtle.importKey('raw', enc.encode(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const sig = await crypto.subtle.sign('HMAC', cryptoKey, enc.encode(data))
+  return toHex(sig)
+}
+
+async function buildInternalSignedHeaders(method: string, urlString: string, body?: unknown): Promise<Record<string, string>> {
   const signingSecret = process.env.INTERNAL_API_AUTH_TOKEN
   if (!signingSecret) {
     return {}
@@ -38,9 +54,9 @@ function buildInternalSignedHeaders(method: string, urlString: string, body?: un
   const path = `${url.pathname}${url.search}`
   const timestamp = Date.now().toString()
   const bodySerialized = body ? JSON.stringify(body) : ''
-  const bodyDigest = createHash('sha256').update(bodySerialized).digest('hex')
+  const bodyDigest = await sha256Hex(bodySerialized)
   const payload = `${method.toUpperCase()}\n${path}\n${timestamp}\n${bodyDigest}`
-  const signature = createHmac('sha256', signingSecret).update(payload).digest('hex')
+  const signature = await hmacSha256Hex(signingSecret, payload)
 
   return {
     'x-internal-auth-ts': timestamp,
@@ -63,7 +79,7 @@ interface BobbinryUser {
 async function findOrCreateOAuthUser(email: string, name: string | null): Promise<BobbinryUser | null> {
   try {
     const lookupUrl = `${config.apiUrl}/api/users/by-email?email=${encodeURIComponent(email)}`
-    const lookupHeaders = buildInternalSignedHeaders('GET', lookupUrl)
+    const lookupHeaders = await buildInternalSignedHeaders('GET', lookupUrl)
     // Try to log in first (user may already exist from a previous OAuth or credentials signup)
     const lookupRes = await fetch(lookupUrl, {
       headers: lookupHeaders
@@ -75,7 +91,7 @@ async function findOrCreateOAuthUser(email: string, name: string | null): Promis
     // User doesn't exist — create without a password
     const createBody = { email, name }
     const createUrl = `${config.apiUrl}/api/auth/oauth-provision`
-    const signedHeaders = buildInternalSignedHeaders('POST', createUrl, createBody)
+    const signedHeaders = await buildInternalSignedHeaders('POST', createUrl, createBody)
     const createRes = await fetch(`${config.apiUrl}/api/auth/oauth-provision`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...signedHeaders },

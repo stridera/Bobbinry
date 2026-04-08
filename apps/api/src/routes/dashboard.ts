@@ -33,7 +33,12 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
       const userId = request.user!.id
       const { includeArchived = 'false' } = request.query
 
-      let projectsQuery = db
+      const conditions = [eq(projects.ownerId, userId), isNull(projects.deletedAt)]
+      if (includeArchived === 'false') {
+        conditions.push(eq(projects.isArchived, false))
+      }
+
+      const projectsQuery = db
         .select({
           project: projects,
           collectionId: projectCollectionMemberships.collectionId,
@@ -48,13 +53,7 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
           projectCollections,
           eq(projectCollectionMemberships.collectionId, projectCollections.id)
         )
-        .$dynamic()
-        .where(and(eq(projects.ownerId, userId), isNull(projects.deletedAt)))
-
-      // Filter archived if needed
-      if (includeArchived === 'false') {
-        projectsQuery = projectsQuery.where(eq(projects.isArchived, false))
-      }
+        .where(and(...conditions))
 
       const userProjects = await projectsQuery.orderBy(desc(projects.updatedAt))
 

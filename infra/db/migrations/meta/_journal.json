@@ -141,6 +141,13 @@
       "when": 1775193600000,
       "tag": "0020_early_access_days",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1775366400000,
+      "tag": "0021_add_discount_code_project_id",
+      "breakpoints": true
     }
   ]
 }

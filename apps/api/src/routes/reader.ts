@@ -124,7 +124,7 @@ async function checkPublicChapterAccess(
       .select()
       .from(betaReaders)
       .where(and(
-        eq(betaReaders.projectId, projectId),
+        or(eq(betaReaders.projectId, projectId), isNull(betaReaders.projectId)),
         eq(betaReaders.readerId, userId),
         eq(betaReaders.isActive, true)
       ))
@@ -139,7 +139,7 @@ async function checkPublicChapterAccess(
       .select()
       .from(accessGrants)
       .where(and(
-        eq(accessGrants.projectId, projectId),
+        or(eq(accessGrants.projectId, projectId), isNull(accessGrants.projectId)),
         eq(accessGrants.grantedTo, userId),
         or(
           eq(accessGrants.chapterId, chapterId),
@@ -255,7 +255,7 @@ async function checkMultipleChaptersAccess(
       .select({ readerId: betaReaders.readerId })
       .from(betaReaders)
       .where(and(
-        eq(betaReaders.projectId, projectId),
+        or(eq(betaReaders.projectId, projectId), isNull(betaReaders.projectId)),
         eq(betaReaders.readerId, userId),
         eq(betaReaders.isActive, true)
       ))
@@ -274,7 +274,7 @@ async function checkMultipleChaptersAccess(
       .select({ chapterId: accessGrants.chapterId })
       .from(accessGrants)
       .where(and(
-        eq(accessGrants.projectId, projectId),
+        or(eq(accessGrants.projectId, projectId), isNull(accessGrants.projectId)),
         eq(accessGrants.grantedTo, userId),
         eq(accessGrants.isActive, true),
         or(

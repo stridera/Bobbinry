@@ -8,10 +8,12 @@ import {
   discountCodes,
   accessGrants,
   users,
+  userProfiles,
+  projects,
   notifications,
   userNotificationPreferences
 } from '../db/schema'
-import { eq, and, or, desc, sql } from 'drizzle-orm'
+import { eq, and, or, desc, sql, isNull } from 'drizzle-orm'
 import { requireAuth, requireSelf, requireOwner, denyApiKeyAuth } from '../middleware/auth'
 import { sendEmail } from '../lib/email'
 
@@ -603,13 +605,13 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
   // Get discount codes for an author
   fastify.get<{
     Params: { authorId: string }
-    Querystring: { active?: string }
+    Querystring: { active?: string; projectId?: string }
   }>('/authors/:authorId/discount-codes', {
     preHandler: requireAuth
   }, async (request, reply) => {
     try {
       const { authorId } = request.params
-      const { active } = request.query
+      const { active, projectId } = request.query
 
       if (!isValidUUID(authorId)) {
         return reply.status(400).send({ error: 'Invalid author ID format' })
@@ -617,14 +619,22 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
 
       if (!requireSelf(request, reply, authorId)) return
 
-      const whereConditions = active === 'true'
-        ? and(eq(discountCodes.authorId, authorId), eq(discountCodes.isActive, true))
-        : eq(discountCodes.authorId, authorId)
+      const conditions = [eq(discountCodes.authorId, authorId)]
+      if (active === 'true') {
+        conditions.push(eq(discountCodes.isActive, true))
+      }
+      if (projectId) {
+        if (!isValidUUID(projectId)) {
+          return reply.status(400).send({ error: 'Invalid project ID format' })
+        }
+        // Show codes for this project + author-wide codes
+        conditions.push(or(eq(discountCodes.projectId, projectId), isNull(discountCodes.projectId))!)
+      }
 
       const codes = await db
         .select()
         .from(discountCodes)
-        .where(whereConditions)
+        .where(and(...conditions))
         .orderBy(desc(discountCodes.createdAt))
 
       return reply.status(200).send({ discountCodes: codes })
@@ -643,13 +653,14 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
       discountValue: string
       maxUses?: string
       expiresAt?: string
+      projectId?: string
     }
   }>('/authors/:authorId/discount-codes', {
     preHandler: requireAuth
   }, async (request, reply) => {
     try {
       const { authorId } = request.params
-      const { code, discountType, discountValue, maxUses, expiresAt } = request.body
+      const { code, discountType, discountValue, maxUses, expiresAt, projectId } = request.body
 
       if (!isValidUUID(authorId)) {
         return reply.status(400).send({ error: 'Invalid author ID format' })
@@ -659,6 +670,21 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
 
       if (!code || code.trim().length === 0) {
         return reply.status(400).send({ error: 'Code is required' })
+      }
+
+      // Validate projectId belongs to author if provided
+      if (projectId) {
+        if (!isValidUUID(projectId)) {
+          return reply.status(400).send({ error: 'Invalid project ID format' })
+        }
+        const [project] = await db
+          .select({ id: projects.id })
+          .from(projects)
+          .where(and(eq(projects.id, projectId), eq(projects.ownerId, authorId)))
+          .limit(1)
+        if (!project) {
+          return reply.status(400).send({ error: 'Project not found or does not belong to you' })
+        }
       }
 
       // Check if code already exists
@@ -676,6 +702,7 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
         .insert(discountCodes)
         .values({
           authorId,
+          projectId: projectId || null,
           code: code.toUpperCase(),
           discountType,
           discountValue,
@@ -793,10 +820,11 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
     Body: {
       code: string
       authorId: string
+      projectId?: string
     }
   }>('/discount-codes/validate', async (request, reply) => {
     try {
-      const { code, authorId } = request.body
+      const { code, authorId, projectId } = request.body
 
       if (!code || !authorId) {
         return reply.status(400).send({ error: 'Code and authorId are required' })
@@ -804,6 +832,10 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
 
       if (!isValidUUID(authorId)) {
         return reply.status(400).send({ error: 'Invalid author ID format' })
+      }
+
+      if (projectId && !isValidUUID(projectId)) {
+        return reply.status(400).send({ error: 'Invalid project ID format' })
       }
 
       const discountCode = await db
@@ -821,6 +853,11 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
       }
 
       const discount = discountCode[0]!
+
+      // Check project scope: per-project codes only valid for their project
+      if (discount.projectId && projectId && discount.projectId !== projectId) {
+        return reply.status(400).send({ valid: false, error: 'Code is not valid for this project' })
+      }
 
       // Check expiration
       if (discount.expiresAt && new Date(discount.expiresAt) < new Date()) {
@@ -880,6 +917,57 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
         })
         .from(accessGrants)
         .leftJoin(users, eq(accessGrants.authorId, users.id))
+        .where(and(...conditions))
+        .orderBy(desc(accessGrants.createdAt))
+
+      return reply.status(200).send({ accessGrants: grants })
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.status(500).send({ error: 'Failed to fetch access grants' })
+    }
+  })
+
+  // Get access grants created BY an author (for author management UI)
+  fastify.get<{
+    Params: { authorId: string }
+    Querystring: { projectId?: string; active?: string }
+  }>('/authors/:authorId/access-grants', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    try {
+      const { authorId } = request.params
+      const { projectId, active } = request.query
+
+      if (!isValidUUID(authorId)) {
+        return reply.status(400).send({ error: 'Invalid author ID format' })
+      }
+
+      if (!requireSelf(request, reply, authorId)) return
+
+      const conditions = [eq(accessGrants.authorId, authorId)]
+      if (projectId) {
+        if (!isValidUUID(projectId)) {
+          return reply.status(400).send({ error: 'Invalid project ID format' })
+        }
+        conditions.push(or(eq(accessGrants.projectId, projectId), isNull(accessGrants.projectId))!)
+      }
+      if (active === 'true') {
+        conditions.push(eq(accessGrants.isActive, true))
+      }
+
+      const grants = await db
+        .select({
+          grant: accessGrants,
+          user: {
+            id: users.id,
+            name: users.name,
+            email: users.email,
+            username: userProfiles.username
+          }
+        })
+        .from(accessGrants)
+        .leftJoin(users, eq(accessGrants.grantedTo, users.id))
+        .leftJoin(userProfiles, eq(accessGrants.grantedTo, userProfiles.userId))
         .where(and(...conditions))
         .orderBy(desc(accessGrants.createdAt))
 

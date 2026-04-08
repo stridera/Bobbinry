@@ -101,6 +101,9 @@ function ProjectReadingContent() {
   const [muteLoading, setMuteLoading] = useState(false)
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly')
   const [justSubscribed, setJustSubscribed] = useState(false)
+  const [discountCode, setDiscountCode] = useState('')
+  const [discountValidation, setDiscountValidation] = useState<{ valid: boolean; discountType?: string; discountValue?: string } | null>(null)
+  const [validatingCode, setValidatingCode] = useState(false)
   const [collection, setCollection] = useState<CollectionInfo | null>(null)
   const supportRef = useRef<HTMLDivElement>(null)
 
@@ -343,6 +346,39 @@ function ProjectReadingContent() {
     )
   }
 
+  const validateDiscountCode = async () => {
+    if (!discountCode.trim() || !author?.userId || !apiToken) return
+    setValidatingCode(true)
+    setDiscountValidation(null)
+    try {
+      const res = await apiFetch('/api/discount-codes/validate', apiToken, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: discountCode.trim(),
+          authorId: author.userId,
+          projectId: project?.id
+        })
+      })
+      const data = await res.json()
+      if (res.ok && data.valid) {
+        setDiscountValidation({
+          valid: true,
+          discountType: data.discountCode.discountType,
+          discountValue: data.discountCode.discountValue
+        })
+      } else {
+        setDiscountValidation({ valid: false })
+        setSubscribeError(data.error || 'Invalid discount code')
+        setTimeout(() => setSubscribeError(null), 3000)
+      }
+    } catch {
+      setDiscountValidation({ valid: false })
+    } finally {
+      setValidatingCode(false)
+    }
+  }
+
   const handleSubscribe = async (tierId: string) => {
     if (!userId || !author?.userId || !apiToken) return
     setSubscribing(tierId)
@@ -351,6 +387,7 @@ function ProjectReadingContent() {
       // Use Stripe Checkout for paid tiers
       const tier = tiers.find(t => t.id === tierId)
       const price = parseFloat(tier?.priceMonthly || '0')
+      const codeToApply = discountValidation?.valid ? discountCode.trim() : undefined
 
       if (price > 0) {
         const returnUrl = `${window.location.origin}/read/${authorUsername}/${projectSlug}`
@@ -362,11 +399,24 @@ function ProjectReadingContent() {
             authorId: author.userId,
             tierId,
             billingPeriod,
-            returnUrl
+            returnUrl,
+            ...(codeToApply ? { discountCode: codeToApply, projectId: project?.id } : {})
           })
         })
         if (res.ok) {
           const data = await res.json()
+          // 100% discount: subscription created directly (no Stripe checkout)
+          if (data.subscribed) {
+            setSubscribedTierId(tierId)
+            if (!isFollowingProject && project?.id) {
+              try {
+                await apiFetch(`/api/projects/${project.id}/follow`, apiToken, { method: 'POST' })
+                setIsFollowingProject(true)
+                setFollowerCount(c => c + 1)
+              } catch {}
+            }
+            return
+          }
           if (data.checkoutUrl) {
             window.location.href = data.checkoutUrl
             return
@@ -383,7 +433,11 @@ function ProjectReadingContent() {
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ authorId: author.userId, tierId })
+            body: JSON.stringify({
+              authorId: author.userId,
+              tierId,
+              ...(codeToApply ? { discountCode: codeToApply } : {})
+            })
           }
         )
         if (res.ok) {
@@ -678,6 +732,36 @@ function ProjectReadingContent() {
               >
                 Yearly
               </button>
+            </div>
+          )}
+
+          {/* Discount code input */}
+          {!subscribedTierId && userId && (
+            <div className="flex items-center gap-2 mb-4">
+              <input
+                type="text"
+                value={discountCode}
+                onChange={e => {
+                  setDiscountCode(e.target.value.toUpperCase())
+                  setDiscountValidation(null)
+                }}
+                placeholder="Discount code"
+                className="px-3 py-1.5 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900/50 text-gray-900 dark:text-gray-100 rounded-lg text-sm font-mono w-40"
+              />
+              <button
+                onClick={validateDiscountCode}
+                disabled={validatingCode || !discountCode.trim()}
+                className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+              >
+                {validatingCode ? 'Checking...' : 'Apply'}
+              </button>
+              {discountValidation?.valid && (
+                <span className="text-sm text-green-600 dark:text-green-400">
+                  {discountValidation.discountType === 'percent' ? `${discountValidation.discountValue}% off` :
+                   discountValidation.discountType === 'fixed_amount' ? `$${discountValidation.discountValue} off` :
+                   `${discountValidation.discountValue} day free trial`}
+                </span>
+              )}
             </div>
           )}
 

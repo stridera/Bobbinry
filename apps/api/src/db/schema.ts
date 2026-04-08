@@ -484,6 +484,7 @@ export const accessGrants = pgTable('access_grants', {
 export const discountCodes = pgTable('discount_codes', {
   id: uuid('id').defaultRandom().primaryKey(),
   authorId: uuid('author_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }), // Nullable: null = author-wide, set = per-project
   code: varchar('code', { length: 50 }).unique().notNull(),
   discountType: varchar('discount_type', { length: 50 }).notNull(), // percent, fixed_amount, free_trial
   discountValue: decimal('discount_value', { precision: 10, scale: 2 }).notNull(),
@@ -495,6 +496,7 @@ export const discountCodes = pgTable('discount_codes', {
   updatedAt: timestamp('updated_at').defaultNow().notNull()
 }, (table) => ({
   authorIdx: index('discount_codes_author_idx').on(table.authorId),
+  authorProjectIdx: index('discount_codes_author_project_idx').on(table.authorId, table.projectId),
   codeIdx: index('discount_codes_code_idx').on(table.code),
   expiresAtIdx: index('discount_codes_expires_at_idx').on(table.expiresAt)
 }))

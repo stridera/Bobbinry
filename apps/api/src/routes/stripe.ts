@@ -5,13 +5,15 @@ import {
   subscriptions,
   subscriptionPayments,
   subscriptionTiers,
+  discountCodes,
   userPaymentConfig,
   users,
   userProfiles,
   siteMemberships,
   userBadges,
+  notifications,
 } from '../db/schema'
-import { eq, and, sql } from 'drizzle-orm'
+import { eq, and, sql, lt } from 'drizzle-orm'
 import { requireAuth, requireSelf, requireVerified, denyApiKeyAuth } from '../middleware/auth'
 import { serverEventBus, subscriptionChanged } from '../lib/event-bus'
 import { getStripe, getSubscriptionPeriod, createExpressAccount, createOnboardingLink } from '../lib/stripe'
@@ -366,12 +368,14 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
       tierId: string
       billingPeriod?: 'monthly' | 'yearly'
       returnUrl?: string
+      discountCode?: string
+      projectId?: string
     }
   }>('/subscribe/checkout', {
     preHandler: [requireAuth, denyApiKeyAuth]
   }, async (request, reply) => {
     try {
-      const { subscriberId, authorId, tierId, billingPeriod = 'monthly', returnUrl } = request.body
+      const { subscriberId, authorId, tierId, billingPeriod = 'monthly', returnUrl, discountCode: discountCodeInput, projectId } = request.body
       if (!requireSelf(request, reply, subscriberId)) return
 
       const stripe = getStripe()
@@ -388,15 +392,141 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
       }
 
       // Calculate price in cents
-      const price = billingPeriod === 'yearly'
+      const originalPrice = billingPeriod === 'yearly'
         ? Math.round(parseFloat(tier.priceYearly || '0') * 100)
         : Math.round(parseFloat(tier.priceMonthly || '0') * 100)
 
-      if (price <= 0) {
+      if (originalPrice <= 0) {
         return reply.status(400).send({ error: 'Tier has no price set' })
       }
 
+      // Validate and apply discount code if provided
+      let adjustedPrice = originalPrice
+      let trialDays: number | undefined
+      let appliedDiscount: { id: string; code: string; discountType: string; discountValue: string } | null = null
+
+      if (discountCodeInput) {
+        const [discount] = await db
+          .select()
+          .from(discountCodes)
+          .where(and(
+            eq(discountCodes.code, discountCodeInput.toUpperCase()),
+            eq(discountCodes.authorId, authorId),
+            eq(discountCodes.isActive, true)
+          ))
+          .limit(1)
+
+        if (!discount) {
+          return reply.status(400).send({ error: 'Invalid discount code' })
+        }
+
+        // Check project scope
+        if (discount.projectId && projectId && discount.projectId !== projectId) {
+          return reply.status(400).send({ error: 'Discount code is not valid for this project' })
+        }
+
+        // Check expiration
+        if (discount.expiresAt && new Date(discount.expiresAt) < new Date()) {
+          return reply.status(400).send({ error: 'Discount code has expired' })
+        }
+
+        // Check max uses
+        if (discount.maxUses && discount.currentUses >= discount.maxUses) {
+          return reply.status(400).send({ error: 'Discount code has reached maximum uses' })
+        }
+
+        const value = parseFloat(discount.discountValue)
+
+        if (discount.discountType === 'percent') {
+          adjustedPrice = Math.round(originalPrice * (1 - value / 100))
+        } else if (discount.discountType === 'fixed_amount') {
+          adjustedPrice = Math.max(0, originalPrice - Math.round(value * 100))
+        } else if (discount.discountType === 'free_trial') {
+          trialDays = Math.round(value)
+        }
+
+        appliedDiscount = { id: discount.id, code: discount.code, discountType: discount.discountType, discountValue: discount.discountValue }
+
+        // Atomically increment usage (guard against race conditions)
+        const [updated] = await db
+          .update(discountCodes)
+          .set({ currentUses: sql`CAST(${discountCodes.currentUses} AS INTEGER) + 1` })
+          .where(and(
+            eq(discountCodes.id, discount.id),
+            discount.maxUses
+              ? lt(discountCodes.currentUses, discount.maxUses)
+              : sql`TRUE`
+          ))
+          .returning()
+
+        if (!updated) {
+          return reply.status(400).send({ error: 'Discount code has reached maximum uses' })
+        }
+      }
+
+      // 100% discount: skip Stripe and create subscription directly
+      if (adjustedPrice <= 0 && !trialDays) {
+        const now = new Date()
+        const nextMonth = new Date(now)
+        nextMonth.setMonth(nextMonth.getMonth() + (billingPeriod === 'yearly' ? 12 : 1))
+
+        const [subscription] = await db
+          .insert(subscriptions)
+          .values({
+            subscriberId,
+            authorId,
+            tierId,
+            status: 'active',
+            currentPeriodStart: now,
+            currentPeriodEnd: nextMonth,
+            cancelAtPeriodEnd: false,
+            stripeSubscriptionId: null,
+            patreonMemberId: null
+          })
+          .returning()
+
+        // Notify author (fire-and-forget)
+        ;(async () => {
+          try {
+            const [subscriber] = await db.select({ name: users.name }).from(users).where(eq(users.id, subscriberId)).limit(1)
+            await db.insert(notifications).values({
+              recipientId: authorId,
+              actorId: subscriberId,
+              type: 'new_subscriber',
+              title: `${subscriber?.name || 'Someone'} subscribed to "${tier.name}" (via discount code)`,
+              body: `Code: ${appliedDiscount?.code}`,
+              isRead: false
+            })
+          } catch {}
+        })()
+
+        return reply.status(200).send({ subscribed: true, subscriptionId: subscription!.id })
+      }
+
       const baseUrl = process.env.WEB_ORIGIN || 'http://localhost:3100'
+
+      // Build subscription_data with optional trial
+      const subscriptionData: Record<string, unknown> = {
+        metadata: {
+          bobbinry_subscriber_id: subscriberId,
+          bobbinry_author_id: authorId,
+          bobbinry_tier_id: tierId,
+          ...(appliedDiscount ? {
+            bobbinry_discount_code: appliedDiscount.code,
+            bobbinry_original_price: String(originalPrice),
+            bobbinry_discount_type: appliedDiscount.discountType,
+            bobbinry_discount_value: appliedDiscount.discountValue
+          } : {})
+        },
+        application_fee_percent: PLATFORM_FEE_PERCENT,
+        transfer_data: {
+          destination: authorConfig.stripeAccountId
+        }
+      }
+
+      if (trialDays) {
+        subscriptionData.trial_period_days = trialDays
+      }
 
       // Create Checkout Session with connected account
       const session = await stripe.checkout.sessions.create({
@@ -404,7 +534,7 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
         line_items: [{
           price_data: {
             currency: 'usd',
-            unit_amount: price,
+            unit_amount: adjustedPrice,
             recurring: {
               interval: billingPeriod === 'yearly' ? 'year' : 'month'
             },
@@ -415,17 +545,7 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
           },
           quantity: 1
         }],
-        subscription_data: {
-          metadata: {
-            bobbinry_subscriber_id: subscriberId,
-            bobbinry_author_id: authorId,
-            bobbinry_tier_id: tierId
-          },
-          application_fee_percent: PLATFORM_FEE_PERCENT,
-          transfer_data: {
-            destination: authorConfig.stripeAccountId
-          }
-        },
+        subscription_data: subscriptionData as any,
         metadata: {
           bobbinry_subscriber_id: subscriberId,
           bobbinry_author_id: authorId,

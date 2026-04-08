@@ -784,8 +784,17 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
         : eq(betaReaders.authorId, userId)
 
       const readers = await db
-        .select()
+        .select({
+          betaReader: betaReaders,
+          user: {
+            id: users.id,
+            name: users.name,
+            username: userProfiles.username
+          }
+        })
         .from(betaReaders)
+        .leftJoin(users, eq(betaReaders.readerId, users.id))
+        .leftJoin(userProfiles, eq(betaReaders.readerId, userProfiles.userId))
         .where(whereConditions)
 
       return reply.status(200).send({ betaReaders: readers })

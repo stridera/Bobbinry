@@ -30,6 +30,12 @@ interface DiscountCode {
   currentUses: number
   expiresAt: string | null
   isActive: boolean
+  projectId: string | null
+}
+
+interface AuthorProject {
+  id: string
+  title: string
 }
 
 interface PaymentConfig {
@@ -72,6 +78,7 @@ function MonetizationContent() {
   const searchParams = useSearchParams()
   const [tiers, setTiers] = useState<SubscriptionTier[]>([])
   const [discountCodes, setDiscountCodes] = useState<DiscountCode[]>([])
+  const [authorProjects, setAuthorProjects] = useState<AuthorProject[]>([])
   const [paymentConfig, setPaymentConfig] = useState<PaymentConfig | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -92,7 +99,8 @@ function MonetizationContent() {
     discountType: 'percent' as 'percent' | 'fixed_amount' | 'free_trial',
     discountValue: '',
     maxUses: '',
-    expiresAt: ''
+    expiresAt: '',
+    projectId: ''
   })
 
   useEffect(() => {
@@ -136,10 +144,11 @@ function MonetizationContent() {
     if (!session?.apiToken || !session?.user?.id) return
     setLoading(true)
     try {
-      const [tiersRes, configRes, codesRes] = await Promise.all([
+      const [tiersRes, configRes, codesRes, projectsRes] = await Promise.all([
         apiFetch(`/api/users/${session.user.id}/subscription-tiers`, session.apiToken),
         apiFetch(`/api/users/${session.user.id}/payment-config`, session.apiToken),
-        apiFetch(`/api/authors/${session.user.id}/discount-codes`, session.apiToken)
+        apiFetch(`/api/authors/${session.user.id}/discount-codes`, session.apiToken),
+        apiFetch(`/api/users/me/projects`, session.apiToken)
       ])
 
       if (tiersRes.ok) {
@@ -153,6 +162,14 @@ function MonetizationContent() {
       if (codesRes.ok) {
         const data = await codesRes.json()
         setDiscountCodes(data.discountCodes || [])
+      }
+      if (projectsRes.ok) {
+        const data = await projectsRes.json()
+        const projs = (data.projects || []).map((p: any) => ({
+          id: p.project.id,
+          title: p.project.name
+        }))
+        setAuthorProjects(projs)
       }
     } catch (err) {
       console.error('Failed to load monetization data:', err)
@@ -273,13 +290,14 @@ function MonetizationContent() {
             discountType: codeForm.discountType,
             discountValue: codeForm.discountValue,
             maxUses: codeForm.maxUses ? parseInt(codeForm.maxUses) : null,
-            expiresAt: codeForm.expiresAt || null
+            expiresAt: codeForm.expiresAt || null,
+            projectId: codeForm.projectId || undefined
           })
         }
       )
       if (res.ok) {
         setShowCodeForm(false)
-        setCodeForm({ code: '', discountType: 'percent', discountValue: '', maxUses: '', expiresAt: '' })
+        setCodeForm({ code: '', discountType: 'percent', discountValue: '', maxUses: '', expiresAt: '', projectId: '' })
         setSuccess('Discount code created!')
         setTimeout(() => setSuccess(null), 3000)
         await loadData()
@@ -700,13 +718,22 @@ function MonetizationContent() {
             <div className="space-y-2 mb-4">
               {discountCodes.map(code => (
                 <div key={code.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/30 rounded-lg text-sm">
-                  <div>
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono font-medium text-gray-900 dark:text-gray-100">{code.code}</span>
-                    <span className="text-gray-500 dark:text-gray-400 ml-2">
+                    <span className="text-gray-500 dark:text-gray-400">
                       {code.discountType === 'percent' ? `${code.discountValue}% off` :
                        code.discountType === 'fixed_amount' ? `$${code.discountValue} off` :
                        `${code.discountValue} day free trial`}
                     </span>
+                    {code.projectId ? (
+                      <span className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs rounded">
+                        {authorProjects.find(p => p.id === code.projectId)?.title || 'Project'}
+                      </span>
+                    ) : (
+                      <span className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-xs rounded">
+                        All projects
+                      </span>
+                    )}
                   </div>
                   <div className="text-gray-400 dark:text-gray-500 text-xs">
                     {code.currentUses}{code.maxUses ? `/${code.maxUses}` : ''} uses
@@ -744,6 +771,21 @@ function MonetizationContent() {
                     </select>
                   </div>
                 </div>
+                {authorProjects.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Project Scope</label>
+                    <select
+                      value={codeForm.projectId}
+                      onChange={e => setCodeForm({ ...codeForm, projectId: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900/50 text-gray-900 dark:text-gray-100 rounded-lg text-sm"
+                    >
+                      <option value="">All projects (author-wide)</option>
+                      {authorProjects.map(p => (
+                        <option key={p.id} value={p.id}>{p.title}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
@@ -791,6 +833,22 @@ function MonetizationContent() {
             </div>
           )}
         </div>
+
+        {/* Beta Readers & Access link */}
+        <Link
+          href="/settings/beta-readers"
+          className="block bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100">Beta Readers & Access Grants</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                Grant specific users direct access to your projects — beta readers, ARC readers, comps, and gifts.
+              </p>
+            </div>
+            <span className="text-gray-400 dark:text-gray-500">&rarr;</span>
+          </div>
+        </Link>
       </div>
 
       <ConfirmModal
