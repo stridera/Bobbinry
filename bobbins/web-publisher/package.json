@@ -9,6 +9,7 @@
     "./panels/chapter-publish": "./panels/chapter-publish.tsx",
     "./panels/publish-manager": "./panels/publish-manager.tsx",
     "./panels/analytics-detail": "./panels/analytics-detail.tsx",
+    "./panels/ready-queue": "./panels/ready-queue.tsx",
     "./panels/scheduled-releases": "./panels/scheduled-releases.tsx"
   },
   "scripts": {

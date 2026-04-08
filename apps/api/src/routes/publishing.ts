@@ -21,6 +21,8 @@ import { serverEventBus, contentPublished, contentStatusChange } from '../lib/ev
 import {
   getNextAvailableReleaseSlot,
   getProjectReleaseSchedule,
+  reorderScheduleByEntityOrder,
+  shouldAutoPublishAsGapFill,
   shiftFollowingScheduledChaptersUp,
   upsertScheduledChapterPublication
 } from '../lib/release-schedule'
@@ -410,10 +412,39 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       }
 
       try {
-        const nextReleaseSlot = await getNextAvailableReleaseSlot(projectId, { excludeChapterId: chapterId })
-        if (nextReleaseSlot) {
-          const publishedVersion = publication?.publishedVersion || '1.0'
-          publication = await upsertScheduledChapterPublication(projectId, chapterId, nextReleaseSlot, publishedVersion)
+        // Check if this chapter fills a gap between published chapters
+        const isGapFill = await shouldAutoPublishAsGapFill(projectId, chapterId)
+        if (isGapFill) {
+          // Auto-publish immediately — it fills a gap in the published sequence
+          const now2 = new Date()
+          const [autoPublished] = await db
+            .update(chapterPublications)
+            .set({
+              publishStatus: 'published',
+              isPublished: true,
+              publishedAt: now2,
+              publicReleaseDate: now2,
+              lastPublishedAt: now2,
+              updatedAt: now2,
+            })
+            .where(and(eq(chapterPublications.chapterId, chapterId), eq(chapterPublications.projectId, projectId)))
+            .returning()
+          if (autoPublished) publication = autoPublished
+        } else {
+          // Normal auto-scheduling: assign next available slot, then reorder by entity order
+          const nextReleaseSlot = await getNextAvailableReleaseSlot(projectId, { excludeChapterId: chapterId })
+          if (nextReleaseSlot) {
+            const publishedVersion = publication?.publishedVersion || '1.0'
+            publication = await upsertScheduledChapterPublication(projectId, chapterId, nextReleaseSlot, publishedVersion)
+            await reorderScheduleByEntityOrder(projectId)
+            // Re-fetch to get potentially reordered date
+            const [refreshed] = await db
+              .select()
+              .from(chapterPublications)
+              .where(and(eq(chapterPublications.chapterId, chapterId), eq(chapterPublications.projectId, projectId)))
+              .limit(1)
+            if (refreshed) publication = refreshed
+          }
         }
       } catch (scheduleError) {
         fastify.log.warn({ err: scheduleError, projectId, chapterId }, 'Failed to auto-schedule completed chapter')

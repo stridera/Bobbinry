@@ -7,10 +7,8 @@ import Link from 'next/link'
 import { SiteNav } from '@/components/SiteNav'
 import { apiFetch } from '@/lib/api'
 import { DashboardHero } from './components/dashboard/DashboardHero'
-import { StatsCards } from './components/dashboard/StatsCards'
 import { TagsEditor } from './components/dashboard/TagsEditor'
 import { ChapterOverview } from './components/dashboard/ChapterOverview'
-import { ScheduledReleases } from './components/dashboard/ScheduledReleases'
 import { PublishingSettings } from './components/dashboard/PublishingSettings'
 import { ProjectManagement } from './components/dashboard/ProjectManagement'
 import { ExportProject } from './components/dashboard/ExportProject'
@@ -211,8 +209,6 @@ export default function ProjectDashboardPage() {
           }}
         />
 
-        <StatsCards analytics={data.analytics} />
-
         <TagsEditor
           projectId={projectId}
           tags={data.tags}
@@ -223,12 +219,12 @@ export default function ProjectDashboardPage() {
 
         <ChapterOverview
           chapters={data.chapters}
+          projectId={projectId}
           readerBaseUrl={data.authorUsername && data.project.shortUrl
             ? `/read/${data.authorUsername}/${data.project.shortUrl}`
             : null}
+          onStatusChange={() => loadDashboard()}
         />
-
-        <ScheduledReleases releases={data.scheduledReleases} />
 
         <PublishingSettings
           projectId={projectId}

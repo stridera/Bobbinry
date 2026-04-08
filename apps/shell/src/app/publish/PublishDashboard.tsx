@@ -2,16 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { SiteNav } from '@/components/SiteNav'
 import { SkeletonList } from '@/components/LoadingState'
 import { EmptyState } from '@/components/EmptyState'
 import { config } from '@/lib/config'
 import { apiFetch } from '@/lib/api'
-import { BobbinrySDK } from '@bobbinry/sdk'
-import PublishManagerPanel from '@bobbinry/web-publisher/panels/publish-manager'
-import ScheduledReleasesPanel from '@bobbinry/web-publisher/panels/scheduled-releases'
-import ReleaseConfig from '@bobbinry/web-publisher/views/release-config'
 
 interface User {
   id: string
@@ -29,126 +25,31 @@ interface Project {
   updatedAt: string
 }
 
-interface Chapter {
-  id: string
-  title?: string
-  order?: number
-}
-
 interface ChapterPublication {
   chapterId: string
   publishStatus: string
-  publishedAt?: string
   viewCount?: number
-}
-
-function PublisherWorkspace({
-  projectId,
-  apiToken,
-  selectedChapterId,
-  onSelectChapter,
-  refreshKey,
-}: {
-  projectId: string
-  apiToken: string
-  selectedChapterId: string | null
-  onSelectChapter: (chapterId: string | null) => void
-  refreshKey: number
-}) {
-  const [sdk] = useState(() => {
-    const instance = new BobbinrySDK('web-publisher')
-    instance.setProject(projectId)
-    instance.api.setAuthToken(apiToken)
-    return instance
-  })
-
-  useEffect(() => {
-    sdk.setProject(projectId)
-    sdk.api.setAuthToken(apiToken)
-  }, [sdk, projectId, apiToken])
-
-  return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_360px]">
-      <div className="space-y-4">
-        <section className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-          <div className="border-b border-gray-100 px-5 py-4 dark:border-gray-800">
-            <h4 className="font-display text-base font-semibold text-gray-900 dark:text-gray-100">
-              Project publishing overview
-            </h4>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Project-wide reach, completion, and publishing progress at a glance.
-            </p>
-          </div>
-          <PublishManagerPanel
-            projectId={projectId}
-            apiToken={apiToken}
-            refreshKey={refreshKey}
-            mode="overview"
-          />
-        </section>
-
-        <section className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-          <div className="border-b border-gray-100 px-5 py-4 dark:border-gray-800">
-            <h4 className="font-display text-base font-semibold text-gray-900 dark:text-gray-100">
-              Published chapters
-            </h4>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Select a published chapter to inspect its audience, completion, and reading behavior.
-            </p>
-          </div>
-          <PublishManagerPanel
-            projectId={projectId}
-            apiToken={apiToken}
-            refreshKey={refreshKey}
-            selectedChapterId={selectedChapterId}
-            onSelectChapter={onSelectChapter}
-            mode="chapters"
-          />
-        </section>
-
-        <section className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-          <ScheduledReleasesPanel
-            projectId={projectId}
-            apiToken={apiToken}
-            refreshKey={refreshKey}
-          />
-        </section>
-      </div>
-
-      <div className="space-y-4">
-        <section className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-          <ReleaseConfig sdk={sdk} projectId={projectId} />
-        </section>
-      </div>
-    </div>
-  )
 }
 
 export function PublishDashboard({ user, apiToken }: { user: User; apiToken: string }) {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [actionInProgress, setActionInProgress] = useState<string | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
-  const [expandedProject, setExpandedProject] = useState<string | null>(null)
-  const [chapters, setChapters] = useState<Record<string, Chapter[]>>({})
   const [publications, setPublications] = useState<Record<string, Record<string, ChapterPublication>>>({})
   const [slugInputs, setSlugInputs] = useState<Record<string, string>>({})
   const [slugAvailability, setSlugAvailability] = useState<Record<string, boolean | null>>({})
-  const [publishRefreshKey] = useState(0)
-  const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null)
   const [slugChecking, setSlugChecking] = useState<Record<string, boolean>>({})
   const [username, setUsername] = useState<string>('')
-  const [projectVisibility, setProjectVisibility] = useState<Record<string, string>>({})
 
   const authorId = username || user.id
 
   const slugify = (text: string) =>
     text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
-  const generateDefaultSlug = (projectName: string) => {
-    return slugify(projectName)
-  }
+  const generateDefaultSlug = (projectName: string) => slugify(projectName)
 
   const loadProjects = useCallback(async () => {
     try {
@@ -162,6 +63,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
         const activeProjects = allProjects.filter((project) => !project.isArchived)
         setProjects(activeProjects)
 
+        // Load publication counts for live projects
         const published = activeProjects.filter((project) => project.shortUrl)
         const pubResults = await Promise.allSettled(
           published.map((project) =>
@@ -181,24 +83,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
             }
           }
         }
-
-        setPublications((current) => ({ ...current, ...pubMap }))
-
-        // Load visibility settings for published projects
-        const visResults = await Promise.allSettled(
-          published.map((project) =>
-            apiFetch(`/api/projects/${project.id}/publish-config`, apiToken)
-              .then((response) => response.json())
-              .then((data) => ({ projectId: project.id, visibility: data.config?.defaultVisibility || 'public' }))
-          )
-        )
-        const visMap: Record<string, string> = {}
-        for (const result of visResults) {
-          if (result.status === 'fulfilled') {
-            visMap[result.value.projectId] = result.value.visibility
-          }
-        }
-        setProjectVisibility((current) => ({ ...current, ...visMap }))
+        setPublications(pubMap)
       }
     } catch (err) {
       console.error('Failed to load projects:', err)
@@ -219,7 +104,6 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
         // ignore
       }
     }
-
     void loadProfile()
   }, [user.id, apiToken])
 
@@ -227,72 +111,20 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
     void loadProjects()
   }, [loadProjects])
 
-  const loadProjectChapters = useCallback(async (projectId: string) => {
-    try {
-      const [chaptersRes, publicationsRes] = await Promise.all([
-        apiFetch(`/api/collections/content/entities?projectId=${projectId}`, apiToken),
-        apiFetch(`/api/projects/${projectId}/publications?status=all`, apiToken),
-      ])
-
-      let chapterList: Chapter[] = []
-      if (chaptersRes.ok) {
-        const data = await chaptersRes.json()
-        chapterList = (data.entities || []).sort(
-          (a: Chapter, b: Chapter) => (a.order ?? 0) - (b.order ?? 0)
-        )
-        setChapters((current) => ({ ...current, [projectId]: chapterList }))
-      }
-
-      if (publicationsRes.ok) {
-        const data = await publicationsRes.json()
-        const projectPublications: Record<string, ChapterPublication> = {}
-        for (const publication of data.publications || []) {
-          projectPublications[publication.chapterId] = publication
-        }
-        setPublications((current) => ({ ...current, [projectId]: projectPublications }))
-      }
-
-      return chapterList
-    } catch (err) {
-      console.error('Failed to load project publishing data:', err)
-      return []
-    }
-  }, [apiToken])
-
-  const expandProject = useCallback(async (projectId: string, preferredChapterId?: string | null) => {
-    setExpandedProject(projectId)
-    const chapterList = await loadProjectChapters(projectId)
-    const nextSelected = preferredChapterId || chapterList[0]?.id || null
-    setSelectedChapterId(nextSelected)
-  }, [loadProjectChapters])
-
+  // Backward compat: redirect ?project=X to /publish/X
   useEffect(() => {
     if (loading) return
-
     const projectId = searchParams.get('project')
-    if (!projectId) return
-    if (!projects.some((project) => project.id === projectId)) return
-    if (expandedProject === projectId) return
-
-    void expandProject(projectId, searchParams.get('chapter'))
-  }, [loading, projects, expandedProject, searchParams, expandProject])
-
-  const toggleProjectExpansion = async (projectId: string) => {
-    if (expandedProject === projectId) {
-      setExpandedProject(null)
-      setSelectedChapterId(null)
-      return
+    if (projectId) {
+      router.replace(`/publish/${projectId}`)
     }
-
-    await expandProject(projectId)
-  }
+  }, [loading, searchParams, router])
 
   const checkSlugAvailability = async (slug: string) => {
     if (!slug || slug.length < 2) {
       setSlugAvailability((current) => ({ ...current, [slug]: null }))
       return
     }
-
     setSlugChecking((current) => ({ ...current, [slug]: true }))
     try {
       const response = await fetch(`${config.apiUrl}/api/short-urls/check`, {
@@ -300,7 +132,6 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ shortUrl: slug, type: 'project' }),
       })
-
       if (response.ok) {
         const data = await response.json()
         setSlugAvailability((current) => ({ ...current, [slug]: data.available }))
@@ -339,12 +170,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
         body: JSON.stringify({ publishingMode: 'live', defaultVisibility: 'public' }),
       })
 
-      setMessage({
-        type: 'success',
-        text: 'Publishing enabled. Set your release cadence and select a chapter to manage publishing.',
-      })
-      await loadProjects()
-      await expandProject(projectId)
+      router.push(`/publish/${projectId}`)
     } catch (err) {
       setMessage({
         type: 'error',
@@ -371,8 +197,6 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
       })
 
       setMessage({ type: 'success', text: 'Publishing disabled.' })
-      setExpandedProject(null)
-      setSelectedChapterId(null)
       await loadProjects()
     } catch (err) {
       setMessage({
@@ -381,22 +205,6 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
       })
     } finally {
       setActionInProgress(null)
-    }
-  }
-
-  const updateProjectVisibility = async (projectId: string, visibility: string) => {
-    try {
-      await apiFetch(`/api/projects/${projectId}/publish-config`, apiToken, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ defaultVisibility: visibility }),
-      })
-      setProjectVisibility((current) => ({ ...current, [projectId]: visibility }))
-    } catch (err) {
-      setMessage({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Failed to update visibility',
-      })
     }
   }
 
@@ -432,7 +240,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
                 Publisher
               </h1>
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Set project cadence, manage release order, and handle chapter publishing from one workspace.
+                Select a project to manage its publishing workflow.
               </p>
             </div>
             <Link
@@ -480,101 +288,54 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
                   <span className="h-2 w-2 rounded-full bg-green-500" />
                   Live projects ({publishedProjects.length})
                 </h2>
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {publishedProjects.map((project) => {
-                    const isExpanded = expandedProject === project.id
-                    const projectChapters = chapters[project.id] || []
                     const projectPublications = publications[project.id] || {}
                     const publishedCount = Object.values(projectPublications).filter(
-                      (publication) => publication.publishStatus === 'published'
+                      (p) => p.publishStatus === 'published'
                     ).length
+                    const totalViews = Object.values(projectPublications).reduce(
+                      (sum, p) => sum + Number(p.viewCount || 0), 0
+                    )
 
                     return (
-                      <div
+                      <Link
                         key={project.id}
-                        className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900"
+                        href={`/publish/${project.id}`}
+                        className="group block overflow-hidden rounded-xl border border-gray-200 bg-white p-5 transition-colors hover:border-blue-300 hover:bg-blue-50/30 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-blue-700 dark:hover:bg-blue-950/10"
                       >
-                        <div className="p-5">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="min-w-0 flex-1">
-                              <div className="mb-2 flex items-center gap-2">
-                                <h3 className="truncate font-display text-lg font-semibold text-gray-900 dark:text-gray-100">
-                                  {project.name}
-                                </h3>
-                                <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                                  Live
-                                </span>
-                              </div>
-                              {project.description ? (
-                                <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
-                                  {project.description}
-                                </p>
-                              ) : null}
-
-                              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-gray-400 dark:text-gray-500">URL</span>
-                                  <Link
-                                    href={`/read/${authorId}/${project.shortUrl}`}
-                                    className="font-mono text-xs text-blue-600 hover:underline dark:text-blue-400"
-                                  >
-                                    /read/{authorId}/{project.shortUrl}
-                                  </Link>
-                                </div>
-                                <span className="text-xs text-gray-500 dark:text-gray-400">
-                                  {publishedCount} published
-                                  {projectChapters.length > 0 ? ` · ${projectChapters.length} total chapters` : ''}
-                                </span>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-gray-400 dark:text-gray-500">Visibility</span>
-                                  <select
-                                    value={projectVisibility[project.id] || 'public'}
-                                    onChange={(e) => void updateProjectVisibility(project.id, e.target.value)}
-                                    className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
-                                  >
-                                    <option value="public">Public</option>
-                                    <option value="subscribers_only">Subscribers Only</option>
-                                  </select>
-                                </div>
-                              </div>
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0 flex-1">
+                            <div className="mb-1 flex items-center gap-2">
+                              <h3 className="truncate font-display text-lg font-semibold text-gray-900 dark:text-gray-100">
+                                {project.name}
+                              </h3>
+                              <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                                Live
+                              </span>
                             </div>
-
-                            <div className="flex flex-wrap items-center justify-end gap-2">
-                              <button
-                                onClick={() => void toggleProjectExpansion(project.id)}
-                                className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-                              >
-                                {isExpanded ? 'Hide workspace' : 'Manage publishing'}
-                              </button>
-                              <Link
-                                href={`/projects/${project.id}`}
-                                className="rounded-md bg-gray-100 px-3 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                              >
-                                Project dashboard
-                              </Link>
-                              <button
-                                onClick={() => disablePublishing(project.id)}
-                                disabled={actionInProgress === project.id}
-                                className="rounded-md px-3 py-1.5 text-sm text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-900/10"
-                              >
-                                {actionInProgress === project.id ? 'Disabling...' : 'Disable'}
-                              </button>
+                            {project.description ? (
+                              <p className="mb-2 text-sm text-gray-500 dark:text-gray-400 line-clamp-1">
+                                {project.description}
+                              </p>
+                            ) : null}
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                              <span className="font-mono">/read/{authorId}/{project.shortUrl}</span>
+                              <span>{publishedCount} published</span>
+                              {totalViews > 0 && <span>{totalViews.toLocaleString()} views</span>}
                             </div>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0" onClick={(e) => e.preventDefault()}>
+                            <button
+                              onClick={() => void disablePublishing(project.id)}
+                              disabled={actionInProgress === project.id}
+                              className="rounded-md px-3 py-1.5 text-sm text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-900/10"
+                            >
+                              {actionInProgress === project.id ? 'Disabling...' : 'Disable'}
+                            </button>
                           </div>
                         </div>
-
-                        {isExpanded ? (
-                          <div className="border-t border-gray-100 bg-gray-50/60 px-5 py-5 dark:border-gray-800 dark:bg-gray-950/30">
-                            <PublisherWorkspace
-                              projectId={project.id}
-                              apiToken={apiToken}
-                              selectedChapterId={selectedChapterId}
-                              onSelectChapter={setSelectedChapterId}
-                              refreshKey={publishRefreshKey}
-                            />
-                          </div>
-                        ) : null}
-                      </div>
+                      </Link>
                     )
                   })}
                 </div>
@@ -643,7 +404,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
                               Project dashboard
                             </Link>
                             <button
-                              onClick={() => enablePublishing(project.id)}
+                              onClick={() => void enablePublishing(project.id)}
                               disabled={actionInProgress === project.id || availability === false}
                               className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
                             >
@@ -657,17 +418,6 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
                 </div>
               </section>
             ) : null}
-
-            <section className="rounded-xl border border-blue-100 bg-blue-50/60 p-6 dark:border-blue-900/30 dark:bg-blue-950/10">
-              <h3 className="font-display font-semibold text-gray-900 dark:text-gray-100">
-                Publishing model
-              </h3>
-              <ul className="mt-3 space-y-2 text-sm text-gray-600 dark:text-gray-400">
-                <li>Set project cadence here. This is the only place to control automatic release timing.</li>
-                <li>Select a chapter from the performance list to open chapter-specific publish and schedule controls.</li>
-                <li>Use the project dashboard for writing and metadata. Use the Publisher for release workflow.</li>
-              </ul>
-            </section>
           </div>
         )}
       </div>

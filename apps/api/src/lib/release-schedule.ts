@@ -1,6 +1,6 @@
-import { and, eq, isNotNull } from 'drizzle-orm'
+import { and, eq, isNotNull, inArray, sql } from 'drizzle-orm'
 import { db } from '../db/connection'
-import { chapterPublications, projectPublishConfig, projects, subscriptionTiers } from '../db/schema'
+import { chapterPublications, entities, projectPublishConfig, projects, subscriptionTiers } from '../db/schema'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const DEFAULT_RELEASE_TIME = '12:00'
@@ -301,4 +301,142 @@ export async function shiftFollowingScheduledChaptersUp(
 
     nextSlot = currentSlot
   }
+}
+
+/**
+ * Ensure scheduled chapter dates follow entity (manuscript) order.
+ *
+ * After any auto-scheduling action, call this to guarantee that earlier
+ * chapters (by entity order) are scheduled before later ones. If the
+ * dates already match entity order, this is a no-op.
+ */
+export async function reorderScheduleByEntityOrder(projectId: string): Promise<void> {
+  const rows = await db
+    .select({
+      pubId: chapterPublications.id,
+      chapterId: chapterPublications.chapterId,
+      publishedAt: chapterPublications.publishedAt,
+      entityOrder: sql<number>`COALESCE((${entities.entityData}->>'order')::bigint, 999999)`,
+    })
+    .from(chapterPublications)
+    .innerJoin(entities, eq(entities.id, chapterPublications.chapterId))
+    .where(and(
+      eq(chapterPublications.projectId, projectId),
+      eq(chapterPublications.publishStatus, 'scheduled'),
+      isNotNull(chapterPublications.publishedAt)
+    ))
+
+  if (rows.length < 2) return
+
+  // Sort by entity order to get desired sequence
+  const byEntityOrder = [...rows].sort((a, b) => Number(a.entityOrder) - Number(b.entityOrder))
+
+  // Sort dates chronologically
+  const datesSorted = rows
+    .map((r) => r.publishedAt)
+    .filter((d): d is Date => d instanceof Date)
+    .sort((a, b) => a.getTime() - b.getTime())
+
+  if (datesSorted.length !== byEntityOrder.length) return
+
+  // Check if already in order — skip DB writes if so
+  let alreadyOrdered = true
+  for (let i = 0; i < byEntityOrder.length; i++) {
+    const currentDate = byEntityOrder[i]!.publishedAt
+    if (!(currentDate instanceof Date) || currentDate.getTime() !== datesSorted[i]!.getTime()) {
+      alreadyOrdered = false
+      break
+    }
+  }
+  if (alreadyOrdered) return
+
+  // Reassign: first chapter by entity order gets earliest date, etc.
+  for (let i = 0; i < byEntityOrder.length; i++) {
+    const row = byEntityOrder[i]!
+    const newDate = datesSorted[i]!
+    const currentDate = row.publishedAt
+
+    if (currentDate instanceof Date && currentDate.getTime() === newDate.getTime()) continue
+
+    await db
+      .update(chapterPublications)
+      .set({
+        publishedAt: newDate,
+        publicReleaseDate: newDate,
+        updatedAt: new Date(),
+      })
+      .where(eq(chapterPublications.id, row.pubId))
+  }
+}
+
+/**
+ * Check whether a chapter fills a gap between already-published chapters
+ * and should be auto-published immediately instead of scheduled.
+ *
+ * Only considers chapters that are in the publishing pipeline
+ * (published, scheduled, or complete). Draft chapters and non-pipeline
+ * entities (notes, old drafts) are ignored.
+ */
+export async function shouldAutoPublishAsGapFill(
+  projectId: string,
+  chapterId: string
+): Promise<boolean> {
+  // Get this chapter's entity order
+  const [thisEntity] = await db
+    .select({
+      id: entities.id,
+      entityOrder: sql<number>`COALESCE((${entities.entityData}->>'order')::bigint, 999999)`,
+    })
+    .from(entities)
+    .where(eq(entities.id, chapterId))
+    .limit(1)
+
+  if (!thisEntity) return false
+
+  // Get all pipeline chapters (published/scheduled/complete) for the project, with entity order
+  const pipelineStatuses = ['published', 'scheduled', 'complete']
+  const pipelineChapters = await db
+    .select({
+      chapterId: chapterPublications.chapterId,
+      publishStatus: chapterPublications.publishStatus,
+      entityOrder: sql<number>`COALESCE((${entities.entityData}->>'order')::bigint, 999999)`,
+    })
+    .from(chapterPublications)
+    .innerJoin(entities, eq(entities.id, chapterPublications.chapterId))
+    .where(and(
+      eq(chapterPublications.projectId, projectId),
+      inArray(chapterPublications.publishStatus, pipelineStatuses)
+    ))
+    .orderBy(sql`COALESCE((${entities.entityData}->>'order')::bigint, 999999)`)
+
+  // Find this chapter's position in the sorted pipeline
+  const thisOrder = Number(thisEntity.entityOrder)
+  const others = pipelineChapters.filter((c) => c.chapterId !== chapterId)
+
+  if (others.length === 0) return false
+
+  // Find immediate neighbors by entity order
+  let prev: typeof others[number] | null = null
+  let next: typeof others[number] | null = null
+
+  for (const ch of others) {
+    const order = Number(ch.entityOrder)
+    if (order < thisOrder) {
+      prev = ch
+    } else if (order > thisOrder && !next) {
+      next = ch
+    }
+  }
+
+  // Both neighbors published → gap fill
+  if (prev?.publishStatus === 'published' && next?.publishStatus === 'published') {
+    return true
+  }
+
+  // At the start of the manuscript and next neighbor is published → gap fill
+  if (!prev && next?.publishStatus === 'published') {
+    return true
+  }
+
+  return false
 }

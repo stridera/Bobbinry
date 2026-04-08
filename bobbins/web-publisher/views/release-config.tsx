@@ -3,11 +3,11 @@
 import { useEffect, useState } from 'react'
 import { BobbinrySDK } from '@bobbinry/sdk'
 
-interface TierDelay {
+interface TierEarlyAccess {
   id: string
   name: string
   tierLevel: number
-  delayDays: number
+  earlyDays: number
 }
 
 interface PublishScheduleConfig {
@@ -95,7 +95,7 @@ export default function ReleaseConfig({ sdk, projectId }: ReleaseConfigProps) {
     releaseDays: ['mon', 'wed', 'fri'],
     releaseTime: '12:00',
   })
-  const [tierDelays, setTierDelays] = useState<TierDelay[]>([])
+  const [tierAccess, setTierAccess] = useState<TierEarlyAccess[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -142,19 +142,19 @@ export default function ReleaseConfig({ sdk, projectId }: ReleaseConfigProps) {
       if (ownerId) {
         const tiersResult = await sdk.publishing.getAuthorTiers(ownerId)
         const tiers = Array.isArray(tiersResult.tiers) ? tiersResult.tiers : []
-        setTierDelays(
+        setTierAccess(
           tiers
             .filter((tier: any) => tier?.isActive !== false)
             .map((tier: any) => ({
               id: tier.id,
               name: tier.name || `Tier ${tier.tierLevel}`,
               tierLevel: Number(tier.tierLevel) || 0,
-              delayDays: Number(tier.earlyAccessDays) || 0,
+              earlyDays: Number(tier.earlyAccessDays) || 0,
             }))
-            .sort((a: TierDelay, b: TierDelay) => a.tierLevel - b.tierLevel)
+            .sort((a: TierEarlyAccess, b: TierEarlyAccess) => a.tierLevel - b.tierLevel)
         )
       } else {
-        setTierDelays([])
+        setTierAccess([])
       }
     } catch (err) {
       console.error('Failed to load release settings:', err)
@@ -390,9 +390,9 @@ export default function ReleaseConfig({ sdk, projectId }: ReleaseConfigProps) {
         <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-900/30">
           <div className="mb-2 flex items-center justify-between gap-4">
             <div>
-              <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Subscriber Access Timing</h3>
+              <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Subscriber Early Access</h3>
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                These delays come from your monetization tiers and are enforced by the reader.
+                Early access windows come from your monetization tiers and are enforced by the reader.
               </p>
             </div>
             <a
@@ -403,13 +403,13 @@ export default function ReleaseConfig({ sdk, projectId }: ReleaseConfigProps) {
             </a>
           </div>
 
-          {tierDelays.length === 0 ? (
+          {tierAccess.length === 0 ? (
             <p className="text-sm italic text-gray-400 dark:text-gray-500">
               No active subscription tiers yet. Published chapters will be public immediately.
             </p>
           ) : (
             <div className="space-y-2">
-              {tierDelays.map((tier) => (
+              {tierAccess.map((tier) => (
                 <div
                   key={tier.id}
                   className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm dark:bg-gray-800/70"
@@ -420,7 +420,11 @@ export default function ReleaseConfig({ sdk, projectId }: ReleaseConfigProps) {
                     </div>
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">
-                    {tier.delayDays === 0 ? 'Immediate access' : `${tier.delayDays} day delay`}
+                    {tier.earlyDays === 0
+                      ? 'No early access'
+                      : tier.earlyDays >= 36500
+                        ? 'Instant access'
+                        : `${tier.earlyDays} day${tier.earlyDays !== 1 ? 's' : ''} early`}
                   </div>
                 </div>
               ))}

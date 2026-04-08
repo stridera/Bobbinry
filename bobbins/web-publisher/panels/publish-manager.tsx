@@ -29,6 +29,7 @@ interface PublishManagerPanelProps {
   selectedChapterId?: string | null
   onSelectChapter?: (chapterId: string | null) => void
   mode?: 'full' | 'overview' | 'chapters'
+  readerBaseUrl?: string | null
   context?: {
     projectId: string
     apiToken?: string
@@ -36,6 +37,7 @@ interface PublishManagerPanelProps {
     selectedChapterId?: string | null
     onSelectChapter?: (chapterId: string | null) => void
     mode?: 'full' | 'overview' | 'chapters'
+    readerBaseUrl?: string | null
   }
 }
 
@@ -75,6 +77,7 @@ export default function PublishManagerPanel(props: PublishManagerPanelProps) {
   const refreshKey = props.refreshKey ?? props.context?.refreshKey ?? 0
   const selectedChapterId = props.selectedChapterId ?? props.context?.selectedChapterId
   const onSelectChapter = props.onSelectChapter || props.context?.onSelectChapter
+  const readerBaseUrl = props.readerBaseUrl ?? props.context?.readerBaseUrl ?? null
   const mode = props.mode || props.context?.mode || 'full'
   const showOverview = mode !== 'chapters'
   const showChapters = mode !== 'overview'
@@ -355,6 +358,20 @@ export default function PublishManagerPanel(props: PublishManagerPanelProps) {
                         <span className="text-xs text-gray-800 dark:text-gray-200 truncate">
                           {chapter.title}
                         </span>
+                        {isPublished && readerBaseUrl && (
+                          <a
+                            href={`${readerBaseUrl}/${chapter.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex-shrink-0 text-gray-400 hover:text-blue-500 dark:text-gray-500 dark:hover:text-blue-400 transition-colors"
+                            title="View in reader"
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                            </svg>
+                          </a>
+                        )}
                         {!isPublished && (
                           <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">
                             {chapter.publishStatus}
