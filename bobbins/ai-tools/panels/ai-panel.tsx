@@ -11,6 +11,7 @@ import {
   PanelLoadingState,
   PanelPill,
   PanelSectionTitle,
+  getSanitizedHtmlProps,
 } from '@bobbinry/sdk'
 
 interface AIToolsPanelProps {
@@ -724,7 +725,7 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
               </p>
               <div
                 className="prose prose-sm max-w-none text-gray-800 dark:prose-invert dark:text-gray-200"
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(existingReview.review) }}
+                dangerouslySetInnerHTML={getSanitizedHtmlProps(renderMarkdown(existingReview.review))}
               />
               <PanelActionButton onClick={handleGenerateReview}>
                 {reviewFocus.trim() ? 'Get Focused Feedback' : 'Regenerate'}
@@ -738,7 +739,7 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
             <PanelCard className="space-y-2 px-3 py-2">
               <div
                 className="prose prose-sm max-w-none text-gray-800 dark:prose-invert dark:text-gray-200"
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(reviewResult) }}
+                dangerouslySetInnerHTML={getSanitizedHtmlProps(renderMarkdown(reviewResult))}
               />
               <PanelActionButton onClick={handleGenerateReview}>Regenerate</PanelActionButton>
             </PanelCard>
@@ -805,7 +806,7 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
           <PanelCard className="space-y-2 px-3 py-2">
             <div
               className="prose prose-sm max-w-none text-gray-800 dark:prose-invert dark:text-gray-200"
-              dangerouslySetInnerHTML={{ __html: renderMarkdown(brainstormResult) }}
+              dangerouslySetInnerHTML={getSanitizedHtmlProps(renderMarkdown(brainstormResult))}
             />
             <PanelActionButton onClick={handleGenerateBrainstorm}>Regenerate</PanelActionButton>
           </PanelCard>
@@ -828,7 +829,7 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
           <PanelCard className="space-y-2 px-3 py-2">
             <div
               className="prose prose-sm max-w-none text-gray-800 dark:prose-invert dark:text-gray-200"
-              dangerouslySetInnerHTML={{ __html: renderMarkdown(fleshOutResult) }}
+              dangerouslySetInnerHTML={getSanitizedHtmlProps(renderMarkdown(fleshOutResult))}
             />
             <PanelActionButton onClick={handleGenerateFleshOut}>Regenerate</PanelActionButton>
           </PanelCard>

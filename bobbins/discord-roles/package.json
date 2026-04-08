@@ -7,6 +7,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./views/*": "./src/views/*.tsx",
+    "./panels/*": "./src/panels/*.tsx",
     "./actions/*": "./actions/*.ts"
   },
   "scripts": {

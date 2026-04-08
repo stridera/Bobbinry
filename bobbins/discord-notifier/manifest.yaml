@@ -1,6 +1,6 @@
 id: discord-notifier
 name: Discord Notifier
-version: 1.0.2
+version: 1.0.3
 author: Bobbins Core
 description: Announce chapter publishes to Discord channels via webhooks. Map tiers to channels for targeted notifications.
 tags: [discord, notifications, integration, webhooks]
@@ -16,7 +16,7 @@ extensions:
       type: panel
       id: discord-notifier-settings
       title: "Discord Notifier"
-      entry: views/settings
+      entry: panels/settings
       priority: 8
       when:
         inView: project
