@@ -117,33 +117,30 @@ export function ChapterOverview({ chapters, projectId, readerBaseUrl, onStatusCh
                 <tr key={chapter.id} className={`border-b border-gray-100 dark:border-gray-700/50 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${rowTint}`}>
                   <td className="py-2.5 pr-4 text-gray-400 dark:text-gray-500 tabular-nums">{i + 1}</td>
                   <td className="py-2.5 pr-4 font-medium">
+                    <Link
+                      href={`/projects/${projectId}/manuscript/content/${chapter.id}`}
+                      className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline transition-colors"
+                    >
+                      {chapter.title}
+                    </Link>
+                  </td>
+                  <td className="py-2.5 pr-4">
                     <div className="flex items-center gap-2">
-                      <Link
-                        href={`/projects/${projectId}/manuscript/content/${chapter.id}`}
-                        className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline transition-colors"
-                      >
-                        {chapter.title}
-                      </Link>
-                      {readerUrl && (
+                      {readerUrl ? (
                         <a
                           href={readerUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex-shrink-0 text-gray-400 hover:text-blue-500 dark:text-gray-500 dark:hover:text-blue-400 transition-colors"
+                          className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium hover:ring-2 hover:ring-green-300 dark:hover:ring-green-600 transition-all ${STATUS_COLORS[status] || STATUS_COLORS.draft}`}
                           title="View published chapter"
                         >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                          </svg>
+                          {STATUS_LABELS[status] || status} ↗
                         </a>
+                      ) : (
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[status] || STATUS_COLORS.draft}`}>
+                          {STATUS_LABELS[status] || status}
+                        </span>
                       )}
-                    </div>
-                  </td>
-                  <td className="py-2.5 pr-4">
-                    <div className="flex items-center gap-2">
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[status] || STATUS_COLORS.draft}`}>
-                        {STATUS_LABELS[status] || status}
-                      </span>
                       {canToggle && (
                         <button
                           onClick={() => toggleStatus(chapter.id, status)}
