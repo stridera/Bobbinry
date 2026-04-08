@@ -14,6 +14,7 @@ import { eq, and, gt, lte } from 'drizzle-orm'
 import { processEmbargoReleases, initTierDispatch } from './tier-dispatch'
 import { processTrashPurge } from './trash-purge'
 import { processSubscriptionExpiration } from './subscription-expiration'
+import { processAdminDailyReport } from './admin-daily-report'
 import { createActionRuntime, type ActionHandler, type ActionModule } from '@bobbinry/action-runtime'
 import { loadDiskManifests } from '../lib/disk-manifests'
 import { getDeclaredCustomAction } from '../lib/bobbin-actions'
@@ -359,6 +360,11 @@ export function startTriggerScheduler(): void {
     // Reconcile subscription state with Stripe every 15 minutes
     if (new Date().getUTCMinutes() % 15 === 0) {
       tasks.push(processSubscriptionExpiration())
+    }
+
+    // Send admin daily report at 14:00 UTC
+    if (new Date().getUTCHours() === 14 && new Date().getUTCMinutes() === 0) {
+      tasks.push(processAdminDailyReport())
     }
 
     await Promise.allSettled(tasks)

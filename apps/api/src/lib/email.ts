@@ -296,6 +296,137 @@ export async function sendNewFollowerEmail(
   })
 }
 
+// ---------------------------------------------------------------------------
+// Admin daily report
+// ---------------------------------------------------------------------------
+
+import type { AdminDailyReport } from '../jobs/admin-daily-report'
+
+export function buildAdminDailyReportHtml(report: AdminDailyReport): string {
+  const dateStr = new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'UTC',
+  })
+
+  // Build growth rows (only non-zero metrics)
+  const growthMetrics: [number, string][] = [
+    [report.newSignups, 'new sign-up' + (report.newSignups !== 1 ? 's' : '')],
+    [report.newProjects, 'new project' + (report.newProjects !== 1 ? 's' : '') + ' created'],
+    [report.chaptersFirstPublished, 'chapter' + (report.chaptersFirstPublished !== 1 ? 's' : '') + ' first published'],
+    [report.newSubscriptions, 'new subscription' + (report.newSubscriptions !== 1 ? 's' : '')],
+    [report.newSupporterMemberships, 'new supporter membership' + (report.newSupporterMemberships !== 1 ? 's' : '')],
+    [report.newProjectFollows, 'new project follow' + (report.newProjectFollows !== 1 ? 's' : '')],
+    [report.newUserFollows, 'new user follow' + (report.newUserFollows !== 1 ? 's' : '')],
+  ]
+  const growthRows = growthMetrics.filter(([n]) => n > 0)
+
+  const hasErrors = report.failedPayments > 0 || report.failedSyncs > 0 || report.reportedUploads > 0
+
+  let content = `
+    <h1 style="margin:0 0 4px;font-family:${FONT_HEADING};font-size:24px;color:${COLORS.text};">Daily Report</h1>
+    <p style="margin:0 0 20px;font-size:14px;color:${COLORS.muted};line-height:20px;">${dateStr}</p>
+  `
+
+  if (growthRows.length > 0) {
+    content += `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 8px;">`
+    for (const [count, label] of growthRows) {
+      content += `
+      <tr>
+        <td style="padding:4px 12px 4px 0;font-size:16px;color:${COLORS.accent};font-weight:bold;vertical-align:top;">&bull;</td>
+        <td style="padding:4px 0;font-size:15px;color:${COLORS.text};line-height:22px;"><strong>${count}</strong> ${escapeHtml(label)}</td>
+      </tr>`
+    }
+    content += `</table>`
+
+    // Reading stats as muted context line
+    if (report.chapterViewsStarted > 0 || report.chapterReadsCompleted > 0) {
+      const parts: string[] = []
+      if (report.chapterViewsStarted > 0) parts.push(`${report.chapterViewsStarted} chapter view${report.chapterViewsStarted !== 1 ? 's' : ''}`)
+      if (report.chapterReadsCompleted > 0) parts.push(`${report.chapterReadsCompleted} completed`)
+      content += `<p style="margin:8px 0 0;font-size:13px;color:${COLORS.muted};line-height:20px;">${parts.join(', ')}</p>`
+    }
+  }
+
+  if (hasErrors) {
+    content += `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0 0;">
+      <tr><td style="border-top:1px solid ${COLORS.divider};padding-top:16px;">
+        <h2 style="margin:0 0 12px;font-family:${FONT_HEADING};font-size:18px;color:${COLORS.accent};">Attention Needed</h2>
+      </td></tr>
+    </table>
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 8px;">`
+
+    const errorMetrics: [number, string][] = [
+      [report.failedPayments, 'failed payment' + (report.failedPayments !== 1 ? 's' : '')],
+      [report.failedSyncs, 'failed sync' + (report.failedSyncs !== 1 ? 's' : '')],
+      [report.reportedUploads, 'reported upload' + (report.reportedUploads !== 1 ? 's' : '')],
+    ]
+    for (const [count, label] of errorMetrics) {
+      if (count > 0) {
+        content += `
+      <tr>
+        <td style="padding:4px 12px 4px 0;font-size:16px;color:${COLORS.accent};font-weight:bold;vertical-align:top;">&bull;</td>
+        <td style="padding:4px 0;font-size:15px;color:${COLORS.text};line-height:22px;"><strong>${count}</strong> ${escapeHtml(label)}</td>
+      </tr>`
+      }
+    }
+    content += `</table>`
+  }
+
+  content += emailButton('View Admin Dashboard', `${env.WEB_ORIGIN}/admin`)
+
+  return emailLayout(content)
+}
+
+export function buildAdminDailyReportText(report: AdminDailyReport): string {
+  const dateStr = new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'UTC',
+  })
+
+  const lines: string[] = [`Bobbinry Daily Report — ${dateStr}`, '']
+
+  const growthMetrics: [number, string][] = [
+    [report.newSignups, 'new sign-up' + (report.newSignups !== 1 ? 's' : '')],
+    [report.newProjects, 'new project' + (report.newProjects !== 1 ? 's' : '') + ' created'],
+    [report.chaptersFirstPublished, 'chapter' + (report.chaptersFirstPublished !== 1 ? 's' : '') + ' first published'],
+    [report.newSubscriptions, 'new subscription' + (report.newSubscriptions !== 1 ? 's' : '')],
+    [report.newSupporterMemberships, 'new supporter membership' + (report.newSupporterMemberships !== 1 ? 's' : '')],
+    [report.newProjectFollows, 'new project follow' + (report.newProjectFollows !== 1 ? 's' : '')],
+    [report.newUserFollows, 'new user follow' + (report.newUserFollows !== 1 ? 's' : '')],
+  ]
+  const growthRows = growthMetrics.filter(([n]) => n > 0)
+  if (growthRows.length > 0) {
+    for (const [count, label] of growthRows) {
+      lines.push(`• ${count} ${label}`)
+    }
+    if (report.chapterViewsStarted > 0 || report.chapterReadsCompleted > 0) {
+      const parts: string[] = []
+      if (report.chapterViewsStarted > 0) parts.push(`${report.chapterViewsStarted} chapter view${report.chapterViewsStarted !== 1 ? 's' : ''}`)
+      if (report.chapterReadsCompleted > 0) parts.push(`${report.chapterReadsCompleted} completed`)
+      lines.push(`  (${parts.join(', ')})`)
+    }
+  }
+
+  const hasErrors = report.failedPayments > 0 || report.failedSyncs > 0 || report.reportedUploads > 0
+  if (hasErrors) {
+    lines.push('', 'ATTENTION NEEDED:')
+    if (report.failedPayments > 0) lines.push(`• ${report.failedPayments} failed payment${report.failedPayments !== 1 ? 's' : ''}`)
+    if (report.failedSyncs > 0) lines.push(`• ${report.failedSyncs} failed sync${report.failedSyncs !== 1 ? 's' : ''}`)
+    if (report.reportedUploads > 0) lines.push(`• ${report.reportedUploads} reported upload${report.reportedUploads !== 1 ? 's' : ''}`)
+  }
+
+  lines.push('', `View dashboard: ${env.WEB_ORIGIN}/admin`)
+
+  return lines.join('\n')
+}
+
 export async function sendNewChapterEmail(
   to: string | string[],
   authorName: string,
