@@ -26,6 +26,7 @@ jobs:
       - run: bun run lint
       - run: bun run lint:bobbins
       - run: ./scripts/check-vercel-compat.sh
+      - run: ./scripts/check-dockerfile-bobbins.sh
 
   deploy-api:
     needs: build
