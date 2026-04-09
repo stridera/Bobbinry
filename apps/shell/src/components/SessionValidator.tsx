@@ -29,8 +29,12 @@ export function SessionValidator() {
           signOut({ callbackUrl: '/login' })
         }
       })
-      .catch(() => {
-        // Network error — don't sign out, could be offline
+      .catch((err: unknown) => {
+        // Network error — don't sign out, could be offline. Still log it so
+        // persistent failures show up in browser console / monitoring instead
+        // of silently disappearing.
+        if (err instanceof Error && err.name === 'AbortError') return
+        console.warn('SessionValidator: failed to verify session', err)
       })
 
     return () => controller.abort()

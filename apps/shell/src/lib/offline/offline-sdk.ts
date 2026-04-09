@@ -118,9 +118,14 @@ export class OfflineBobbinrySDK extends BobbinrySDK {
         data
       )
 
-      // Trigger sync in background
+      // Trigger sync in background. Failures are non-fatal: the operation is
+      // already in the local sync queue and will retry on next sync trigger,
+      // so we log here for diagnostics but don't surface to the user (a toast
+      // on every transient failure would be noisy). A proper sync-status
+      // indicator UI is tracked as separate work — for now the user only
+      // sees a problem if a chapter is conspicuously missing on another device.
       syncManager.sync().catch(err =>
-        console.error('[OfflineSDK] Background sync failed:', err)
+        console.error('[OfflineSDK] Background sync failed after create', { collection, projectId, err })
       )
 
       return entity as T
@@ -153,9 +158,10 @@ export class OfflineBobbinrySDK extends BobbinrySDK {
         data
       )
 
-      // Trigger sync in background
+      // Trigger sync in background. See note in `create()` about why this is
+      // a console.error and not a toast.
       syncManager.sync().catch(err =>
-        console.error('[OfflineSDK] Background sync failed:', err)
+        console.error('[OfflineSDK] Background sync failed after update', { collection, entityId, projectId, err })
       )
 
       return entity as T
@@ -179,9 +185,10 @@ export class OfflineBobbinrySDK extends BobbinrySDK {
       // Optimistic delete - removes immediately
       await offlineStorage.deleteEntity(entityId, collection, projectId)
 
-      // Trigger sync in background
+      // Trigger sync in background. See note in `create()` about why this is
+      // a console.error and not a toast.
       syncManager.sync().catch(err =>
-        console.error('[OfflineSDK] Background sync failed:', err)
+        console.error('[OfflineSDK] Background sync failed after delete', { collection, entityId, projectId, err })
       )
 
       return

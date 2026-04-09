@@ -6,6 +6,18 @@ import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
 import { BobbinMetadata } from './types'
 
+/**
+ * Pull the most useful error string out of an API error response. Prefers the
+ * server's `message` field (added by typed errors / `ApiError`), falls back to
+ * `error`, then to a caller-provided default. Used so users see "Manifest path
+ * must be within the bobbins directory" instead of an opaque "Installation
+ * failed".
+ */
+async function extractApiError(response: Response, fallback: string): Promise<string> {
+  const data = await response.json().catch(() => null) as { message?: string; error?: string } | null
+  return data?.message || data?.error || fallback
+}
+
 interface Project {
   id: string
   name: string
@@ -134,8 +146,7 @@ export function ProjectPickerPopover({ bobbin, onClose }: ProjectPickerModalProp
         }
       )
       if (!response.ok) {
-        const err = await response.json().catch(() => ({ error: 'Installation failed' }))
-        throw new Error(err.error || 'Installation failed')
+        throw new Error(await extractApiError(response, 'Installation failed'))
       }
       setResult({ targetId: projectId, type: 'success', text: 'Installed!' })
       setProjects(prev => prev.map(p =>
@@ -156,8 +167,7 @@ export function ProjectPickerPopover({ bobbin, onClose }: ProjectPickerModalProp
     try {
       const response = await apiFetch(`/api/projects/${projectId}/bobbins/${bobbin.id}`, apiToken, { method: 'DELETE' })
       if (!response.ok) {
-        const err = await response.json().catch(() => ({ error: 'Uninstall failed' }))
-        throw new Error(err.error || 'Uninstall failed')
+        throw new Error(await extractApiError(response, 'Uninstall failed'))
       }
       setResult({ targetId: projectId, type: 'success', text: 'Uninstalled!' })
       setProjects(prev => prev.map(p =>
@@ -186,8 +196,7 @@ export function ProjectPickerPopover({ bobbin, onClose }: ProjectPickerModalProp
         }
       )
       if (!response.ok) {
-        const err = await response.json().catch(() => ({ error: 'Installation failed' }))
-        throw new Error(err.error || 'Installation failed')
+        throw new Error(await extractApiError(response, 'Installation failed'))
       }
       setResult({ targetId: collectionId, type: 'success', text: 'Installed!' })
       setCollections(prev => prev.map(c =>
@@ -208,8 +217,7 @@ export function ProjectPickerPopover({ bobbin, onClose }: ProjectPickerModalProp
     try {
       const response = await apiFetch(`/api/collections/${collectionId}/bobbins/${bobbin.id}`, apiToken, { method: 'DELETE' })
       if (!response.ok) {
-        const err = await response.json().catch(() => ({ error: 'Uninstall failed' }))
-        throw new Error(err.error || 'Uninstall failed')
+        throw new Error(await extractApiError(response, 'Uninstall failed'))
       }
       setResult({ targetId: collectionId, type: 'success', text: 'Uninstalled!' })
       setCollections(prev => prev.map(c =>
