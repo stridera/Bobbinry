@@ -24,10 +24,20 @@ interface EnvConfig {
 }
 
 const requiredEnvVars = {
-  production: ['NEXTAUTH_SECRET', 'NEXT_PUBLIC_APP_URL', 'INTERNAL_API_AUTH_TOKEN'],
+  // NOTE: keep this list narrow. A missing var here HARD-CRASHES the shell at
+  // boot via the side-effect import in `auth.ts`. Vars with sensible
+  // fallbacks (NEXT_PUBLIC_APP_URL falls back to NEXTAUTH_URL) belong in the
+  // recommended list, not here. See the post-mortem in
+  // `infra/db/migrations/README.md` for what happened when this was wider.
+  production: ['NEXTAUTH_SECRET'],
   development: [] as string[],
   test: [] as string[]
 } as const
+
+// Vars that are nice-to-have but should not crash the shell if missing.
+const recommendedEnvVars: Record<string, string[]> = {
+  production: ['NEXT_PUBLIC_APP_URL', 'INTERNAL_API_AUTH_TOKEN'],
+}
 
 export function validateEnv(): EnvConfig {
   const nodeEnv = process.env.NODE_ENV || 'development'
@@ -51,6 +61,19 @@ export function validateEnv(): EnvConfig {
       `Missing required environment variables: ${missing.join(', ')}\n` +
       `Please check your .env file or environment configuration.`
     )
+  }
+
+  // Warn (but do NOT throw) for recommended vars. Skip during the build phase
+  // since secrets aren't available there anyway.
+  if (!isBuildPhase) {
+    const recommended = recommendedEnvVars[nodeEnv] || []
+    const missingRecommended = recommended.filter((name) => !process.env[name])
+    if (missingRecommended.length > 0) {
+      console.warn(
+        `[env] Recommended environment variables are not set: ${missingRecommended.join(', ')}. ` +
+        `Falling back to defaults; the features that depend on these may be degraded.`
+      )
+    }
   }
 
   return {

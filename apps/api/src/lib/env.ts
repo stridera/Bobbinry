@@ -34,6 +34,12 @@ interface EnvConfig {
 }
 
 const requiredEnvVars = {
+  // NOTE: keep this list narrow. A missing var here HARD-CRASHES the API at
+  // boot, which on Fly turns into an unrecoverable restart loop. Vars that
+  // only affect a single feature (e.g. Stripe price IDs only matter to the
+  // membership routes) should stay OPTIONAL — let the caller handle the
+  // undefined case so a misconfigured feature doesn't take down the whole
+  // service. See `infra/db/migrations/README.md` for the post-mortem.
   production: [
     'DATABASE_URL',
     'WEB_ORIGIN',
@@ -41,14 +47,22 @@ const requiredEnvVars = {
     'S3_ENDPOINT',
     'S3_ACCESS_KEY',
     'S3_SECRET_KEY',
+  ],
+  development: [] as string[],
+  test: ['DATABASE_URL'] as string[]
+} as const
+
+// Vars that are nice-to-have but should not crash the process if missing.
+// We log a warning instead so the misconfiguration is visible without taking
+// the API offline.
+const recommendedEnvVars: Record<string, string[]> = {
+  production: [
     'STRIPE_SECRET_KEY',
     'STRIPE_WEBHOOK_SECRET',
     'STRIPE_SUPPORTER_MONTHLY_PRICE_ID',
     'STRIPE_SUPPORTER_YEARLY_PRICE_ID',
   ],
-  development: [] as string[],
-  test: ['DATABASE_URL'] as string[]
-} as const
+}
 
 export function validateEnv(): EnvConfig {
   const nodeEnv = process.env.NODE_ENV || 'development'
@@ -66,6 +80,17 @@ export function validateEnv(): EnvConfig {
     throw new Error(
       `Missing required environment variables: ${missing.join(', ')}\n` +
       `Please check your .env file or environment configuration.`
+    )
+  }
+
+  // Warn (but do NOT throw) for recommended vars. Missing recommended vars
+  // typically disable a single feature, not the whole service.
+  const recommended = recommendedEnvVars[nodeEnv] || []
+  const missingRecommended = recommended.filter((name) => !process.env[name])
+  if (missingRecommended.length > 0) {
+    console.warn(
+      `[env] Recommended environment variables are not set: ${missingRecommended.join(', ')}. ` +
+      `The features that depend on these will be disabled.`
     )
   }
 
