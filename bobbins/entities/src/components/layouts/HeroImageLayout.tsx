@@ -64,6 +64,20 @@ export function HeroImageLayout({
         </div>
       )}
 
+      {/* Image upload (when no image and in edit mode) */}
+      {layout.imagePosition !== 'none' && !entity.image_url && !readonly && (
+        <div className="px-4 pt-4 md:px-6">
+          <div className="max-w-4xl mx-auto">
+            {renderField(
+              { name: 'image_url', type: 'image', label: '' },
+              entity.image_url,
+              (value) => onFieldChange('image_url', value),
+              false
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Header Fields (below image) */}
       <div className="p-6 md:p-8 border-b border-gray-200 dark:border-gray-700">
         <div className="max-w-4xl mx-auto">
@@ -87,17 +101,12 @@ export function HeroImageLayout({
 
                 return (
                   <div key={fieldName} className="flex-1 min-w-[200px]">
-                    <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
-                      {fieldDef.label}
-                    </label>
-                    <div className="text-lg text-gray-900 dark:text-gray-100">
-                      {renderField(
-                        fieldDef,
-                        entity[fieldName],
-                        (value) => onFieldChange(fieldName, value),
-                        readonly
-                      )}
-                    </div>
+                    {renderField(
+                      fieldDef,
+                      entity[fieldName],
+                      (value) => onFieldChange(fieldName, value),
+                      readonly
+                    )}
                   </div>
                 )
               })}

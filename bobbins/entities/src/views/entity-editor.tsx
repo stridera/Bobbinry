@@ -43,6 +43,8 @@ export default function EntityEditorView({
   const [error, setError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState(false) // Prevents auto-save retry loop
   const [versionMismatch, setVersionMismatch] = useState(false)
+  const [viewMode, setViewMode] = useState<'view' | 'edit'>('view')
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   const isNewEntity = entityId === 'new'
 
@@ -58,6 +60,7 @@ export default function EntityEditorView({
     } else if (isNewEntity && typeConfig) {
       // Initialize new entity with default values
       initializeNewEntity()
+      setViewMode('edit')
     }
   }, [entityId, typeConfig])
 
@@ -228,6 +231,12 @@ export default function EntityEditorView({
       } else {
         await sdk.entities.update(entityType!, entityId!, entityToSave)
         console.log('[EntityEditor] Updated entity')
+
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('bobbinry:entities-changed', {
+            detail: { collection: entityType, action: 'updated' }
+          }))
+        }
       }
 
       setSaveStatus('saved')
@@ -243,10 +252,6 @@ export default function EntityEditorView({
 
   async function deleteEntity() {
     if (!entityType || !entityId || isNewEntity) return
-
-    if (!confirm('Are you sure you want to delete this entity? This action cannot be undone.')) {
-      return
-    }
 
     try {
       console.log('[EntityEditor] Deleting entity:', entityType, entityId)
@@ -328,9 +333,9 @@ export default function EntityEditorView({
     setSaveError(false)
   }
 
-  // Auto-save after 2 seconds of inactivity (skip if last save errored)
+  // Auto-save after 2 seconds of inactivity (skip if last save errored or in view mode)
   useEffect(() => {
-    if (saveStatus === 'unsaved' && !saveError) {
+    if (saveStatus === 'unsaved' && !saveError && viewMode === 'edit') {
       const timer = setTimeout(() => {
         saveEntity()
       }, 2000)
@@ -338,7 +343,7 @@ export default function EntityEditorView({
       return () => clearTimeout(timer)
     }
     return undefined
-  }, [entity, saveStatus, saveError])
+  }, [entity, saveStatus, saveError, viewMode])
 
   if (loading) {
     return (
@@ -388,40 +393,93 @@ export default function EntityEditorView({
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          {/* Edit mode controls (left side, takes available space) */}
+          <div className="flex items-center gap-3 flex-1">
+            {viewMode === 'edit' && (
+              <>
+                {!isNewEntity && (
+                  confirmingDelete ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-red-600 dark:text-red-400">Delete this entity?</span>
+                      <button
+                        onClick={() => { setConfirmingDelete(false); deleteEntity() }}
+                        className="px-2.5 py-1 text-xs font-medium bg-red-600 text-white rounded hover:bg-red-700 cursor-pointer"
+                      >
+                        Yes, delete
+                      </button>
+                      <button
+                        onClick={() => setConfirmingDelete(false)}
+                        className="px-2.5 py-1 text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmingDelete(true)}
+                      className="px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded cursor-pointer"
+                    >
+                      Delete
+                    </button>
+                  )
+                )}
+
+                <span
+                  className={
+                    saveStatus === 'saved' ? 'text-green-600 dark:text-green-400 text-sm' :
+                    saveStatus === 'saving' ? 'text-orange-600 dark:text-orange-400 text-sm' :
+                    'text-gray-600 dark:text-gray-400 text-sm'
+                  }
+                >
+                  {saveError && <span className="text-red-500">Name is required</span>}
+                  {!saveError && saveStatus === 'saved' && '✓ Saved'}
+                  {!saveError && saveStatus === 'saving' && 'Saving...'}
+                  {!saveError && saveStatus === 'unsaved' && '• Auto-save in 2s'}
+                </span>
+
+                <button
+                  onClick={() => saveEntity(true)}
+                  disabled={saving || saveStatus === 'saved'}
+                  className={`px-4 py-2 rounded font-medium ${
+                    saveStatus === 'saved'
+                      ? 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-default'
+                      : 'bg-blue-600 dark:bg-blue-700 text-white cursor-pointer hover:bg-blue-700 dark:hover:bg-blue-600'
+                  }`}
+                >
+                  {saving ? 'Saving...' : 'Save Now'}
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* View/Edit toggle (pinned right) */}
           {!isNewEntity && (
-            <button
-              onClick={deleteEntity}
-              className="px-4 py-2 bg-red-600 dark:bg-red-700 text-white rounded hover:bg-red-700 dark:hover:bg-red-600"
-            >
-              Delete
-            </button>
+            <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5">
+              <button
+                type="button"
+                onClick={() => setViewMode('view')}
+                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors cursor-pointer ${
+                  viewMode === 'view'
+                    ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400'
+                }`}
+              >
+                View
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('edit')}
+                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors cursor-pointer ${
+                  viewMode === 'edit'
+                    ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400'
+                }`}
+              >
+                Edit
+              </button>
+            </div>
           )}
-
-          <span
-            className={
-              saveStatus === 'saved' ? 'text-green-600 dark:text-green-400 text-sm' :
-              saveStatus === 'saving' ? 'text-orange-600 dark:text-orange-400 text-sm' :
-              'text-gray-600 dark:text-gray-400 text-sm'
-            }
-          >
-            {saveError && <span className="text-red-500">Name is required</span>}
-            {!saveError && saveStatus === 'saved' && '✓ Saved'}
-            {!saveError && saveStatus === 'saving' && 'Saving...'}
-            {!saveError && saveStatus === 'unsaved' && '• Auto-save in 2s'}
-          </span>
-
-          <button
-            onClick={() => saveEntity(true)}
-            disabled={saving || saveStatus === 'saved'}
-            className={`px-4 py-2 rounded font-medium ${
-              saveStatus === 'saved'
-                ? 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-default'
-                : 'bg-blue-600 dark:bg-blue-700 text-white cursor-pointer hover:bg-blue-700 dark:hover:bg-blue-600'
-            }`}
-          >
-            {saving ? 'Saving...' : 'Save Now'}
-          </button>
         </div>
       </div>
 
@@ -459,7 +517,7 @@ export default function EntityEditorView({
             fields={typeConfig.customFields}
             entity={entity}
             onFieldChange={handleFieldChange}
-            readonly={false}
+            readonly={viewMode === 'view'}
           />
         </SdkProvider>
       </div>

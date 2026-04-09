@@ -2,17 +2,6 @@
  * Field Renderer Components
  *
  * Type-specific renderers for each field type
- *
- * TODO: Implement renderers for:
- * - text: Simple text input
- * - number: Number input with min/max
- * - select: Dropdown with options
- * - multi-select: Multi-select dropdown
- * - boolean: Checkbox
- * - date: Date picker
- * - json: JSON editor (Monaco or simple textarea)
- * - rich-text: TipTap rich text editor
- * - image: Image upload with preview
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react'
@@ -21,6 +10,9 @@ import type { FieldDefinition, FieldType } from '../types'
 import { normalizeJsonSchema } from '../types'
 import { useUpload, useEntityContext } from './UploadContext'
 import { ObjectFormRenderer, ListFormRenderer, KeyedListFormRenderer, FreeformKeyValueEditor } from './json-renderers'
+import { TipTapEditor } from './TipTapEditor'
+
+const NOOP = () => {}
 
 interface FieldRendererProps {
   field: FieldDefinition
@@ -203,8 +195,6 @@ export function FieldRenderer({ field, value, onChange, display }: FieldRenderer
   }
 }
 
-// TODO: Implement each field renderer
-
 export function TextFieldRenderer({ field, value, onChange }: Omit<FieldRendererProps, 'display'>) {
   const isMultiline = field.multiline || false
 
@@ -351,8 +341,19 @@ export function DateFieldRenderer({ field, value, onChange }: Omit<FieldRenderer
   )
 }
 
-export function JsonFieldRenderer({ field, value, onChange }: Omit<FieldRendererProps, 'display'>) {
+export function JsonFieldRenderer({ field, value, onChange, readonly }: Omit<FieldRendererProps, 'display'> & { readonly?: boolean }) {
   const schema = normalizeJsonSchema(field.schema)
+
+  if (readonly) {
+    return (
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          {field.label}
+        </label>
+        <ReadonlyJsonDisplay schema={schema} value={value} />
+      </div>
+    )
+  }
 
   return (
     <div className="mb-4">
@@ -376,22 +377,118 @@ export function JsonFieldRenderer({ field, value, onChange }: Omit<FieldRenderer
   )
 }
 
-export function RichTextFieldRenderer({ field, value, onChange }: Omit<FieldRendererProps, 'display'>) {
-  // TODO: Integrate TipTap editor (lightweight version)
+/** Renders a single structured item (shared by list and keyed-list readonly display) */
+function ReadonlyItemCard({ item, fieldEntries, firstTextKey, className }: {
+  item: Record<string, any>
+  fieldEntries: [string, { type: string; label?: string }][]
+  firstTextKey: string | undefined
+  className?: string
+}) {
+  return (
+    <div className={`p-2 bg-gray-50 dark:bg-gray-800/50 rounded border border-gray-200 dark:border-gray-700 ${className || ''}`}>
+      {firstTextKey && item[firstTextKey] && (
+        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{item[firstTextKey]}</div>
+      )}
+      {fieldEntries.filter(([k]) => k !== firstTextKey).map(([key, f]) => (
+        item[key] ? (
+          <div key={key} className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            {f.label || key}: {item[key]}
+          </div>
+        ) : null
+      ))}
+    </div>
+  )
+}
+
+/** Structured readonly display for JSON fields */
+function ReadonlyJsonDisplay({ schema, value }: { schema: ReturnType<typeof normalizeJsonSchema>; value: any }) {
+  if (value === null || value === undefined || value === '') {
+    return <span className="text-gray-400 dark:text-gray-500 italic">Not set</span>
+  }
+
+  if (schema?.mode === 'object' && typeof value === 'object' && !Array.isArray(value)) {
+    return (
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1.5">
+        {Object.entries(schema.fields).map(([key, f]) => (
+          <div key={key} className="flex justify-between">
+            <span className="text-sm text-gray-500 dark:text-gray-400">{f.label || key}</span>
+            <span className="text-sm text-gray-900 dark:text-gray-100 font-medium">{value[key] ?? '—'}</span>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  if (schema && (schema.mode === 'list' || schema.mode === 'keyed-list')) {
+    const fieldEntries = Object.entries(schema.fields) as [string, { type: string; label?: string }][]
+    const firstTextKey = fieldEntries.find(([, f]) => f.type === 'text')?.[0]
+
+    if (schema.mode === 'list' && Array.isArray(value) && value.length > 0) {
+      return (
+        <div className="space-y-2">
+          {value.map((item, i) => (
+            <ReadonlyItemCard key={i} item={item} fieldEntries={fieldEntries} firstTextKey={firstTextKey} />
+          ))}
+        </div>
+      )
+    }
+
+    if (schema.mode === 'keyed-list' && typeof value === 'object' && !Array.isArray(value)) {
+      const keyLabel = schema.keyLabel || 'Key'
+      const sortedKeys = Object.keys(value).sort((a, b) =>
+        schema.keyType === 'number' ? Number(a) - Number(b) : a.localeCompare(b)
+      )
+      return (
+        <div className="space-y-2">
+          {sortedKeys.map(groupKey => {
+            const items = value[groupKey] || []
+            return (
+              <div key={groupKey}>
+                <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-1">{keyLabel} {groupKey}</div>
+                {Array.isArray(items) && items.map((item: any, i: number) => (
+                  <ReadonlyItemCard key={i} item={item} fieldEntries={fieldEntries} firstTextKey={firstTextKey} className="ml-3" />
+                ))}
+              </div>
+            )
+          })}
+        </div>
+      )
+    }
+  }
+
+  // Fallback: key-value pairs for plain objects
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    return (
+      <div className="space-y-0.5">
+        {Object.entries(value).map(([key, val]) => (
+          <div key={key} className="flex gap-2 text-sm">
+            <span className="text-gray-500 dark:text-gray-400">{key}:</span>
+            <span className="text-gray-900 dark:text-gray-100">{typeof val === 'object' ? JSON.stringify(val) : String(val)}</span>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  return (
+    <pre className="text-xs font-mono bg-gray-50 dark:bg-gray-800 p-2 rounded overflow-x-auto">
+      {JSON.stringify(value, null, 2)}
+    </pre>
+  )
+}
+
+export function RichTextFieldRenderer({ field, value, onChange, readonly }: Omit<FieldRendererProps, 'display'> & { readonly?: boolean }) {
   return (
     <div className="mb-4">
       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
         {field.label}
       </label>
-      <textarea
-        value={value || ''}
-        onChange={(e) => onChange(e.target.value)}
-        rows={8}
-        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+      <TipTapEditor
+        content={value || ''}
+        onChange={onChange}
+        readonly={readonly || false}
+        placeholder={`Write ${field.label.toLowerCase()}...`}
       />
-      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-        TODO: Integrate TipTap rich text editor
-      </p>
     </div>
   )
 }
@@ -460,20 +557,30 @@ export function ImageFieldRenderer({ field, value, onChange }: Omit<FieldRendere
       </label>
 
       {value ? (
-        <div className="relative inline-block mb-2">
+        <div className="relative group">
           <img
             src={value}
             alt="Preview"
-            className="w-32 h-32 object-cover rounded border border-gray-300 dark:border-gray-600"
+            className="w-full max-h-64 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
           />
-          <button
-            type="button"
-            onClick={handleRemove}
-            className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 cursor-pointer"
-            title="Remove image"
-          >
-            x
-          </button>
+          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors rounded-lg flex items-center justify-center">
+            <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="px-3 py-1.5 bg-white/90 text-gray-800 rounded text-sm font-medium hover:bg-white cursor-pointer"
+              >
+                Replace
+              </button>
+              <button
+                type="button"
+                onClick={handleRemove}
+                className="px-3 py-1.5 bg-red-500/90 text-white rounded text-sm font-medium hover:bg-red-500 cursor-pointer"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
         </div>
       ) : (
         <div
@@ -481,31 +588,29 @@ export function ImageFieldRenderer({ field, value, onChange }: Omit<FieldRendere
           onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
           onDragLeave={() => setDragOver(false)}
           onClick={() => fileInputRef.current?.click()}
-          className={`w-full h-32 border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer transition-colors ${
+          className={`w-full aspect-[3/1] min-h-[120px] border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer transition-all ${
             dragOver
-              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-              : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 bg-white dark:bg-gray-800'
+              ? 'border-blue-400 bg-blue-50/50 dark:bg-blue-900/20 scale-[1.01]'
+              : 'border-gray-300/60 dark:border-gray-600/60 hover:border-gray-400 dark:hover:border-gray-500 bg-gray-50/50 dark:bg-gray-800/30'
           }`}
         >
           {uploading ? (
-            <>
-              <div className="w-24 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+            <div className="flex flex-col items-center gap-2">
+              <div className="w-32 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-blue-500 rounded-full transition-all duration-200"
                   style={{ width: `${progress}%` }}
                 />
               </div>
-              <span className="text-xs text-gray-500 dark:text-gray-400 mt-2">{progress}%</span>
-            </>
+              <span className="text-xs text-gray-400 dark:text-gray-500">Uploading {progress}%</span>
+            </div>
           ) : (
-            <>
-              <svg className="w-8 h-8 text-gray-400 dark:text-gray-500 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            <div className="flex flex-col items-center gap-1.5 text-gray-400 dark:text-gray-500 px-6 py-4">
+              <svg className="w-10 h-10 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
-              <span className="text-xs text-gray-500 dark:text-gray-400">
-                Drop image here or click to browse
-              </span>
-            </>
+              <span className="text-sm">Drop an image or click to browse</span>
+            </div>
           )}
         </div>
       )}
@@ -738,8 +843,21 @@ export function renderField(
   readonly?: boolean
 ) {
   if (readonly) {
-    // Readonly display mode
-    return <ReadonlyFieldDisplay field={field} value={value} />
+    // JSON and rich-text fields have their own readonly rendering
+    if (field.type === 'json') {
+      return <JsonFieldRenderer field={field} value={value} onChange={NOOP} readonly />
+    }
+    if (field.type === 'rich-text') {
+      return <RichTextFieldRenderer field={field} value={value} onChange={NOOP} readonly />
+    }
+    return (
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          {field.label}
+        </label>
+        <ReadonlyFieldDisplay field={field} value={value} />
+      </div>
+    )
   }
 
   // Editable mode - render appropriate field renderer
@@ -782,38 +900,8 @@ function ReadonlyFieldDisplay({ field, value }: { field: FieldDefinition, value:
       }
       return <span className="text-gray-900 dark:text-gray-100">{value.toString()}</span>
 
-    case 'json': {
-      const jsonSchema = normalizeJsonSchema(field.schema)
-      if (jsonSchema?.mode === 'object' && typeof value === 'object' && !Array.isArray(value)) {
-        return (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-sm">
-            {Object.entries(jsonSchema.fields).map(([key, f]) => (
-              <div key={key} className="flex justify-between">
-                <span className="text-gray-500 dark:text-gray-400">{f.label || key}:</span>
-                <span className="text-gray-900 dark:text-gray-100 font-medium">{value?.[key] ?? '—'}</span>
-              </div>
-            ))}
-          </div>
-        )
-      }
-      if (jsonSchema?.mode === 'list' && Array.isArray(value)) {
-        const firstTextKey = Object.entries(jsonSchema.fields).find(([, f]) => f.type === 'text')?.[0]
-        return (
-          <ul className="text-sm space-y-0.5">
-            {value.map((item, i) => (
-              <li key={i} className="text-gray-900 dark:text-gray-100">
-                {firstTextKey && item[firstTextKey] ? item[firstTextKey] : `Item ${i + 1}`}
-              </li>
-            ))}
-          </ul>
-        )
-      }
-      return (
-        <pre className="text-xs font-mono bg-gray-50 dark:bg-gray-800 p-2 rounded overflow-x-auto">
-          {JSON.stringify(value, null, 2)}
-        </pre>
-      )
-    }
+    case 'json':
+      return <ReadonlyJsonDisplay schema={normalizeJsonSchema(field.schema)} value={value} />
 
     case 'image':
       return (

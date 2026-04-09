@@ -50,6 +50,18 @@ export function ListDetailsLayout({
             </div>
           )}
 
+          {/* Image upload (when no image and in edit mode) */}
+          {layout.imagePosition !== 'none' && !entity.image_url && !readonly && (
+            <div className="p-3">
+              {renderField(
+                { name: 'image_url', type: 'image', label: '' },
+                entity.image_url,
+                (value) => onFieldChange('image_url', value),
+                false
+              )}
+            </div>
+          )}
+
           {/* Header Info */}
           <div className="p-6 space-y-4">
             {layout.headerFields.map(fieldName => {
@@ -69,17 +81,12 @@ export function ListDetailsLayout({
                     </h1>
                   ) : (
                     <div>
-                      <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase mb-1">
-                        {fieldDef.label}
-                      </label>
-                      <div className="text-sm text-gray-900 dark:text-gray-100">
-                        {renderField(
-                          fieldDef,
-                          entity[fieldName],
-                          (value) => onFieldChange(fieldName, value),
-                          readonly
-                        )}
-                      </div>
+                      {renderField(
+                        fieldDef,
+                        entity[fieldName],
+                        (value) => onFieldChange(fieldName, value),
+                        readonly
+                      )}
                     </div>
                   )}
                 </div>
