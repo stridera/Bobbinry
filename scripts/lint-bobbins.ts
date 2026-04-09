@@ -442,6 +442,12 @@ function checkPkgHasTypes(ctx: BobbinContext): Diagnostic[] {
   return [];
 }
 
+// Match `alert(`, `confirm(`, `prompt(`, optionally prefixed with `window.`,
+// but NOT preceded by another identifier character (so `setPrompt(` and
+// similar are unaffected). Also not preceded by `.` so `.confirm()` chains
+// from other libraries don't trip the rule.
+const BROWSER_DIALOG_RE = /(?:^|[^.\w])(?:window\.)?(alert|confirm|prompt)\s*\(/;
+
 function checkUnsafePatterns(ctx: BobbinContext): Diagnostic[] {
   const diags: Diagnostic[] = [];
   const endpointTargets = getManifestExternalTargets(ctx.manifest);
@@ -449,6 +455,8 @@ function checkUnsafePatterns(ctx: BobbinContext): Diagnostic[] {
   const externalEnabled = ctx.manifest?.capabilities?.external === true;
   for (const file of ctx.files) {
     if (!/\.(ts|tsx|js|jsx|html)$/.test(file)) continue;
+    // Compiled output and tests aren't user-facing.
+    if (file.startsWith("dist/") || /\.(test|spec)\.(ts|tsx|js|jsx)$/.test(file)) continue;
 
     const content = fs.readFileSync(path.join(ctx.dirPath, file), "utf8");
 
@@ -465,6 +473,19 @@ function checkUnsafePatterns(ctx: BobbinContext): Diagnostic[] {
         rule: "sanitized-html-only",
         message: `${file} uses raw dangerouslySetInnerHTML instead of the shared sanitizer helper`,
         severity: "warning",
+      });
+    }
+
+    // Browser dialogs (alert/confirm/prompt) are banned project-wide. Use
+    // the `Dialog` component from `@bobbinry/ui-components` instead.
+    const lines = content.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const match = lines[i].match(BROWSER_DIALOG_RE);
+      if (!match) continue;
+      diags.push({
+        rule: "no-browser-dialogs",
+        message: `${file}:${i + 1} uses ${match[1]}() — use the Dialog component from @bobbinry/ui-components instead`,
+        severity: "error",
       });
     }
 

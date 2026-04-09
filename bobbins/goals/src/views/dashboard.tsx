@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
+import { Dialog } from '@bobbinry/ui-components'
 
 interface DashboardViewProps {
   projectId: string
@@ -17,6 +18,7 @@ export default function DashboardView({
   const [sessions, setSessions] = useState<any[]>([])
   const [streak, setStreak] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
+  const [logSessionOpen, setLogSessionOpen] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -55,9 +57,14 @@ export default function DashboardView({
     }))
   }
 
-  async function logQuickSession() {
-    const wordCount = prompt('How many words did you write?')
-    if (!wordCount || isNaN(Number(wordCount))) return
+  function logQuickSession() {
+    setLogSessionOpen(true)
+  }
+
+  async function submitQuickSession(value?: string) {
+    setLogSessionOpen(false)
+    if (!value || isNaN(Number(value))) return
+    const wordCount = value
 
     try {
       await sdk.entities.create('writing_sessions', {
@@ -277,6 +284,16 @@ export default function DashboardView({
           )}
         </div>
       </div>
+      <Dialog
+        open={logSessionOpen}
+        title="Log a writing session"
+        message="How many words did you write?"
+        inputType="number"
+        inputPlaceholder="500"
+        confirmLabel="Log"
+        onConfirm={submitQuickSession}
+        onCancel={() => setLogSessionOpen(false)}
+      />
     </div>
   )
 }

@@ -12,6 +12,7 @@ import {
   PanelPill,
   PanelSectionTitle,
 } from '@bobbinry/sdk'
+import { Dialog } from '@bobbinry/ui-components'
 
 interface NavigationPanelProps {
   context?: {
@@ -28,6 +29,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedTimelineId, setSelectedTimelineId] = useState<string | null>(null)
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingValue, setEditingValue] = useState('')
 
@@ -138,8 +140,10 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('Delete this timeline and all its events? This cannot be undone.')) return
+  async function confirmDelete() {
+    const id = pendingDeleteId
+    if (!id) return
+    setPendingDeleteId(null)
     try {
       await sdk.entities.delete('timelines', id)
       await loadData()
@@ -213,7 +217,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
                   isSelected ? 'bg-gray-100 dark:bg-gray-700' : 'hover:bg-gray-100 dark:hover:bg-gray-700'
                 }`}
                 onClick={() => handleTimelineClick(timeline)}
-                onContextMenu={(e) => { e.preventDefault(); handleDelete(timeline.id) }}
+                onContextMenu={(e) => { e.preventDefault(); setPendingDeleteId(timeline.id) }}
               >
                 <div className="flex items-center gap-2">
                   {timeline.color && (
@@ -249,6 +253,15 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
           })
         )}
       </PanelBody>
+      <Dialog
+        open={pendingDeleteId !== null}
+        title="Delete this timeline?"
+        message="This will also delete all of its events. This cannot be undone."
+        variant="danger"
+        confirmLabel="Delete"
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDeleteId(null)}
+      />
     </PanelFrame>
   )
 }

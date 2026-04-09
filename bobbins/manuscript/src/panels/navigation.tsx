@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { BobbinrySDK, PanelActions } from '@bobbinry/sdk'
-import { Toast, ToastContainer } from '@bobbinry/ui-components'
+import { Toast, ToastContainer, Dialog } from '@bobbinry/ui-components'
 
 interface NavigationPanelProps {
   context?: {
@@ -55,6 +55,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
   const [toast, setToast] = useState<{ message: string; variant: 'danger' } | null>(null)
   const dismissToast = useCallback(() => setToast(null), [])
+  const [pendingDelete, setPendingDelete] = useState<{ nodeId: string; nodeType: 'container' | 'content' } | null>(null)
 
   // Track auto-selection: only auto-navigate to first item once per mount
   const hasAutoSelectedRef = useRef(false)
@@ -572,22 +573,24 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     }
   }
 
-  async function handleDelete(nodeId: string, nodeType: 'container' | 'content') {
-    const collection = nodeType === 'container' ? 'containers' : 'content'
-    const itemType = nodeType === 'container' ? 'container' : 'content item'
+  function handleDelete(nodeId: string, nodeType: 'container' | 'content') {
+    setPendingDelete({ nodeId, nodeType })
+  }
 
-    if (!confirm(`Are you sure you want to delete this ${itemType}? This cannot be undone.`)) {
-      return
-    }
+  async function confirmDelete() {
+    const target = pendingDelete
+    if (!target) return
+    setPendingDelete(null)
+    const collection = target.nodeType === 'container' ? 'containers' : 'content'
 
     try {
       // Server now handles cascade delete for containers
-      await sdk.entities.delete(collection, nodeId)
+      await sdk.entities.delete(collection, target.nodeId)
 
       await loadTree()
       setContextMenu(null)
 
-      if (selectedNodeId === nodeId) {
+      if (selectedNodeId === target.nodeId) {
         setSelectedNodeId(null)
       }
     } catch (error) {
@@ -1110,6 +1113,19 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
           <Toast message={toast.message} variant={toast.variant} duration={4000} onDismiss={dismissToast} />
         </ToastContainer>
       )}
+      <Dialog
+        open={pendingDelete !== null}
+        title={pendingDelete?.nodeType === 'container' ? 'Delete this container?' : 'Delete this item?'}
+        message={
+          pendingDelete?.nodeType === 'container'
+            ? 'Everything inside this container will also be deleted. This cannot be undone.'
+            : 'This cannot be undone.'
+        }
+        variant="danger"
+        confirmLabel="Delete"
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   )
 }

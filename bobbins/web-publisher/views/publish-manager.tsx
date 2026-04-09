@@ -9,6 +9,7 @@
 
 import { useState, useEffect } from 'react'
 import { BobbinrySDK } from '@bobbinry/sdk'
+import { Dialog } from '@bobbinry/ui-components'
 
 interface ChapterEntry {
   id: string
@@ -33,6 +34,7 @@ export default function PublishManager({ sdk, projectId }: PublishManagerProps) 
   const [scheduleModal, setScheduleModal] = useState<string | null>(null)
   const [scheduleDate, setScheduleDate] = useState('')
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [pendingUnpublishId, setPendingUnpublishId] = useState<string | null>(null)
 
   useEffect(() => {
     loadChapters()
@@ -91,8 +93,14 @@ export default function PublishManager({ sdk, projectId }: PublishManagerProps) 
     }
   }
 
-  const unpublish = async (chapterId: string) => {
-    if (!confirm('Unpublish this chapter? Readers will lose access.')) return
+  const unpublish = (chapterId: string) => {
+    setPendingUnpublishId(chapterId)
+  }
+
+  const confirmUnpublish = async () => {
+    const chapterId = pendingUnpublishId
+    if (!chapterId) return
+    setPendingUnpublishId(null)
     setActionLoading(chapterId)
     setMessage(null)
     try {
@@ -256,6 +264,15 @@ export default function PublishManager({ sdk, projectId }: PublishManagerProps) 
           </div>
         </div>
       )}
+      <Dialog
+        open={pendingUnpublishId !== null}
+        title="Unpublish this chapter?"
+        message="Readers will lose access to this chapter until it is republished."
+        variant="warning"
+        confirmLabel="Unpublish"
+        onConfirm={confirmUnpublish}
+        onCancel={() => setPendingUnpublishId(null)}
+      />
     </div>
   )
 }

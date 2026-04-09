@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
+import { Dialog } from '@bobbinry/ui-components'
 
 interface TimelineViewProps {
   projectId: string
@@ -21,6 +22,7 @@ export default function TimelineView({
   const [timelines, setTimelines] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [pendingDeleteEventId, setPendingDeleteEventId] = useState<string | null>(null)
 
   const timelineId = metadata?.timelineId || entityId
 
@@ -118,9 +120,15 @@ export default function TimelineView({
     }))
   }
 
-  async function handleDeleteEvent(e: React.MouseEvent, eventId: string) {
+  function handleDeleteEvent(e: React.MouseEvent, eventId: string) {
     e.stopPropagation()
-    if (!confirm('Delete this event?')) return
+    setPendingDeleteEventId(eventId)
+  }
+
+  async function confirmDeleteEvent() {
+    const eventId = pendingDeleteEventId
+    if (!eventId) return
+    setPendingDeleteEventId(null)
     try {
       await sdk.entities.delete('timeline_events', eventId)
       await loadEvents()
@@ -251,6 +259,15 @@ export default function TimelineView({
           </div>
         )}
       </div>
+      <Dialog
+        open={pendingDeleteEventId !== null}
+        title="Delete this event?"
+        message="This event will be removed from the timeline."
+        variant="danger"
+        confirmLabel="Delete"
+        onConfirm={confirmDeleteEvent}
+        onCancel={() => setPendingDeleteEventId(null)}
+      />
     </div>
   )
 }
