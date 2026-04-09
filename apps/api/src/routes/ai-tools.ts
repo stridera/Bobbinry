@@ -11,6 +11,7 @@ import { eq, and } from 'drizzle-orm'
 import { db } from '../db/connection'
 import { entities, userBobbinsInstalled, provenanceEvents } from '../db/schema'
 import { requireAuth, requireProjectOwnership } from '../middleware/auth'
+import { ApiError } from '../lib/errors'
 
 // --- AI Provider types and constants (inlined to stay within rootDir) ---
 
@@ -57,9 +58,9 @@ async function callAnthropic(apiKey: string, model: string, systemPrompt: string
 
   if (!response.ok) {
     const errBody = await response.text()
-    if (response.status === 401) throw new Error('Invalid API key')
-    if (response.status === 429) throw new Error('Rate limit exceeded — try again in a moment')
-    throw new Error(`Anthropic API error (${response.status}): ${errBody}`)
+    if (response.status === 401) throw new ApiError('Invalid API key', 401, 'AI_INVALID_API_KEY')
+    if (response.status === 429) throw new ApiError('Rate limit exceeded — try again in a moment', 429, 'AI_RATE_LIMITED')
+    throw new ApiError(`Anthropic API error (${response.status}): ${errBody}`, 502, 'AI_UPSTREAM_ERROR')
   }
 
   const data = (await response.json()) as {
@@ -95,9 +96,9 @@ async function callOpenAI(apiKey: string, model: string, systemPrompt: string, u
 
   if (!response.ok) {
     const errBody = await response.text()
-    if (response.status === 401) throw new Error('Invalid API key')
-    if (response.status === 429) throw new Error('Rate limit exceeded — try again in a moment')
-    throw new Error(`OpenAI API error (${response.status}): ${errBody}`)
+    if (response.status === 401) throw new ApiError('Invalid API key', 401, 'AI_INVALID_API_KEY')
+    if (response.status === 429) throw new ApiError('Rate limit exceeded — try again in a moment', 429, 'AI_RATE_LIMITED')
+    throw new ApiError(`OpenAI API error (${response.status}): ${errBody}`, 502, 'AI_UPSTREAM_ERROR')
   }
 
   const data = (await response.json()) as {
@@ -462,6 +463,9 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
         })
       } catch (error) {
         fastify.log.error({ error, entityId }, 'Synopsis generation failed')
+        if (error instanceof ApiError) {
+          return reply.status(error.statusCode).send({ error: error.message, code: error.code })
+        }
         return reply.status(502).send({
           error: error instanceof Error ? error.message : 'AI generation failed',
         })
@@ -627,6 +631,9 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
         })
       } catch (error) {
         fastify.log.error({ error, entityId }, 'Review generation failed')
+        if (error instanceof ApiError) {
+          return reply.status(error.statusCode).send({ error: error.message, code: error.code })
+        }
         return reply.status(502).send({
           error: error instanceof Error ? error.message : 'AI generation failed',
         })
@@ -738,6 +745,9 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
         })
       } catch (error) {
         fastify.log.error({ error, entityId }, 'Name generation failed')
+        if (error instanceof ApiError) {
+          return reply.status(error.statusCode).send({ error: error.message, code: error.code })
+        }
         return reply.status(502).send({
           error: error instanceof Error ? error.message : 'AI generation failed',
         })
@@ -804,6 +814,9 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
         })
       } catch (error) {
         fastify.log.error({ error, entityId }, 'Brainstorm generation failed')
+        if (error instanceof ApiError) {
+          return reply.status(error.statusCode).send({ error: error.message, code: error.code })
+        }
         return reply.status(502).send({
           error: error instanceof Error ? error.message : 'AI generation failed',
         })
@@ -866,6 +879,9 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
         })
       } catch (error) {
         fastify.log.error({ error, entityId }, 'Flesh-out generation failed')
+        if (error instanceof ApiError) {
+          return reply.status(error.statusCode).send({ error: error.message, code: error.code })
+        }
         return reply.status(502).send({
           error: error instanceof Error ? error.message : 'AI generation failed',
         })

@@ -13,6 +13,7 @@ import { db } from '../db/connection'
 import { projectDestinations, projects, userBobbinsInstalled, entities } from '../db/schema'
 import { requireAuth } from '../middleware/auth'
 import { env } from '../lib/env'
+import { ApiError, UnauthorizedError } from '../lib/errors'
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
@@ -789,7 +790,7 @@ async function ensureFreshUserToken(config: any, bobbinInstallId: string): Promi
   }
 
   if (!config.refreshToken) {
-    throw new Error('No refresh token available — user must re-authorize')
+    throw new UnauthorizedError('No refresh token available — user must re-authorize')
   }
 
   const response = await fetch(GOOGLE_TOKEN_URL, {
@@ -805,7 +806,7 @@ async function ensureFreshUserToken(config: any, bobbinInstallId: string): Promi
 
   if (!response.ok) {
     const errText = await response.text()
-    throw new Error(`Token refresh failed (${response.status}): ${errText}`)
+    throw new ApiError(`Token refresh failed (${response.status}): ${errText}`, 502, 'GOOGLE_TOKEN_REFRESH_FAILED')
   }
 
   const tokens = (await response.json()) as {

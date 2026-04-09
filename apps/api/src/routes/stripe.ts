@@ -497,7 +497,11 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
               body: `Code: ${appliedDiscount?.code}`,
               isRead: false
             })
-          } catch {}
+          } catch (err) {
+            // Best-effort notification — never fail the subscription on this.
+            // Logged so we can spot persistent failures in the logs.
+            fastify.log.warn({ err, authorId, subscriberId }, 'Failed to insert new_subscriber notification (discount-code path)')
+          }
         })()
 
         return reply.status(200).send({ subscribed: true, subscriptionId: subscription!.id })
