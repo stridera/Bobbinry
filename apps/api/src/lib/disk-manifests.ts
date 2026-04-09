@@ -29,6 +29,71 @@ export function normalizeManifestPathInput(manifestPath: string): string {
   return manifestPath
 }
 
+/**
+ * Result of a sandboxed manifest load. Either succeeds with content + format,
+ * or returns a status + error suitable for `reply.status(...).send(...)`.
+ */
+export type LoadManifestResult =
+  | { ok: true; content: string; type: 'yaml' | 'json' }
+  | { ok: false; status: number; error: string; message?: string }
+
+/**
+ * Safely load a manifest from a user-supplied path, restricted to the
+ * `bobbins/` directory. Resolves symlinks via `fs.realpath` (no silent
+ * fallback) and reads from the canonical realpath to eliminate TOCTOU
+ * windows where the file could be swapped between validation and read.
+ *
+ * Callers should propagate the returned status/error directly.
+ */
+export async function loadManifestFromBobbinsPath(manifestPath: string): Promise<LoadManifestResult> {
+  const normalizedManifestPath = normalizeManifestPathInput(manifestPath)
+  const fullPath = path.resolve(PROJECT_ROOT, normalizedManifestPath)
+
+  // Resolve symlinks. If realpath fails (ENOENT, EACCES, ELOOP), reject —
+  // never fall back to the raw user-supplied path.
+  let realPath: string
+  try {
+    realPath = await fs.realpath(fullPath)
+  } catch {
+    return {
+      ok: false,
+      status: 404,
+      error: 'Manifest file not found',
+      message: 'The manifest path could not be resolved on disk',
+    }
+  }
+
+  // Confine to BOBBINS_DIR. The trailing separator prevents `bobbinsXX/...`
+  // sibling-prefix bypasses.
+  if (realPath !== BOBBINS_DIR && !realPath.startsWith(BOBBINS_DIR + path.sep)) {
+    return {
+      ok: false,
+      status: 403,
+      error: 'Access denied',
+      message: 'Manifest path must be within the bobbins directory',
+    }
+  }
+
+  // Read via the validated realpath, not the user-supplied fullPath, so a
+  // symlink swap between realpath() and readFile() can't escape the sandbox.
+  let content: string
+  try {
+    content = await fs.readFile(realPath, 'utf-8')
+  } catch (err: any) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'Failed to read manifest file',
+      message: err?.message ?? 'Unknown error',
+    }
+  }
+
+  const type: 'yaml' | 'json' =
+    normalizedManifestPath.endsWith('.yaml') || normalizedManifestPath.endsWith('.yml') ? 'yaml' : 'json'
+
+  return { ok: true, content, type }
+}
+
 export async function loadDiskManifests(bobbinIds: string[]): Promise<Map<string, Record<string, any>>> {
   const uncached = bobbinIds.filter(id => !manifestCache.has(id))
 

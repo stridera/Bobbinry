@@ -13,7 +13,7 @@ import { eq, and, desc, sql, isNull, isNotNull } from 'drizzle-orm'
 import { randomBytes } from 'crypto'
 import { requireAuth } from '../middleware/auth'
 import { ManifestCompiler } from '@bobbinry/compiler'
-import { loadDiskManifests, getManifestScopes, normalizeManifestPathInput } from '../lib/disk-manifests'
+import { loadDiskManifests, getManifestScopes, loadManifestFromBobbinsPath } from '../lib/disk-manifests'
 
 /** Internal helper for collection ownership checks. */
 async function checkCollectionOwnership(
@@ -632,18 +632,12 @@ const collectionsPlugin: FastifyPluginAsync = async (fastify) => {
       let type: 'yaml' | 'json'
 
       if (manifestPath) {
-        const fs = await import('fs/promises')
-        const path = await import('path')
-        const normalizedManifestPath = normalizeManifestPathInput(manifestPath)
-        const projectRoot = path.resolve(__dirname, '../../../..')
-        const bobbinsDir = path.resolve(projectRoot, 'bobbins')
-        const fullPath = path.resolve(projectRoot, normalizedManifestPath)
-        const realPath = await fs.realpath(fullPath).catch(() => fullPath)
-        if (!realPath.startsWith(bobbinsDir + path.sep)) {
-          return reply.status(403).send({ error: 'Access denied', message: 'Manifest path must be within the bobbins directory' })
+        const result = await loadManifestFromBobbinsPath(manifestPath)
+        if (!result.ok) {
+          return reply.status(result.status).send({ error: result.error, message: result.message })
         }
-        content = await fs.readFile(fullPath, 'utf-8')
-        type = normalizedManifestPath.endsWith('.yaml') || normalizedManifestPath.endsWith('.yml') ? 'yaml' : 'json'
+        content = result.content
+        type = result.type
       } else if (manifestContent) {
         content = manifestContent
         type = manifestType || 'json'

@@ -1,6 +1,5 @@
 import { FastifyPluginAsync } from 'fastify'
 import { parse as parseYAML } from 'yaml'
-import * as path from 'path'
 import { db } from '../db/connection'
 import { projects, bobbinsInstalled, entities } from '../db/schema'
 import { eq, and, count, inArray, isNull } from 'drizzle-orm'
@@ -8,7 +7,7 @@ import { ManifestCompiler } from '@bobbinry/compiler'
 import { requireAuth, requireProjectOwnership, requireVerified, requireScope } from '../middleware/auth'
 import { getUserMembershipTier, getProjectLimit, getUserBadges } from '../lib/membership'
 import { checkAndUpgradeBobbin, type UpgradeResult } from '../lib/bobbin-upgrader'
-import { loadDiskManifests, normalizeManifestPathInput } from '../lib/disk-manifests'
+import { loadDiskManifests, loadManifestFromBobbinsPath } from '../lib/disk-manifests'
 import { getEffectiveBobbins } from '../lib/effective-bobbins'
 
 const projectsPlugin: FastifyPluginAsync = async (fastify) => {
@@ -146,34 +145,12 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
       let type: 'yaml' | 'json'
 
       if (manifestPath) {
-        // Read from file - SECURITY: Only allow paths within bobbins directory
-        const fs = await import('fs/promises')
-
-        const normalizedManifestPath = normalizeManifestPathInput(manifestPath)
-
-        // Resolve paths
-        const projectRoot = path.resolve(__dirname, '../../../..')
-        const bobbinsDir = path.resolve(projectRoot, 'bobbins')
-        const fullPath = path.resolve(projectRoot, normalizedManifestPath)
-
-        // Security check: resolve symlinks, then ensure canonical path is within bobbins/
-        const realPath = await fs.realpath(fullPath).catch(() => fullPath)
-        if (!realPath.startsWith(bobbinsDir + path.sep)) {
-          return reply.status(403).send({
-            error: 'Access denied',
-            message: 'Manifest path must be within the bobbins directory'
-          })
+        const result = await loadManifestFromBobbinsPath(manifestPath)
+        if (!result.ok) {
+          return reply.status(result.status).send({ error: result.error, message: result.message })
         }
-
-        try {
-          content = await fs.readFile(fullPath, 'utf-8')
-        } catch (err: any) {
-          return reply.status(400).send({
-            error: 'Failed to read manifest file',
-            details: err?.message ?? 'Unknown error'
-          })
-        }
-        type = normalizedManifestPath.endsWith('.yaml') || normalizedManifestPath.endsWith('.yml') ? 'yaml' : 'json'
+        content = result.content
+        type = result.type
       } else if (manifestContent) {
         content = manifestContent
         type = manifestType || 'json'
