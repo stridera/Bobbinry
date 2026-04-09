@@ -277,7 +277,7 @@ export const contentWarnings = pgTable('content_warnings', {
 export const embargoSchedules = pgTable('embargo_schedules', {
   id: uuid('id').defaultRandom().primaryKey(),
   projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }).notNull(),
-  entityId: uuid('entity_id').notNull(), // FK to entities table (the chapter)
+  entityId: uuid('entity_id').references((): any => entities.id, { onDelete: 'cascade' }).notNull(),
   publishMode: varchar('publish_mode', { length: 50 }).default('immediate').notNull(), // immediate, scheduled, tiered
   baseReleaseDate: timestamp('base_release_date'), // When highest tier gets access
   publicReleaseDate: timestamp('public_release_date'), // When it becomes fully public
@@ -287,6 +287,7 @@ export const embargoSchedules = pgTable('embargo_schedules', {
   updatedAt: timestamp('updated_at').defaultNow().notNull()
 }, (table) => ({
   projectEntityIdx: index('embargo_schedules_project_entity_idx').on(table.projectId, table.entityId),
+  entityIdx: index('embargo_schedules_entity_idx').on(table.entityId),
   releaseDateIdx: index('embargo_schedules_release_date_idx').on(table.publicReleaseDate)
 }))
 
@@ -294,7 +295,7 @@ export const embargoSchedules = pgTable('embargo_schedules', {
 export const publishSnapshots = pgTable('publish_snapshots', {
   id: uuid('id').defaultRandom().primaryKey(),
   projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }).notNull(),
-  entityId: uuid('entity_id').notNull(), // FK to entities table
+  entityId: uuid('entity_id').references((): any => entities.id, { onDelete: 'cascade' }).notNull(),
   versionNumber: varchar('version_number', { length: 20 }).notNull(),
   snapshotData: jsonb('snapshot_data').notNull(), // Full entity data at publish time
   publishedBy: uuid('published_by').references(() => users.id).notNull(),
@@ -324,7 +325,7 @@ export const exportConfigs = pgTable('export_configs', {
 export const chapterPublications = pgTable('chapter_publications', {
   id: uuid('id').defaultRandom().primaryKey(),
   projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }).notNull(),
-  chapterId: uuid('chapter_id').notNull(), // FK to entities table
+  chapterId: uuid('chapter_id').references((): any => entities.id, { onDelete: 'cascade' }).notNull(),
   publishStatus: varchar('publish_status', { length: 50 }).default('draft').notNull(), // draft, scheduled, published, archived
   isPublished: boolean('is_published').default(false).notNull(),
   publishedVersion: varchar('published_version', { length: 20 }),
@@ -340,13 +341,14 @@ export const chapterPublications = pgTable('chapter_publications', {
   updatedAt: timestamp('updated_at').defaultNow().notNull()
 }, (table) => ({
   projectChapterIdx: index('chapter_publications_project_chapter_idx').on(table.projectId, table.chapterId),
+  chapterIdx: index('chapter_publications_chapter_idx').on(table.chapterId),
   statusIdx: index('chapter_publications_status_idx').on(table.publishStatus)
 }))
 
 // Chapter views - analytics and progress tracking
 export const chapterViews = pgTable('chapter_views', {
   id: uuid('id').defaultRandom().primaryKey(),
-  chapterId: uuid('chapter_id').notNull(), // FK to entities table
+  chapterId: uuid('chapter_id').references((): any => entities.id, { onDelete: 'cascade' }).notNull(),
   readerId: uuid('reader_id').references(() => users.id, { onDelete: 'cascade' }), // Nullable for anonymous
   sessionId: varchar('session_id', { length: 255 }), // For anonymous tracking
   startedAt: timestamp('started_at').defaultNow().notNull(),
@@ -366,7 +368,7 @@ export const chapterViews = pgTable('chapter_views', {
 // Comments - chapter discussions
 export const comments = pgTable('comments', {
   id: uuid('id').defaultRandom().primaryKey(),
-  chapterId: uuid('chapter_id').notNull(), // FK to entities table
+  chapterId: uuid('chapter_id').references((): any => entities.id, { onDelete: 'cascade' }).notNull(),
   authorId: uuid('author_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   parentId: uuid('parent_id').references((): any => comments.id, { onDelete: 'cascade' }), // For nested replies
   content: text('content').notNull(),
@@ -386,7 +388,7 @@ export const comments = pgTable('comments', {
 // Reactions - emoji reactions to chapters
 export const reactions = pgTable('reactions', {
   id: uuid('id').defaultRandom().primaryKey(),
-  chapterId: uuid('chapter_id').notNull(), // FK to entities table
+  chapterId: uuid('chapter_id').references((): any => entities.id, { onDelete: 'cascade' }).notNull(),
   userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   reactionType: varchar('reaction_type', { length: 50 }).notNull(), // heart, laugh, wow, sad, fire, clap
   createdAt: timestamp('created_at').defaultNow().notNull()
@@ -398,7 +400,7 @@ export const reactions = pgTable('reactions', {
 // Author notes - commentary attached to chapters
 export const authorNotes = pgTable('author_notes', {
   id: uuid('id').defaultRandom().primaryKey(),
-  chapterId: uuid('chapter_id').notNull(), // FK to entities table
+  chapterId: uuid('chapter_id').references((): any => entities.id, { onDelete: 'cascade' }).notNull(),
   noteType: varchar('note_type', { length: 50 }).default('postscript').notNull(), // preface, postscript, content_warning
   content: text('content').notNull(),
   displayOrder: varchar('display_order', { length: 10 }).default('1').notNull(),
@@ -412,7 +414,7 @@ export const authorNotes = pgTable('author_notes', {
 // Chapter annotations - reader feedback anchored to text
 export const chapterAnnotations = pgTable('chapter_annotations', {
   id: uuid('id').defaultRandom().primaryKey(),
-  chapterId: uuid('chapter_id').notNull(), // FK to entities table
+  chapterId: uuid('chapter_id').references((): any => entities.id, { onDelete: 'cascade' }).notNull(),
   projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }).notNull(),
   authorId: uuid('author_id').references(() => users.id, { onDelete: 'cascade' }).notNull(), // the reader who left the annotation
   anchorParagraphIndex: integer('anchor_paragraph_index'), // 0-based block element index
@@ -498,7 +500,7 @@ export const accessGrants = pgTable('access_grants', {
   grantedTo: uuid('granted_to').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   authorId: uuid('author_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }), // Nullable - global if null
-  chapterId: uuid('chapter_id'), // Nullable - chapter-specific access
+  chapterId: uuid('chapter_id').references((): any => entities.id, { onDelete: 'cascade' }), // Nullable - chapter-specific access
   grantType: varchar('grant_type', { length: 50 }).notNull(), // gift, comp, beta, promotional
   expiresAt: timestamp('expires_at'), // Nullable for permanent
   grantedBy: uuid('granted_by').references(() => users.id).notNull(),
@@ -508,6 +510,7 @@ export const accessGrants = pgTable('access_grants', {
 }, (table) => ({
   grantedToAuthorIdx: index('access_grants_granted_to_author_idx').on(table.grantedTo, table.authorId),
   projectIdx: index('access_grants_project_idx').on(table.projectId),
+  chapterIdx: index('access_grants_chapter_idx').on(table.chapterId),
   expiresAtIdx: index('access_grants_expires_at_idx').on(table.expiresAt)
 }))
 

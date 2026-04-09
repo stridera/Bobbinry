@@ -155,6 +155,13 @@
       "when": 1775539200000,
       "tag": "0022_add_chapter_annotations",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1775722800000,
+      "tag": "0023_enforce_chapter_entity_fks",
+      "breakpoints": true
     }
   ]
 }
