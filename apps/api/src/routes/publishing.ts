@@ -1283,19 +1283,15 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   // Get project-level analytics
   fastify.get<{
     Params: { projectId: string }
-    Querystring: { startDate?: string; endDate?: string }
   }>('/projects/:projectId/analytics', async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId } = request.params
-      // const { startDate, endDate } = request.query // TODO: Use for date filtering
 
-      let query = db
+      const publications = await db
         .select()
         .from(chapterPublications)
         .where(eq(chapterPublications.projectId, projectId))
-
-      const publications = await query
 
       const totalViews = publications.reduce((sum, p) => sum + (p.viewCount || 0), 0)
       const totalCompletions = publications.reduce((sum, p) => sum + (p.completionCount || 0), 0)

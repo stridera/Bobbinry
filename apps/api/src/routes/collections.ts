@@ -8,8 +8,8 @@
 import { FastifyPluginAsync } from 'fastify'
 import { parse as parseYAML } from 'yaml'
 import { db } from '../db/connection'
-import { projectCollections, projectCollectionMemberships, projects, bobbinsInstalled } from '../db/schema'
-import { eq, and, desc, sql, isNull, isNotNull } from 'drizzle-orm'
+import { projectCollections, projectCollectionMemberships, projects, bobbinsInstalled, entities } from '../db/schema'
+import { eq, and, desc, sql, isNull, isNotNull, inArray } from 'drizzle-orm'
 import { randomBytes } from 'crypto'
 import { requireAuth } from '../middleware/auth'
 import { ManifestCompiler } from '@bobbinry/compiler'
@@ -357,14 +357,22 @@ const collectionsPlugin: FastifyPluginAsync = async (fastify) => {
 
       const projectIds = memberships.map(m => m.projectId)
 
-      // TODO: Aggregate entity stats across projects
-      // This would require counting entities, calculating word counts, etc.
-      // For now, return basic count
+      // Aggregate entity count across all projects in the collection. Word
+      // counts would require fetching every entityData JSON blob; that's a
+      // separate feature when/if a UI surfaces it.
+      let entityCount = 0
+      if (projectIds.length > 0) {
+        const [row] = await db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(entities)
+          .where(inArray(entities.projectId, projectIds))
+        entityCount = row?.count ?? 0
+      }
 
       return reply.send({
         stats: {
           projectCount: projectIds.length,
-          // Add more stats as needed
+          entityCount,
         }
       })
     } catch (error) {
