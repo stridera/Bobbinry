@@ -39,7 +39,7 @@ const requiredEnvVars = {
   // only affect a single feature (e.g. Stripe price IDs only matter to the
   // membership routes) should stay OPTIONAL — let the caller handle the
   // undefined case so a misconfigured feature doesn't take down the whole
-  // service. See `infra/db/migrations/README.md` for the post-mortem.
+  // service. See `infra/post-mortems/2026-04-09-env-validator-crash-loop.md`.
   production: [
     'DATABASE_URL',
     'WEB_ORIGIN',

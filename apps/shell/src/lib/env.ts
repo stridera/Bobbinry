@@ -28,7 +28,8 @@ const requiredEnvVars = {
   // boot via the side-effect import in `auth.ts`. Vars with sensible
   // fallbacks (NEXT_PUBLIC_APP_URL falls back to NEXTAUTH_URL) belong in the
   // recommended list, not here. See the post-mortem in
-  // `infra/db/migrations/README.md` for what happened when this was wider.
+  // `infra/post-mortems/2026-04-09-env-validator-crash-loop.md` for what
+  // happened when this was wider.
   production: ['NEXTAUTH_SECRET'],
   development: [] as string[],
   test: [] as string[]
