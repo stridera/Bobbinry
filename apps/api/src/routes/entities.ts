@@ -7,6 +7,7 @@ import { requireAuth, requireProjectOwnership, requireScope } from '../middlewar
 import { serverEventBus, contentEdited } from '../lib/event-bus'
 import { findBobbinForCollectionAcrossScopes } from '../lib/disk-manifests'
 import { getEffectiveBobbins, getCollectionIdsForProject, buildScopeCondition } from '../lib/effective-bobbins'
+import { ApiError, ValidationError, NotFoundError } from '../lib/errors'
 
 /**
  * Check if a collection name matches a user-created entity type definition.
@@ -561,7 +562,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
             switch (type) {
               case 'create':
                 if (!data) {
-                  throw new Error('Create operation requires data')
+                  throw new ValidationError('Create operation requires data')
                 }
 
                 // Find target bobbin across all scopes
@@ -573,7 +574,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
                 }
 
                 if (!match) {
-                  throw new Error(`Collection '${collection}' not found`)
+                  throw new NotFoundError('Collection', collection)
                 }
 
                 const entityId = crypto.randomUUID()
@@ -606,7 +607,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
 
               case 'update':
                 if (!id || !data) {
-                  throw new Error('Update operation requires id and data')
+                  throw new ValidationError('Update operation requires id and data')
                 }
 
                 const updated = await tx
@@ -623,7 +624,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
                   .returning()
 
                 if (updated.length === 0) {
-                  throw new Error(`Entity ${id} not found`)
+                  throw new NotFoundError('Entity', id)
                 }
 
                 result = {
@@ -634,7 +635,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
 
               case 'delete':
                 if (!id) {
-                  throw new Error('Delete operation requires id')
+                  throw new ValidationError('Delete operation requires id')
                 }
 
                 // Use cascade delete for containers (always project-scoped)
@@ -652,7 +653,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
                     .returning({ id: entities.id })
 
                   if (deleted.length === 0) {
-                    throw new Error(`Entity ${id} not found`)
+                    throw new NotFoundError('Entity', id)
                   }
 
                   result = { deleted: true, id }
@@ -660,7 +661,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
                 break
 
               default:
-                throw new Error(`Unknown operation type: ${type}`)
+                throw new ValidationError(`Unknown operation type: ${type}`)
             }
 
             opResults.push({ success: true, data: result })
@@ -677,8 +678,18 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
 
     } catch (error) {
       fastify.log.error(error)
-      
-      // Transaction was rolled back
+
+      // Transaction was rolled back. If the failure was a typed user error
+      // (validation, not found, etc.), surface its statusCode so the client
+      // sees 400/404 instead of an opaque 500.
+      if (error instanceof ApiError) {
+        return reply.status(error.statusCode).send({
+          error: 'Atomic batch operation failed - all changes rolled back',
+          code: error.code,
+          details: error.message,
+        })
+      }
+
       return reply.status(500).send({
         error: 'Atomic batch operation failed - all changes rolled back',
         details: error instanceof Error ? error.message : 'Unknown error'
