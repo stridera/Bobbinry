@@ -8,8 +8,8 @@ import type { EntityTemplate, FieldType } from '../types'
 
 describe('Entity Templates', () => {
   describe('Template Structure', () => {
-    it('should have 6 templates', () => {
-      expect(templates).toHaveLength(6)
+    it('should have 7 templates', () => {
+      expect(templates).toHaveLength(7)
     })
 
     it('should have all required templates', () => {
@@ -20,6 +20,7 @@ describe('Entity Templates', () => {
       expect(templateIds).toContain('template-items')
       expect(templateIds).toContain('template-classes')
       expect(templateIds).toContain('template-factions')
+      expect(templateIds).toContain('template-races')
     })
 
     it.each(templates)('$label template should have valid structure', (template) => {

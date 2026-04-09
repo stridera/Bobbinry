@@ -34,12 +34,13 @@ const OFFICIAL_TEMPLATES: Array<{
   description: string
   tags: string[]
 }> = [
-  { shareId: 'official-characters', version: 2, label: 'Characters', icon: '🧙', description: 'People, creatures, or NPCs in your world', tags: ['rpg', 'worldbuilding', 'characters'] },
+  { shareId: 'official-characters', version: 3, label: 'Characters', icon: '🧙', description: 'People, creatures, or NPCs in your world', tags: ['rpg', 'worldbuilding', 'characters'] },
   { shareId: 'official-spells', version: 1, label: 'Spells', icon: '✨', description: 'Magical abilities and incantations', tags: ['rpg', 'magic', 'spells'] },
   { shareId: 'official-locations', version: 2, label: 'Locations', icon: '🗺️', description: 'Places, regions, and landmarks', tags: ['worldbuilding', 'locations', 'geography'] },
   { shareId: 'official-items', version: 1, label: 'Items', icon: '⚔️', description: 'Weapons, armor, magical items, and equipment', tags: ['rpg', 'items', 'equipment'] },
-  { shareId: 'official-classes', version: 2, label: 'Classes', icon: '🎭', description: 'Character classes and professions', tags: ['rpg', 'classes', 'professions'] },
+  { shareId: 'official-classes', version: 3, label: 'Classes', icon: '🎭', description: 'Character classes and professions', tags: ['rpg', 'classes', 'professions'] },
   { shareId: 'official-factions', version: 2, label: 'Factions', icon: '⚜️', description: 'Organizations, guilds, and political groups', tags: ['worldbuilding', 'factions', 'organizations'] },
+  { shareId: 'official-races', version: 1, label: 'Races', icon: '🧝', description: 'Playable races, species, and ancestries', tags: ['rpg', 'worldbuilding', 'races'] },
 ]
 
 export async function seedOfficialTemplates(): Promise<void> {

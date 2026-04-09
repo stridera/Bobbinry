@@ -9,7 +9,7 @@ import type { EntityTemplate } from '../types'
 export const classesTemplate: EntityTemplate = {
   id: 'template-classes',
   shareId: 'official-classes',
-  version: 2,
+  version: 3,
   label: 'Classes',
   icon: '🎭',
   description: 'Character classes and professions',
@@ -65,6 +65,13 @@ export const classesTemplate: EntityTemplate = {
       }
     },
     {
+      name: 'spell_list',
+      type: 'relation',
+      label: 'Spell List',
+      targetEntityType: 'spells',
+      allowMultiple: true
+    },
+    {
       name: 'subclasses',
       type: 'relation',
       label: 'Subclasses / Archetypes',
@@ -102,6 +109,11 @@ export const classesTemplate: EntityTemplate = {
         title: 'Class Features',
         fields: ['class_features'],
         display: 'json-editor'
+      },
+      {
+        title: 'Spell List',
+        fields: ['spell_list'],
+        display: 'stacked'
       },
       {
         title: 'Subclasses',

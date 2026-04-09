@@ -9,7 +9,7 @@ import type { EntityTemplate } from '../types'
 export const charactersTemplate: EntityTemplate = {
   id: 'template-characters',
   shareId: 'official-characters',
-  version: 2,
+  version: 3,
   label: 'Characters',
   icon: '🧙',
   description: 'People, creatures, or NPCs in your world',
@@ -23,9 +23,9 @@ export const charactersTemplate: EntityTemplate = {
     },
     {
       name: 'class',
-      type: 'select',
+      type: 'relation',
       label: 'Class',
-      options: ['Warrior', 'Mage', 'Rogue', 'Cleric', 'Ranger', 'Paladin', 'Barbarian', 'Druid', 'Monk', 'Bard', 'Warlock', 'Sorcerer']
+      targetEntityType: 'classes'
     },
     {
       name: 'level',
@@ -37,8 +37,9 @@ export const charactersTemplate: EntityTemplate = {
     },
     {
       name: 'race',
-      type: 'text',
-      label: 'Race'
+      type: 'relation',
+      label: 'Race',
+      targetEntityType: 'races'
     },
     {
       name: 'alignment',
