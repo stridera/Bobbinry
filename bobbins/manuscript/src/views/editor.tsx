@@ -330,7 +330,9 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
   const [wordCount, setWordCount] = useState(0)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const titleSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Unified dirty-fields accumulator. All saves (title, body, wordCount) flow
+  // through a single debounce timer so that title and body can never race.
+  const pendingFieldsRef = useRef<{ title?: string; body?: string; wordCount?: number } | null>(null)
   const titleInputRef = useRef<HTMLInputElement>(null)
 
   // Track the entity that's currently being edited so we can flush on navigate
@@ -528,7 +530,7 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
         // Immediately cache to localStorage — this is the safety net
         saveDraft(currentEntityId, { html, wordCount: count, savedToServer: false })
         setSaveStatus('dirty')
-        debouncedSave(html, currentEntityId, count)
+        scheduleSave({ body: html, wordCount: count }, currentEntityId)
       }
     },
     onSelectionUpdate: ({ editor }) => {
@@ -817,33 +819,37 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
   function flushPendingState() {
     const outgoingEntityId = activeEntityRef.current
 
-    // Cancel any pending debounced body save and flush it
+    // Cancel the unified debounce timer — we're flushing now.
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current)
       saveTimeoutRef.current = null
     }
 
-    // Cancel any pending debounced title save — we'll include it in the
-    // body flush below so we don't fire two concurrent updates that race
-    // on the entity version.
-    const hadPendingTitle = !!titleSaveTimeoutRef.current
-    if (titleSaveTimeoutRef.current) {
-      clearTimeout(titleSaveTimeoutRef.current)
-      titleSaveTimeoutRef.current = null
+    if (!outgoingEntityId) {
+      pendingFieldsRef.current = null
+      return
     }
 
-    if (outgoingEntityId) {
-      const draft = loadDraft(outgoingEntityId)
-      if (draft && !draft.savedToServer) {
-        // Draft was already written by onUpdate — trigger the server save,
-        // bundling the pending title so we don't fire two concurrent updates.
-        serverSave(outgoingEntityId, draft.html, draft.wordCount,
-          hadPendingTitle ? { title: draft.title } : undefined)
-      } else if (hadPendingTitle && draft?.title) {
-        // Only the title changed — fire a standalone title save
-        sdk.entities.update('content', outgoingEntityId, { title: draft.title }).catch(() => {})
-      }
+    const draft = loadDraft(outgoingEntityId)
+    const pending = pendingFieldsRef.current
+    pendingFieldsRef.current = null
+
+    if (draft && !draft.savedToServer) {
+      // Draft is dirty — flush body + word count + any pending title via
+      // serverSave so the write always carries expectedVersion.
+      serverSave(
+        outgoingEntityId,
+        draft.html,
+        draft.wordCount,
+        pending?.title !== undefined ? { title: pending.title } : undefined
+      )
+    } else if (pending?.title !== undefined) {
+      // Body was already saved, only a title change is pending.
+      serverSave(outgoingEntityId, undefined, undefined, { title: pending.title })
     }
+    // If there's an in-flight save (savingRef=true), serverSave() will bail
+    // and the localStorage draft remains the safety net — the next load of
+    // this entity will detect the unsaved draft and schedule a save.
   }
 
   /**
@@ -907,7 +913,7 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
 
       if (!draft.savedToServer) {
         // Unsaved draft — schedule a server save to sync it
-        debouncedSave(draft.html, targetEntityId, draft.wordCount)
+        scheduleSave({ body: draft.html, wordCount: draft.wordCount }, targetEntityId)
       }
 
       // Lightweight version check via HEAD — avoids downloading full content
@@ -1035,30 +1041,66 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
   }
 
   /**
-   * Schedule a debounced server save. Captures the target entityId at call time
-   * so the save always goes to the correct entity regardless of navigation.
+   * Merge dirty fields into the pending accumulator and restart the single
+   * debounce timer. Title changes, body changes, and word count updates all
+   * flow through here — the timer fires one serverSave with whatever fields
+   * are dirty, so title and body can never race against each other on the
+   * entity version.
    */
-  function debouncedSave(html: string, targetEntityId: string, count: number) {
+  function scheduleSave(
+    fields: { title?: string; body?: string; wordCount?: number },
+    targetEntityId: string
+  ) {
+    pendingFieldsRef.current = { ...pendingFieldsRef.current, ...fields }
+
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current)
     }
 
     saveTimeoutRef.current = setTimeout(() => {
-      serverSave(targetEntityId, html, count)
-    }, 1000) // Wait 1 second after typing stops
+      saveTimeoutRef.current = null
+      fireScheduledSave(targetEntityId)
+    }, 800)
+  }
+
+  /**
+   * Drain pendingFieldsRef into a serverSave call. Safe to call directly
+   * (e.g. from flushPendingState or the post-save re-check).
+   */
+  function fireScheduledSave(targetEntityId: string) {
+    const pending = pendingFieldsRef.current
+    if (!pending) return
+    pendingFieldsRef.current = null
+
+    serverSave(
+      targetEntityId,
+      pending.body,
+      pending.wordCount,
+      pending.title !== undefined ? { title: pending.title } : undefined
+    )
   }
 
   /**
    * Actually persist content to the server. The entityId is captured at
    * schedule time, not read from the current prop.
    */
-  async function serverSave(targetEntityId: string, html: string, count: number, opts?: { skipVersionCheck?: boolean; title?: string }) {
+  async function serverSave(
+    targetEntityId: string,
+    html: string | undefined,
+    count: number | undefined,
+    opts?: { skipVersionCheck?: boolean; title?: string }
+  ) {
     if (!targetEntityId || savingRef.current) return
+
+    // Nothing to save — no body, no count, no title. Bail before hitting the network.
+    if (html === undefined && count === undefined && opts?.title === undefined) return
 
     // Don't attempt server save when offline — stay in offline/dirty state
     if (!navigator.onLine) {
       setSaveStatus('offline')
-      saveDraft(targetEntityId, { html, wordCount: count, savedToServer: false })
+      if (html !== undefined && count !== undefined) {
+        saveDraft(targetEntityId, { html, wordCount: count, savedToServer: false })
+      }
       return
     }
 
@@ -1068,14 +1110,27 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
 
       const expectedVersion = opts?.skipVersionCheck ? undefined : (versionRef.current ?? undefined)
 
-      const data: Record<string, any> = { body: html, word_count: count }
+      const data: Record<string, any> = {}
+      if (html !== undefined) data.body = html
+      if (count !== undefined) data.word_count = count
       if (opts?.title !== undefined) data.title = opts.title
 
       const result = await sdk.entities.update('content', targetEntityId,
         data, expectedVersion) as any
 
       const newVersion = result?._meta?.version ?? null
-      saveDraft(targetEntityId, { html, wordCount: count, savedToServer: true, version: newVersion })
+      // Persist draft as saved. When the save was title-only, reuse the
+      // existing draft's html/wordCount so we don't wipe the cached body.
+      const existingDraft = loadDraft(targetEntityId)
+      const draftUpdate: Partial<DraftEntry> & { html: string } = {
+        html: html ?? existingDraft?.html ?? '',
+        wordCount: count ?? existingDraft?.wordCount ?? 0,
+        savedToServer: true,
+        version: newVersion,
+      }
+      const nextTitle = opts?.title ?? existingDraft?.title
+      if (nextTitle !== undefined) draftUpdate.title = nextTitle
+      saveDraft(targetEntityId, draftUpdate)
 
       // Only update in-memory version + UI status if this entity is still active.
       // A flushed save for the previous entity can complete after navigation; without
@@ -1090,9 +1145,23 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
         }, 2000)
       }
     } catch (error) {
+      // Mark draft as unsaved. For title-only saves we don't have html/count
+      // in scope, so merge onto the existing draft to avoid clobbering it.
+      const markDirty = () => {
+        const existing = loadDraft(targetEntityId)
+        const draftUpdate: Partial<DraftEntry> & { html: string } = {
+          html: html ?? existing?.html ?? '',
+          wordCount: count ?? existing?.wordCount ?? 0,
+          savedToServer: false,
+        }
+        const nextTitle = opts?.title ?? existing?.title
+        if (nextTitle !== undefined) draftUpdate.title = nextTitle
+        saveDraft(targetEntityId, draftUpdate)
+      }
+
       if (error instanceof ConflictError) {
         console.warn('[EditorView] Save conflict detected:', error.currentVersion, 'vs expected', error.expectedVersion)
-        saveDraft(targetEntityId, { html, wordCount: count, savedToServer: false })
+        markDirty()
         // Only show conflict UI if this entity is still active
         if (activeEntityRef.current === targetEntityId) {
           setSaveStatus('conflict')
@@ -1101,7 +1170,7 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
         return
       }
       console.error('[EditorView] Auto-save failed:', error)
-      saveDraft(targetEntityId, { html, wordCount: count, savedToServer: false })
+      markDirty()
       // Only update status if this entity is still active
       if (activeEntityRef.current === targetEntityId) {
         const isNetworkError = error instanceof TypeError && error.message.includes('fetch')
@@ -1109,6 +1178,17 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
       }
     } finally {
       savingRef.current = false
+
+      // If new dirty fields accumulated during the in-flight save, fire them
+      // immediately so we chain to the fresh version without waiting for the
+      // debounce timer. Only re-fire if this entity is still active.
+      if (pendingFieldsRef.current && activeEntityRef.current === targetEntityId) {
+        if (saveTimeoutRef.current) {
+          clearTimeout(saveTimeoutRef.current)
+          saveTimeoutRef.current = null
+        }
+        fireScheduledSave(targetEntityId)
+      }
     }
   }
 
@@ -1197,29 +1277,10 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
       })
     )
 
-    // Debounce the actual API save to avoid hammering the server on every keystroke
-    if (titleSaveTimeoutRef.current) {
-      clearTimeout(titleSaveTimeoutRef.current)
-    }
-    titleSaveTimeoutRef.current = setTimeout(async () => {
-      try {
-        const result = await sdk.entities.update('content', entityId, {
-          title: newTitle
-        }) as any
-        // Title update bumps the server version — keep versionRef in sync
-        // so the next body save doesn't send a stale expectedVersion.
-        const newVersion = result?._meta?.version ?? null
-        if (newVersion != null && activeEntityRef.current === entityId) {
-          versionRef.current = newVersion
-          const draft = loadDraft(entityId)
-          if (draft) {
-            saveDraft(entityId, { html: draft.html, version: newVersion })
-          }
-        }
-      } catch (error) {
-        console.error('[EditorView] Failed to update title:', error)
-      }
-    }, 500)
+    // Route through the unified save path so title + body share one
+    // serialized save cycle with the current expectedVersion.
+    setSaveStatus('dirty')
+    scheduleSave({ title: newTitle }, entityId)
   }
 
   function handleEditorClick(e: React.MouseEvent) {
