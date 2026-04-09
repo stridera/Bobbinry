@@ -25,6 +25,12 @@ interface EnvConfig {
   EMAIL_FROM: string
   GOOGLE_ID: string | undefined
   GOOGLE_SECRET: string | undefined
+  ADMIN_EMAIL: string
+  PLATFORM_FEE_PERCENT: number
+  STRIPE_SECRET_KEY: string | undefined
+  STRIPE_WEBHOOK_SECRET: string | undefined
+  STRIPE_SUPPORTER_MONTHLY_PRICE_ID: string | undefined
+  STRIPE_SUPPORTER_YEARLY_PRICE_ID: string | undefined
 }
 
 const requiredEnvVars = {
@@ -35,6 +41,10 @@ const requiredEnvVars = {
     'S3_ENDPOINT',
     'S3_ACCESS_KEY',
     'S3_SECRET_KEY',
+    'STRIPE_SECRET_KEY',
+    'STRIPE_WEBHOOK_SECRET',
+    'STRIPE_SUPPORTER_MONTHLY_PRICE_ID',
+    'STRIPE_SUPPORTER_YEARLY_PRICE_ID',
   ],
   development: [] as string[],
   test: ['DATABASE_URL'] as string[]
@@ -79,6 +89,12 @@ export function validateEnv(): EnvConfig {
     EMAIL_FROM: process.env.EMAIL_FROM || 'Bobbinry <noreply@bobbinry.com>',
     GOOGLE_ID: process.env.GOOGLE_ID,
     GOOGLE_SECRET: process.env.GOOGLE_SECRET,
+    ADMIN_EMAIL: process.env.ADMIN_EMAIL || 'strider@bobbinry.dev',
+    PLATFORM_FEE_PERCENT: parseInt(process.env.PLATFORM_FEE_PERCENT || '5', 10),
+    STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
+    STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
+    STRIPE_SUPPORTER_MONTHLY_PRICE_ID: process.env.STRIPE_SUPPORTER_MONTHLY_PRICE_ID,
+    STRIPE_SUPPORTER_YEARLY_PRICE_ID: process.env.STRIPE_SUPPORTER_YEARLY_PRICE_ID,
   }
 }
 

@@ -6,6 +6,10 @@
  * OAuth users are auto-provisioned in the API database on first login.
  */
 
+// Side-effect import: runs the shell env validator at module load so missing
+// required vars fail fast with a clear error instead of crashing on first use.
+import '@/lib/env'
+
 import NextAuth from 'next-auth'
 import Credentials from 'next-auth/providers/credentials'
 import Google from 'next-auth/providers/google'
