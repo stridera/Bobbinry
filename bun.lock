@@ -31,7 +31,6 @@
         "@aws-sdk/s3-request-presigner": "^3.1019.0",
         "@bobbinry/action-runtime": "workspace:*",
         "@bobbinry/compiler": "workspace:*",
-        "@bobbinry/entities": "workspace:*",
         "@fastify/cors": "^11.1.0",
         "@fastify/helmet": "^13.0.2",
         "@fastify/rate-limit": "^10.3.0",
