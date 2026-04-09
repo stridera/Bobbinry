@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
 import { SiteNav } from '@/components/SiteNav'
+import { useToast } from '@/contexts/ToastContext'
 
 const KNOWN_BADGES = ['owner', 'supporter', 'moderator', 'crowdfunder', 'beta_tester', 'contributor']
 
@@ -32,6 +33,7 @@ interface AdminUser {
 
 export default function AdminUsersPage() {
   const { data: session } = useSession()
+  const { showError } = useToast()
   const [users, setUsers] = useState<AdminUser[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -40,18 +42,7 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedUser, setExpandedUser] = useState<string | null>(null)
-  const [errorToast, setErrorToast] = useState<string | null>(null)
   const limit = 50
-
-  const dismissError = useCallback(() => setErrorToast(null), [])
-
-  useEffect(() => {
-    if (errorToast) {
-      const timer = setTimeout(() => setErrorToast(null), 5000)
-      return () => clearTimeout(timer)
-    }
-    return undefined
-  }, [errorToast])
 
   const fetchUsers = useCallback(async () => {
     if (!session?.apiToken) return
@@ -93,7 +84,7 @@ export default function AdminUsersPage() {
       fetchUsers()
     } else {
       const data = await res.json().catch(() => null)
-      setErrorToast(data?.error || 'Failed to add badge')
+      showError(data?.error || 'Failed to add badge')
     }
   }
 
@@ -106,7 +97,7 @@ export default function AdminUsersPage() {
       fetchUsers()
     } else {
       const data = await res.json().catch(() => null)
-      setErrorToast(data?.error || 'Failed to remove badge')
+      showError(data?.error || 'Failed to remove badge')
     }
   }
 
@@ -121,7 +112,7 @@ export default function AdminUsersPage() {
       fetchUsers()
     } else {
       const data = await res.json().catch(() => null)
-      setErrorToast(data?.error || `Failed to ${grant ? 'grant' : 'revoke'} supporter`)
+      showError(data?.error || `Failed to ${grant ? 'grant' : 'revoke'} supporter`)
     }
   }
 
@@ -344,14 +335,6 @@ export default function AdminUsersPage() {
           </div>
         )}
       </div>
-      {errorToast && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg border bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-900 dark:text-red-100 max-w-md">
-          <p className="flex-1 text-sm font-medium">{errorToast}</p>
-          <button onClick={dismissError} className="text-red-400 hover:text-red-600 dark:hover:text-red-300" aria-label="Dismiss">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>
-        </div>
-      )}
     </div>
   )
 }

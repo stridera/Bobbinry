@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback, Suspense } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSession } from 'next-auth/react'
 import { useSearchParams, redirect } from 'next/navigation'
 import { apiFetch } from '@/lib/api'
 import { SiteNav } from '@/components/SiteNav'
 import { UserBadges } from '@/components/UserBadges'
+import { useToast } from '@/contexts/ToastContext'
 
 interface MembershipData {
   tier: 'free' | 'supporter'
@@ -39,6 +40,7 @@ export default function MembershipPage() {
 
 function MembershipContent() {
   const { data: session, status, update: updateSession } = useSession()
+  const { showError } = useToast()
   const searchParams = useSearchParams()
   const [membershipData, setMembershipData] = useState<MembershipData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -46,7 +48,6 @@ function MembershipContent() {
   const [checkoutLoading, setCheckoutLoading] = useState(false)
   const [portalLoading, setPortalLoading] = useState(false)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
-  const [errorToast, setErrorToast] = useState<string | null>(null)
   const [promoInput, setPromoInput] = useState('')
   const [promoValidation, setPromoValidation] = useState<{
     valid: boolean
@@ -62,15 +63,6 @@ function MembershipContent() {
   const [promoLoading, setPromoLoading] = useState(false)
   const [redeemLoading, setRedeemLoading] = useState(false)
   const [showPromoInput, setShowPromoInput] = useState(false)
-  const dismissError = useCallback(() => setErrorToast(null), [])
-
-  useEffect(() => {
-    if (errorToast) {
-      const timer = setTimeout(() => setErrorToast(null), 5000)
-      return () => clearTimeout(timer)
-    }
-    return undefined
-  }, [errorToast])
 
   const upgraded = searchParams.get('upgraded')
 
@@ -124,10 +116,10 @@ function MembershipContent() {
         if (checkoutUrl) window.location.href = checkoutUrl
       } else {
         const data = await res.json().catch(() => ({}))
-        setErrorToast(data.error || 'Failed to start checkout')
+        showError(data.error || 'Failed to start checkout')
       }
     } catch {
-      setErrorToast('Failed to start checkout')
+      showError('Failed to start checkout')
     } finally {
       setCheckoutLoading(false)
     }
@@ -171,10 +163,10 @@ function MembershipContent() {
         loadMembership()
       } else {
         const data = await res.json().catch(() => ({}))
-        setErrorToast(data.error || 'Failed to redeem code')
+        showError(data.error || 'Failed to redeem code')
       }
     } catch {
-      setErrorToast('Failed to redeem code')
+      showError('Failed to redeem code')
     } finally {
       setRedeemLoading(false)
     }
@@ -192,10 +184,10 @@ function MembershipContent() {
         if (url) window.location.href = url
       } else {
         const data = await res.json().catch(() => ({}))
-        setErrorToast(data.error || 'Failed to open billing portal')
+        showError(data.error || 'Failed to open billing portal')
       }
     } catch {
-      setErrorToast('Failed to open billing portal')
+      showError('Failed to open billing portal')
     } finally {
       setPortalLoading(false)
     }
@@ -485,14 +477,6 @@ function MembershipContent() {
           </div>
         )}
       </div>
-      {errorToast && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg border bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-900 dark:text-red-100 max-w-md">
-          <p className="flex-1 text-sm font-medium">{errorToast}</p>
-          <button onClick={dismissError} className="text-red-400 hover:text-red-600 dark:hover:text-red-300" aria-label="Dismiss">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>
-        </div>
-      )}
     </div>
   )
 }

@@ -6,6 +6,7 @@ import { ExtensionProvider } from './ExtensionProvider'
 import { OfflineProvider } from './OfflineProvider'
 import { SessionValidator } from './SessionValidator'
 import { ThemeProvider } from '@/contexts/ThemeContext'
+import { ToastProvider } from '@/contexts/ToastContext'
 
 interface ProvidersProps {
   children: ReactNode
@@ -16,11 +17,13 @@ export function Providers({ children }: ProvidersProps) {
     <SessionProvider>
       <SessionValidator />
       <ThemeProvider>
-        <ExtensionProvider>
-          <OfflineProvider>
-            {children}
-          </OfflineProvider>
-        </ExtensionProvider>
+        <ToastProvider>
+          <ExtensionProvider>
+            <OfflineProvider>
+              {children}
+            </OfflineProvider>
+          </ExtensionProvider>
+        </ToastProvider>
       </ThemeProvider>
     </SessionProvider>
   )
