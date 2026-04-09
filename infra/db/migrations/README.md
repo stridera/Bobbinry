@@ -1,9 +1,13 @@
-# Drizzle migration meta — known quirks
+# Drizzle migrations — known quirks
 
-The snapshot chain in this directory is **incomplete** and the `_journal.json`
-has gaps. Both are intentional once you know the history, but they trip up
+The snapshot chain in `meta/` is **incomplete** and `meta/_journal.json` has
+gaps. Both are intentional once you know the history, but they trip up
 anyone running `drizzle-kit` for the first time. Read this before "fixing"
-anything in here.
+anything in `meta/`.
+
+> ⚠️  Do not put non-`*.json` files inside `meta/` — `drizzle-kit` scans
+> every file in that directory and JSON-parses it as a snapshot. Even a
+> README will crash it.
 
 ## The 0006 gap
 

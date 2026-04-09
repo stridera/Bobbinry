@@ -8,8 +8,8 @@
 # snapshots share an `id`, causing `drizzle-kit generate` to exit early on a
 # collision error before it ever computes a real diff. No new SQL files are
 # produced, so this script reports "in sync" regardless of actual drift.
-# See `infra/db/migrations/meta/README.md` for the full history and the
-# rebase plan needed to restore real drift detection.
+# See `infra/db/migrations/README.md` for the full history and the rebase
+# plan needed to restore real drift detection.
 
 set -euo pipefail
 
