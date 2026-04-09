@@ -64,13 +64,15 @@ export const factionsTemplate: EntityTemplate = {
     },
     {
       name: 'leader',
-      type: 'text',
-      label: 'Leader/Head'
+      type: 'relation',
+      label: 'Leader/Head',
+      targetEntityType: 'characters'
     },
     {
       name: 'headquarters',
-      type: 'text',
-      label: 'Headquarters'
+      type: 'relation',
+      label: 'Headquarters',
+      targetEntityType: 'locations'
     },
     {
       name: 'goals',
@@ -79,18 +81,24 @@ export const factionsTemplate: EntityTemplate = {
     },
     {
       name: 'allies',
-      type: 'text',
-      label: 'Allies'
+      type: 'relation',
+      label: 'Allies',
+      targetEntityType: 'factions',
+      allowMultiple: true
     },
     {
       name: 'enemies',
-      type: 'text',
-      label: 'Enemies'
+      type: 'relation',
+      label: 'Enemies',
+      targetEntityType: 'factions',
+      allowMultiple: true
     },
     {
       name: 'notable_members',
-      type: 'json',
-      label: 'Notable Members'
+      type: 'relation',
+      label: 'Notable Members',
+      targetEntityType: 'characters',
+      allowMultiple: true
     }
   ],
   editorLayout: {
@@ -122,7 +130,7 @@ export const factionsTemplate: EntityTemplate = {
       {
         title: 'Notable Members',
         fields: ['notable_members'],
-        display: 'json-editor'
+        display: 'stacked'
       }
     ]
   },

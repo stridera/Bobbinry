@@ -18,7 +18,9 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { getSanitizedHtmlProps, useClickOutside } from '@bobbinry/sdk'
 import type { FieldDefinition, FieldType } from '../types'
+import { normalizeJsonSchema } from '../types'
 import { useUpload, useEntityContext } from './UploadContext'
+import { ObjectFormRenderer, ListFormRenderer, KeyedListFormRenderer, FreeformKeyValueEditor } from './json-renderers'
 
 interface FieldRendererProps {
   field: FieldDefinition
@@ -350,27 +352,26 @@ export function DateFieldRenderer({ field, value, onChange }: Omit<FieldRenderer
 }
 
 export function JsonFieldRenderer({ field, value, onChange }: Omit<FieldRendererProps, 'display'>) {
-  // TODO: Implement proper JSON editor (Monaco or structured form)
+  const schema = normalizeJsonSchema(field.schema)
+
   return (
     <div className="mb-4">
       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
         {field.label}
       </label>
-      <textarea
-        value={typeof value === 'string' ? value : JSON.stringify(value, null, 2)}
-        onChange={(e) => {
-          try {
-            onChange(JSON.parse(e.target.value))
-          } catch {
-            onChange(e.target.value)
-          }
-        }}
-        rows={6}
-        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono text-sm"
-      />
-      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-        TODO: Implement Monaco JSON editor
-      </p>
+      {schema ? (
+        schema.mode === 'object' ? (
+          <ObjectFormRenderer schema={schema} value={value || {}} onChange={onChange} />
+        ) : schema.mode === 'list' ? (
+          <ListFormRenderer schema={schema} value={Array.isArray(value) ? value : []} onChange={onChange} />
+        ) : schema.mode === 'keyed-list' ? (
+          <KeyedListFormRenderer schema={schema} value={value || {}} onChange={onChange} />
+        ) : (
+          <FreeformKeyValueEditor value={value} onChange={onChange} />
+        )
+      ) : (
+        <FreeformKeyValueEditor value={value} onChange={onChange} />
+      )}
     </div>
   )
 }
@@ -781,12 +782,38 @@ function ReadonlyFieldDisplay({ field, value }: { field: FieldDefinition, value:
       }
       return <span className="text-gray-900 dark:text-gray-100">{value.toString()}</span>
 
-    case 'json':
+    case 'json': {
+      const jsonSchema = normalizeJsonSchema(field.schema)
+      if (jsonSchema?.mode === 'object' && typeof value === 'object' && !Array.isArray(value)) {
+        return (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-sm">
+            {Object.entries(jsonSchema.fields).map(([key, f]) => (
+              <div key={key} className="flex justify-between">
+                <span className="text-gray-500 dark:text-gray-400">{f.label || key}:</span>
+                <span className="text-gray-900 dark:text-gray-100 font-medium">{value?.[key] ?? '—'}</span>
+              </div>
+            ))}
+          </div>
+        )
+      }
+      if (jsonSchema?.mode === 'list' && Array.isArray(value)) {
+        const firstTextKey = Object.entries(jsonSchema.fields).find(([, f]) => f.type === 'text')?.[0]
+        return (
+          <ul className="text-sm space-y-0.5">
+            {value.map((item, i) => (
+              <li key={i} className="text-gray-900 dark:text-gray-100">
+                {firstTextKey && item[firstTextKey] ? item[firstTextKey] : `Item ${i + 1}`}
+              </li>
+            ))}
+          </ul>
+        )
+      }
       return (
         <pre className="text-xs font-mono bg-gray-50 dark:bg-gray-800 p-2 rounded overflow-x-auto">
           {JSON.stringify(value, null, 2)}
         </pre>
       )
+    }
 
     case 'image':
       return (

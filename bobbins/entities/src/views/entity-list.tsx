@@ -7,6 +7,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
 import type { EntityTypeDefinition } from '../types'
+import { normalizeTypeConfig } from '../types'
 
 interface EntityListViewProps {
   projectId: string
@@ -61,8 +62,9 @@ export default function EntityListView({
         return
       }
 
-      setTypeConfig(config)
-      console.log('[EntityList] Loaded type config:', config)
+      const normalized = normalizeTypeConfig(config)
+      setTypeConfig(normalized)
+      console.log('[EntityList] Loaded type config:', normalized)
     } catch (err: any) {
       console.error('[EntityList] Failed to load type config:', err)
       setError(err.message || 'Failed to load entity type configuration')

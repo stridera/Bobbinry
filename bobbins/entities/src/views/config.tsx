@@ -17,7 +17,7 @@ import type { BobbinrySDK } from '@bobbinry/sdk'
 import { useClickOutside } from '@bobbinry/sdk'
 import { Toast, ToastContainer } from '@bobbinry/ui-components'
 import { templates } from '../templates'
-import { getTypeId } from '../types'
+import { getTypeId, normalizeTypeConfig } from '../types'
 import type { EntityTemplate, EntityTypeDefinition, FieldDefinition, FieldType, EditorLayout, ListLayout } from '../types'
 import { TemplatePreviewModal } from '../components/TemplatePreviewModal'
 import { FieldBuilder } from '../components/FieldBuilder'
@@ -154,8 +154,9 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
       console.log('[ConfigView] Loading entity types for project:', projectId)
 
       const result = await sdk.entities.query({ collection: 'entity_type_definitions' })
-      setEntityTypes(result.data)
-      console.log('[ConfigView] Loaded entity types:', result.data)
+      const normalized = result.data.map((t: any) => normalizeTypeConfig(t))
+      setEntityTypes(normalized)
+      console.log('[ConfigView] Loaded entity types:', normalized)
     } catch (error) {
       console.error('[ConfigView] Error loading entity types:', error)
     }
@@ -184,12 +185,13 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
   }
 
   function handleEditType(type: EntityTypeDefinition) {
-    setEditingTypeId(type.id)
-    setEntityLabel(type.label)
-    setEntityIcon(type.icon)
-    setCustomFields([...type.customFields])
-    setEditorLayout({ ...type.editorLayout })
-    setListLayout({ ...type.listLayout })
+    const normalized = normalizeTypeConfig(type)
+    setEditingTypeId(normalized.id)
+    setEntityLabel(normalized.label)
+    setEntityIcon(normalized.icon)
+    setCustomFields([...normalized.customFields])
+    setEditorLayout({ ...normalized.editorLayout })
+    setListLayout({ ...normalized.listLayout })
     setSelectedTemplate(null)
     setShowTemplateSelector(false)
   }
@@ -217,6 +219,18 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
       // When editing, preserve the original type_id (existing entities reference it)
       const editingType = editingTypeId ? entityTypes.find(t => t.id === editingTypeId) : null
       const typeIdValue = editingType ? getTypeId(editingType) : entityLabel.toLowerCase().replace(/[^a-z0-9]+/g, '_')
+
+      // Prevent duplicate type_ids on creation (not editing)
+      if (!editingType) {
+        const existing = entityTypes.find(t => getTypeId(t) === typeIdValue)
+        if (existing) {
+          setToast({
+            message: `An entity type "${existing.label}" already uses the identifier "${typeIdValue}". Edit the existing type or choose a different name.`,
+            variant: 'danger'
+          })
+          return
+        }
+      }
 
       // Detect field changes for schema versioning
       let schemaVersion = 1
@@ -279,6 +293,12 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
       })
 
       await loadEntityTypes()
+
+      if (!editingTypeId) {
+        // New type created — navigate to the "add new entity" form
+        navigateToNewEntity(typeIdValue, { label: entityLabel, icon: entityIcon } as EntityTypeDefinition)
+      }
+
       setShowTemplateSelector(true)
       setSelectedTemplate(null)
       setEditingTypeId(null)

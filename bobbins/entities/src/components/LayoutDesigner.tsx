@@ -36,7 +36,7 @@ const IMAGE_SIZES: { value: ImageSize; label: string }[] = [
 const SECTION_DISPLAYS: { value: SectionDisplay; label: string }[] = [
   { value: 'inline', label: 'Inline (horizontal)' },
   { value: 'stacked', label: 'Stacked (vertical)' },
-  { value: 'json-editor', label: 'JSON Editor' },
+  { value: 'json-editor', label: 'Structured Data' },
   { value: 'rich-text', label: 'Rich Text Editor' }
 ]
 

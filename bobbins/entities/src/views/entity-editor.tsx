@@ -14,6 +14,7 @@
 import { useState, useEffect } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
 import type { EntityTypeDefinition, FieldDefinition } from '../types'
+import { normalizeTypeConfig, normalizeJsonSchema, createDefaultJsonValue } from '../types'
 import { LayoutRenderer } from '../components/LayoutRenderer'
 import { SdkProvider } from '../components/UploadContext'
 import { checkTypeCompatibility } from '../components/FieldRenderers'
@@ -79,8 +80,9 @@ export default function EntityEditorView({
         return
       }
 
-      setTypeConfig(config)
-      console.log('[EntityEditor] Loaded type config:', config)
+      const normalized = normalizeTypeConfig(config)
+      setTypeConfig(normalized)
+      console.log('[EntityEditor] Loaded type config:', normalized)
 
       setLoading(false)
     } catch (err: any) {
@@ -142,6 +144,9 @@ export default function EntityEditorView({
         case 'relation':
           defaultEntity[field.name] = field.allowMultiple ? [] : null
           break
+        case 'json':
+          defaultEntity[field.name] = createDefaultJsonValue(normalizeJsonSchema(field.schema))
+          break
         default:
           defaultEntity[field.name] = ''
       }
@@ -176,13 +181,13 @@ export default function EntityEditorView({
       })
 
       if (missingFields.length > 0) {
-        if (!manual) {
-          // Auto-save: silently skip if required fields aren't filled
-          setSaving(false)
-          setSaveStatus('unsaved')
-          return
+        setSaving(false)
+        setSaveStatus('unsaved')
+        if (manual) {
+          setSaveError(true)
+          setTimeout(() => setSaveError(false), 3000)
         }
-        throw new Error(`Missing required fields: ${missingFields.join(', ')}`)
+        return
       }
 
       // Stamp current schema version on save
@@ -400,9 +405,10 @@ export default function EntityEditorView({
               'text-gray-600 dark:text-gray-400 text-sm'
             }
           >
-            {saveStatus === 'saved' && '✓ Saved'}
-            {saveStatus === 'saving' && 'Saving...'}
-            {saveStatus === 'unsaved' && '• Auto-save in 2s'}
+            {saveError && <span className="text-red-500">Name is required</span>}
+            {!saveError && saveStatus === 'saved' && '✓ Saved'}
+            {!saveError && saveStatus === 'saving' && 'Saving...'}
+            {!saveError && saveStatus === 'unsaved' && '• Auto-save in 2s'}
           </span>
 
           <button

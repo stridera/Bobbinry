@@ -49,12 +49,24 @@ export const classesTemplate: EntityTemplate = {
     {
       name: 'class_features',
       type: 'json',
-      label: 'Class Features by Level'
+      label: 'Class Features by Level',
+      schema: {
+        mode: 'keyed-list',
+        keyLabel: 'Level',
+        keyType: 'number',
+        itemLabel: 'Feature',
+        fields: {
+          name:        { type: 'text', label: 'Feature Name' },
+          description: { type: 'text', label: 'Description' },
+        }
+      }
     },
     {
       name: 'subclasses',
-      type: 'json',
-      label: 'Subclasses/Archetypes'
+      type: 'relation',
+      label: 'Subclasses / Archetypes',
+      targetEntityType: 'classes',
+      allowMultiple: true
     }
   ],
   editorLayout: {
@@ -91,7 +103,7 @@ export const classesTemplate: EntityTemplate = {
       {
         title: 'Subclasses',
         fields: ['subclasses'],
-        display: 'json-editor'
+        display: 'stacked'
       }
     ]
   },

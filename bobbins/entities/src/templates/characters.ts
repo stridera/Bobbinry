@@ -56,14 +56,17 @@ export const charactersTemplate: EntityTemplate = {
     {
       name: 'stats',
       type: 'json',
-      label: 'Stats',
+      label: 'Ability Scores',
       schema: {
-        strength: 'number',
-        dexterity: 'number',
-        constitution: 'number',
-        intelligence: 'number',
-        wisdom: 'number',
-        charisma: 'number'
+        mode: 'object',
+        fields: {
+          strength:     { type: 'number', label: 'Strength',     default: 10, min: 1, max: 30 },
+          dexterity:    { type: 'number', label: 'Dexterity',    default: 10, min: 1, max: 30 },
+          constitution: { type: 'number', label: 'Constitution', default: 10, min: 1, max: 30 },
+          intelligence: { type: 'number', label: 'Intelligence', default: 10, min: 1, max: 30 },
+          wisdom:       { type: 'number', label: 'Wisdom',       default: 10, min: 1, max: 30 },
+          charisma:     { type: 'number', label: 'Charisma',     default: 10, min: 1, max: 30 },
+        }
       }
     },
     {
@@ -74,7 +77,16 @@ export const charactersTemplate: EntityTemplate = {
     {
       name: 'abilities',
       type: 'json',
-      label: 'Special Abilities'
+      label: 'Special Abilities',
+      schema: {
+        mode: 'list',
+        itemLabel: 'Ability',
+        fields: {
+          name:        { type: 'text', label: 'Name' },
+          description: { type: 'text', label: 'Description' },
+          source:      { type: 'text', label: 'Source (race/class/feat)' },
+        }
+      }
     }
   ],
   editorLayout: {

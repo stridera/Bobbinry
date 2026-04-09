@@ -222,7 +222,15 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
     }
 
     const { entityType } = currentNav
-    const views = viewRegistry.getViewsByHandler(entityType)
+    let views = viewRegistry.getViewsByHandler(entityType)
+
+    // Fallback: if no views match by handler and we know the bobbinId,
+    // find all views registered by that bobbin (supports dynamic entity types
+    // like user-created "locations", "characters", etc.)
+    if (views.length === 0 && currentNav.bobbinId) {
+      views = viewRegistry.getByBobbin(currentNav.bobbinId)
+        .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
+    }
 
     // Only update compatibleViews if the set of view IDs actually changed
     setCompatibleViews(prev => {

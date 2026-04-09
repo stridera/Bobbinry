@@ -23,7 +23,9 @@ const client = postgres(connectionString, {
   // Performance and reliability
   // Prepared statements are incompatible with Neon's transaction-mode pooler
   prepare: !isPooledConnection,
-  transform: postgres.camel,  // Convert snake_case to camelCase
+  transform: {
+    column: postgres.camel.column,  // Convert column names only (not JSONB content)
+  },
 
   // Logging and monitoring (only in development)
   ...(process.env.NODE_ENV === 'development' && { onnotice: console.log }),

@@ -5,7 +5,8 @@
  */
 
 import { useState } from 'react'
-import type { FieldDefinition, FieldType } from '../types'
+import type { FieldDefinition, FieldType, JsonSchema } from '../types'
+import { JsonSchemaBuilder } from './JsonSchemaBuilder'
 
 interface FieldBuilderProps {
   fields: FieldDefinition[]
@@ -20,7 +21,7 @@ const FIELD_TYPES: { value: FieldType; label: string }[] = [
   { value: 'multi-select', label: 'Multi-Select' },
   { value: 'boolean', label: 'Checkbox' },
   { value: 'date', label: 'Date' },
-  { value: 'json', label: 'JSON' },
+  { value: 'json', label: 'Structured Data' },
   { value: 'rich-text', label: 'Rich Text' },
   { value: 'image', label: 'Image Upload' },
   { value: 'relation', label: 'Relation (link to entity type)' }
@@ -288,6 +289,13 @@ export function FieldBuilder({ fields, onChange, entityTypes = [] }: FieldBuilde
                       </span>
                     </label>
                   </div>
+                )}
+
+                {field.type === 'json' && (
+                  <JsonSchemaBuilder
+                    schema={field.schema}
+                    onChange={(schema) => handleUpdateField(index, schema ? { schema } : { schema: { mode: 'object', fields: {} } })}
+                  />
                 )}
 
                 {field.type === 'relation' && (

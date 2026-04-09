@@ -99,28 +99,23 @@ export function ListDetailsLayout({
 
                 {/* Inline layout - compact grid */}
                 {section.display === 'inline' && (
-                  <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                     {section.fields.map(fieldName => {
                       const fieldDef = getFieldDef(fieldName)
                       if (!fieldDef) return null
 
                       return (
-                        <div key={fieldName} className="space-y-1">
-                          <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                            {fieldDef.label}
-                          </dt>
-                          <dd className="text-sm text-gray-900 dark:text-gray-100">
-                            {renderField(
-                              fieldDef,
-                              entity[fieldName],
-                              (value) => onFieldChange(fieldName, value),
-                              readonly
-                            )}
-                          </dd>
+                        <div key={fieldName}>
+                          {renderField(
+                            fieldDef,
+                            entity[fieldName],
+                            (value) => onFieldChange(fieldName, value),
+                            readonly
+                          )}
                         </div>
                       )
                     })}
-                  </dl>
+                  </div>
                 )}
 
                 {/* Stacked layout - full width items */}
@@ -131,10 +126,7 @@ export function ListDetailsLayout({
                       if (!fieldDef) return null
 
                       return (
-                        <div key={fieldName} className="space-y-2">
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                            {fieldDef.label}
-                          </label>
+                        <div key={fieldName}>
                           {renderField(
                             fieldDef,
                             entity[fieldName],
@@ -155,10 +147,7 @@ export function ListDetailsLayout({
                       if (!fieldDef) return null
 
                       return (
-                        <div key={fieldName} className="space-y-2">
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                            {fieldDef.label}
-                          </label>
+                        <div key={fieldName}>
                           <div className="bg-gray-50 dark:bg-gray-800 rounded border border-gray-300 dark:border-gray-600 p-3 font-mono text-xs">
                             {renderField(
                               { ...fieldDef, type: 'json' },
@@ -181,10 +170,7 @@ export function ListDetailsLayout({
                       if (!fieldDef) return null
 
                       return (
-                        <div key={fieldName} className="space-y-2">
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 not-prose">
-                            {fieldDef.label}
-                          </label>
+                        <div key={fieldName}>
                           {renderField(
                             { ...fieldDef, type: 'rich-text' },
                             entity[fieldName],

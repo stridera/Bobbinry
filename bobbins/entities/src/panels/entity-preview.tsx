@@ -20,6 +20,7 @@ import {
   PanelPill,
 } from '@bobbinry/sdk'
 import type { EntityTypeDefinition } from '../types'
+import { normalizeTypeConfig } from '../types'
 import { LayoutRenderer } from '../components/LayoutRenderer'
 import { SdkProvider } from '../components/UploadContext'
 
@@ -98,23 +99,7 @@ export default function EntityPreviewPanel({ context }: EntityPreviewPanelProps)
         return
       }
 
-      const typeConfig: EntityTypeDefinition = {
-        id: typeDef.id,
-        projectId: typeDef.projectId || typeDef.project_id,
-        bobbinId: typeDef.bobbinId || typeDef.bobbin_id,
-        typeId: typeDef.typeId || typeDef.type_id,
-        label: typeDef.label,
-        icon: typeDef.icon || '',
-        templateId: typeDef.templateId || typeDef.template_id,
-        baseFields: typeDef.baseFields || typeDef.base_fields || [],
-        customFields: typeDef.customFields || typeDef.custom_fields || [],
-        editorLayout: typeDef.editorLayout || typeDef.editor_layout || { template: 'compact-card', imagePosition: 'none', imageSize: 'small', headerFields: [], sections: [] },
-        listLayout: typeDef.listLayout || typeDef.list_layout || { display: 'list', showFields: [] },
-        subtitleFields: typeDef.subtitleFields || typeDef.subtitle_fields || [],
-        allowDuplicates: typeDef.allowDuplicates ?? typeDef.allow_duplicates ?? false,
-        createdAt: new Date(typeDef.createdAt || typeDef.created_at),
-        updatedAt: new Date(typeDef.updatedAt || typeDef.updated_at),
-      }
+      const typeConfig = normalizeTypeConfig(typeDef)
 
       // Multiple IDs? Disambiguate.
       const ids = entityId.split(',')

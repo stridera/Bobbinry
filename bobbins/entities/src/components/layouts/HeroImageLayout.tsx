@@ -122,10 +122,7 @@ export function HeroImageLayout({
                     if (!fieldDef) return null
 
                     return (
-                      <div key={fieldName} className="space-y-2">
-                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                          {fieldDef.label}
-                        </label>
+                      <div key={fieldName}>
                         {renderField(
                           fieldDef,
                           entity[fieldName],
@@ -140,16 +137,13 @@ export function HeroImageLayout({
 
               {/* Stacked layout */}
               {section.display === 'stacked' && (
-                <div className="space-y-6">
+                <div className="space-y-4">
                   {section.fields.map(fieldName => {
                     const fieldDef = getFieldDef(fieldName)
                     if (!fieldDef) return null
 
                     return (
-                      <div key={fieldName} className="space-y-2">
-                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                          {fieldDef.label}
-                        </label>
+                      <div key={fieldName}>
                         {renderField(
                           fieldDef,
                           entity[fieldName],
@@ -170,10 +164,7 @@ export function HeroImageLayout({
                     if (!fieldDef) return null
 
                     return (
-                      <div key={fieldName} className="space-y-2">
-                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                          {fieldDef.label}
-                        </label>
+                      <div key={fieldName}>
                         <div className="bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-300 dark:border-gray-600 p-4">
                           {renderField(
                             { ...fieldDef, type: 'json' },
@@ -196,10 +187,7 @@ export function HeroImageLayout({
                     if (!fieldDef) return null
 
                     return (
-                      <div key={fieldName} className="space-y-2">
-                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 not-prose">
-                          {fieldDef.label}
-                        </label>
+                      <div key={fieldName}>
                         {renderField(
                           { ...fieldDef, type: 'rich-text' },
                           entity[fieldName],

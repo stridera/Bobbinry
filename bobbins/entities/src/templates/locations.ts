@@ -69,8 +69,10 @@ export const locationsTemplate: EntityTemplate = {
     },
     {
       name: 'notable_npcs',
-      type: 'json',
-      label: 'Notable NPCs'
+      type: 'relation',
+      label: 'Notable NPCs',
+      targetEntityType: 'characters',
+      allowMultiple: true
     },
     {
       name: 'resources',
@@ -107,7 +109,7 @@ export const locationsTemplate: EntityTemplate = {
       {
         title: 'Notable NPCs',
         fields: ['notable_npcs'],
-        display: 'json-editor'
+        display: 'stacked'
       },
       {
         title: 'Description',
