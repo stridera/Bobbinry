@@ -117,6 +117,29 @@ so a slow or unreachable API can no longer hang the build for 3 minutes.
 - Comments in both env modules explaining *why* the required list is narrow
   and pointing at this post-mortem.
 
+**Landed after the secondary incident (`postgres-js` stuck pool):**
+
+A second incident surfaced during the same `/verify-deploy` session:
+after setting the Stripe price IDs as Fly secrets, the rolling-restart
+that followed created a fresh pool that got stuck ~3 minutes later
+with `CONNECT_TIMEOUT` errors and the suspicious
+`address: undefined, port: undefined` signature. Fly's health check
+marked the machine critical but didn't auto-restart it; traffic kept
+hitting the dead pool until a manual `flyctl machine restart`.
+
+Fixes landed in `apps/api/src/db/connection.ts`:
+
+- `checkDatabaseHealth()` now wraps the `SELECT 1` probe in a 3-second
+  `Promise.race` timeout so `/health` always returns within ~3s even
+  when the pool is stuck. Previously the probe could hang for 13s+
+  and tie up Fly's 5s-timeout health check.
+- A consecutive-failure counter calls `process.exit(1)` after 3
+  sequential health check failures (≈90s of confirmed unhealthiness).
+  Fly's default behavior is to restart an exited machine, which
+  rebuilds the pool from scratch — exactly what manual intervention
+  did to recover. No `fly.toml` changes needed; this works on Fly's
+  default restart policy.
+
 **Not yet done — file as follow-up if it bites again:**
 - A script that diffs the var names referenced in
   `apps/{api,shell}/src/lib/env.ts:requiredEnvVars.production` against the

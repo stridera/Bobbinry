@@ -60,13 +60,60 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
 process.on('SIGINT', () => gracefulShutdown('SIGINT'))
 process.on('SIGUSR2', () => gracefulShutdown('SIGUSR2')) // Nodemon restart
 
-// Health check function
+// ─── Health check + self-healing on stuck pool ──────────────────────
+//
+// The `/health` endpoint on Fastify calls this function. Fly's HTTP
+// health check has a 5s timeout, but without an internal timeout the
+// underlying `client\`SELECT 1\`` can hang arbitrarily long (we've seen
+// >13s) when `postgres-js` gets into a stuck-pool state, during which
+// the machine is serving traffic that all 500s out because every query
+// times out.
+//
+// Two guards:
+//
+//  1. A 3s Promise.race timeout so this function always returns within
+//     ~3s. That gives Fly's check a fast, deterministic result.
+//  2. A consecutive-failure counter that triggers `process.exit(1)`
+//     after `MAX_CONSECUTIVE_HEALTH_FAILURES` failures in a row. Fly's
+//     default behavior is to restart exited machines, and a fresh
+//     machine rebuilds the connection pool from scratch — which is
+//     exactly what manual intervention did during the 2026-04-09 incident
+//     (see `infra/post-mortems/2026-04-09-env-validator-crash-loop.md`).
+//     With the 30s check interval, 3 consecutive failures = ~90s of
+//     confirmed unhealthiness before we self-heal.
+const HEALTH_CHECK_TIMEOUT_MS = 3000
+const MAX_CONSECUTIVE_HEALTH_FAILURES = 3
+let consecutiveHealthFailures = 0
+
 export const checkDatabaseHealth = async (): Promise<boolean> => {
   try {
-    await client`SELECT 1`
+    await Promise.race([
+      client`SELECT 1`,
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`health check query timed out after ${HEALTH_CHECK_TIMEOUT_MS}ms`)),
+          HEALTH_CHECK_TIMEOUT_MS
+        )
+      ),
+    ])
+    if (consecutiveHealthFailures > 0) {
+      console.log(`[db] health check recovered after ${consecutiveHealthFailures} consecutive failures`)
+    }
+    consecutiveHealthFailures = 0
     return true
   } catch (error) {
-    console.error('Database health check failed:', error)
+    consecutiveHealthFailures++
+    console.error(
+      `[db] health check failed (${consecutiveHealthFailures}/${MAX_CONSECUTIVE_HEALTH_FAILURES}):`,
+      error instanceof Error ? error.message : error
+    )
+    if (consecutiveHealthFailures >= MAX_CONSECUTIVE_HEALTH_FAILURES) {
+      console.error(
+        `[db] ${consecutiveHealthFailures} consecutive health check failures — exiting so Fly can restart the machine with a fresh connection pool`
+      )
+      // Give the log line a chance to flush before the process dies.
+      setTimeout(() => process.exit(1), 500)
+    }
     return false
   }
 }
