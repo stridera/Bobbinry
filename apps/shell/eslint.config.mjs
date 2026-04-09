@@ -73,6 +73,10 @@ const eslintConfig = [
     // Override rules — @typescript-eslint plugin is already loaded by nextTypescript above
     rules: {
       "bobbinry/require-suspense-with-search-params": "error",
+      // Browser dialogs (alert/confirm/prompt) are banned — they block the event loop,
+      // can't be styled or themed, and break the app's UX consistency. Use the inline
+      // toast pattern (see apps/shell/src/app/membership/page.tsx) or a proper modal.
+      "no-alert": "error",
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-unused-vars": "warn",
       "@typescript-eslint/no-require-imports": "off",
