@@ -338,6 +338,10 @@ Manual testing coverage includes:
 
 This is currently a scaffolding repository. Contribution guidelines will be added as the project matures.
 
+### Feature Requests & Feedback
+
+Have an idea or want to vote on what's next? Head to [GitHub Discussions → Ideas](https://github.com/stridera/Bobbinry/discussions/categories/ideas). React with 👍 on posts you care about, or open a new one — the most-voted ideas shape the roadmap.
+
 ### Development Workflow
 
 1. Create a feature branch
