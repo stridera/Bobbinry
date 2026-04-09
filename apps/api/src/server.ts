@@ -37,6 +37,7 @@ import { initDiscordNotifierHandler } from './jobs/discord-notifier-handler'
 import { initDiscordRolesHandler } from './jobs/discord-roles-handler'
 import apiKeysPlugin from './routes/api-keys'
 import exportPlugin from './routes/export'
+import templatesPlugin from './routes/templates'
 import promoCodesPlugin from './routes/promo-codes'
 import { requireReadOnly, hashApiKey, getApiKeyTier } from './middleware/auth'
 
@@ -248,6 +249,7 @@ export function build(opts = {}): FastifyInstance {
   server.register(dashboardPlugin, { prefix: '/api' })
   server.register(authPlugin, { prefix: '/api' })
   server.register(discoverPlugin, { prefix: '/api' })
+  server.register(templatesPlugin, { prefix: '/api' })
   server.register(uploadsPlugin, { prefix: '/api' })
   server.register(projectTagsPlugin, { prefix: '/api' })
   server.register(projectFollowsPlugin, { prefix: '/api' })

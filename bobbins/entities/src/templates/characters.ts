@@ -8,9 +8,12 @@ import type { EntityTemplate } from '../types'
 
 export const charactersTemplate: EntityTemplate = {
   id: 'template-characters',
+  shareId: 'official-characters',
+  version: 2,
   label: 'Characters',
   icon: '🧙',
   description: 'People, creatures, or NPCs in your world',
+  tags: ['rpg', 'worldbuilding', 'characters'],
   baseFields: ['name', 'description', 'image_url', 'tags'],
   customFields: [
     {

@@ -808,6 +808,71 @@ export class UploadAPI {
   }
 }
 
+export class TemplateAPI {
+  private api: BobbinryAPI
+
+  constructor(api: BobbinryAPI) {
+    this.api = api
+  }
+
+  async list(query?: { q?: string; tag?: string; official?: string; limit?: number; offset?: number }): Promise<{ templates: any[]; total: number; hasMore: boolean }> {
+    const params = new URLSearchParams()
+    if (query?.q) params.set('q', query.q)
+    if (query?.tag) params.set('tag', query.tag)
+    if (query?.official) params.set('official', query.official)
+    if (query?.limit) params.set('limit', query.limit.toString())
+    if (query?.offset) params.set('offset', query.offset.toString())
+
+    const response = await fetch(`${this.api.apiBaseUrl}/templates?${params}`, {
+      headers: this.api.getAuthHeaders()
+    })
+    if (!response.ok) throw new Error(`Failed to list templates: ${response.statusText}`)
+    return response.json()
+  }
+
+  async get(shareId: string): Promise<any> {
+    const response = await fetch(`${this.api.apiBaseUrl}/templates/${shareId}`, {
+      headers: this.api.getAuthHeaders()
+    })
+    if (!response.ok) throw new Error(`Failed to get template: ${response.statusText}`)
+    return response.json()
+  }
+
+  async publish(data: {
+    label: string
+    icon: string
+    description: string
+    tags: string[]
+    custom_fields: any[]
+    editor_layout: any
+    list_layout: any
+    subtitle_fields: string[]
+    base_fields?: string[]
+  }): Promise<any> {
+    const response = await fetch(`${this.api.apiBaseUrl}/templates`, {
+      method: 'POST',
+      headers: this.api.getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(data)
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: response.statusText }))
+      throw new Error(err.error || 'Failed to publish template')
+    }
+    return response.json()
+  }
+
+  async unpublish(shareId: string): Promise<void> {
+    const response = await fetch(`${this.api.apiBaseUrl}/templates/${shareId}`, {
+      method: 'DELETE',
+      headers: this.api.getAuthHeaders()
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: response.statusText }))
+      throw new Error(err.error || 'Failed to unpublish template')
+    }
+  }
+}
+
 // Main SDK class
 export class BobbinrySDK {
   public api: BobbinryAPI
@@ -817,6 +882,7 @@ export class BobbinrySDK {
   public publishing: PublishingAPI
   public reader: ReaderAPI
   public uploads: UploadAPI
+  public templates: TemplateAPI
 
   constructor(componentId: string, apiBaseURL?: string) {
     this.api = new BobbinryAPI(apiBaseURL)
@@ -826,6 +892,7 @@ export class BobbinrySDK {
     this.publishing = new PublishingAPI(this.api)
     this.reader = new ReaderAPI(this.api)
     this.uploads = new UploadAPI(this.api)
+    this.templates = new TemplateAPI(this.api)
   }
 
   setProject(projectId: string) {

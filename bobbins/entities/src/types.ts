@@ -116,14 +116,36 @@ export interface ListLayout {
 
 export interface EntityTemplate {
   id: string  // e.g., 'template-characters'
+  shareId: string  // Stable shareable ID (e.g., 'official-characters')
+  version: number  // Integer version, bumped on updates
   label: string
   icon: string
   description: string
+  tags?: string[]
   baseFields: string[]  // Always: name, description, image_url, tags
   customFields: FieldDefinition[]
   editorLayout: EditorLayout
   listLayout: ListLayout
   subtitleFields: string[]  // For disambiguation
+}
+
+export interface SharedTemplate {
+  share_id: string
+  version: number
+  label: string
+  icon: string
+  description: string
+  tags: string[]
+  official: boolean
+  author_id: string | null
+  author_name: string | null
+  base_fields: string[]
+  custom_fields: FieldDefinition[]
+  editor_layout: EditorLayout
+  list_layout: ListLayout
+  subtitle_fields: string[]
+  installs: number
+  published_at: string
 }
 
 export interface EntityTypeDefinition {

@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./views/*": "./src/views/*.tsx",
     "./panels/*": "./src/panels/*.tsx",
+    "./templates": "./src/templates/index.ts",
     "./templates/*": "./src/templates/*.ts",
     "./components/*": "./src/components/*.tsx"
   },

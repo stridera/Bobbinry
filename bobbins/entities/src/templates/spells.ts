@@ -8,9 +8,12 @@ import type { EntityTemplate } from '../types'
 
 export const spellsTemplate: EntityTemplate = {
   id: 'template-spells',
+  shareId: 'official-spells',
+  version: 1,
   label: 'Spells',
   icon: '✨',
   description: 'Magical abilities and incantations',
+  tags: ['rpg', 'magic', 'spells'],
   baseFields: ['name', 'description', 'image_url', 'tags'],
   customFields: [
     {

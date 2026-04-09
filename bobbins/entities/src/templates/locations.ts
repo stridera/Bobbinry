@@ -8,9 +8,12 @@ import type { EntityTemplate } from '../types'
 
 export const locationsTemplate: EntityTemplate = {
   id: 'template-locations',
+  shareId: 'official-locations',
+  version: 2,
   label: 'Locations',
   icon: '🗺️',
   description: 'Places, regions, and landmarks',
+  tags: ['worldbuilding', 'locations', 'geography'],
   baseFields: ['name', 'description', 'image_url', 'tags'],
   customFields: [
     {

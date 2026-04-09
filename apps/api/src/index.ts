@@ -13,6 +13,10 @@ const start = async () => {
     // Ensure S3 bucket exists for file uploads
     await ensureBucketExists()
 
+    // Seed/update official entity templates
+    const { seedOfficialTemplates } = await import('./lib/seed-templates')
+    await seedOfficialTemplates()
+
     await server.listen({ port: env.PORT, host: '0.0.0.0' })
     console.log(`🚀 API server running at http://localhost:${env.PORT}`)
   } catch (err) {

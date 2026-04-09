@@ -52,19 +52,19 @@ export function Toast({
   const baseClasses = 'flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg border max-w-md'
 
   const variantClasses = {
-    default: 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100',
-    success: 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-900 dark:text-green-100',
-    warning: 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800 text-yellow-900 dark:text-yellow-100',
-    danger: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-900 dark:text-red-100',
-    info: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-900 dark:text-blue-100'
+    default: 'bg-gray-700 border-gray-500 text-gray-100',
+    success: 'bg-green-800 border-green-600 text-green-100',
+    warning: 'bg-yellow-800 border-yellow-600 text-yellow-100',
+    danger: 'bg-red-800 border-red-500 text-red-100',
+    info: 'bg-blue-800 border-blue-600 text-blue-100'
   }
 
   const iconClasses = {
-    default: 'text-gray-500 dark:text-gray-400',
-    success: 'text-green-500 dark:text-green-400',
-    warning: 'text-yellow-500 dark:text-yellow-400',
-    danger: 'text-red-500 dark:text-red-400',
-    info: 'text-blue-500 dark:text-blue-400'
+    default: 'text-gray-400',
+    success: 'text-green-400',
+    warning: 'text-yellow-400',
+    danger: 'text-red-400',
+    info: 'text-blue-400'
   }
 
   const icons = {
@@ -112,7 +112,7 @@ export function Toast({
       {dismissible && onDismiss && (
         <button
           onClick={onDismiss}
-          className="flex-shrink-0 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
+          className="flex-shrink-0 text-gray-400 hover:text-gray-200 transition-colors"
           aria-label="Dismiss"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

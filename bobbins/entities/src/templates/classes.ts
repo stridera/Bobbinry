@@ -8,9 +8,12 @@ import type { EntityTemplate } from '../types'
 
 export const classesTemplate: EntityTemplate = {
   id: 'template-classes',
+  shareId: 'official-classes',
+  version: 2,
   label: 'Classes',
   icon: '🎭',
   description: 'Character classes and professions',
+  tags: ['rpg', 'classes', 'professions'],
   baseFields: ['name', 'description', 'image_url', 'tags'],
   customFields: [
     {

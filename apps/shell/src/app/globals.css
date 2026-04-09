@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @source "../../../../bobbins";
+@source "../../../../packages";
 @plugin "@tailwindcss/typography";
 
 @variant dark (&:where(.dark, .dark *));
