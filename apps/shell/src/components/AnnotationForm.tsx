@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { ModalFrame } from '@bobbinry/ui-components'
 import type { TextAnchor } from './AnnotationSelectionPopover'
 
 type AnnotationType = 'error' | 'suggestion' | 'feedback'
@@ -62,7 +63,6 @@ export function AnnotationForm({ anchor, onSubmit, onClose, isDark, isSepia }: P
   }
 
   // Theme classes
-  const overlayClass = 'bg-black/50'
   const modalBg = isDark ? 'bg-gray-900 border-gray-700' : isSepia ? 'bg-amber-50 border-amber-300' : 'bg-white border-gray-200'
   const textClass = isDark ? 'text-gray-100' : isSepia ? 'text-amber-950' : 'text-gray-900'
   const mutedText = isDark ? 'text-gray-400' : isSepia ? 'text-amber-700' : 'text-gray-500'
@@ -70,11 +70,8 @@ export function AnnotationForm({ anchor, onSubmit, onClose, isDark, isSepia }: P
   const hoverBg = isDark ? 'hover:bg-gray-800' : isSepia ? 'hover:bg-amber-100' : 'hover:bg-gray-50'
 
   return (
-    <div className={`fixed inset-0 z-50 flex items-center justify-center ${overlayClass}`} onClick={onClose}>
-      <div
-        className={`w-full max-w-md mx-4 border rounded-lg shadow-xl ${modalBg}`}
-        onClick={e => e.stopPropagation()}
-      >
+    <ModalFrame onClose={onClose} ariaLabel="Add Feedback">
+      <div className={`w-full max-w-md border rounded-lg shadow-xl ${modalBg}`}>
         <form onSubmit={handleSubmit}>
           {/* Header */}
           <div className={`flex items-center justify-between px-4 py-3 border-b ${isDark ? 'border-gray-700' : isSepia ? 'border-amber-200' : 'border-gray-200'}`}>
@@ -188,6 +185,6 @@ export function AnnotationForm({ anchor, onSubmit, onClose, isDark, isSepia }: P
           </div>
         </form>
       </div>
-    </div>
+    </ModalFrame>
   )
 }

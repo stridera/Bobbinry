@@ -2,14 +2,6 @@
 # Checks that the Drizzle schema and migrations are in sync.
 # Runs `drizzle-kit generate` and fails if a new migration file is produced,
 # meaning someone changed the schema without generating a migration.
-#
-# CAVEAT: As of 2026-04, this check passes VACUOUSLY. The snapshot chain in
-# `infra/db/migrations/meta/` is broken from 0006 onward and the 0004/0005
-# snapshots share an `id`, causing `drizzle-kit generate` to exit early on a
-# collision error before it ever computes a real diff. No new SQL files are
-# produced, so this script reports "in sync" regardless of actual drift.
-# See `infra/db/migrations/README.md` for the full history and the rebase
-# plan needed to restore real drift detection.
 
 set -euo pipefail
 

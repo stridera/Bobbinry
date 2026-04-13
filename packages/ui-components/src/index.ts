@@ -29,5 +29,8 @@ export type { BadgeProps } from './Badge'
 export { Toast, ToastContainer } from './Toast'
 export type { ToastProps } from './Toast'
 
+export { ModalFrame } from './ModalFrame'
+export type { ModalFrameProps } from './ModalFrame'
+
 export { Dialog } from './Dialog'
 export type { DialogProps, DialogVariant } from './Dialog'

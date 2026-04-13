@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { ModalFrame } from './ModalFrame'
 
 export type DialogVariant = 'default' | 'danger' | 'warning'
 
@@ -99,16 +100,6 @@ export function Dialog({
     target?.focus()
   }, [open, inputType])
 
-  // Dismiss on ESC key from anywhere in the document.
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel()
-    }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [open, onCancel])
-
   if (!open) return null
 
   const handleConfirm = () => {
@@ -121,23 +112,11 @@ export function Dialog({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
-      onClick={(e) => {
-        // Backdrop click cancels; clicks inside the dialog stop here.
-        if (e.target === e.currentTarget) onCancel()
-      }}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="bobbinry-dialog-title"
-    >
+    <ModalFrame onClose={onCancel} ariaLabel={title}>
       <div className="w-full max-w-md rounded-lg shadow-xl border bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
         <form onSubmit={handleSubmit}>
           <div className="px-5 pt-5 pb-4">
-            <h2
-              id="bobbinry-dialog-title"
-              className="text-lg font-semibold text-gray-900 dark:text-gray-100"
-            >
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
               {title}
             </h2>
             {message && (
@@ -174,6 +153,6 @@ export function Dialog({
           </div>
         </form>
       </div>
-    </div>
+    </ModalFrame>
   )
 }

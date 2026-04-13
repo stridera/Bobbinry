@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
+import { ModalFrame } from '@bobbinry/ui-components'
 import { apiFetch } from '@/lib/api'
 import { BobbinMetadata } from './types'
 
@@ -281,10 +282,7 @@ export function ProjectPickerPopover({ bobbin, onClose }: ProjectPickerModalProp
   }
 
   return (
-    <div
-      className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50 p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
-    >
+    <ModalFrame onClose={onClose} ariaLabel={`Install ${bobbin.name}`}>
       <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
         {/* Header */}
         <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
@@ -344,6 +342,6 @@ export function ProjectPickerPopover({ bobbin, onClose }: ProjectPickerModalProp
           )}
         </div>
       </div>
-    </div>
+    </ModalFrame>
   )
 }

@@ -1,0 +1,7 @@
+-- Snapshot rebase baseline (no-op)
+--
+-- This migration exists solely to anchor the Drizzle snapshot chain.
+-- The accompanying 0024_snapshot.json captures the full schema state as of
+-- migrations 0000-0023. No DDL is executed.
+--
+-- See infra/db/migrations/README.md for context.

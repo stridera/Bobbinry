@@ -162,6 +162,13 @@
       "when": 1775722800000,
       "tag": "0023_enforce_chapter_entity_fks",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1775900400000,
+      "tag": "0024_rebase_baseline",
+      "breakpoints": true
     }
   ]
 }

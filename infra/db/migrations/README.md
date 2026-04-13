@@ -24,42 +24,20 @@ The journal is correct as-is. Do not try to "renumber" entries to close the
 gap — the production `__drizzle_migrations` table is keyed off the migration
 hash and tag, so renaming would force a re-apply attempt.
 
-## The snapshot chain is broken from 0006 onward
+## The snapshot chain rebase (0024)
 
-Only `0000_snapshot.json` through `0005_snapshot.json` exist. Migrations
-`0007`–`0022` apply fine (they are read straight from their `.sql` files at
-runtime by `runMigrations()`), but their snapshot states were never committed.
-On top of that, `0004_snapshot.json` and `0005_snapshot.json` historically
-shared the same `id`, so `drizzle-kit check` reports a collision warning.
+Only `0000_snapshot.json` through `0005_snapshot.json` exist for the early
+migrations. Snapshots for `0007`–`0023` were never committed, and `0004` /
+`0005` historically shared the same `id`.
 
-### What this means for `drizzle-kit`
+This was fixed in 2026-04 by adding `0024_rebase_baseline`:
 
-- **Runtime migrator** (the `runMigrations()` call in `apps/api/src/index.ts`):
-  works fine. It only reads `_journal.json` + the `.sql` files, never the
-  snapshots.
-- **`drizzle-kit check`**: prints a "collision" error and exits non-zero.
-- **`drizzle-kit generate`**: also exits early on the same collision, which
-  means the schema-drift pre-commit check (`apps/api/scripts/check-schema-drift.sh`)
-  passes **vacuously** — it cannot actually detect drift today. See the
-  comment in that script.
+- `0005_snapshot.json` was given a unique `id` (fixing the collision).
+- `0024_snapshot.json` was generated from `schema.ts` via `drizzle-kit
+  generate` in a scratch directory, then patched to chain off `0005`.
+- `0024_rebase_baseline.sql` is a no-op (comment-only) — the runtime
+  migrator records it but executes nothing.
 
-### Fixing this properly
-
-The right fix is to rebase the snapshot baseline against the live dev DB.
-That requires:
-
-1. Standing up a fresh Postgres with all 22 migrations applied.
-2. Running `drizzle-kit introspect` against it into a scratch directory to
-   capture the current schema as a fresh `0000_snapshot.json`.
-3. Renaming/copying that snapshot to `0023_snapshot.json` (or the next
-   sequential index) and patching its `id`/`prevId` to chain off `0005`.
-4. Adding a no-op `0023_*.sql` migration so the journal entry is honored by
-   the runtime migrator.
-5. Verifying `drizzle-kit generate` runs to completion against an unchanged
-   `schema.ts` (i.e., produces no new files).
-
-This was attempted experimentally and reverted because `drizzle-kit introspect`
-refuses to overwrite an existing migrations dir, and `drizzle-kit generate
---custom` only emits an empty SQL file without refreshing the snapshot
-content. Doing it properly needs an isolated workspace and is tracked as
-follow-up work — not a one-line patch.
+After the rebase, `drizzle-kit check` and `drizzle-kit generate` both work
+correctly. The schema-drift pre-commit check (`apps/api/scripts/check-schema-drift.sh`)
+now catches real drift.

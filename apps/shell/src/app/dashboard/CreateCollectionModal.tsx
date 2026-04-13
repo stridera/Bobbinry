@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { ModalFrame } from '@bobbinry/ui-components'
 import { apiFetch } from '@/lib/api'
 
 interface CreateCollectionModalProps {
@@ -43,13 +44,8 @@ export function CreateCollectionModal({ apiToken, onCreated, onClose }: CreateCo
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="fixed inset-0 bg-black/50" />
-      <div
-        className="relative bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md p-6"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.key === 'Escape' && onClose()}
-      >
+    <ModalFrame onClose={onClose} ariaLabel="New Collection">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md p-6">
         <h2 className="font-display text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">
           New Collection
         </h2>
@@ -108,6 +104,6 @@ export function CreateCollectionModal({ apiToken, onCreated, onClose }: CreateCo
           </div>
         </form>
       </div>
-    </div>
+    </ModalFrame>
   )
 }
