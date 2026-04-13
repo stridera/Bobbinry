@@ -44,9 +44,7 @@
       "persistent": true
     },
     "test": {
-      "outputs": [
-        "coverage/**"
-      ]
+      "outputs": []
     }
   }
 }
