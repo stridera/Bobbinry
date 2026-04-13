@@ -23,7 +23,7 @@
     "@bobbinry/types": "workspace:*",
     "@bobbinry/ui-components": "workspace:*",
     "@tiptap/core": "^2.12.0",
-    "@tiptap/pm": "^2.12.0"
+    "@tiptap/pm": "^3.22.3"
   },
   "devDependencies": {
     "@types/react": "^19.2.14",
