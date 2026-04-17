@@ -383,6 +383,11 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
         data.word_count = serverCount
       }
 
+      // Always stamp updated_at into entityData so it stays in sync with
+      // the row-level updated_at column. The editor only sends body + word_count;
+      // without this, entityData.updated_at stays at the create timestamp.
+      data.updated_at = new Date().toISOString()
+
       // Merge the new data with existing entity_data to preserve unmodified fields
       const mergedData = {
         ...(currentEntity.entityData as object),
