@@ -22,13 +22,16 @@ bunx turbo lint
 echo "  [4/7] Bobbin lint..."
 bun run lint:bobbins
 
-echo "  [5/7] Vercel compat..."
+echo "  [5/8] Vercel compat..."
 ./scripts/check-vercel-compat.sh
 
-echo "  [6/7] Typecheck..."
+echo "  [6/8] Dockerfile workspaces..."
+./scripts/check-dockerfile-workspaces.sh
+
+echo "  [7/8] Typecheck..."
 bun run typecheck
 
-echo "  [7/7] Build..."
+echo "  [8/8] Build..."
 bun run build
 
 echo "All pre-commit checks passed."
