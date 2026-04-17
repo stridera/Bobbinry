@@ -9,6 +9,13 @@ import { findBobbinForCollectionAcrossScopes } from '../lib/disk-manifests'
 import { getEffectiveBobbins, getCollectionIdsForProject, buildScopeCondition } from '../lib/effective-bobbins'
 import { ApiError, ValidationError, NotFoundError } from '../lib/errors'
 
+/** Strip HTML tags and count words in plain text. */
+function countWordsFromHtml(html: string): number {
+  const text = html.replace(/<[^>]*>/g, ' ').replace(/&[a-z]+;/gi, ' ')
+  const words = text.split(/\s+/).filter(w => w.length > 0)
+  return words.length
+}
+
 /**
  * Check if a collection name matches a user-created entity type definition.
  * Entity types created via the config UI are stored as rows in entity_type_definitions,
@@ -355,6 +362,25 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
           currentVersion: currentEntity.version,
           expectedVersion
         })
+      }
+
+      // For content entities: recompute word_count from body so the stored
+      // value can never drift from the actual content.
+      if (collection === 'content' && typeof data.body === 'string') {
+        const serverCount = countWordsFromHtml(data.body)
+        if (data.word_count !== undefined && data.word_count !== serverCount) {
+          fastify.log.warn(
+            { entityId, clientWordCount: data.word_count, serverWordCount: serverCount },
+            'word_count mismatch: client sent %d but body has %d words',
+            data.word_count, serverCount
+          )
+        } else if (data.word_count === undefined) {
+          fastify.log.warn(
+            { entityId, serverWordCount: serverCount },
+            'content update missing word_count — setting from body'
+          )
+        }
+        data.word_count = serverCount
       }
 
       // Merge the new data with existing entity_data to preserve unmodified fields
