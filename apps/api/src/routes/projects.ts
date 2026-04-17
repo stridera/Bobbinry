@@ -18,7 +18,7 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
       description?: string
     }
   }>('/projects', {
-    preHandler: [requireAuth, requireVerified]
+    preHandler: [requireAuth, requireVerified, requireScope('projects:write')]
   }, async (request, reply) => {
     try {
       const { name, description } = request.body

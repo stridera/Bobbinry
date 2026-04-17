@@ -1,0 +1,5 @@
+export { BobbinryClient } from './api/client.js'
+export type { ClientOptions } from './api/client.js'
+export { loadConfig, saveConfig, resolveApiKey, resolveApiUrl } from './lib/config.js'
+export type { CliConfig } from './lib/config.js'
+export { ApiError, AuthError, CliError, ConfigError } from './lib/errors.js'

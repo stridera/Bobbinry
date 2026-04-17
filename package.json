@@ -1,5 +1,6 @@
 {
-  "name": "bobbinry",
+  "name": "@bobbinry/monorepo",
+  "private": true,
   "version": "0.1.0",
   "type": "module",
   "description": "Modular, open-source tools for writers and worldbuilders",

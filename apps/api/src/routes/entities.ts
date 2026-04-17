@@ -224,7 +224,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       data: Record<string, any>
     }
   }>('/entities', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, requireScope('entities:write')]
   }, async (request, reply) => {
     try {
       // Validate input
@@ -331,7 +331,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       expectedVersion?: number
     }
   }>('/entities/:entityId', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, requireScope('entities:write')]
   }, async (request, reply) => {
     try {
       const { entityId } = request.params
@@ -510,7 +510,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       collection: string
     }
   }>('/entities/:entityId', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, requireScope('entities:write')]
   }, async (request, reply) => {
     try {
       const { entityId } = request.params
@@ -572,7 +572,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       }>
     }
   }>('/entities/batch/atomic', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, requireScope('entities:write')]
   }, async (request, reply) => {
     try {
       const { projectId, operations } = request.body

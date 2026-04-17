@@ -14,7 +14,7 @@ import { sql } from 'drizzle-orm'
 import { requireAuth, requireVerified, denyApiKeyAuth, hashApiKey, clearApiKeyCache } from '../middleware/auth'
 import { getUserMembershipTier } from '../lib/membership'
 
-const VALID_SCOPES = ['projects:read', 'entities:read', 'stats:read', 'profile:read'] as const
+const VALID_SCOPES = ['projects:read', 'projects:write', 'entities:read', 'entities:write', 'stats:read', 'profile:read'] as const
 const FREE_KEY_LIMIT = 5
 const SUPPORTER_KEY_LIMIT = 10
 

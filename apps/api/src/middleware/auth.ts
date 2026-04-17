@@ -394,27 +394,6 @@ export async function denyApiKeyAuth(
   }
 }
 
-/**
- * Read-only enforcement for API key requests.
- * Blocks non-GET/HEAD methods when the Authorization header carries an API key.
- * Checks the raw header prefix so it can run as an onRequest hook (before auth resolves).
- * Safety net for Phase 1 (read-only API keys).
- */
-export async function requireReadOnly(
-  request: FastifyRequest,
-  reply: FastifyReply
-): Promise<void> {
-  if (request.method === 'GET' || request.method === 'HEAD' || request.method === 'OPTIONS') return
-  const authHeader = request.headers.authorization
-  if (!authHeader) return
-  const token = authHeader.split(' ')[1]
-  if (token?.startsWith('bby_')) {
-    reply.status(403).send({
-      error: 'Read-only access',
-      message: 'API keys only support read operations'
-    })
-  }
-}
 
 /**
  * Internal helper for project ownership checks.

@@ -1,0 +1,50 @@
+{
+  "name": "bobbinry",
+  "version": "0.1.1",
+  "description": "CLI for the Bobbinry writing platform",
+  "type": "module",
+  "bin": {
+    "bobbinry": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --noEmit --watch --preserveWatchOutput",
+    "typecheck": "tsc --noEmit",
+    "test": "../../scripts/jest.sh"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist",
+    "!dist/__tests__"
+  ],
+  "keywords": [
+    "bobbinry",
+    "writing",
+    "worldbuilding",
+    "cli"
+  ],
+  "author": "Bobbinry",
+  "license": "AGPL-3.0-only",
+  "dependencies": {
+    "commander": "^13.1.0"
+  },
+  "devDependencies": {
+    "@bobbinry/types": "workspace:*",
+    "@jest/globals": "^30.3.0",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25",
+    "jest": "^30.3.0",
+    "ts-jest": "^29.4.6",
+    "typescript": "6.0.2"
+  }
+}

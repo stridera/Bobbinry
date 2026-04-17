@@ -61,7 +61,7 @@ const membershipPlugin: FastifyPluginAsync = async (fastify) => {
         .where(eq(users.id, user.id))
         .limit(1)
 
-      return reply.send({ tier, badges, membership, emailVerified: !!user.emailVerified, hasPassword: !!dbUser?.passwordHash })
+      return reply.send({ user: { id: user.id, email: user.email, name: user.name }, tier, badges, membership, emailVerified: !!user.emailVerified, hasPassword: !!dbUser?.passwordHash })
     } catch (error) {
       fastify.log.error(error)
       return reply.status(500).send({ error: 'Failed to fetch membership' })
