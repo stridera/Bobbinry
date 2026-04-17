@@ -22,6 +22,7 @@ COPY packages/event-bus/package.json packages/event-bus/
 COPY packages/sdk/package.json packages/sdk/
 COPY packages/types/package.json packages/types/
 COPY packages/ui/package.json packages/ui/
+COPY packages/cli/package.json packages/cli/
 COPY packages/ui-components/package.json packages/ui-components/
 
 # Bobbins
