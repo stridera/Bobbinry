@@ -259,6 +259,17 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
         })
       }
 
+      // Stamp timestamps into entityData so they're always present at the
+      // top level, matching the row-level created_at / updated_at columns.
+      const now = new Date().toISOString()
+      data.created_at = data.created_at ?? now
+      data.updated_at = now
+
+      // For content entities, compute word_count from body if present
+      if (collection === 'content' && typeof data.body === 'string') {
+        data.word_count = countWordsFromHtml(data.body)
+      }
+
       // Set the correct FK based on the resolved scope
       const entityId = crypto.randomUUID()
       const insertValues: Record<string, any> = {
