@@ -814,18 +814,29 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
     try {
       const { projectId } = request.params
 
-      // Get project info
+      // Project info — projects live in `projects`, not `entities`.
       const [project] = await db
-        .select()
-        .from(entities)
-        .where(eq(entities.id, projectId))
+        .select({
+          name: projects.name,
+          description: projects.description,
+          coverImage: projects.coverImage,
+          ownerName: users.name,
+        })
+        .from(projects)
+        .leftJoin(users, eq(projects.ownerId, users.id))
+        .where(and(eq(projects.id, projectId), isNull(projects.deletedAt)))
         .limit(1)
 
       if (!project) {
         return reply.status(404).send({ error: 'Project not found', correlationId })
       }
 
-      const projectData = project.entityData as any
+      const projectData = {
+        title: project.name,
+        description: project.description,
+        author: project.ownerName,
+        coverImage: project.coverImage,
+      }
       const baseUrl = env.WEB_ORIGIN
 
       // Get stats
@@ -927,13 +938,21 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(404).send({ error: 'Chapter not found', correlationId })
       }
 
+      // Project info — projects live in `projects`, not `entities`.
       const [project] = await db
-        .select()
-        .from(entities)
-        .where(eq(entities.id, projectId))
+        .select({
+          name: projects.name,
+          coverImage: projects.coverImage,
+          ownerName: users.name,
+        })
+        .from(projects)
+        .leftJoin(users, eq(projects.ownerId, users.id))
+        .where(eq(projects.id, projectId))
         .limit(1)
 
-      const projectData = project?.entityData as any
+      const projectData = project
+        ? { title: project.name, coverImage: project.coverImage, author: project.ownerName }
+        : null
       const baseUrl = env.WEB_ORIGIN
 
       // Generate excerpt from content
