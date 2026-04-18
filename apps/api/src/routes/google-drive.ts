@@ -14,6 +14,7 @@ import { projectDestinations, projects, userBobbinsInstalled, entities } from '.
 import { requireAuth } from '../middleware/auth'
 import { env } from '../lib/env'
 import { ApiError, UnauthorizedError } from '../lib/errors'
+import { encryptSecret, decryptSecret } from '../lib/secret-storage'
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
@@ -24,7 +25,28 @@ function getStateSecret(): Uint8Array {
   return new TextEncoder().encode(secret)
 }
 
-/** Look up the user's backup bobbin installation */
+/**
+ * In-memory config uses plaintext tokens; the DB stores encrypted envelopes.
+ * These helpers translate between the two at the read/write boundary.
+ * decryptDriveConfig tolerates legacy plaintext values (they'll rotate to
+ * encrypted on the next write via persistToken / re-auth).
+ */
+export function decryptDriveConfig<T extends Record<string, any> | null | undefined>(config: T): T {
+  if (!config) return config
+  const copy: any = { ...config }
+  if (typeof copy.accessToken === 'string' && copy.accessToken) copy.accessToken = decryptSecret(copy.accessToken)
+  if (typeof copy.refreshToken === 'string' && copy.refreshToken) copy.refreshToken = decryptSecret(copy.refreshToken)
+  return copy
+}
+
+export function encryptDriveConfig<T extends Record<string, any>>(config: T): T {
+  const copy: any = { ...config }
+  if (typeof copy.accessToken === 'string' && copy.accessToken) copy.accessToken = encryptSecret(copy.accessToken)
+  if (typeof copy.refreshToken === 'string' && copy.refreshToken) copy.refreshToken = encryptSecret(copy.refreshToken)
+  return copy
+}
+
+/** Look up the user's backup bobbin installation with tokens decrypted for in-memory use. */
 async function getUserBackupBobbin(userId: string) {
   const [bobbin] = await db
     .select()
@@ -37,7 +59,8 @@ async function getUserBackupBobbin(userId: string) {
       )
     )
     .limit(1)
-  return bobbin
+  if (!bobbin) return bobbin
+  return { ...bobbin, config: decryptDriveConfig(bobbin.config as any) }
 }
 
 const googleDrivePlugin: FastifyPluginAsync = async (fastify) => {
@@ -184,7 +207,7 @@ const googleDrivePlugin: FastifyPluginAsync = async (fastify) => {
         fastify.log.error({ error: err }, 'Failed to create root backup folder')
       }
 
-      // Check for existing backup bobbin for this user
+      // Check for existing backup bobbin for this user (config already decrypted by getter)
       const existing = await getUserBackupBobbin(statePayload.userId)
 
       const bobbinConfig = {
@@ -200,7 +223,7 @@ const googleDrivePlugin: FastifyPluginAsync = async (fastify) => {
         await db
           .update(userBobbinsInstalled)
           .set({
-            config: { ...(existing.config as any), ...bobbinConfig },
+            config: encryptDriveConfig({ ...(existing.config as any), ...bobbinConfig }),
             isEnabled: true,
             updatedAt: new Date(),
           })
@@ -210,7 +233,7 @@ const googleDrivePlugin: FastifyPluginAsync = async (fastify) => {
           userId: statePayload.userId,
           bobbinId: 'google-drive-backup',
           bobbinType: 'backup',
-          config: bobbinConfig,
+          config: encryptDriveConfig(bobbinConfig),
           isEnabled: true,
         })
       }
@@ -430,7 +453,7 @@ const googleDrivePlugin: FastifyPluginAsync = async (fastify) => {
 
       const persistToken = async (_destId: string, accessToken: string, tokenExpiresAt: string) => {
         await db.update(userBobbinsInstalled).set({
-          config: { ...config, accessToken, tokenExpiresAt },
+          config: encryptDriveConfig({ ...config, accessToken, tokenExpiresAt }),
           updatedAt: new Date(),
         }).where(eq(userBobbinsInstalled.id, bobbin.id))
       }
@@ -819,11 +842,11 @@ async function ensureFreshUserToken(config: any, bobbinInstallId: string): Promi
   await db
     .update(userBobbinsInstalled)
     .set({
-      config: {
+      config: encryptDriveConfig({
         ...config,
         accessToken: tokens.access_token,
         tokenExpiresAt: newExpiresAt,
-      },
+      }),
       updatedAt: new Date(),
     })
     .where(eq(userBobbinsInstalled.id, bobbinInstallId))

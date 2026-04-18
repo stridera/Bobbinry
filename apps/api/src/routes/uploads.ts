@@ -26,12 +26,13 @@ import { userProfiles } from '../db/schema'
 
 // --- Constants ---
 
+// SVG is intentionally excluded — it can contain inline <script> that executes
+// when a user opens the image URL directly (stored XSS on the API origin).
 const ALLOWED_IMAGE_TYPES = new Set([
   'image/jpeg',
   'image/png',
   'image/webp',
   'image/gif',
-  'image/svg+xml',
 ])
 
 const UPLOAD_CONTEXTS = new Set(['cover', 'entity', 'editor', 'avatar', 'map'])
@@ -44,7 +45,6 @@ function extFromMime(mime: string): string {
     'image/png': 'png',
     'image/webp': 'webp',
     'image/gif': 'gif',
-    'image/svg+xml': 'svg',
   }
   return map[mime] || 'bin'
 }
@@ -247,36 +247,6 @@ async function uploadsPlugin(fastify: FastifyInstance) {
     }
   })
 
-  // POST /uploads/:id/report — flag an image for review
-  fastify.post<{
-    Params: { id: string }
-  }>('/uploads/:id/report', {
-    preHandler: requireAuth,
-  }, async (request, reply) => {
-    const { id } = request.params
-
-    const [upload] = await db
-      .select()
-      .from(uploads)
-      .where(eq(uploads.id, id))
-      .limit(1)
-
-    if (!upload) {
-      return reply.status(404).send({ error: 'Upload not found' })
-    }
-
-    if (upload.status === 'removed') {
-      return reply.status(400).send({ error: 'Upload has already been removed' })
-    }
-
-    await db
-      .update(uploads)
-      .set({ status: 'reported', updatedAt: new Date() })
-      .where(eq(uploads.id, id))
-
-    return { success: true, status: 'reported' }
-  })
-
   // DELETE /uploads/:id — delete an uploaded file (owner only)
   fastify.delete<{
     Params: { id: string }
@@ -420,6 +390,10 @@ async function uploadsPlugin(fastify: FastifyInstance) {
       reply.header('Content-Length', result.contentLength)
     }
     reply.header('Cache-Control', 'public, max-age=31536000, immutable')
+    // Defense in depth: ensure no script can execute even if a legacy SVG or
+    // mis-labeled file is served from this endpoint.
+    reply.header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+    reply.header('X-Content-Type-Options', 'nosniff')
 
     return reply.send(result.body)
   })

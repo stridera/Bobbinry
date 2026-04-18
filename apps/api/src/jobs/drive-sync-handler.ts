@@ -83,7 +83,8 @@ async function performSync(projectId: string): Promise<void> {
       return
     }
 
-    const userConfig = bobbin.config as any
+    const { decryptDriveConfig, encryptDriveConfig } = await import('../routes/google-drive')
+    const userConfig = decryptDriveConfig(bobbin.config as any)
     if (!userConfig.rootFolderId || !userConfig.accessToken) {
       syncingProjects.delete(projectId)
       return
@@ -127,7 +128,7 @@ async function performSync(projectId: string): Promise<void> {
     // Token persistence callback — writes to user_bobbins_installed
     const persistToken = async (_destinationId: string, accessToken: string, tokenExpiresAt: string) => {
       await db.update(userBobbinsInstalled).set({
-        config: { ...userConfig, accessToken, tokenExpiresAt },
+        config: encryptDriveConfig({ ...userConfig, accessToken, tokenExpiresAt }),
         updatedAt: new Date(),
       }).where(eq(userBobbinsInstalled.id, bobbin.id))
     }

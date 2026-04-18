@@ -10,7 +10,8 @@ import { users, userProfiles, userBadges, emailVerificationTokens, passwordReset
 import { eq } from 'drizzle-orm'
 import { randomBytes, scrypt, timingSafeEqual, createHash } from 'crypto'
 import { promisify } from 'util'
-import { requireAuth, denyApiKeyAuth } from '../middleware/auth'
+import * as jose from 'jose'
+import { requireAuth, denyApiKeyAuth, getJwtSecret } from '../middleware/auth'
 import { incrementCounter } from '../lib/metrics'
 import { verifyInternalRequest } from '../lib/internal-auth'
 import { sendWelcomeEmail, sendVerificationEmail, sendPasswordResetEmail } from '../lib/email'
@@ -24,6 +25,57 @@ const ASSIGN_BETA_BADGE_ON_SIGNUP = true
 const LOGIN_WINDOW_MS = 15 * 60 * 1000
 const MAX_LOGIN_ATTEMPTS = 8
 const lockoutState = new Map<string, { failures: number; firstFailureAt: number; lockedUntil?: number }>()
+
+/** Issued by /auth/login after password succeeds; proves the holder cleared step 1 of 2FA. */
+const TOTP_CHALLENGE_TYP = 'bobbinry-2fa-challenge'
+const TOTP_CHALLENGE_TTL = '5m'
+/** TOTP lockout mirrors login lockout but keys on userId (the attack surface is per-user, not per-IP). */
+const totpLockoutState = new Map<string, { failures: number; firstFailureAt: number; lockedUntil?: number }>()
+
+async function signTotpChallenge(userId: string): Promise<string> {
+  return new jose.SignJWT({ typ: TOTP_CHALLENGE_TYP })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setSubject(userId)
+    .setIssuedAt()
+    .setExpirationTime(TOTP_CHALLENGE_TTL)
+    .sign(getJwtSecret())
+}
+
+async function verifyTotpChallenge(token: string, expectedUserId: string): Promise<boolean> {
+  try {
+    const { payload } = await jose.jwtVerify(token, getJwtSecret(), { algorithms: ['HS256'] })
+    return payload.typ === TOTP_CHALLENGE_TYP && payload.sub === expectedUserId
+  } catch {
+    return false
+  }
+}
+
+function shouldThrottleTotp(userId: string): number | null {
+  const state = totpLockoutState.get(userId)
+  if (!state?.lockedUntil) return null
+  if (Date.now() < state.lockedUntil) return state.lockedUntil
+  totpLockoutState.delete(userId)
+  return null
+}
+
+function recordTotpFailure(userId: string): void {
+  const now = Date.now()
+  const current = totpLockoutState.get(userId)
+  if (!current || now - current.firstFailureAt > LOGIN_WINDOW_MS) {
+    totpLockoutState.set(userId, { failures: 1, firstFailureAt: now })
+    return
+  }
+  current.failures += 1
+  if (current.failures >= MAX_LOGIN_ATTEMPTS) {
+    const backoffMs = Math.min(60 * 60 * 1000, 30_000 * 2 ** (current.failures - MAX_LOGIN_ATTEMPTS))
+    current.lockedUntil = now + backoffMs
+  }
+  totpLockoutState.set(userId, current)
+}
+
+function clearTotpFailures(userId: string): void {
+  totpLockoutState.delete(userId)
+}
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase()
@@ -112,8 +164,44 @@ function generateBackupCodes(): string[] {
   return codes
 }
 
-function hashBackupCode(code: string): string {
-  return createHash('sha256').update(code.toLowerCase().replace(/\s/g, '')).digest('hex')
+function normalizeBackupCode(code: string): string {
+  return code.toLowerCase().replace(/\s/g, '')
+}
+
+/** Salted scrypt hash in the same `salt:hex` format used by `hashPassword`. */
+async function hashBackupCode(code: string): Promise<string> {
+  const salt = randomBytes(16).toString('hex')
+  const hashBuffer = await scryptAsync(normalizeBackupCode(code), salt, 64) as Buffer
+  return `${salt}:${hashBuffer.toString('hex')}`
+}
+
+/**
+ * Verify a backup code against a stored hash. Accepts two formats so codes
+ * issued before the scrypt migration keep working:
+ *   - legacy: bare sha256 hex (no `:`) — unsalted
+ *   - current: `salt:scrypt(code, salt)`
+ */
+async function verifyBackupCode(code: string, storedHash: string): Promise<boolean> {
+  const normalized = normalizeBackupCode(code)
+
+  if (!storedHash.includes(':')) {
+    const legacyHash = createHash('sha256').update(normalized).digest('hex')
+    try {
+      const stored = Buffer.from(storedHash, 'hex')
+      const computed = Buffer.from(legacyHash, 'hex')
+      if (stored.length !== computed.length) return false
+      return timingSafeEqual(stored, computed)
+    } catch {
+      return false
+    }
+  }
+
+  const [salt, expectedHex] = storedHash.split(':')
+  if (!salt || !expectedHex) return false
+  const computed = await scryptAsync(normalized, salt, 64) as Buffer
+  const expected = Buffer.from(expectedHex, 'hex')
+  if (expected.length !== computed.length) return false
+  return timingSafeEqual(expected, computed)
 }
 
 function buildTOTP(email: string, secret: Secret): TOTP {
@@ -217,10 +305,14 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
 
       // Check if 2FA is enabled
       if (user.totpEnabled) {
+        // Issue a short-lived challenge token that proves the password step passed.
+        // /auth/totp/verify requires this token so TOTP can't be brute-forced without a password.
+        const challengeToken = await signTotpChallenge(user.id)
         incrementCounter('auth.login.2fa_required')
         return reply.send({
           requiresTwoFactor: true,
           userId: user.id,
+          challengeToken,
         })
       }
 
@@ -749,7 +841,7 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
 
       // Generate backup codes
       const backupCodes = generateBackupCodes()
-      const hashedCodes = backupCodes.map(hashBackupCode)
+      const hashedCodes = await Promise.all(backupCodes.map(hashBackupCode))
 
       await db.update(users).set({
         totpEnabled: true,
@@ -815,7 +907,7 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
    * POST /auth/totp/verify
    */
   fastify.post<{
-    Body: { userId: string; code: string }
+    Body: { userId: string; code: string; challengeToken?: string }
   }>('/auth/totp/verify', {
     config: {
       rateLimit: {
@@ -825,10 +917,26 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
     }
   }, async (request, reply) => {
     try {
-      const { userId, code } = request.body
+      const { userId, code, challengeToken } = request.body
 
       if (!userId || !code) {
         return reply.status(400).send({ error: 'User ID and code are required' })
+      }
+
+      // Require a challenge token proving the password step was passed.
+      // Without this, anyone who knows a userId could brute-force TOTP codes.
+      if (!challengeToken || !(await verifyTotpChallenge(challengeToken, userId))) {
+        incrementCounter('auth.totp.failed', { reason: 'invalid_challenge' })
+        return reply.status(401).send({ error: 'Invalid or expired challenge' })
+      }
+
+      const lockedUntil = shouldThrottleTotp(userId)
+      if (lockedUntil) {
+        incrementCounter('auth.totp.blocked')
+        return reply.status(429).send({
+          error: 'Too many verification attempts',
+          retryAt: new Date(lockedUntil).toISOString(),
+        })
       }
 
       const [user] = await db
@@ -854,28 +962,37 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
       // Try TOTP code first
       const delta = buildTOTP(user.email, Secret.fromBase32(user.totpSecret)).validate({ token: code, window: 1 })
       if (delta !== null) {
+        clearTotpFailures(userId)
         incrementCounter('auth.totp.verified')
         return reply.send({ valid: true, user: userResponse })
       }
 
-      // Try backup code
+      // Try backup code — each stored hash has its own salt, so we must check
+      // each one individually instead of doing a single lookup.
       if (user.totpBackupCodes) {
         const hashedCodes: string[] = JSON.parse(user.totpBackupCodes)
-        const inputHash = hashBackupCode(code)
-        const codeIndex = hashedCodes.indexOf(inputHash)
+        let matchedIndex = -1
+        for (let i = 0; i < hashedCodes.length; i++) {
+          if (await verifyBackupCode(code, hashedCodes[i]!)) {
+            matchedIndex = i
+            break
+          }
+        }
 
-        if (codeIndex !== -1) {
+        if (matchedIndex !== -1) {
           // Remove used backup code
-          hashedCodes.splice(codeIndex, 1)
+          hashedCodes.splice(matchedIndex, 1)
           await db.update(users).set({
             totpBackupCodes: JSON.stringify(hashedCodes),
           }).where(eq(users.id, user.id))
 
+          clearTotpFailures(userId)
           incrementCounter('auth.totp.backup_used')
           return reply.send({ valid: true, user: userResponse })
         }
       }
 
+      recordTotpFailure(userId)
       incrementCounter('auth.totp.failed')
       return reply.status(401).send({ error: 'Invalid code' })
     } catch (error) {

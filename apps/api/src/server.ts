@@ -36,6 +36,7 @@ import { initDriveSyncHandler } from './jobs/drive-sync-handler'
 import { initDiscordNotifierHandler } from './jobs/discord-notifier-handler'
 import { initDiscordRolesHandler } from './jobs/discord-roles-handler'
 import apiKeysPlugin from './routes/api-keys'
+import rssTokensPlugin from './routes/rss-tokens'
 import exportPlugin from './routes/export'
 import templatesPlugin from './routes/templates'
 import promoCodesPlugin from './routes/promo-codes'
@@ -260,6 +261,7 @@ export function build(opts = {}): FastifyInstance {
   server.register(aiToolsPlugin, { prefix: '/api' })
   server.register(userBobbinsPlugin, { prefix: '/api' })
   server.register(apiKeysPlugin, { prefix: '/api' })
+  server.register(rssTokensPlugin, { prefix: '/api' })
   server.register(exportPlugin, { prefix: '/api' })
   server.register(promoCodesPlugin, { prefix: '/api' })
 

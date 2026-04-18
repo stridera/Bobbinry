@@ -23,12 +23,14 @@ import {
   users,
   comments,
   reactions,
-  chapterAnnotations
+  chapterAnnotations,
+  rssFeedTokens
 } from '../db/schema'
 import { eq, and, desc, asc, sql, isNull, or, count, inArray } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { env } from '../lib/env'
 import { optionalAuth, requireAuth, requireProjectOwnership } from '../middleware/auth'
+import { hashRssToken } from './rss-tokens'
 
 // ============================================
 // AUTHOR RESOLUTION
@@ -1050,34 +1052,75 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
     Params: { projectId: string }
     Querystring: {
       limit?: number
+      reader?: string
     }
   }>('/public/projects/:projectId/feed.xml', async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId } = request.params
-      const { limit = 20 } = request.query
+      const { limit = 20, reader: readerToken } = request.query
 
-      // Get project info
+      // Get project info — projects live in `projects`, not `entities`.
       const [project] = await db
-        .select()
-        .from(entities)
-        .where(eq(entities.id, projectId))
+        .select({
+          name: projects.name,
+          description: projects.description,
+          coverImage: projects.coverImage,
+          ownerName: users.name,
+        })
+        .from(projects)
+        .leftJoin(users, eq(projects.ownerId, users.id))
+        .where(and(eq(projects.id, projectId), isNull(projects.deletedAt)))
         .limit(1)
 
       if (!project) {
         return reply.status(404).send({ error: 'Project not found', correlationId })
       }
 
-      const projectData = project.entityData as any
+      const projectData = {
+        title: project.name,
+        description: project.description,
+        author: project.ownerName,
+        coverImage: project.coverImage,
+      }
       const baseUrl = env.WEB_ORIGIN
 
-      // Get recent published chapters
-      const chapters = await db
+      // Optional `?reader=<rss-feed-token>` identifies a subscriber so their
+      // feed includes early-access / subscriber-only chapters. Invalid tokens
+      // silently fall back to the public-only view.
+      let readerUserId: string | undefined
+      if (readerToken) {
+        const tokenHash = hashRssToken(readerToken)
+        const [tokenRow] = await db
+          .select({ userId: rssFeedTokens.userId, id: rssFeedTokens.id })
+          .from(rssFeedTokens)
+          .where(and(eq(rssFeedTokens.tokenHash, tokenHash), isNull(rssFeedTokens.revokedAt)))
+          .limit(1)
+        if (tokenRow) {
+          readerUserId = tokenRow.userId
+          // Fire-and-forget lastUsedAt update.
+          db.update(rssFeedTokens)
+            .set({ lastUsedAt: new Date() })
+            .where(eq(rssFeedTokens.id, tokenRow.id))
+            .catch(() => {})
+        }
+      }
+
+      const [publishConfig] = await db
+        .select({ defaultVisibility: projectPublishConfig.defaultVisibility })
+        .from(projectPublishConfig)
+        .where(eq(projectPublishConfig.projectId, projectId))
+        .limit(1)
+
+      // Pull every published chapter; the access helper decides what the caller
+      // actually gets to see (owner / beta / grant / subscriber / public).
+      const candidateChapters = await db
         .select({
           id: entities.id,
           title: sql<string>`(${entities.entityData}->>'title')`,
           content: sql<string>`(${entities.entityData}->>'body')`,
           publishedAt: chapterPublications.publishedAt,
+          publicReleaseDate: chapterPublications.publicReleaseDate,
           updatedAt: chapterPublications.updatedAt
         })
         .from(entities)
@@ -1087,7 +1130,22 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           eq(chapterPublications.isPublished, true)
         ))
         .orderBy(desc(chapterPublications.publishedAt))
-        .limit(limit)
+        .limit(limit * 2) // over-fetch so filtering still has enough for `limit`
+
+      const accessMap = await checkMultipleChaptersAccess(
+        candidateChapters.map(c => ({
+          chapterId: c.id,
+          publishedAt: c.publishedAt,
+          publicReleaseDate: c.publicReleaseDate,
+        })),
+        projectId,
+        readerUserId,
+        publishConfig?.defaultVisibility || 'public'
+      )
+
+      const chapters = candidateChapters
+        .filter(c => accessMap.get(c.id)?.canAccess === true)
+        .slice(0, limit)
 
       // Build RSS feed items
       const items = chapters.map(chapter => {

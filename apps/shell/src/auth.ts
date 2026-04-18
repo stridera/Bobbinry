@@ -137,6 +137,7 @@ const providers: any[] = [
             body: JSON.stringify({
               userId: creds.userId,
               code: creds.totpCode,
+              challengeToken: creds.challengeToken,
             })
           })
 

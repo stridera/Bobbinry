@@ -169,6 +169,20 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
         .where(eq(userProfiles.userId, userId))
         .limit(1)
 
+      // Allow-list: never trust spread body — it would let the caller overwrite
+      // userId, createdAt, or any future column.
+      const profileUpdates: Record<string, unknown> = {}
+      if (profileData.username !== undefined) profileUpdates.username = profileData.username
+      if (profileData.displayName !== undefined) profileUpdates.displayName = profileData.displayName
+      if (profileData.bio !== undefined) profileUpdates.bio = profileData.bio
+      if (profileData.avatarUrl !== undefined) profileUpdates.avatarUrl = profileData.avatarUrl
+      if (profileData.websiteUrl !== undefined) profileUpdates.websiteUrl = profileData.websiteUrl
+      if (profileData.blueskyHandle !== undefined) profileUpdates.blueskyHandle = profileData.blueskyHandle
+      if (profileData.threadsHandle !== undefined) profileUpdates.threadsHandle = profileData.threadsHandle
+      if (profileData.instagramHandle !== undefined) profileUpdates.instagramHandle = profileData.instagramHandle
+      if (profileData.discordHandle !== undefined) profileUpdates.discordHandle = profileData.discordHandle
+      if (profileData.otherSocials !== undefined) profileUpdates.otherSocials = profileData.otherSocials
+
       let result: { profile: any; status: number }
 
       if (existingProfile.length > 0) {
@@ -176,7 +190,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
         const [updated] = await db
           .update(userProfiles)
           .set({
-            ...profileData,
+            ...profileUpdates,
             updatedAt: new Date()
           })
           .where(eq(userProfiles.userId, userId))
@@ -188,8 +202,8 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
         const [created] = await db
           .insert(userProfiles)
           .values({
+            ...profileUpdates,
             userId,
-            ...profileData
           })
           .returning()
 

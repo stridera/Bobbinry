@@ -46,8 +46,10 @@ export function clearUserCache(userId: string): void {
   userCache.delete(userId)
 }
 
-// API key cache (60s TTL) keyed by key hash
-const API_KEY_CACHE_TTL_MS = 60_000
+// API key cache keyed by key hash. Short TTL so revocation on one instance
+// propagates to peer instances within a few seconds (clearApiKeyCache only
+// clears the local Map).
+const API_KEY_CACHE_TTL_MS = 5_000
 const apiKeyCache = new Map<string, { userId: string; scopes: string[]; tier: MembershipTier; expiresAt: number }>()
 
 function getCachedApiKey(keyHash: string): { userId: string; scopes: string[]; tier: MembershipTier } | null {
@@ -374,6 +376,7 @@ export function requireScope(scope: string) {
         error: 'Insufficient scope',
         message: `This API key does not have the '${scope}' scope`
       })
+      return
     }
   }
 }
@@ -391,6 +394,7 @@ export async function denyApiKeyAuth(
       error: 'Session auth required',
       message: 'This endpoint requires session authentication and cannot be accessed with an API key'
     })
+    return
   }
 }
 

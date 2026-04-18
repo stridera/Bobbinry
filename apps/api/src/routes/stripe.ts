@@ -94,41 +94,10 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  fastify.put<{
-    Params: { userId: string }
-    Body: {
-      stripeAccountId?: string
-      stripeOnboardingComplete?: boolean
-      patreonAccessToken?: string
-      patreonRefreshToken?: string
-      patreonCampaignId?: string
-      paymentProvider?: 'stripe' | 'patreon' | 'both'
-    }
-  }>('/users/:userId/payment-config', {
-    preHandler: [requireAuth, denyApiKeyAuth]
-  }, async (request, reply) => {
-    try {
-      const { userId } = request.params
-      const configData = request.body
-      if (!isValidUUID(userId)) return reply.status(400).send({ error: 'Invalid user ID format' })
-      if (!requireSelf(request, reply, userId)) return
-
-      const existing = await db.select().from(userPaymentConfig).where(eq(userPaymentConfig.userId, userId)).limit(1)
-
-      if (existing.length > 0) {
-        const [updated] = await db.update(userPaymentConfig).set({ ...configData, updatedAt: new Date() }).where(eq(userPaymentConfig.userId, userId)).returning()
-        if (!updated) return reply.status(500).send({ error: 'Failed to update payment config' })
-        return reply.status(200).send({ paymentConfig: { ...updated, patreonAccessToken: updated.patreonAccessToken ? '***REDACTED***' : null, patreonRefreshToken: updated.patreonRefreshToken ? '***REDACTED***' : null } })
-      } else {
-        const [created] = await db.insert(userPaymentConfig).values({ userId, ...configData }).returning()
-        if (!created) return reply.status(500).send({ error: 'Failed to create payment config' })
-        return reply.status(201).send({ paymentConfig: { ...created, patreonAccessToken: created.patreonAccessToken ? '***REDACTED***' : null, patreonRefreshToken: created.patreonRefreshToken ? '***REDACTED***' : null } })
-      }
-    } catch (error) {
-      fastify.log.error(error)
-      return reply.status(500).send({ error: 'Failed to update payment configuration' })
-    }
-  })
+  // Payment config is written only by the Stripe Connect onboarding flow and the
+  // account.updated webhook — never by direct user input. A writable endpoint
+  // would let a user self-set stripeAccountId / stripeOnboardingComplete and
+  // redirect incoming revenue.
 
   // ============================================================================
   // STRIPE CONNECT EXPRESS ONBOARDING

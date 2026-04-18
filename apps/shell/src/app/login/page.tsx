@@ -20,6 +20,7 @@ function LoginForm() {
 
   // 2FA state
   const [twoFactorUserId, setTwoFactorUserId] = useState<string | null>(null)
+  const [challengeToken, setChallengeToken] = useState<string | null>(null)
   const [totpCode, setTotpCode] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -49,6 +50,7 @@ function LoginForm() {
 
       if (data.requiresTwoFactor) {
         setTwoFactorUserId(data.userId)
+        setChallengeToken(data.challengeToken)
         return
       }
 
@@ -82,7 +84,7 @@ function LoginForm() {
       const verifyRes = await fetch(`${config.apiUrl}/api/auth/totp/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: twoFactorUserId, code: totpCode }),
+        body: JSON.stringify({ userId: twoFactorUserId, code: totpCode, challengeToken }),
       })
 
       if (!verifyRes.ok) {
@@ -96,6 +98,7 @@ function LoginForm() {
         password,
         totpCode,
         userId: twoFactorUserId,
+        challengeToken,
         redirect: false,
       })
 
@@ -180,6 +183,7 @@ function LoginForm() {
                   type="button"
                   onClick={() => {
                     setTwoFactorUserId(null)
+                    setChallengeToken(null)
                     setTotpCode('')
                     setError('')
                   }}

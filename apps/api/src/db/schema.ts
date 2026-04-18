@@ -765,6 +765,21 @@ export const apiKeys = pgTable('api_keys', {
   userIdx: index('api_keys_user_idx').on(table.userId),
 }))
 
+// RSS feed tokens - per-user secrets embedded in feed URLs for subscriber access.
+// Deliberately separate from apiKeys: lives in URLs, narrower scope (feed read only),
+// independently revocable without touching programmatic credentials.
+export const rssFeedTokens = pgTable('rss_feed_tokens', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  label: varchar('label', { length: 100 }),
+  tokenHash: varchar('token_hash', { length: 64 }).unique().notNull(),
+  lastUsedAt: timestamp('last_used_at'),
+  revokedAt: timestamp('revoked_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  userIdx: index('rss_feed_tokens_user_idx').on(table.userId),
+}))
+
 // Provenance events - audit trail for security and compliance
 export const provenanceEvents = pgTable('provenance_events', {
   id: uuid('id').defaultRandom().primaryKey(),
