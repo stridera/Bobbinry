@@ -142,6 +142,7 @@ export class BobbinryClient {
     offset?: number
     search?: string
     filters?: Record<string, any>
+    fields?: string[]
   }): Promise<any> {
     this.requireAuth()
     const qs = new URLSearchParams({ projectId: params.projectId })
@@ -149,6 +150,7 @@ export class BobbinryClient {
     if (params.offset) qs.set('offset', String(params.offset))
     if (params.search) qs.set('search', params.search)
     if (params.filters) qs.set('filters', JSON.stringify(params.filters))
+    if (params.fields && params.fields.length > 0) qs.set('fields', params.fields.join(','))
     return this.get(`/collections/${collection}/entities?${qs}`)
   }
 

@@ -251,6 +251,8 @@ export interface EntityQuery {
   limit?: number
   offset?: number
   search?: string
+  /** Project response to only these entityData fields. `id` and `_meta` are always returned. */
+  fields?: string[]
 }
 
 export interface EntityResult<T = any> {
@@ -275,7 +277,8 @@ export class EntityAPI {
       ...(query.limit && { limit: query.limit.toString() }),
       ...(query.offset && { offset: query.offset.toString() }),
       ...(query.search && { search: query.search }),
-      ...(query.filters && { filters: JSON.stringify(query.filters) })
+      ...(query.filters && { filters: JSON.stringify(query.filters) }),
+      ...(query.fields && query.fields.length > 0 && { fields: query.fields.join(',') })
     })
 
     const response = await fetch(`${this.api.apiBaseUrl}/collections/${query.collection}/entities?${params}`, {

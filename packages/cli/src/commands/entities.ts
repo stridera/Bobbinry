@@ -29,6 +29,7 @@ export function registerEntitiesCommand(program: Command): void {
     .option('-o, --offset <n>', 'Pagination offset', '0')
     .option('-s, --search <query>', 'Full-text search')
     .option('-f, --filters <json>', 'JSON field-level filters')
+    .option('--fields <list>', 'Comma-separated fields to return (e.g., title,notes,updated_at)')
     .action(async (collection: string, cmdOpts: any) => {
       const opts = getGlobalOpts()
       try {
@@ -40,6 +41,7 @@ export function registerEntitiesCommand(program: Command): void {
           offset: parseInt(cmdOpts.offset),
           search: cmdOpts.search,
           filters: cmdOpts.filters ? JSON.parse(cmdOpts.filters) : undefined,
+          fields: cmdOpts.fields ? String(cmdOpts.fields).split(',').map((s: string) => s.trim()).filter(Boolean) : undefined,
         })
 
         if (opts.json) {

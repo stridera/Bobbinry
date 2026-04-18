@@ -47,20 +47,42 @@ async function resolveEntityTypeCollection(
   return null
 }
 
-/** Format an entity row into the standard API response shape */
-function formatEntityResponse(row: typeof entities.$inferSelect) {
-  return {
-    id: row.id,
-    ...(row.entityData as object),
-    _meta: {
-      bobbinId: row.bobbinId,
-      collection: row.collectionName,
-      scope: row.scope,
-      version: row.version,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt
+/** Format an entity row into the standard API response shape.
+ * If `fields` is provided, the flattened entityData is projected down to
+ * those keys only. `id` and `_meta` are always returned. */
+function formatEntityResponse(row: typeof entities.$inferSelect, fields?: Set<string>) {
+  const meta = {
+    bobbinId: row.bobbinId,
+    collection: row.collectionName,
+    scope: row.scope,
+    version: row.version,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt
+  }
+
+  if (!fields) {
+    return {
+      id: row.id,
+      ...(row.entityData as object),
+      _meta: meta
     }
   }
+
+  const data = row.entityData as Record<string, unknown>
+  const projected: Record<string, unknown> = { id: row.id }
+  for (const key of fields) {
+    if (key in data) projected[key] = data[key]
+  }
+  projected._meta = meta
+  return projected
+}
+
+const FIELD_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/
+function parseFieldsParam(raw: string | undefined): Set<string> | undefined {
+  if (!raw) return undefined
+  const names = raw.split(',').map(s => s.trim()).filter(Boolean)
+  const valid = names.filter(n => FIELD_NAME_RE.test(n))
+  return valid.length > 0 ? new Set(valid) : undefined
 }
 
 // Input validation schemas
@@ -69,7 +91,8 @@ const EntityQuerySchema = z.object({
   limit: z.coerce.number().min(1).max(5000).default(50),
   offset: z.coerce.number().min(0).default(0),
   search: z.string().max(200).optional(),
-  filters: z.string().optional() // JSON string of filters
+  filters: z.string().optional(), // JSON string of filters
+  fields: z.string().max(500).optional() // Comma-separated field projection
 })
 
 const EntityParamsSchema = z.object({
@@ -102,6 +125,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       limit?: string
       offset?: string
       search?: string
+      fields?: string
     }
   }>('/collections/:collection/entities', {
     preHandler: [requireAuth, requireScope('entities:read')]
@@ -112,7 +136,8 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       const query = EntityQuerySchema.parse(request.query)
 
       const { collection } = params
-      const { projectId, limit, offset, search, filters } = query
+      const { projectId, limit, offset, search, filters, fields } = query
+      const fieldSet = parseFieldsParam(fields)
 
       // Check project ownership
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
@@ -190,7 +215,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
           .where(whereCondition)
       ])
 
-      const entityList = result.map(formatEntityResponse)
+      const entityList = result.map(row => formatEntityResponse(row, fieldSet))
       const total = countResult[0]?.count ?? entityList.length
 
       return { entities: entityList, total }
