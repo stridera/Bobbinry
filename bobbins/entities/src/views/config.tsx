@@ -199,8 +199,11 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
   }
 
   function apiTemplateToEntityTemplate(t: any): EntityTemplate {
-    // For official templates with empty fields (seed placeholders),
-    // fall back to the hardcoded TypeScript template definitions
+    // For official templates, the hardcoded TypeScript template definitions
+    // are the source of truth — the API seeds only version/label metadata, and
+    // any custom_fields stored in the DB may be stale (from an older seed
+    // generation that saved content before the versionable flag existed).
+    // Always prefer the built-in content when it's an official template.
     const shareId = t.share_id
     let customFields = t.custom_fields || []
     let editorLayout = t.editor_layout
@@ -208,7 +211,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
     let subtitleFields = t.subtitle_fields || []
     let versionableBaseFields = t.versionable_base_fields || []
 
-    if (t.official && customFields.length === 0) {
+    if (t.official) {
       const builtIn = templates.find(bt => bt.shareId === shareId)
       if (builtIn) {
         customFields = builtIn.customFields
