@@ -79,17 +79,17 @@ export function normalizeJsonSchema(
   return { mode: 'object', fields }
 }
 
-/** Create a default value for a JSON field based on its schema */
+/** Create an initial value for a JSON field based on its schema.
+ *
+ * For object schemas, returns an empty object — per-field defaults are
+ * surfaced as placeholder hints in the renderer, not baked into the saved
+ * data. That way an author can tell at a glance which fields they've
+ * actually set vs. which ones are just showing the type's default. */
 export function createDefaultJsonValue(schema: JsonSchema | undefined): any {
   if (!schema) return ''
   switch (schema.mode) {
-    case 'object': {
-      const obj: Record<string, any> = {}
-      for (const [key, field] of Object.entries(schema.fields)) {
-        obj[key] = field.default ?? (field.type === 'number' ? 0 : field.type === 'boolean' ? false : '')
-      }
-      return obj
-    }
+    case 'object':
+      return {}
     case 'list':
       return []
     case 'keyed-list':

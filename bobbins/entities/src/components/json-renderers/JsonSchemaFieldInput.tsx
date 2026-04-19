@@ -19,6 +19,12 @@ function humanize(key: string): string {
 export function JsonSchemaFieldInput({ fieldKey, field, value, onChange }: JsonSchemaFieldInputProps) {
   const label = field.label || humanize(fieldKey)
 
+  // Defaults are shown as placeholders, never as real input values — otherwise
+  // a hint-value is indistinguishable from a value the author actually chose.
+  const defaultHint = field.default !== undefined && field.default !== null && field.default !== ''
+    ? String(field.default)
+    : undefined
+
   switch (field.type) {
     case 'number':
       return (
@@ -28,11 +34,12 @@ export function JsonSchemaFieldInput({ fieldKey, field, value, onChange }: JsonS
           </label>
           <input
             type="number"
-            value={value ?? field.default ?? ''}
-            onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))}
+            value={value ?? ''}
+            placeholder={defaultHint}
+            onChange={(e) => onChange(e.target.value === '' ? undefined : Number(e.target.value))}
             min={field.min}
             max={field.max}
-            className="w-full px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm"
+            className="w-full px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm placeholder:italic placeholder:text-gray-400 dark:placeholder:text-gray-500"
           />
         </div>
       )
@@ -58,10 +65,10 @@ export function JsonSchemaFieldInput({ fieldKey, field, value, onChange }: JsonS
           </label>
           <select
             value={value ?? ''}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
             className="w-full px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm"
           >
-            <option value="">Select...</option>
+            <option value="">{defaultHint ? `${defaultHint} (default)` : 'Select…'}</option>
             {(field.options || []).map(opt => (
               <option key={opt} value={opt}>{opt}</option>
             ))}
@@ -79,8 +86,9 @@ export function JsonSchemaFieldInput({ fieldKey, field, value, onChange }: JsonS
           <input
             type="text"
             value={value ?? ''}
-            onChange={(e) => onChange(e.target.value)}
-            className="w-full px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm"
+            placeholder={defaultHint}
+            onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
+            className="w-full px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm placeholder:italic placeholder:text-gray-400 dark:placeholder:text-gray-500"
           />
         </div>
       )
