@@ -165,6 +165,44 @@ All routes are prefixed with `/api` unless noted. Authentication is JWT-based (s
 
 **Common collection names**: `content` (chapters/scenes), `containers` (folders/parts), `characters`, `locations`, `items`, `lore`, `entity_type_definitions` (custom types).
 
+### Entity Types (`entity-types.ts`)
+
+First-class CRUD for custom entity type definitions (schemas like "characters", "spells"). These are the schemas that define what fields an entity of a given type has. Under the hood they're stored in the `entity_type_definitions` collection.
+
+| Method | Path | Auth | Scope | Description |
+|--------|------|------|-------|-------------|
+| GET | `/api/projects/:projectId/entity-types` | JWT/Key | `entities:read` | List all type defs for a project |
+| GET | `/api/projects/:projectId/entity-types/:typeId` | JWT/Key | `entities:read` | Get a type def (full schema) |
+| POST | `/api/projects/:projectId/entity-types` | JWT/Key | `entities:write` | Create a type def |
+| PUT | `/api/projects/:projectId/entity-types/:typeId` | JWT/Key | `entities:write` | Update (type_id immutable; bumps `schema_version` on field change) |
+| DELETE | `/api/projects/:projectId/entity-types/:typeId` | JWT/Key | `entities:write` | Delete (does NOT cascade to entities) |
+
+**Request body** for POST / PUT (PUT accepts a partial body, `type_id` is ignored):
+
+```json
+{
+  "type_id": "characters",
+  "label": "Character",
+  "icon": "🧝",
+  "base_fields": ["name", "description", "tags", "image_url"],
+  "custom_fields": [
+    { "name": "role", "type": "text", "label": "Role", "required": true }
+  ],
+  "editor_layout": {
+    "template": "compact-card",
+    "imagePosition": "top-right",
+    "imageSize": "small",
+    "headerFields": ["name"],
+    "sections": []
+  },
+  "list_layout": { "display": "list", "showFields": ["name", "role"] },
+  "subtitle_fields": ["role"],
+  "allow_duplicates": true
+}
+```
+
+`type_id` must match `/^[a-z][a-z0-9_]{0,63}$/` and is unique per project (409 on conflict). The server manages `schema_version` (starts at 1) and appends to `_field_history` when `custom_fields` change.
+
 ### Dashboard (`dashboard.ts`)
 
 | Method | Path | Auth | Scope | Description |

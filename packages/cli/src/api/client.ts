@@ -181,6 +181,66 @@ export class BobbinryClient {
     return this.del(`/entities/${entityId}?${qs}`)
   }
 
+  // ── Entity Types ──────────────────────────────────────────
+
+  async listEntityTypes(projectId: string): Promise<any> {
+    this.requireAuth()
+    return this.get(`/projects/${projectId}/entity-types`)
+  }
+
+  async getEntityType(projectId: string, typeId: string): Promise<any> {
+    this.requireAuth()
+    return this.get(`/projects/${projectId}/entity-types/${encodeURIComponent(typeId)}`)
+  }
+
+  async createEntityType(projectId: string, data: Record<string, any>): Promise<any> {
+    this.requireAuth()
+    return this.post(`/projects/${projectId}/entity-types`, data)
+  }
+
+  async updateEntityType(projectId: string, typeId: string, data: Record<string, any>): Promise<any> {
+    this.requireAuth()
+    return this.put(`/projects/${projectId}/entity-types/${encodeURIComponent(typeId)}`, data)
+  }
+
+  async deleteEntityType(projectId: string, typeId: string): Promise<any> {
+    this.requireAuth()
+    return this.del(`/projects/${projectId}/entity-types/${encodeURIComponent(typeId)}`)
+  }
+
+  // ── Templates ─────────────────────────────────────────────
+
+  async listTemplates(params?: {
+    q?: string
+    tag?: string
+    official?: string
+    limit?: number
+    offset?: number
+  }): Promise<any> {
+    const qs = new URLSearchParams()
+    if (params?.q) qs.set('q', params.q)
+    if (params?.tag) qs.set('tag', params.tag)
+    if (params?.official) qs.set('official', params.official)
+    if (params?.limit) qs.set('limit', String(params.limit))
+    if (params?.offset) qs.set('offset', String(params.offset))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.get(`/templates${suffix}`)
+  }
+
+  async getTemplate(shareId: string): Promise<any> {
+    return this.get(`/templates/${encodeURIComponent(shareId)}`)
+  }
+
+  async publishTemplate(data: Record<string, any>): Promise<any> {
+    this.requireAuth()
+    return this.post('/templates', data)
+  }
+
+  async unpublishTemplate(shareId: string): Promise<any> {
+    this.requireAuth()
+    return this.del(`/templates/${encodeURIComponent(shareId)}`)
+  }
+
   // ── Stats ─────────────────────────────────────────────────
 
   async getStats(): Promise<any> {

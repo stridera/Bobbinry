@@ -6,6 +6,8 @@ import { handleError } from './lib/errors.js'
 import { registerConfigCommand } from './commands/config.js'
 import { registerProjectsCommand } from './commands/projects.js'
 import { registerEntitiesCommand } from './commands/entities.js'
+import { registerEntityTypesCommand } from './commands/entity-types.js'
+import { registerTemplatesCommand } from './commands/templates.js'
 import { registerStatsCommand } from './commands/stats.js'
 import { registerWhoamiCommand } from './commands/whoami.js'
 import { registerDiscoverCommand } from './commands/discover.js'
@@ -48,6 +50,8 @@ export function createClient(opts?: GlobalOpts): BobbinryClient {
 registerConfigCommand(program)
 registerProjectsCommand(program)
 registerEntitiesCommand(program)
+registerEntityTypesCommand(program)
+registerTemplatesCommand(program)
 registerStatsCommand(program)
 registerWhoamiCommand(program)
 registerDiscoverCommand(program)

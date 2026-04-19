@@ -39,6 +39,7 @@ import apiKeysPlugin from './routes/api-keys'
 import rssTokensPlugin from './routes/rss-tokens'
 import exportPlugin from './routes/export'
 import templatesPlugin from './routes/templates'
+import entityTypesPlugin from './routes/entity-types'
 import promoCodesPlugin from './routes/promo-codes'
 import { hashApiKey, getApiKeyTier } from './middleware/auth'
 
@@ -251,6 +252,7 @@ export function build(opts = {}): FastifyInstance {
   server.register(authPlugin, { prefix: '/api' })
   server.register(discoverPlugin, { prefix: '/api' })
   server.register(templatesPlugin, { prefix: '/api' })
+  server.register(entityTypesPlugin, { prefix: '/api' })
   server.register(uploadsPlugin, { prefix: '/api' })
   server.register(projectTagsPlugin, { prefix: '/api' })
   server.register(projectFollowsPlugin, { prefix: '/api' })
