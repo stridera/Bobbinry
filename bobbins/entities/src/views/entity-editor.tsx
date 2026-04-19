@@ -183,8 +183,13 @@ export default function EntityEditorView({
     setSaveStatus('saved')
   }
 
-  async function saveEntity(manual = false) {
-    if (!entityType || !entity || !typeConfig) return
+  async function saveEntity(manual = false, override?: Record<string, any>) {
+    if (!entityType || !typeConfig) return
+    // Use the override when the caller already has the next entity in hand
+    // (e.g. schema-sync needs to persist synchronously without waiting for
+    // a React state flush). Falls back to the current entity state otherwise.
+    const source = override ?? entity
+    if (!source) return
 
     try {
       setSaving(true)
@@ -195,13 +200,13 @@ export default function EntityEditorView({
       const missingFields: string[] = []
 
       // Check base required fields
-      if (!entity.name?.trim()) {
+      if (!source.name?.trim()) {
         missingFields.push('Name')
       }
 
       // Check custom required fields
       typeConfig.customFields.forEach(field => {
-        if (field.required && !entity[field.name]) {
+        if (field.required && !source[field.name]) {
           missingFields.push(field.label)
         }
       })
@@ -218,7 +223,7 @@ export default function EntityEditorView({
 
       // Stamp current schema version on save
       const entityToSave = {
-        ...entity,
+        ...source,
         _schema_version: (typeConfig as any).schema_version || 1,
       }
 
@@ -412,7 +417,7 @@ export default function EntityEditorView({
     setSaveError(false)
   }
 
-  function handleUpdateSchema() {
+  async function handleUpdateSchema() {
     if (!typeConfig) return
 
     const customFields: FieldDefinition[] = typeConfig.customFields || (typeConfig as any).custom_fields || []
@@ -443,8 +448,10 @@ export default function EntityEditorView({
 
     setEntity(updated)
     setVersionMismatch(false)
-    setSaveStatus('unsaved')
     setSaveError(false)
+    // Persist immediately — auto-save is gated on edit mode, so without an
+    // explicit save the stamped schema_version would be lost on refresh.
+    await saveEntity(false, updated)
   }
 
   // Auto-save after 2 seconds of inactivity (skip if last save errored or in view mode)
