@@ -154,9 +154,10 @@ export class BobbinryClient {
     return this.get(`/collections/${collection}/entities?${qs}`)
   }
 
-  async getEntity(entityId: string, params: { projectId: string; collection: string }): Promise<any> {
+  async getEntity(entityId: string, params: { projectId: string; collection: string; variant?: string }): Promise<any> {
     this.requireAuth()
     const qs = new URLSearchParams({ projectId: params.projectId, collection: params.collection })
+    if (params.variant) qs.set('variant', params.variant)
     return this.get(`/entities/${entityId}?${qs}`)
   }
 
