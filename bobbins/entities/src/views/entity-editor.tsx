@@ -17,27 +17,17 @@ import type { EntityTypeDefinition, EntityVariants, FieldDefinition, VariantItem
 import { normalizeTypeConfig, normalizeJsonSchema, createDefaultJsonValue } from '../types'
 import {
   VARIANTS_KEY,
+  ensureUniqueVariantId,
   getVariants,
   resolveEntityForVariant,
   setFieldOnEntity,
+  slugifyVariantId,
   sortedVariantIds,
   versionableFieldNames,
 } from '../variants'
 import { LayoutRenderer } from '../components/LayoutRenderer'
 import { SdkProvider } from '../components/UploadContext'
 import { checkTypeCompatibility } from '../components/FieldRenderers'
-
-function slugifyVariantId(label: string): string {
-  const base = label.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-  return base || `variant-${Date.now().toString(36)}`
-}
-
-function ensureUniqueVariantId(base: string, existing: string[]): string {
-  if (!existing.includes(base)) return base
-  let i = 2
-  while (existing.includes(`${base}-${i}`)) i++
-  return `${base}-${i}`
-}
 
 interface EntityEditorViewProps {
   projectId: string
@@ -183,12 +173,17 @@ export default function EntityEditorView({
     setSaveStatus('saved')
   }
 
-  async function saveEntity(manual = false, override?: Record<string, any>) {
+  /**
+   * Persist the entity. When `source` is supplied, that exact object is used
+   * — callers that just mutated state in-hand (schema sync, variant ops) pass
+   * the next entity so the write doesn't race with React's state flush.
+   * `manual` distinguishes user-clicked saves (which surface validation
+   * errors via the save-status pill) from auto-save / programmatic saves.
+   */
+  async function saveEntity(options: { manual?: boolean; source?: Record<string, any> } = {}) {
     if (!entityType || !typeConfig) return
-    // Use the override when the caller already has the next entity in hand
-    // (e.g. schema-sync needs to persist synchronously without waiting for
-    // a React state flush). Falls back to the current entity state otherwise.
-    const source = override ?? entity
+    const { manual = false, source: overrideSource } = options
+    const source = overrideSource ?? entity
     if (!source) return
 
     try {
@@ -196,19 +191,10 @@ export default function EntityEditorView({
       setSaveStatus('saving')
       setError(null)
 
-      // Validate required fields
       const missingFields: string[] = []
-
-      // Check base required fields
-      if (!source.name?.trim()) {
-        missingFields.push('Name')
-      }
-
-      // Check custom required fields
+      if (!source.name?.trim()) missingFields.push('Name')
       typeConfig.customFields.forEach(field => {
-        if (field.required && !source[field.name]) {
-          missingFields.push(field.label)
-        }
+        if (field.required && !source[field.name]) missingFields.push(field.label)
       })
 
       if (missingFields.length > 0) {
@@ -330,89 +316,68 @@ export default function EntityEditorView({
   // variant) should work from view mode too — otherwise "Add variant" appears
   // to succeed but gets dropped on refresh.
 
+  async function updateVariants(mutate: (current: EntityVariants | null) => EntityVariants | null) {
+    if (!entity) return
+    const next = mutate(getVariants(entity))
+    if (next === null) return
+    const nextEntity = { ...entity, [VARIANTS_KEY]: next }
+    setEntity(nextEntity)
+    setSaveError(false)
+    await saveEntity({ source: nextEntity })
+  }
+
   async function addVariant(label: string) {
     const trimmed = label.trim()
-    if (!trimmed || !entity) return
-    const current = getVariants(entity)
-    const existingIds = current ? current.order : []
-    const id = ensureUniqueVariantId(slugifyVariantId(trimmed), existingIds)
-    const newItem: VariantItem = { label: trimmed, overrides: {} }
-    if (typeConfig?.variantAxis?.kind === 'ordered') {
-      const num = Number(trimmed.match(/\d+(?:\.\d+)?/)?.[0])
-      if (!Number.isNaN(num)) newItem.axis_value = num
-    }
-    const nextVariants: EntityVariants = {
-      axis_id: typeConfig?.variantAxis?.id ?? null,
-      active: current?.active ?? id,
-      order: [...existingIds, id],
-      items: { ...(current?.items ?? {}), [id]: newItem },
-    }
-    const nextEntity = { ...entity, [VARIANTS_KEY]: nextVariants }
-    setEntity(nextEntity)
-    setActiveVariantId(id)
-    setSaveError(false)
-    await saveEntity(false, nextEntity)
+    if (!trimmed) return
+    let newId = ''
+    await updateVariants(current => {
+      const existingIds = current ? current.order : []
+      const id = ensureUniqueVariantId(slugifyVariantId(trimmed), existingIds)
+      newId = id
+      const newItem: VariantItem = { label: trimmed, overrides: {} }
+      if (typeConfig?.variantAxis?.kind === 'ordered') {
+        const num = Number(trimmed.match(/\d+(?:\.\d+)?/)?.[0])
+        if (!Number.isNaN(num)) newItem.axis_value = num
+      }
+      return {
+        axis_id: typeConfig?.variantAxis?.id ?? null,
+        active: current?.active ?? id,
+        order: [...existingIds, id],
+        items: { ...(current?.items ?? {}), [id]: newItem },
+      }
+    })
+    if (newId) setActiveVariantId(newId)
   }
 
   async function renameVariant(id: string, label: string) {
     const trimmed = label.trim()
-    if (!trimmed || !entity) return
-    const v = getVariants(entity)
-    if (!v || !v.items[id]) return
-    const nextEntity = {
-      ...entity,
-      [VARIANTS_KEY]: {
-        ...v,
-        items: { ...v.items, [id]: { ...v.items[id]!, label: trimmed } },
-      },
-    }
-    setEntity(nextEntity)
-    setSaveError(false)
-    await saveEntity(false, nextEntity)
+    if (!trimmed) return
+    await updateVariants(v => {
+      if (!v || !v.items[id]) return null
+      return { ...v, items: { ...v.items, [id]: { ...v.items[id]!, label: trimmed } } }
+    })
   }
 
   async function deleteVariant(id: string) {
-    if (!entity) return
-    const v = getVariants(entity)
-    if (!v || !v.items[id]) return
-    const { [id]: _dropped, ...rest } = v.items
-    const nextOrder = v.order.filter(x => x !== id)
-    const nextActive: string | null = v.active === id ? (nextOrder[0] ?? null) : (v.active ?? null)
-    const nextEntity = {
-      ...entity,
-      [VARIANTS_KEY]: { ...v, active: nextActive, order: nextOrder, items: rest },
-    }
-    setEntity(nextEntity)
+    await updateVariants(v => {
+      if (!v || !v.items[id]) return null
+      const { [id]: _dropped, ...rest } = v.items
+      const nextOrder = v.order.filter(x => x !== id)
+      const nextActive: string | null = v.active === id ? (nextOrder[0] ?? null) : (v.active ?? null)
+      return { ...v, active: nextActive, order: nextOrder, items: rest }
+    })
     if (activeVariantId === id) setActiveVariantId(null)
-    setSaveError(false)
-    await saveEntity(false, nextEntity)
   }
 
   async function setDefaultVariant(id: string | null) {
-    if (!entity) return
-    const v = getVariants(entity)
-    if (!v) return
-    const nextEntity = { ...entity, [VARIANTS_KEY]: { ...v, active: id } }
-    setEntity(nextEntity)
-    setSaveError(false)
-    await saveEntity(false, nextEntity)
+    await updateVariants(v => (v ? { ...v, active: id } : null))
   }
 
   async function setVariantAxisValue(id: string, axisValue: number | null) {
-    if (!entity) return
-    const v = getVariants(entity)
-    if (!v || !v.items[id]) return
-    const item = v.items[id]!
-    const nextEntity = {
-      ...entity,
-      [VARIANTS_KEY]: {
-        ...v,
-        items: { ...v.items, [id]: { ...item, axis_value: axisValue } },
-      },
-    }
-    setEntity(nextEntity)
-    setSaveError(false)
-    await saveEntity(false, nextEntity)
+    await updateVariants(v => {
+      if (!v || !v.items[id]) return null
+      return { ...v, items: { ...v.items, [id]: { ...v.items[id]!, axis_value: axisValue } } }
+    })
   }
 
   async function handleUpdateSchema() {
@@ -449,7 +414,7 @@ export default function EntityEditorView({
     setSaveError(false)
     // Persist immediately — auto-save is gated on edit mode, so without an
     // explicit save the stamped schema_version would be lost on refresh.
-    await saveEntity(false, updated)
+    await saveEntity({ source: updated })
   }
 
   // Auto-save after 2 seconds of inactivity (skip if last save errored or in view mode)
@@ -473,12 +438,11 @@ export default function EntityEditorView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entity])
 
-  // Variant list (sorted by axis kind if the type has one)
+  const variantsBlock = useMemo(() => getVariants(entity), [entity])
   const variantIdsInOrder = useMemo(
     () => sortedVariantIds(entity, typeConfig?.variantAxis?.kind ?? null),
     [entity, typeConfig?.variantAxis?.kind]
   )
-  const variantsBlock = getVariants(entity)
   const hasVersionableFields = useMemo(() => versionableFieldNames(typeConfig).size > 0, [typeConfig])
 
   // The entity view to render: base when no variant selected, merged when one is.
@@ -581,7 +545,7 @@ export default function EntityEditorView({
                 </span>
 
                 <button
-                  onClick={() => saveEntity(true)}
+                  onClick={() => saveEntity({ manual: true })}
                   disabled={saving || saveStatus === 'saved'}
                   className={`px-4 py-2 rounded font-medium ${
                     saveStatus === 'saved'

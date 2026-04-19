@@ -12,6 +12,20 @@ import type { EntityTypeDefinition, EntityVariants, FieldDefinition, VariantItem
 
 export const VARIANTS_KEY = '_variants'
 
+/** Turn a human label into a kebab-case variant id. Falls back to a timestamped id for non-ascii labels. */
+export function slugifyVariantId(label: string): string {
+  const base = label.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  return base || `variant-${Date.now().toString(36)}`
+}
+
+/** If `base` collides with an existing id, append `-2`, `-3`, … until unique. */
+export function ensureUniqueVariantId(base: string, existing: string[]): string {
+  if (!existing.includes(base)) return base
+  let i = 2
+  while (existing.includes(`${base}-${i}`)) i++
+  return `${base}-${i}`
+}
+
 /** Read the `_variants` block off an entity, tolerating missing / malformed values. */
 export function getVariants(entity: Record<string, any> | null | undefined): EntityVariants | null {
   if (!entity) return null
