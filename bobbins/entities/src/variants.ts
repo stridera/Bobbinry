@@ -2,8 +2,10 @@
  * Entity variant helpers.
  *
  * A variant is a named overlay of per-field values on top of an entity's
- * base data. Only fields marked `versionable: true` on the entity type
- * can be overridden per-variant; every other field is always the base value.
+ * base data. Only fields marked versionable on the entity type can be
+ * overridden per-variant; every other field is always the base value.
+ * Versionable fields are either custom fields with `versionable: true`
+ * or base fields listed in the type's `versionableBaseFields` array.
  */
 
 import type { EntityTypeDefinition, EntityVariants, FieldDefinition, VariantItem } from './types'
@@ -33,12 +35,19 @@ export function listVariantIds(entity: Record<string, any> | null | undefined): 
   return v ? v.order : []
 }
 
-/** Set of field names that are versionable on an entity type. */
-export function versionableFieldNames(typeConfig: Pick<EntityTypeDefinition, 'customFields'> | null | undefined): Set<string> {
+/** Set of field names that are versionable on an entity type.
+ * Includes custom fields flagged `versionable: true` plus the base-field
+ * opt-ins listed in `versionableBaseFields`. */
+export function versionableFieldNames(
+  typeConfig: Pick<EntityTypeDefinition, 'customFields' | 'versionableBaseFields'> | null | undefined
+): Set<string> {
   const names = new Set<string>()
   if (!typeConfig) return names
   for (const field of (typeConfig.customFields || []) as FieldDefinition[]) {
     if (field.versionable) names.add(field.name)
+  }
+  for (const baseName of typeConfig.versionableBaseFields || []) {
+    names.add(baseName)
   }
   return names
 }
@@ -57,7 +66,7 @@ export function versionableFieldNames(typeConfig: Pick<EntityTypeDefinition, 'cu
  */
 export function resolveEntityForVariant(
   entity: Record<string, any> | null | undefined,
-  typeConfig: Pick<EntityTypeDefinition, 'customFields'> | null | undefined,
+  typeConfig: Pick<EntityTypeDefinition, 'customFields' | 'versionableBaseFields'> | null | undefined,
   variantId: string | null | undefined
 ): Record<string, any> {
   if (!entity) return {}
@@ -89,7 +98,7 @@ export function resolveEntityForVariant(
  */
 export function setFieldOnEntity(
   entity: Record<string, any>,
-  typeConfig: Pick<EntityTypeDefinition, 'customFields'> | null | undefined,
+  typeConfig: Pick<EntityTypeDefinition, 'customFields' | 'versionableBaseFields'> | null | undefined,
   variantId: string | null | undefined,
   fieldName: string,
   value: any

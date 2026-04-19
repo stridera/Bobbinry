@@ -10,8 +10,11 @@ import {
 } from '../variants'
 import type { EntityTypeDefinition, FieldDefinition } from '../types'
 
-function makeType(customFields: FieldDefinition[]): Pick<EntityTypeDefinition, 'customFields'> {
-  return { customFields }
+function makeType(
+  customFields: FieldDefinition[],
+  versionableBaseFields?: string[]
+): Pick<EntityTypeDefinition, 'customFields' | 'versionableBaseFields'> {
+  return { customFields, versionableBaseFields: versionableBaseFields ?? [] }
 }
 
 const typeConfig = makeType([
@@ -43,6 +46,18 @@ describe('versionableFieldNames', () => {
     expect(names.has('strength')).toBe(true)
     expect(names.has('description')).toBe(true)
     expect(names.has('species')).toBe(false)
+  })
+
+  it('includes opt-in base fields from versionableBaseFields', () => {
+    const typeWithBase = makeType(
+      [{ name: 'strength', type: 'number', label: 'Strength', versionable: true }],
+      ['description', 'image_url']
+    )
+    const names = versionableFieldNames(typeWithBase)
+    expect(names.has('strength')).toBe(true)
+    expect(names.has('description')).toBe(true)
+    expect(names.has('image_url')).toBe(true)
+    expect(names.has('name')).toBe(false)
   })
 
   it('handles missing typeConfig', () => {
@@ -119,6 +134,23 @@ describe('resolveEntityForVariant', () => {
     expect(resolved.species).toBe('Human') // override silently dropped
   })
 
+  it('resolves base-field overrides when the base field is versionable', () => {
+    const typeWithBase = makeType([], ['description', 'image_url'])
+    const e = {
+      name: 'Aragorn',
+      description: 'A ranger',
+      image_url: 'ranger.jpg',
+      [VARIANTS_KEY]: {
+        order: ['book-5'],
+        items: { 'book-5': { label: 'Book 5', overrides: { description: 'The King', image_url: 'king.jpg' } } },
+      },
+    }
+    const resolved = resolveEntityForVariant(e, typeWithBase, 'book-5')
+    expect(resolved.description).toBe('The King')
+    expect(resolved.image_url).toBe('king.jpg')
+    expect(resolved.name).toBe('Aragorn') // not opted in, stays base
+  })
+
   it('falls back to base when variant id is unknown', () => {
     const resolved = resolveEntityForVariant(entity, typeConfig, 'book-99')
     expect(resolved.strength).toBe(12)
@@ -156,6 +188,40 @@ describe('setFieldOnEntity', () => {
     const next = setFieldOnEntity(entity, typeConfig, 'book-5', 'species', 'Elf')
     expect(next.species).toBe('Elf')
     expect(next[VARIANTS_KEY].items['book-5'].overrides.species).toBeUndefined()
+  })
+
+  it('routes base-field writes into variant overrides when the base field is versionable', () => {
+    const typeWithBase = makeType(
+      [{ name: 'strength', type: 'number', label: 'Strength', versionable: true }],
+      ['description', 'image_url']
+    )
+    const baseFieldEntity = {
+      name: 'Aragorn',
+      description: 'A ranger',
+      image_url: 'ranger.jpg',
+      [VARIANTS_KEY]: {
+        order: ['book-5'],
+        items: { 'book-5': { label: 'Book 5', overrides: {} } },
+      },
+    }
+    const next = setFieldOnEntity(baseFieldEntity, typeWithBase, 'book-5', 'description', 'The King')
+    expect(next.description).toBe('A ranger') // base unchanged
+    expect(next[VARIANTS_KEY].items['book-5'].overrides.description).toBe('The King')
+  })
+
+  it('still writes name (a base field not opted in) to base', () => {
+    const typeWithBase = makeType([], ['description'])
+    const e = {
+      name: 'Aragorn',
+      description: 'A ranger',
+      [VARIANTS_KEY]: {
+        order: ['v1'],
+        items: { v1: { label: 'V1', overrides: {} } },
+      },
+    }
+    const next = setFieldOnEntity(e, typeWithBase, 'v1', 'name', 'Strider')
+    expect(next.name).toBe('Strider')
+    expect(next[VARIANTS_KEY].items.v1.overrides.name).toBeUndefined()
   })
 
   it('does not mutate input', () => {

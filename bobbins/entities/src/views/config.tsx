@@ -122,6 +122,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
     showFields: ['name', 'description']
   })
   const [variantAxis, setVariantAxis] = useState<VariantAxis | null>(null)
+  const [versionableBaseFields, setVersionableBaseFields] = useState<string[]>([])
 
   useEffect(() => {
     loadEntityTypes()
@@ -225,6 +226,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
       description: t.description,
       tags: t.tags || [],
       baseFields: t.base_fields || ['name', 'description', 'image_url', 'tags'],
+      versionableBaseFields: t.versionable_base_fields || [],
       customFields,
       editorLayout,
       listLayout,
@@ -310,6 +312,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
     setEditorLayout({ ...template.editorLayout })
     setListLayout({ ...template.listLayout })
     setVariantAxis(null)
+    setVersionableBaseFields([...(template.versionableBaseFields ?? [])])
     setShowTemplateSelector(false)
   }
 
@@ -321,6 +324,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
     setEditorLayout({ template: 'compact-card', imagePosition: 'top-right', imageSize: 'medium', headerFields: ['name'], sections: [] })
     setListLayout({ display: 'grid', cardSize: 'medium', showFields: ['name', 'description'] })
     setVariantAxis(null)
+    setVersionableBaseFields([])
     setSelectedTemplate(null)
     setShowTemplateSelector(false)
   }
@@ -334,6 +338,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
     setEditorLayout({ ...normalized.editorLayout })
     setListLayout({ ...normalized.listLayout })
     setVariantAxis(normalized.variantAxis ?? null)
+    setVersionableBaseFields([...(normalized.versionableBaseFields ?? [])])
     setSelectedTemplate(null)
     setShowTemplateSelector(false)
   }
@@ -471,6 +476,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
         template_id: selectedTemplate?.shareId || selectedTemplate?.id || null,
         template_version: selectedTemplate?.version || null,
         base_fields: ['name', 'description', 'tags', 'image_url'],
+        versionable_base_fields: versionableBaseFields,
         custom_fields: customFields,
         editor_layout: editorLayout,
         list_layout: listLayout,
@@ -834,48 +840,81 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
           </span>
         </label>
         {variantAxis && (
-          <div className="grid grid-cols-3 gap-3 pl-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Axis label
-              </label>
-              <input
-                type="text"
-                value={variantAxis.label}
-                onChange={(e) => setVariantAxis({ ...variantAxis, label: e.target.value })}
-                placeholder="e.g. Book, Level, Form"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-              />
+          <div className="space-y-4 pl-6">
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Axis label
+                </label>
+                <input
+                  type="text"
+                  value={variantAxis.label}
+                  onChange={(e) => setVariantAxis({ ...variantAxis, label: e.target.value })}
+                  placeholder="e.g. Book, Level, Form"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Axis id (internal)
+                </label>
+                <input
+                  type="text"
+                  value={variantAxis.id}
+                  onChange={(e) => setVariantAxis({
+                    ...variantAxis,
+                    id: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
+                  })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Ordering
+                </label>
+                <select
+                  value={variantAxis.kind}
+                  onChange={(e) => setVariantAxis({
+                    ...variantAxis,
+                    kind: e.target.value as 'ordered' | 'unordered',
+                  })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                >
+                  <option value="unordered">Unordered (forms: Cat, Wolf)</option>
+                  <option value="ordered">Ordered (progression: Book 1 → 5)</option>
+                </select>
+              </div>
             </div>
+
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Axis id (internal)
-              </label>
-              <input
-                type="text"
-                value={variantAxis.id}
-                onChange={(e) => setVariantAxis({
-                  ...variantAxis,
-                  id: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
-                })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Ordering
-              </label>
-              <select
-                value={variantAxis.kind}
-                onChange={(e) => setVariantAxis({
-                  ...variantAxis,
-                  kind: e.target.value as 'ordered' | 'unordered',
-                })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-              >
-                <option value="unordered">Unordered (forms: Cat, Wolf)</option>
-                <option value="ordered">Ordered (progression: Book 1 → 5)</option>
-              </select>
+              <div className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Versionable base fields
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                Base fields are shared across variants by default.
+                Check a field to let each variant override it.
+              </p>
+              <div className="flex flex-wrap gap-4">
+                {['name', 'description', 'image_url', 'tags'].map(field => (
+                  <label key={field} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={versionableBaseFields.includes(field)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setVersionableBaseFields([...versionableBaseFields, field])
+                        } else {
+                          setVersionableBaseFields(versionableBaseFields.filter(f => f !== field))
+                        }
+                      }}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-gray-300 font-mono">
+                      {field}
+                    </span>
+                  </label>
+                ))}
+              </div>
             </div>
           </div>
         )}

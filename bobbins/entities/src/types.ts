@@ -126,6 +126,8 @@ export interface EntityTemplate {
   description: string
   tags?: string[]
   baseFields: string[]  // Always: name, description, image_url, tags
+  /** Subset of `baseFields` that may be overridden per-variant on entities of this type. */
+  versionableBaseFields?: string[]
   customFields: FieldDefinition[]
   editorLayout: EditorLayout
   listLayout: ListLayout
@@ -189,6 +191,9 @@ export interface EntityTypeDefinition {
   icon: string
   templateId: string | null  // NULL if created from scratch
   baseFields: string[]
+  /** Subset of `baseFields` that may be overridden per-variant.
+   * Fields not listed here are always shared across all variants. */
+  versionableBaseFields?: string[]
   customFields: FieldDefinition[]
   editorLayout: EditorLayout
   listLayout: ListLayout
@@ -211,6 +216,7 @@ export function normalizeTypeConfig(config: any): EntityTypeDefinition {
     typeId: config.typeId || config.type_id,
     templateId: config.templateId ?? config.template_id ?? null,
     baseFields: config.baseFields || config.base_fields || [],
+    versionableBaseFields: config.versionableBaseFields ?? config.versionable_base_fields ?? [],
     customFields: config.customFields || config.custom_fields || [],
     editorLayout: config.editorLayout || config.editor_layout,
     listLayout: config.listLayout || config.list_layout,

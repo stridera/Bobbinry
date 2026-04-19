@@ -71,6 +71,7 @@ const EntityTypeBodySchema = z.object({
   label: z.string().min(1).max(200),
   icon: z.string().max(10).default('📋'),
   base_fields: z.array(z.string()).optional(),
+  versionable_base_fields: z.array(z.string()).optional(),
   custom_fields: z.array(FieldDefinitionSchema),
   editor_layout: EditorLayoutSchema,
   list_layout: ListLayoutSchema,
@@ -266,6 +267,7 @@ const entityTypesPlugin: FastifyPluginAsync = async (fastify) => {
         template_id: body.template_id ?? null,
         template_version: body.template_version ?? null,
         base_fields: body.base_fields ?? ['name', 'description', 'tags', 'image_url'],
+        versionable_base_fields: body.versionable_base_fields ?? [],
         custom_fields: body.custom_fields,
         editor_layout: body.editor_layout,
         list_layout: body.list_layout,
@@ -350,18 +352,29 @@ const entityTypesPlugin: FastifyPluginAsync = async (fastify) => {
         updated_at: new Date().toISOString(),
       }
 
-      // Schema version bump on custom_fields change
-      if (body.custom_fields) {
-        const originalFields = (existingData.custom_fields || []) as Array<{ name: string; type: string }>
-        const changed = detectFieldChanges(originalFields, body.custom_fields)
+      // Schema version bump on custom_fields OR versionable_base_fields change —
+      // either meaningfully changes how existing entity data is interpreted.
+      if (body.custom_fields || body.versionable_base_fields) {
+        const originalFields = (existingData.custom_fields || []) as FieldChangeSignature[]
+        const updatedFields = (body.custom_fields ?? existingData.custom_fields ?? []) as FieldChangeSignature[]
+        const fieldsChanged = detectFieldChanges(originalFields, updatedFields)
+
+        const originalBase = (existingData.versionable_base_fields || []) as string[]
+        const updatedBase = (body.versionable_base_fields ?? originalBase) as string[]
+        const baseChanged =
+          originalBase.length !== updatedBase.length ||
+          originalBase.some(n => !updatedBase.includes(n)) ||
+          updatedBase.some(n => !originalBase.includes(n))
+
         const currentVersion: number = existingData.schema_version || 1
-        if (changed) {
+        if (fieldsChanged || baseChanged) {
           const history = (existingData._field_history || []) as any[]
           merged._field_history = [
             ...history,
             {
               version: currentVersion,
               fields: originalFields,
+              versionable_base_fields: originalBase,
               changedAt: new Date().toISOString(),
             },
           ]
