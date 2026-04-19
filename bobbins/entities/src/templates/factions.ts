@@ -9,7 +9,7 @@ import type { EntityTemplate } from '../types'
 export const factionsTemplate: EntityTemplate = {
   id: 'template-factions',
   shareId: 'official-factions',
-  version: 2,
+  version: 3,
   label: 'Factions',
   icon: '⚜️',
   description: 'Organizations, guilds, and political groups',
@@ -46,7 +46,8 @@ export const factionsTemplate: EntityTemplate = {
         'Lawful Evil',
         'Neutral Evil',
         'Chaotic Evil'
-      ]
+      ],
+      versionable: true
     },
     {
       name: 'size',
@@ -57,51 +58,59 @@ export const factionsTemplate: EntityTemplate = {
         'Medium (50-500)',
         'Large (500-5000)',
         'Massive (5000+)'
-      ]
+      ],
+      versionable: true
     },
     {
       name: 'influence',
       type: 'select',
       label: 'Influence',
-      options: ['Local', 'Regional', 'Continental', 'Global']
+      options: ['Local', 'Regional', 'Continental', 'Global'],
+      versionable: true
     },
     {
       name: 'leader',
       type: 'relation',
       label: 'Leader/Head',
-      targetEntityType: 'characters'
+      targetEntityType: 'characters',
+      versionable: true
     },
     {
       name: 'headquarters',
       type: 'relation',
       label: 'Headquarters',
-      targetEntityType: 'locations'
+      targetEntityType: 'locations',
+      versionable: true
     },
     {
       name: 'goals',
       type: 'text',
-      label: 'Goals/Agenda'
+      label: 'Goals/Agenda',
+      versionable: true
     },
     {
       name: 'allies',
       type: 'relation',
       label: 'Allies',
       targetEntityType: 'factions',
-      allowMultiple: true
+      allowMultiple: true,
+      versionable: true
     },
     {
       name: 'enemies',
       type: 'relation',
       label: 'Enemies',
       targetEntityType: 'factions',
-      allowMultiple: true
+      allowMultiple: true,
+      versionable: true
     },
     {
       name: 'notable_members',
       type: 'relation',
       label: 'Notable Members',
       targetEntityType: 'characters',
-      allowMultiple: true
+      allowMultiple: true,
+      versionable: true
     }
   ],
   editorLayout: {

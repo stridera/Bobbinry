@@ -18,7 +18,7 @@ import { useClickOutside } from '@bobbinry/sdk'
 import { Toast, ToastContainer } from '@bobbinry/ui-components'
 import { templates } from '../templates'
 import { getTypeId, normalizeTypeConfig } from '../types'
-import type { EntityTemplate, EntityTypeDefinition, FieldDefinition, FieldType, EditorLayout, ListLayout } from '../types'
+import type { EntityTemplate, EntityTypeDefinition, FieldDefinition, FieldType, EditorLayout, ListLayout, VariantAxis } from '../types'
 import { TemplatePreviewModal } from '../components/TemplatePreviewModal'
 import { FieldBuilder } from '../components/FieldBuilder'
 import { LayoutDesigner } from '../components/LayoutDesigner'
@@ -121,6 +121,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
     cardSize: 'medium',
     showFields: ['name', 'description']
   })
+  const [variantAxis, setVariantAxis] = useState<VariantAxis | null>(null)
 
   useEffect(() => {
     loadEntityTypes()
@@ -308,6 +309,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
     setCustomFields([...template.customFields])
     setEditorLayout({ ...template.editorLayout })
     setListLayout({ ...template.listLayout })
+    setVariantAxis(null)
     setShowTemplateSelector(false)
   }
 
@@ -318,6 +320,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
     setCustomFields([])
     setEditorLayout({ template: 'compact-card', imagePosition: 'top-right', imageSize: 'medium', headerFields: ['name'], sections: [] })
     setListLayout({ display: 'grid', cardSize: 'medium', showFields: ['name', 'description'] })
+    setVariantAxis(null)
     setSelectedTemplate(null)
     setShowTemplateSelector(false)
   }
@@ -330,6 +333,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
     setCustomFields([...normalized.customFields])
     setEditorLayout({ ...normalized.editorLayout })
     setListLayout({ ...normalized.listLayout })
+    setVariantAxis(normalized.variantAxis ?? null)
     setSelectedTemplate(null)
     setShowTemplateSelector(false)
   }
@@ -472,6 +476,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
         list_layout: listLayout,
         subtitle_fields: selectedTemplate?.subtitleFields || [],
         allow_duplicates: true,
+        variant_axis: variantAxis,
         schema_version: schemaVersion,
         _field_history: fieldHistory,
       }
@@ -798,6 +803,82 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
             setListLayout(newListLayout)
           }}
         />
+      </div>
+
+      {/* Variant axis (optional) */}
+      <div className="mt-8 pt-8 border-t border-gray-200 dark:border-gray-700">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+          Variants {' '}
+          <span className="text-sm font-normal text-gray-500 dark:text-gray-400">(optional)</span>
+        </h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+          Enable variants if entities of this type should have multiple named states
+          — e.g. a character at different levels, or a shifter&rsquo;s Cat and Wolf forms.
+          Only fields marked <strong>Versionable</strong> above can differ between variants.
+        </p>
+        <label className="flex items-center gap-2 cursor-pointer mb-3">
+          <input
+            type="checkbox"
+            checked={variantAxis !== null}
+            onChange={(e) => {
+              if (e.target.checked) {
+                setVariantAxis({ id: 'variant', label: 'Variant', kind: 'unordered' })
+              } else {
+                setVariantAxis(null)
+              }
+            }}
+            className="w-4 h-4"
+          />
+          <span className="text-sm text-gray-700 dark:text-gray-300">
+            Enable variants
+          </span>
+        </label>
+        {variantAxis && (
+          <div className="grid grid-cols-3 gap-3 pl-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Axis label
+              </label>
+              <input
+                type="text"
+                value={variantAxis.label}
+                onChange={(e) => setVariantAxis({ ...variantAxis, label: e.target.value })}
+                placeholder="e.g. Book, Level, Form"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Axis id (internal)
+              </label>
+              <input
+                type="text"
+                value={variantAxis.id}
+                onChange={(e) => setVariantAxis({
+                  ...variantAxis,
+                  id: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
+                })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Ordering
+              </label>
+              <select
+                value={variantAxis.kind}
+                onChange={(e) => setVariantAxis({
+                  ...variantAxis,
+                  kind: e.target.value as 'ordered' | 'unordered',
+                })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+              >
+                <option value="unordered">Unordered (forms: Cat, Wolf)</option>
+                <option value="ordered">Ordered (progression: Book 1 → 5)</option>
+              </select>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Save Actions */}

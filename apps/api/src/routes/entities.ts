@@ -77,6 +77,29 @@ function formatEntityResponse(row: typeof entities.$inferSelect, fields?: Set<st
   return projected
 }
 
+/**
+ * Resolve an entity to the view at a specific variant id.
+ *
+ * Strips the `_variants` block and overlays that variant's overrides on
+ * the base data. Kept in-module (the shell & plugin share similar logic
+ * in bobbins/entities/src/variants.ts) because the API package doesn't
+ * depend on the bobbin.
+ */
+function resolveVariantOnData(
+  data: Record<string, unknown>,
+  variantId: string
+): Record<string, unknown> {
+  const { _variants, ...base } = data as Record<string, any>
+  if (!_variants || typeof _variants !== 'object' || !_variants.items || typeof _variants.items !== 'object') {
+    return base
+  }
+  const item = _variants.items[variantId]
+  if (!item || typeof item !== 'object' || !item.overrides || typeof item.overrides !== 'object') {
+    return base
+  }
+  return { ...base, ...item.overrides }
+}
+
 const FIELD_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/
 function parseFieldsParam(raw: string | undefined): Set<string> | undefined {
   if (!raw) return undefined
@@ -815,13 +838,14 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
     Querystring: {
       projectId: string
       collection: string
+      variant?: string
     }
   }>('/entities/:entityId', {
     preHandler: [requireAuth, requireScope('entities:read')]
   }, async (request, reply) => {
     try {
       const { entityId } = request.params
-      const { projectId, collection } = request.query
+      const { projectId, collection, variant } = request.query
 
       // Check project ownership
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
@@ -846,8 +870,17 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       }
 
       const entity = result[0]!  // Safe because we check result.length above
+      const response = formatEntityResponse(entity) as Record<string, unknown>
 
-      return formatEntityResponse(entity)
+      // If ?variant= was supplied, attach a merged view alongside the raw data.
+      // The full _variants block is still present on the response so the client
+      // can switch variants without a round-trip.
+      if (variant && typeof variant === 'string') {
+        response.resolvedData = resolveVariantOnData(entity.entityData as Record<string, unknown>, variant)
+        response.resolvedVariant = variant
+      }
+
+      return response
 
     } catch (error) {
       fastify.log.error(error)

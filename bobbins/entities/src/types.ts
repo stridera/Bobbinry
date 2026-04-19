@@ -57,6 +57,9 @@ export interface FieldDefinition {
   schema?: JsonSchema | Record<string, string>  // For json type
   targetEntityType?: string  // For relation: typeId of the target entity type
   allowMultiple?: boolean  // For relation: if true, stores array of IDs
+  /** When true, the field can have per-variant overrides on an entity.
+   * When false/undefined, the field is always shared across all variants. */
+  versionable?: boolean
 }
 
 /** Normalize old Record<string,string> schema format to JsonSchema */
@@ -148,6 +151,35 @@ export interface SharedTemplate {
   published_at: string
 }
 
+/**
+ * Optional variant axis for an entity type.
+ *
+ * - `ordered` — variants are sorted along a numeric progression
+ *   (Level 1 → 20, Book 1 → 5). `axis_value` is used for sort order.
+ * - `unordered` — variants are a flat named list (Cat/Wolf/Bear forms).
+ *   `axis_value` is ignored; display order follows the `order` array.
+ */
+export interface VariantAxis {
+  id: string      // stable identifier, e.g. 'book', 'level'
+  label: string   // display label, e.g. 'Book', 'Level'
+  kind: 'ordered' | 'unordered'
+}
+
+/** A single named variant stored inside an entity's data. */
+export interface VariantItem {
+  label: string                        // display label, e.g. 'Book 1', 'Cat form'
+  axis_value?: number | string | null  // sort key when the type axis is ordered
+  overrides: Record<string, any>       // per-field overrides, keyed by field name
+}
+
+/** Shape of the `_variants` block embedded in entityData. */
+export interface EntityVariants {
+  axis_id?: string | null              // must match the entity type's VariantAxis.id (or null if the type has no axis)
+  active?: string | null               // default selected variant id
+  order: string[]                      // display / sort order of variant ids
+  items: Record<string, VariantItem>   // keyed by variant id
+}
+
 export interface EntityTypeDefinition {
   id: string
   projectId: string
@@ -162,6 +194,7 @@ export interface EntityTypeDefinition {
   listLayout: ListLayout
   subtitleFields: string[]
   allowDuplicates: boolean
+  variantAxis?: VariantAxis | null
   createdAt: Date
   updatedAt: Date
 }
@@ -183,6 +216,7 @@ export function normalizeTypeConfig(config: any): EntityTypeDefinition {
     listLayout: config.listLayout || config.list_layout,
     subtitleFields: config.subtitleFields || config.subtitle_fields || [],
     allowDuplicates: config.allowDuplicates ?? config.allow_duplicates ?? true,
+    variantAxis: config.variantAxis ?? config.variant_axis ?? null,
   }
 }
 

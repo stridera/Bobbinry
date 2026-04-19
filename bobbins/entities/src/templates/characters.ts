@@ -9,7 +9,7 @@ import type { EntityTemplate } from '../types'
 export const charactersTemplate: EntityTemplate = {
   id: 'template-characters',
   shareId: 'official-characters',
-  version: 3,
+  version: 4,
   label: 'Characters',
   icon: '🧙',
   description: 'People, creatures, or NPCs in your world',
@@ -19,13 +19,15 @@ export const charactersTemplate: EntityTemplate = {
     {
       name: 'age',
       type: 'number',
-      label: 'Age'
+      label: 'Age',
+      versionable: true
     },
     {
       name: 'class',
       type: 'relation',
       label: 'Class',
-      targetEntityType: 'classes'
+      targetEntityType: 'classes',
+      versionable: true
     },
     {
       name: 'level',
@@ -33,7 +35,8 @@ export const charactersTemplate: EntityTemplate = {
       label: 'Level',
       default: 1,
       min: 1,
-      max: 20
+      max: 20,
+      versionable: true
     },
     {
       name: 'race',
@@ -55,7 +58,8 @@ export const charactersTemplate: EntityTemplate = {
         'Lawful Evil',
         'Neutral Evil',
         'Chaotic Evil'
-      ]
+      ],
+      versionable: true
     },
     {
       name: 'stats',
@@ -71,12 +75,14 @@ export const charactersTemplate: EntityTemplate = {
           wisdom:       { type: 'number', label: 'Wisdom',       default: 10, min: 1, max: 30 },
           charisma:     { type: 'number', label: 'Charisma',     default: 10, min: 1, max: 30 },
         }
-      }
+      },
+      versionable: true
     },
     {
       name: 'background',
       type: 'rich-text',
-      label: 'Background'
+      label: 'Background',
+      versionable: true
     },
     {
       name: 'abilities',
@@ -90,7 +96,8 @@ export const charactersTemplate: EntityTemplate = {
           description: { type: 'text', label: 'Description' },
           source:      { type: 'text', label: 'Source (race/class/feat)' },
         }
-      }
+      },
+      versionable: true
     }
   ],
   editorLayout: {

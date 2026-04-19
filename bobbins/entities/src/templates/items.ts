@@ -9,7 +9,7 @@ import type { EntityTemplate } from '../types'
 export const itemsTemplate: EntityTemplate = {
   id: 'template-items',
   shareId: 'official-items',
-  version: 1,
+  version: 2,
   label: 'Items',
   icon: '⚔️',
   description: 'Weapons, armor, magical items, and equipment',
@@ -50,7 +50,8 @@ export const itemsTemplate: EntityTemplate = {
         'Very Rare',
         'Legendary',
         'Artifact'
-      ]
+      ],
+      versionable: true
     },
     {
       name: 'attunement',
@@ -68,27 +69,32 @@ export const itemsTemplate: EntityTemplate = {
       name: 'value',
       type: 'number',
       label: 'Value (gold)',
-      min: 0
+      min: 0,
+      versionable: true
     },
     {
       name: 'damage',
       type: 'text',
-      label: 'Damage (if weapon)'
+      label: 'Damage (if weapon)',
+      versionable: true
     },
     {
       name: 'armor_class',
       type: 'text',
-      label: 'AC (if armor)'
+      label: 'AC (if armor)',
+      versionable: true
     },
     {
       name: 'properties',
       type: 'text',
-      label: 'Properties'
+      label: 'Properties',
+      versionable: true
     },
     {
       name: 'effects',
       type: 'rich-text',
-      label: 'Magical Effects'
+      label: 'Magical Effects',
+      versionable: true
     }
   ],
   editorLayout: {

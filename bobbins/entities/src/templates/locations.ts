@@ -9,7 +9,7 @@ import type { EntityTemplate } from '../types'
 export const locationsTemplate: EntityTemplate = {
   id: 'template-locations',
   shareId: 'official-locations',
-  version: 2,
+  version: 3,
   label: 'Locations',
   icon: '🗺️',
   description: 'Places, regions, and landmarks',
@@ -37,7 +37,8 @@ export const locationsTemplate: EntityTemplate = {
         'Cave',
         'Fortress',
         'Island'
-      ]
+      ],
+      versionable: true
     },
     {
       name: 'terrain',
@@ -63,29 +64,34 @@ export const locationsTemplate: EntityTemplate = {
       name: 'population',
       type: 'number',
       label: 'Population',
-      min: 0
+      min: 0,
+      versionable: true
     },
     {
       name: 'government',
       type: 'text',
-      label: 'Government Type'
+      label: 'Government Type',
+      versionable: true
     },
     {
       name: 'notable_npcs',
       type: 'relation',
       label: 'Notable NPCs',
       targetEntityType: 'characters',
-      allowMultiple: true
+      allowMultiple: true,
+      versionable: true
     },
     {
       name: 'resources',
       type: 'text',
-      label: 'Resources/Economy'
+      label: 'Resources/Economy',
+      versionable: true
     },
     {
       name: 'dangers',
       type: 'text',
-      label: 'Dangers'
+      label: 'Dangers',
+      versionable: true
     },
     {
       name: 'history',

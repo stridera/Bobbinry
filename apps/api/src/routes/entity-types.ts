@@ -37,6 +37,13 @@ const FieldDefinitionSchema = z.object({
   schema: z.any().optional(),
   targetEntityType: z.string().optional(),
   allowMultiple: z.boolean().optional(),
+  versionable: z.boolean().optional(),
+}).passthrough()
+
+const VariantAxisSchema = z.object({
+  id: z.string().regex(FIELD_NAME_RE, 'Invalid axis id'),
+  label: z.string().min(1).max(200),
+  kind: z.enum(['ordered', 'unordered']),
 }).passthrough()
 
 const LayoutSectionSchema = z.object({
@@ -71,6 +78,7 @@ const EntityTypeBodySchema = z.object({
   allow_duplicates: z.boolean().optional(),
   template_id: z.string().nullable().optional(),
   template_version: z.number().nullable().optional(),
+  variant_axis: VariantAxisSchema.nullable().optional(),
 })
 
 const UpdateBodySchema = EntityTypeBodySchema.partial().extend({
@@ -102,15 +110,20 @@ function formatTypeResponse(row: typeof entities.$inferSelect) {
   }
 }
 
+type FieldChangeSignature = { name: string; type: string; versionable?: boolean | undefined }
+
 function detectFieldChanges(
-  original: Array<{ name: string; type: string }>,
-  updated: Array<{ name: string; type: string }>
+  original: FieldChangeSignature[],
+  updated: FieldChangeSignature[]
 ): boolean {
   const originalNames = new Set(original.map(f => f.name))
   const updatedNames = new Set(updated.map(f => f.name))
   for (const f of updated) {
     const o = original.find(x => x.name === f.name)
     if (o && o.type !== f.type) return true
+    // Flipping the versionable flag is a schema change — entities saved under
+    // the old definition may have data in places the new definition won't read.
+    if (o && Boolean(o.versionable) !== Boolean(f.versionable)) return true
   }
   for (const f of updated) if (!originalNames.has(f.name)) return true
   for (const f of original) if (!updatedNames.has(f.name)) return true
@@ -258,6 +271,7 @@ const entityTypesPlugin: FastifyPluginAsync = async (fastify) => {
         list_layout: body.list_layout,
         subtitle_fields: body.subtitle_fields ?? [],
         allow_duplicates: body.allow_duplicates ?? true,
+        variant_axis: body.variant_axis ?? null,
         schema_version: 1,
         _field_history: [],
         created_at: now,

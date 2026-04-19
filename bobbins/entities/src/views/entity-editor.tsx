@@ -11,13 +11,33 @@
  * - Handle all field types (text, number, select, json, rich-text, etc.)
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
-import type { EntityTypeDefinition, FieldDefinition } from '../types'
+import type { EntityTypeDefinition, EntityVariants, FieldDefinition, VariantItem } from '../types'
 import { normalizeTypeConfig, normalizeJsonSchema, createDefaultJsonValue } from '../types'
+import {
+  VARIANTS_KEY,
+  getVariants,
+  resolveEntityForVariant,
+  setFieldOnEntity,
+  sortedVariantIds,
+  versionableFieldNames,
+} from '../variants'
 import { LayoutRenderer } from '../components/LayoutRenderer'
 import { SdkProvider } from '../components/UploadContext'
 import { checkTypeCompatibility } from '../components/FieldRenderers'
+
+function slugifyVariantId(label: string): string {
+  const base = label.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  return base || `variant-${Date.now().toString(36)}`
+}
+
+function ensureUniqueVariantId(base: string, existing: string[]): string {
+  if (!existing.includes(base)) return base
+  let i = 2
+  while (existing.includes(`${base}-${i}`)) i++
+  return `${base}-${i}`
+}
 
 interface EntityEditorViewProps {
   projectId: string
@@ -45,6 +65,9 @@ export default function EntityEditorView({
   const [versionMismatch, setVersionMismatch] = useState(false)
   const [viewMode, setViewMode] = useState<'view' | 'edit'>('view')
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  // null = Base (no variant selected). Otherwise, a variant id from entity._variants.
+  const [activeVariantId, setActiveVariantId] = useState<string | null>(null)
+  const [managingVariants, setManagingVariants] = useState(false)
 
   const isNewEntity = entityId === 'new'
 
@@ -290,12 +313,103 @@ export default function EntityEditorView({
   }
 
   function handleFieldChange(fieldName: string, value: any) {
-    setEntity(prev => ({
-      ...prev,
-      [fieldName]: value
-    }))
+    setEntity(prev => setFieldOnEntity(prev, typeConfig, activeVariantId, fieldName, value))
     setSaveStatus('unsaved')
     setSaveError(false) // Reset error flag when user makes a new edit
+  }
+
+  // Variant management -----------------------------------------------------
+
+  function addVariant(label: string) {
+    const trimmed = label.trim()
+    if (!trimmed) return
+    let newId = ''
+    setEntity(prev => {
+      const current = getVariants(prev)
+      const existingIds = current ? current.order : []
+      const id = ensureUniqueVariantId(slugifyVariantId(trimmed), existingIds)
+      newId = id
+      const newItem: VariantItem = { label: trimmed, overrides: {} }
+      if (typeConfig?.variantAxis?.kind === 'ordered') {
+        const num = Number(trimmed.match(/\d+(?:\.\d+)?/)?.[0])
+        if (!Number.isNaN(num)) newItem.axis_value = num
+      }
+      const next: EntityVariants = {
+        axis_id: typeConfig?.variantAxis?.id ?? null,
+        active: current?.active ?? id,
+        order: [...existingIds, id],
+        items: { ...(current?.items ?? {}), [id]: newItem },
+      }
+      return { ...prev, [VARIANTS_KEY]: next }
+    })
+    setActiveVariantId(newId)
+    setSaveStatus('unsaved')
+    setSaveError(false)
+  }
+
+  function renameVariant(id: string, label: string) {
+    const trimmed = label.trim()
+    if (!trimmed) return
+    setEntity(prev => {
+      const v = getVariants(prev)
+      if (!v || !v.items[id]) return prev
+      return {
+        ...prev,
+        [VARIANTS_KEY]: {
+          ...v,
+          items: { ...v.items, [id]: { ...v.items[id]!, label: trimmed } },
+        },
+      }
+    })
+    setSaveStatus('unsaved')
+    setSaveError(false)
+  }
+
+  function deleteVariant(id: string) {
+    setEntity(prev => {
+      const v = getVariants(prev)
+      if (!v || !v.items[id]) return prev
+      const { [id]: _dropped, ...rest } = v.items
+      const nextOrder = v.order.filter(x => x !== id)
+      const nextActive: string | null = v.active === id ? (nextOrder[0] ?? null) : (v.active ?? null)
+      const next: EntityVariants = {
+        ...v,
+        active: nextActive,
+        order: nextOrder,
+        items: rest,
+      }
+      return { ...prev, [VARIANTS_KEY]: next }
+    })
+    if (activeVariantId === id) setActiveVariantId(null)
+    setSaveStatus('unsaved')
+    setSaveError(false)
+  }
+
+  function setDefaultVariant(id: string | null) {
+    setEntity(prev => {
+      const v = getVariants(prev)
+      if (!v) return prev
+      return { ...prev, [VARIANTS_KEY]: { ...v, active: id } }
+    })
+    setSaveStatus('unsaved')
+    setSaveError(false)
+  }
+
+  function setVariantAxisValue(id: string, axisValue: number | null) {
+    setEntity(prev => {
+      const v = getVariants(prev)
+      if (!v || !v.items[id]) return prev
+      const item = v.items[id]!
+      return {
+        ...prev,
+        [VARIANTS_KEY]: {
+          ...v,
+          items: { ...v.items, [id]: { ...item, axis_value: axisValue } },
+        },
+      }
+    })
+    setSaveStatus('unsaved')
+    setSaveError(false)
   }
 
   function handleUpdateSchema() {
@@ -344,6 +458,29 @@ export default function EntityEditorView({
     }
     return undefined
   }, [entity, saveStatus, saveError, viewMode])
+
+  // Once the entity is loaded, default the variant selector to the entity's
+  // declared default if one is set.
+  useEffect(() => {
+    if (activeVariantId !== null) return
+    const v = getVariants(entity)
+    if (v?.active && v.items[v.active]) setActiveVariantId(v.active)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entity])
+
+  // Variant list (sorted by axis kind if the type has one)
+  const variantIdsInOrder = useMemo(
+    () => sortedVariantIds(entity, typeConfig?.variantAxis?.kind ?? null),
+    [entity, typeConfig?.variantAxis?.kind]
+  )
+  const variantsBlock = getVariants(entity)
+  const hasVersionableFields = useMemo(() => versionableFieldNames(typeConfig).size > 0, [typeConfig])
+
+  // The entity view to render: base when no variant selected, merged when one is.
+  const displayEntity = useMemo(
+    () => (activeVariantId ? resolveEntityForVariant(entity, typeConfig, activeVariantId) : entity),
+    [entity, activeVariantId, typeConfig]
+  )
 
   if (loading) {
     return (
@@ -509,18 +646,251 @@ export default function EntityEditorView({
         </div>
       )}
 
+      {/* Variant switcher bar (shown when the type declares versionable fields) */}
+      {hasVersionableFields && (
+        <div className="mx-4 mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2">
+          <span className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            {typeConfig.variantAxis?.label ?? 'Variant'}:
+          </span>
+          <button
+            type="button"
+            onClick={() => setActiveVariantId(null)}
+            className={`px-2.5 py-1 text-xs font-medium rounded cursor-pointer ${
+              activeVariantId === null
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+            }`}
+          >
+            Base
+          </button>
+          {variantIdsInOrder.map(id => {
+            const item = variantsBlock?.items[id]
+            if (!item) return null
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setActiveVariantId(id)}
+                className={`px-2.5 py-1 text-xs font-medium rounded cursor-pointer ${
+                  activeVariantId === id
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                }`}
+                title={variantsBlock?.active === id ? 'Default variant' : undefined}
+              >
+                {item.label}
+                {variantsBlock?.active === id && <span className="ml-1 text-[10px]">★</span>}
+              </button>
+            )
+          })}
+          <div className="flex-1" />
+          <button
+            type="button"
+            onClick={() => setManagingVariants(v => !v)}
+            className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 px-2 py-1 cursor-pointer"
+          >
+            {managingVariants ? 'Close' : 'Manage'}
+          </button>
+        </div>
+      )}
+
+      {/* Variant management panel (inline, no browser dialogs) */}
+      {hasVersionableFields && managingVariants && (
+        <VariantManager
+          entity={entity}
+          axisKind={typeConfig.variantAxis?.kind ?? 'unordered'}
+          axisLabel={typeConfig.variantAxis?.label ?? 'Variant'}
+          onAdd={addVariant}
+          onRename={renameVariant}
+          onDelete={deleteVariant}
+          onSetDefault={setDefaultVariant}
+          onSetAxisValue={setVariantAxisValue}
+        />
+      )}
+
       {/* Editor Content */}
       <div className="flex-1 overflow-auto p-6">
         <SdkProvider sdk={sdk} projectId={projectId}>
           <LayoutRenderer
             layout={typeConfig.editorLayout}
             fields={typeConfig.customFields}
-            entity={entity}
+            entity={displayEntity}
             onFieldChange={handleFieldChange}
             readonly={viewMode === 'view'}
           />
         </SdkProvider>
       </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// VariantManager — inline panel for adding / renaming / deleting variants.
+// Kept inside this file since it's tightly coupled to the editor's state.
+
+interface VariantManagerProps {
+  entity: Record<string, any>
+  axisKind: 'ordered' | 'unordered'
+  axisLabel: string
+  onAdd: (label: string) => void
+  onRename: (id: string, label: string) => void
+  onDelete: (id: string) => void
+  onSetDefault: (id: string | null) => void
+  onSetAxisValue: (id: string, axisValue: number | null) => void
+}
+
+function VariantManager({
+  entity,
+  axisKind,
+  axisLabel,
+  onAdd,
+  onRename,
+  onDelete,
+  onSetDefault,
+  onSetAxisValue,
+}: VariantManagerProps) {
+  const [newLabel, setNewLabel] = useState('')
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
+  const variants = getVariants(entity)
+  const ids = sortedVariantIds(entity, axisKind)
+
+  function commitAdd() {
+    if (!newLabel.trim()) return
+    onAdd(newLabel.trim())
+    setNewLabel('')
+  }
+
+  function commitRename(id: string) {
+    if (!renameDraft.trim()) return
+    onRename(id, renameDraft.trim())
+    setRenamingId(null)
+    setRenameDraft('')
+  }
+
+  return (
+    <div className="mx-4 mt-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 p-3 space-y-3">
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          placeholder={`New ${axisLabel.toLowerCase()}…`}
+          value={newLabel}
+          onChange={e => setNewLabel(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') commitAdd() }}
+          className="flex-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-sm text-gray-900 dark:text-gray-100"
+        />
+        <button
+          type="button"
+          onClick={commitAdd}
+          disabled={!newLabel.trim()}
+          className="px-3 py-1 text-xs font-medium rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+        >
+          Add variant
+        </button>
+      </div>
+
+      {ids.length === 0 && (
+        <p className="text-xs text-gray-500 dark:text-gray-400">No variants yet. Add one above.</p>
+      )}
+
+      {ids.map(id => {
+        const item = variants?.items[id]
+        if (!item) return null
+        const isDefault = variants?.active === id
+        return (
+          <div key={id} className="flex flex-wrap items-center gap-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1.5">
+            {renamingId === id ? (
+              <>
+                <input
+                  type="text"
+                  value={renameDraft}
+                  onChange={e => setRenameDraft(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') commitRename(id) }}
+                  autoFocus
+                  className="flex-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-0.5 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => commitRename(id)}
+                  className="px-2 py-0.5 text-xs font-medium rounded bg-blue-600 text-white hover:bg-blue-700 cursor-pointer"
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setRenamingId(null); setRenameDraft('') }}
+                  className="px-2 py-0.5 text-xs text-gray-600 dark:text-gray-400 cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="text-sm text-gray-900 dark:text-gray-100 flex-1 min-w-0 truncate">{item.label}</span>
+                {axisKind === 'ordered' && (
+                  <input
+                    type="number"
+                    value={item.axis_value == null ? '' : item.axis_value}
+                    onChange={e => {
+                      const raw = e.target.value
+                      onSetAxisValue(id, raw === '' ? null : Number(raw))
+                    }}
+                    title={`${axisLabel} value (sort key)`}
+                    className="w-16 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-1.5 py-0.5 text-xs"
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={() => onSetDefault(isDefault ? null : id)}
+                  className={`text-xs px-2 py-0.5 rounded cursor-pointer ${
+                    isDefault
+                      ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200'
+                      : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  }`}
+                  title={isDefault ? 'Unset as default' : 'Set as default variant'}
+                >
+                  {isDefault ? '★ Default' : 'Set default'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setRenamingId(id); setRenameDraft(item.label) }}
+                  className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 px-2 py-0.5 cursor-pointer"
+                >
+                  Rename
+                </button>
+                {confirmingDeleteId === id ? (
+                  <>
+                    <span className="text-xs text-red-600 dark:text-red-400">Delete variant?</span>
+                    <button
+                      type="button"
+                      onClick={() => { setConfirmingDeleteId(null); onDelete(id) }}
+                      className="px-2 py-0.5 text-xs font-medium rounded bg-red-600 text-white hover:bg-red-700 cursor-pointer"
+                    >
+                      Yes, delete
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingDeleteId(null)}
+                      className="px-2 py-0.5 text-xs text-gray-600 dark:text-gray-400 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingDeleteId(id)}
+                    className="px-2 py-0.5 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded cursor-pointer"
+                  >
+                    Delete
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }

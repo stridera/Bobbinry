@@ -23,6 +23,12 @@ import type { EntityTypeDefinition } from '../types'
 import { normalizeTypeConfig } from '../types'
 import { LayoutRenderer } from '../components/LayoutRenderer'
 import { SdkProvider } from '../components/UploadContext'
+import {
+  getVariants,
+  resolveEntityForVariant,
+  sortedVariantIds,
+  versionableFieldNames,
+} from '../variants'
 
 interface EntityPreviewPanelProps {
   context?: {
@@ -47,6 +53,7 @@ export default function EntityPreviewPanel({ context }: EntityPreviewPanelProps)
   const [disambiguate, setDisambiguate] = useState<PreviewEntity[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [variantId, setVariantId] = useState<string | null>(null)
 
   const [sdk] = useState(() => new BobbinrySDK('entities'))
   const projectId = useMemo(
@@ -170,6 +177,33 @@ export default function EntityPreviewPanel({ context }: EntityPreviewPanelProps)
     setDisambiguate([])
   }
 
+  // When a new preview loads, default to the entity's declared default variant (if any).
+  useEffect(() => {
+    if (!preview) {
+      setVariantId(null)
+      return
+    }
+    const v = getVariants(preview.entity)
+    setVariantId(v?.active && v.items[v.active] ? v.active : null)
+  }, [preview])
+
+  const variantIdsInOrder = useMemo(() => {
+    if (!preview) return []
+    return sortedVariantIds(preview.entity, preview.typeConfig.variantAxis?.kind ?? null)
+  }, [preview])
+
+  const displayEntity = useMemo(() => {
+    if (!preview) return {}
+    return variantId
+      ? resolveEntityForVariant(preview.entity, preview.typeConfig, variantId)
+      : preview.entity
+  }, [preview, variantId])
+
+  const hasVersionableFields = useMemo(
+    () => preview ? versionableFieldNames(preview.typeConfig).size > 0 : false,
+    [preview]
+  )
+
   if (loading) {
     return <PanelLoadingState label="Loading entity preview…" />
   }
@@ -228,24 +262,50 @@ export default function EntityPreviewPanel({ context }: EntityPreviewPanelProps)
     )
   }
 
+  const variantsBlock = getVariants(preview.entity)
+
   return (
     <PanelFrame>
       <PanelBody className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
-              {preview.entity.name || 'Untitled'}
+              {displayEntity.name || 'Untitled'}
             </div>
             <div className="text-xs text-gray-500 dark:text-gray-400">{preview.typeName}</div>
           </div>
           <span className="text-lg">{preview.typeIcon}</span>
         </div>
 
+        {hasVersionableFields && variantIdsInOrder.length > 0 && (
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-500 dark:text-gray-400">
+              {preview.typeConfig.variantAxis?.label ?? 'Variant'}:
+            </label>
+            <select
+              value={variantId ?? ''}
+              onChange={e => setVariantId(e.target.value || null)}
+              className="flex-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-xs text-gray-900 dark:text-gray-100"
+            >
+              <option value="">Base</option>
+              {variantIdsInOrder.map(id => {
+                const item = variantsBlock?.items[id]
+                if (!item) return null
+                return (
+                  <option key={id} value={id}>
+                    {item.label}
+                  </option>
+                )
+              })}
+            </select>
+          </div>
+        )}
+
         <SdkProvider sdk={sdk} projectId={projectId!}>
           <LayoutRenderer
             layout={preview.typeConfig.editorLayout}
             fields={preview.typeConfig.customFields}
-            entity={preview.entity}
+            entity={displayEntity}
             onFieldChange={() => {}}
             readonly={true}
           />

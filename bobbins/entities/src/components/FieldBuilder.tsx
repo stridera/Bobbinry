@@ -209,6 +209,25 @@ export function FieldBuilder({ fields, onChange, entityTypes = [] }: FieldBuilde
                   </div>
                 </div>
 
+                {/* Versionable (per-variant overrides allowed) */}
+                <div>
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={field.versionable || false}
+                      onChange={(e) => handleUpdateField(index, { versionable: e.target.checked })}
+                      className="w-4 h-4 mt-0.5"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">
+                      <span className="font-medium">Versionable</span>
+                      <span className="block text-xs text-gray-500 dark:text-gray-400">
+                        Each variant of the entity can override this field (e.g. Level 1 vs Level 20).
+                        When off, the value is shared across all variants.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+
                 {/* Type-specific options */}
                 {(field.type === 'select' || field.type === 'multi-select') && (
                   <div>

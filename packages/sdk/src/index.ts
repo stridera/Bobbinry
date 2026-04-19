@@ -298,11 +298,12 @@ export class EntityAPI {
     }
   }
 
-  async get<T = any>(collection: string, id: string): Promise<T | null> {
+  async get<T = any>(collection: string, id: string, options?: { variant?: string }): Promise<T | null> {
     const params = new URLSearchParams({
       projectId: this.projectId,
       collection
     })
+    if (options?.variant) params.set('variant', options.variant)
 
     const response = await fetch(`${this.api.apiBaseUrl}/entities/${id}?${params}`, {
       headers: this.api.getAuthHeaders()
