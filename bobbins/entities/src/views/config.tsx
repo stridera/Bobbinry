@@ -206,6 +206,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
     let editorLayout = t.editor_layout
     let listLayout = t.list_layout
     let subtitleFields = t.subtitle_fields || []
+    let versionableBaseFields = t.versionable_base_fields || []
 
     if (t.official && customFields.length === 0) {
       const builtIn = templates.find(bt => bt.shareId === shareId)
@@ -214,6 +215,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
         editorLayout = builtIn.editorLayout
         listLayout = builtIn.listLayout
         subtitleFields = builtIn.subtitleFields
+        versionableBaseFields = builtIn.versionableBaseFields ?? []
       }
     }
 
@@ -226,7 +228,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
       description: t.description,
       tags: t.tags || [],
       baseFields: t.base_fields || ['name', 'description', 'image_url', 'tags'],
-      versionableBaseFields: t.versionable_base_fields || [],
+      versionableBaseFields,
       customFields,
       editorLayout,
       listLayout,
@@ -262,6 +264,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
         list_layout: type.listLayout,
         subtitle_fields: type.subtitleFields || [],
         base_fields: type.baseFields,
+        versionable_base_fields: type.versionableBaseFields ?? [],
       })
       // Copy share ID to clipboard
       if (typeof navigator !== 'undefined' && navigator.clipboard) {
@@ -400,6 +403,13 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
         template_id: template.shareId || templateId,
         template_version: template.version || 1,
         base_fields: template.baseFields,
+        // Merge the template's versionableBaseFields with any the user had set locally.
+        // Users opting a base field in on their own shouldn't have that override removed
+        // when they sync; the template's opt-ins are a superset.
+        versionable_base_fields: Array.from(new Set([
+          ...(type.versionableBaseFields ?? []),
+          ...(template.versionableBaseFields ?? []),
+        ])),
         custom_fields: mergedFields,
         editor_layout: template.editorLayout,
         list_layout: template.listLayout,

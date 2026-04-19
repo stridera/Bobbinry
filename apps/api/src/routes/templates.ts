@@ -162,6 +162,7 @@ const templatesPlugin: FastifyPluginAsync = async (fastify) => {
       list_layout: any
       subtitle_fields: string[]
       base_fields?: string[]
+      versionable_base_fields?: string[]
     }
   }>('/templates', { preHandler: requireAuth }, async (request, reply) => {
     try {
@@ -194,6 +195,7 @@ const templatesPlugin: FastifyPluginAsync = async (fastify) => {
         author_id: user.id,
         author_name: authorName,
         base_fields: body.base_fields || ['name', 'description', 'image_url', 'tags'],
+        versionable_base_fields: body.versionable_base_fields || [],
         custom_fields: body.custom_fields,
         editor_layout: body.editor_layout,
         list_layout: body.list_layout,

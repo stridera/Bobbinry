@@ -852,6 +852,7 @@ export class TemplateAPI {
     list_layout: any
     subtitle_fields: string[]
     base_fields?: string[]
+    versionable_base_fields?: string[]
   }): Promise<any> {
     const response = await fetch(`${this.api.apiBaseUrl}/templates`, {
       method: 'POST',
