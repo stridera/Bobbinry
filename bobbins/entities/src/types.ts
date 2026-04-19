@@ -128,6 +128,9 @@ export interface EntityTemplate {
   baseFields: string[]  // Always: name, description, image_url, tags
   /** Subset of `baseFields` that may be overridden per-variant on entities of this type. */
   versionableBaseFields?: string[]
+  /** Default variant axis — when set, entities of this type have variants enabled by default.
+   * Users can rename the axis label or switch ordered/unordered in the type editor. */
+  variantAxis?: VariantAxis
   customFields: FieldDefinition[]
   editorLayout: EditorLayout
   listLayout: ListLayout

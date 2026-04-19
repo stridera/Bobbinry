@@ -9,13 +9,14 @@ import type { EntityTemplate } from '../types'
 export const charactersTemplate: EntityTemplate = {
   id: 'template-characters',
   shareId: 'official-characters',
-  version: 5,
+  version: 6,
   label: 'Characters',
   icon: '🧙',
   description: 'People, creatures, or NPCs in your world',
   tags: ['rpg', 'worldbuilding', 'characters'],
   baseFields: ['name', 'description', 'image_url', 'tags'],
   versionableBaseFields: ['description', 'image_url'],
+  variantAxis: { id: 'era', label: 'Version', kind: 'ordered' },
   customFields: [
     {
       name: 'age',

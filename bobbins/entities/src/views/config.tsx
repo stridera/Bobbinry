@@ -211,6 +211,9 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
     let subtitleFields = t.subtitle_fields || []
     let versionableBaseFields = t.versionable_base_fields || []
 
+    let variantAxis: EntityTemplate['variantAxis']
+    if (t.variant_axis && typeof t.variant_axis === 'object') variantAxis = t.variant_axis
+
     if (t.official) {
       const builtIn = templates.find(bt => bt.shareId === shareId)
       if (builtIn) {
@@ -219,10 +222,11 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
         listLayout = builtIn.listLayout
         subtitleFields = builtIn.subtitleFields
         versionableBaseFields = builtIn.versionableBaseFields ?? []
+        variantAxis = builtIn.variantAxis
       }
     }
 
-    return {
+    const result: EntityTemplate = {
       id: shareId,
       shareId,
       version: t.version || 1,
@@ -237,6 +241,8 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
       listLayout,
       subtitleFields,
     }
+    if (variantAxis) result.variantAxis = variantAxis
+    return result
   }
 
   async function handlePublishAsTemplate(type: EntityTypeDefinition) {
@@ -317,7 +323,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
     setCustomFields([...template.customFields])
     setEditorLayout({ ...template.editorLayout })
     setListLayout({ ...template.listLayout })
-    setVariantAxis(null)
+    setVariantAxis(template.variantAxis ? { ...template.variantAxis } : null)
     setVersionableBaseFields([...(template.versionableBaseFields ?? [])])
     setShowTemplateSelector(false)
   }
@@ -413,6 +419,10 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
           ...(type.versionableBaseFields ?? []),
           ...(template.versionableBaseFields ?? []),
         ])),
+        // Prefer the user's existing axis (they may have renamed it or switched
+        // ordered/unordered); fall back to the template default when they haven't
+        // configured one yet.
+        variant_axis: type.variantAxis ?? template.variantAxis ?? null,
         custom_fields: mergedFields,
         editor_layout: template.editorLayout,
         list_layout: template.listLayout,

@@ -9,13 +9,14 @@ import type { EntityTemplate } from '../types'
 export const itemsTemplate: EntityTemplate = {
   id: 'template-items',
   shareId: 'official-items',
-  version: 3,
+  version: 4,
   label: 'Items',
   icon: '⚔️',
   description: 'Weapons, armor, magical items, and equipment',
   tags: ['rpg', 'items', 'equipment'],
   baseFields: ['name', 'description', 'image_url', 'tags'],
   versionableBaseFields: ['description', 'image_url'],
+  variantAxis: { id: 'state', label: 'State', kind: 'unordered' },
   customFields: [
     {
       name: 'item_type',

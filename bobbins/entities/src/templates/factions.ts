@@ -9,13 +9,14 @@ import type { EntityTemplate } from '../types'
 export const factionsTemplate: EntityTemplate = {
   id: 'template-factions',
   shareId: 'official-factions',
-  version: 4,
+  version: 5,
   label: 'Factions',
   icon: '⚜️',
   description: 'Organizations, guilds, and political groups',
   tags: ['worldbuilding', 'factions', 'organizations'],
   baseFields: ['name', 'description', 'image_url', 'tags'],
   versionableBaseFields: ['description', 'image_url'],
+  variantAxis: { id: 'era', label: 'Era', kind: 'ordered' },
   customFields: [
     {
       name: 'faction_type',
