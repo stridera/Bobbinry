@@ -324,97 +324,95 @@ export default function EntityEditorView({
   }
 
   // Variant management -----------------------------------------------------
+  //
+  // Variant mutations persist immediately rather than relying on auto-save.
+  // Auto-save is gated on edit mode, and structural edits (add/rename/delete
+  // variant) should work from view mode too — otherwise "Add variant" appears
+  // to succeed but gets dropped on refresh.
 
-  function addVariant(label: string) {
+  async function addVariant(label: string) {
     const trimmed = label.trim()
-    if (!trimmed) return
-    let newId = ''
-    setEntity(prev => {
-      const current = getVariants(prev)
-      const existingIds = current ? current.order : []
-      const id = ensureUniqueVariantId(slugifyVariantId(trimmed), existingIds)
-      newId = id
-      const newItem: VariantItem = { label: trimmed, overrides: {} }
-      if (typeConfig?.variantAxis?.kind === 'ordered') {
-        const num = Number(trimmed.match(/\d+(?:\.\d+)?/)?.[0])
-        if (!Number.isNaN(num)) newItem.axis_value = num
-      }
-      const next: EntityVariants = {
-        axis_id: typeConfig?.variantAxis?.id ?? null,
-        active: current?.active ?? id,
-        order: [...existingIds, id],
-        items: { ...(current?.items ?? {}), [id]: newItem },
-      }
-      return { ...prev, [VARIANTS_KEY]: next }
-    })
-    setActiveVariantId(newId)
-    setSaveStatus('unsaved')
+    if (!trimmed || !entity) return
+    const current = getVariants(entity)
+    const existingIds = current ? current.order : []
+    const id = ensureUniqueVariantId(slugifyVariantId(trimmed), existingIds)
+    const newItem: VariantItem = { label: trimmed, overrides: {} }
+    if (typeConfig?.variantAxis?.kind === 'ordered') {
+      const num = Number(trimmed.match(/\d+(?:\.\d+)?/)?.[0])
+      if (!Number.isNaN(num)) newItem.axis_value = num
+    }
+    const nextVariants: EntityVariants = {
+      axis_id: typeConfig?.variantAxis?.id ?? null,
+      active: current?.active ?? id,
+      order: [...existingIds, id],
+      items: { ...(current?.items ?? {}), [id]: newItem },
+    }
+    const nextEntity = { ...entity, [VARIANTS_KEY]: nextVariants }
+    setEntity(nextEntity)
+    setActiveVariantId(id)
     setSaveError(false)
+    await saveEntity(false, nextEntity)
   }
 
-  function renameVariant(id: string, label: string) {
+  async function renameVariant(id: string, label: string) {
     const trimmed = label.trim()
-    if (!trimmed) return
-    setEntity(prev => {
-      const v = getVariants(prev)
-      if (!v || !v.items[id]) return prev
-      return {
-        ...prev,
-        [VARIANTS_KEY]: {
-          ...v,
-          items: { ...v.items, [id]: { ...v.items[id]!, label: trimmed } },
-        },
-      }
-    })
-    setSaveStatus('unsaved')
-    setSaveError(false)
-  }
-
-  function deleteVariant(id: string) {
-    setEntity(prev => {
-      const v = getVariants(prev)
-      if (!v || !v.items[id]) return prev
-      const { [id]: _dropped, ...rest } = v.items
-      const nextOrder = v.order.filter(x => x !== id)
-      const nextActive: string | null = v.active === id ? (nextOrder[0] ?? null) : (v.active ?? null)
-      const next: EntityVariants = {
+    if (!trimmed || !entity) return
+    const v = getVariants(entity)
+    if (!v || !v.items[id]) return
+    const nextEntity = {
+      ...entity,
+      [VARIANTS_KEY]: {
         ...v,
-        active: nextActive,
-        order: nextOrder,
-        items: rest,
-      }
-      return { ...prev, [VARIANTS_KEY]: next }
-    })
+        items: { ...v.items, [id]: { ...v.items[id]!, label: trimmed } },
+      },
+    }
+    setEntity(nextEntity)
+    setSaveError(false)
+    await saveEntity(false, nextEntity)
+  }
+
+  async function deleteVariant(id: string) {
+    if (!entity) return
+    const v = getVariants(entity)
+    if (!v || !v.items[id]) return
+    const { [id]: _dropped, ...rest } = v.items
+    const nextOrder = v.order.filter(x => x !== id)
+    const nextActive: string | null = v.active === id ? (nextOrder[0] ?? null) : (v.active ?? null)
+    const nextEntity = {
+      ...entity,
+      [VARIANTS_KEY]: { ...v, active: nextActive, order: nextOrder, items: rest },
+    }
+    setEntity(nextEntity)
     if (activeVariantId === id) setActiveVariantId(null)
-    setSaveStatus('unsaved')
     setSaveError(false)
+    await saveEntity(false, nextEntity)
   }
 
-  function setDefaultVariant(id: string | null) {
-    setEntity(prev => {
-      const v = getVariants(prev)
-      if (!v) return prev
-      return { ...prev, [VARIANTS_KEY]: { ...v, active: id } }
-    })
-    setSaveStatus('unsaved')
+  async function setDefaultVariant(id: string | null) {
+    if (!entity) return
+    const v = getVariants(entity)
+    if (!v) return
+    const nextEntity = { ...entity, [VARIANTS_KEY]: { ...v, active: id } }
+    setEntity(nextEntity)
     setSaveError(false)
+    await saveEntity(false, nextEntity)
   }
 
-  function setVariantAxisValue(id: string, axisValue: number | null) {
-    setEntity(prev => {
-      const v = getVariants(prev)
-      if (!v || !v.items[id]) return prev
-      const item = v.items[id]!
-      return {
-        ...prev,
-        [VARIANTS_KEY]: {
-          ...v,
-          items: { ...v.items, [id]: { ...item, axis_value: axisValue } },
-        },
-      }
-    })
-    setSaveStatus('unsaved')
+  async function setVariantAxisValue(id: string, axisValue: number | null) {
+    if (!entity) return
+    const v = getVariants(entity)
+    if (!v || !v.items[id]) return
+    const item = v.items[id]!
+    const nextEntity = {
+      ...entity,
+      [VARIANTS_KEY]: {
+        ...v,
+        items: { ...v.items, [id]: { ...item, axis_value: axisValue } },
+      },
+    }
+    setEntity(nextEntity)
     setSaveError(false)
+    await saveEntity(false, nextEntity)
   }
 
   async function handleUpdateSchema() {
