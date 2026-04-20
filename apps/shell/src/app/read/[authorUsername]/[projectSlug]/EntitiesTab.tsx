@@ -19,7 +19,8 @@ interface EntitiesTabProps {
   projectSlug: string
   apiToken?: string | undefined
   initialPayload?: EntitiesPayload | null
-  onSubscribeNudge: () => void
+  /** Jump to the Support tab. Pass a tier level to highlight that card. */
+  onSubscribeNudge: (tierLevel?: number) => void
 }
 
 export default function EntitiesTab({
@@ -92,7 +93,11 @@ export default function EntitiesTab({
           This project hasn't published any entities yet.
         </p>
         {payload && (payload.lockedPreviews.types > 0 || payload.lockedPreviews.entities > 0) && (
-          <LockedNudge locked={payload.lockedPreviews} onClick={onSubscribeNudge} />
+          <LockedNudge
+            locked={payload.lockedPreviews}
+            minLockedTier={findMinLockedTier(payload)}
+            onClick={onSubscribeNudge}
+          />
         )}
       </div>
     )
@@ -132,7 +137,11 @@ export default function EntitiesTab({
       {/* Type sections */}
       <div className="min-w-0 space-y-10">
         {(payload.lockedPreviews.types > 0 || payload.lockedPreviews.entities > 0) && (
-          <LockedNudge locked={payload.lockedPreviews} onClick={onSubscribeNudge} />
+          <LockedNudge
+            locked={payload.lockedPreviews}
+            minLockedTier={findMinLockedTier(payload)}
+            onClick={onSubscribeNudge}
+          />
         )}
 
         {payload.types.map(t => (
@@ -280,24 +289,24 @@ function LockedTeaserCard({
   typeIcon: string
   typeLabel: string
   tierLevel: number
-  onClick: () => void
+  onClick: (tierLevel: number) => void
 }) {
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => onClick(tierLevel)}
       className="group flex aspect-[3/2] flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-purple-300 bg-gradient-to-br from-purple-50 to-purple-100/50 p-4 text-center transition-all hover:border-purple-400 hover:from-purple-100 dark:border-purple-700 dark:from-purple-950/30 dark:to-purple-900/20 dark:hover:border-purple-600"
-      title={`Locked ${typeLabel.toLowerCase().replace(/s$/, '')} — subscribe at tier ${tierLevel}+ to unlock`}
-      aria-label={`Locked — subscribe at tier ${tierLevel} or higher to reveal`}
+      title={`Locked ${typeLabel.toLowerCase().replace(/s$/, '')} — subscribe at Tier ${tierLevel}+ to unlock`}
+      aria-label={`Locked — subscribe at Tier ${tierLevel} or higher to reveal`}
     >
       <span className="text-2xl opacity-50">{typeIcon}</span>
-      <div className="flex items-center gap-1 text-xs font-medium text-purple-700 dark:text-purple-300">
-        <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="flex items-center gap-1 text-sm font-semibold text-purple-700 dark:text-purple-300">
+        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
         </svg>
         Tier {tierLevel}+
       </div>
-      <div className="text-[10px] uppercase tracking-wide text-purple-500 dark:text-purple-400 group-hover:text-purple-600 dark:group-hover:text-purple-300">
+      <div className="text-[11px] text-purple-600 dark:text-purple-400 group-hover:text-purple-700 dark:group-hover:text-purple-300">
         Subscribe to unlock
       </div>
     </button>
@@ -320,28 +329,44 @@ function TierBadge({ level, compact = false }: { level: number; compact?: boolea
   )
 }
 
+/** Find the lowest tier level that gates any currently-hidden content. */
+function findMinLockedTier(payload: EntitiesPayload): number | null {
+  let min: number | null = null
+  for (const t of payload.types) {
+    for (const [tier] of Object.entries(t.lockedByTier ?? {})) {
+      const n = Number(tier)
+      if (!Number.isFinite(n)) continue
+      if (min === null || n < min) min = n
+    }
+  }
+  return min
+}
+
 function LockedNudge({
   locked,
+  minLockedTier,
   onClick,
 }: {
-  locked: { types: number; entities: number }
-  onClick: () => void
+  locked: { types: number; entities: number; variants?: number }
+  minLockedTier: number | null
+  onClick: (tierLevel?: number) => void
 }) {
   const bits: string[] = []
   if (locked.entities > 0) bits.push(`${locked.entities} ${locked.entities === 1 ? 'entry' : 'entries'}`)
   if (locked.types > 0) bits.push(`${locked.types} ${locked.types === 1 ? 'section' : 'sections'}`)
   const label = bits.join(' and ')
+  const tierSuffix = minLockedTier !== null ? ` at Tier ${minLockedTier}+` : ''
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => onClick(minLockedTier ?? undefined)}
       className="flex w-full items-center gap-3 rounded-lg border border-purple-200 bg-purple-50 px-4 py-3 text-left text-sm text-purple-800 transition-colors hover:bg-purple-100 dark:border-purple-800 dark:bg-purple-900/20 dark:text-purple-200 dark:hover:bg-purple-900/30"
     >
       <svg className="h-5 w-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
       </svg>
       <span className="flex-1">
-        <strong>Subscribe to unlock {label}.</strong>
+        <strong>Subscribe{tierSuffix} to unlock {label}.</strong>
         <span className="ml-1 text-purple-700 dark:text-purple-300">See tier options →</span>
       </span>
     </button>

@@ -126,47 +126,87 @@ function ProjectReadingContent() {
     router.replace(`/read/${authorUsername}/${projectSlug}${qs ? `?${qs}` : ''}`, { scroll: false })
   }, [authorUsername, projectSlug, router, searchParams])
 
-  const scrollToSupport = useCallback(() => {
-    // Tabs: surface the Support tab instead of scrolling within a flat page.
-    if (activeTab !== 'support') {
-      goToTab('support')
-    }
-    const el = supportRef.current
-    if (!el) return
-    // Defer so the tab switch renders the section before we animate it.
-    requestAnimationFrame(() => {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    })
+  // When we switch from Entities → Support via a tap on a locked card or the
+  // nudge banner, the Support tab hasn't mounted yet — so the supportRef is
+  // null and the tier-card animation can't run synchronously. We stash the
+  // pending tier in state and let a useEffect pick it up on the next render.
+  const [pendingHighlight, setPendingHighlight] = useState<
+    { kind: 'all' } | { kind: 'tier'; tierLevel: number } | null
+  >(null)
 
-    const grid = el.querySelector('.grid')
-    if (!grid) return
-    const cards = Array.from(grid.children) as HTMLElement[]
-    if (cards.length === 0) return
+  const runSupportHighlight = useCallback(
+    (target: { kind: 'all' } | { kind: 'tier'; tierLevel: number }) => {
+      const el = supportRef.current
+      if (!el) return false
 
-    // Clean up any running animations
-    cards.forEach(card => {
-      card.classList.remove('tier-glow', 'tier-sparkle')
-      card.style.removeProperty('--glow-delay')
-    })
-    void el.offsetWidth
+      requestAnimationFrame(() => {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
 
-    const stagger = 180
-    const settle = 300
+      const grid = el.querySelector('.grid')
+      if (!grid) return true // scrolled but nothing to animate
+      const allCards = Array.from(grid.children) as HTMLElement[]
+      if (allCards.length === 0) return true
 
-    cards.forEach((card, i) => {
-      const isLast = i === cards.length - 1
-      card.style.setProperty('--glow-delay', `${settle + i * stagger}ms`)
-      card.classList.add(isLast ? 'tier-sparkle' : 'tier-glow')
-    })
+      const cards =
+        target.kind === 'tier'
+          ? allCards.filter(c => c.dataset.tierLevel === String(target.tierLevel))
+          : allCards
+      if (cards.length === 0) return true
 
-    // Clean up after all animations complete
-    setTimeout(() => {
       cards.forEach(card => {
         card.classList.remove('tier-glow', 'tier-sparkle')
         card.style.removeProperty('--glow-delay')
       })
-    }, settle + cards.length * stagger + 1800)
-  }, [])
+      void el.offsetWidth
+
+      const stagger = 180
+      const settle = 300
+
+      cards.forEach((card, i) => {
+        const isLast = i === cards.length - 1
+        card.style.setProperty('--glow-delay', `${settle + i * stagger}ms`)
+        card.classList.add(isLast ? 'tier-sparkle' : 'tier-glow')
+      })
+
+      setTimeout(() => {
+        cards.forEach(card => {
+          card.classList.remove('tier-glow', 'tier-sparkle')
+          card.style.removeProperty('--glow-delay')
+        })
+      }, settle + cards.length * stagger + 1800)
+      return true
+    },
+    []
+  )
+
+  const scrollToSupport = useCallback(
+    (targetTierLevel?: number) => {
+      const target =
+        targetTierLevel !== undefined
+          ? ({ kind: 'tier', tierLevel: targetTierLevel } as const)
+          : ({ kind: 'all' } as const)
+      if (activeTab !== 'support') {
+        // Support tab not mounted yet — defer the animation to the next render.
+        setPendingHighlight(target)
+        goToTab('support')
+      } else {
+        runSupportHighlight(target)
+      }
+    },
+    [activeTab, goToTab, runSupportHighlight]
+  )
+
+  // Drain a pending tier highlight once the Support tab has actually mounted.
+  useEffect(() => {
+    if (activeTab !== 'support' || !pendingHighlight) return
+    // supportRef is populated during commit; schedule after layout to be safe.
+    const id = requestAnimationFrame(() => {
+      runSupportHighlight(pendingHighlight)
+      setPendingHighlight(null)
+    })
+    return () => cancelAnimationFrame(id)
+  }, [activeTab, pendingHighlight, runSupportHighlight])
 
   const apiToken = (session as any)?.apiToken as string | undefined
   const userId = session?.user?.id
@@ -609,7 +649,7 @@ function ProjectReadingContent() {
                 )}
                 {tiers.length > 0 && (
                   <button
-                    onClick={scrollToSupport}
+                    onClick={() => scrollToSupport()}
                     className="text-xs px-3 py-1.5 rounded-full bg-purple-600 text-white hover:bg-purple-700 transition-colors"
                   >
                     Subscribe
@@ -662,7 +702,7 @@ function ProjectReadingContent() {
             This is a subscriber-only project. Subscribe to access all chapters.
           </p>
           {tiers.length > 0 && (
-            <button onClick={scrollToSupport} className="mt-2 text-sm font-medium text-purple-600 hover:underline dark:text-purple-400">
+            <button onClick={() => scrollToSupport()} className="mt-2 text-sm font-medium text-purple-600 hover:underline dark:text-purple-400">
               View subscription tiers
             </button>
           )}
@@ -701,7 +741,7 @@ function ProjectReadingContent() {
           projectSlug={projectSlug}
           apiToken={apiToken}
           initialPayload={entitiesPayload}
-          onSubscribeNudge={() => goToTab('support')}
+          onSubscribeNudge={tierLevel => scrollToSupport(tierLevel)}
         />
       )}
 
@@ -747,7 +787,7 @@ function ProjectReadingContent() {
                       )}
                       {showSubscribeCta && (
                         <button
-                          onClick={scrollToSupport}
+                          onClick={() => scrollToSupport()}
                           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors"
                         >
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -863,6 +903,7 @@ function ProjectReadingContent() {
               return (
                 <div
                   key={tier.id}
+                  data-tier-level={tier.tierLevel}
                   className={`p-4 rounded-lg border bg-gray-50 dark:bg-gray-900/30 ${
                     subscribedTierId === tier.id
                       ? 'border-green-500 dark:border-green-400'
