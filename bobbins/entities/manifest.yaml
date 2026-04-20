@@ -1,6 +1,6 @@
 id: entities
 name: Entities
-version: 1.4.0
+version: 1.5.0
 author: "Bobbins Core"
 description: "Configurable entity system for characters, spells, locations, items, and more"
 tags: [worldbuilding, rpg, entities, configurable]
@@ -31,13 +31,13 @@ data:
 ui:
   views:
     - id: config
-      name: Entity Configuration
+      name: Type Editor
       type: tree
       source: entity_type_definitions
       handlers:
         - entity_type_definitions
     - id: entity-list
-      name: Entity List
+      name: Entity View
       type: custom
       source: "*"
       handlers: []
@@ -49,7 +49,7 @@ ui:
       handlers: []
       priority: 10
     - id: publishing
-      name: Publishing
+      name: Types
       type: custom
       source: "*"
       handlers: []

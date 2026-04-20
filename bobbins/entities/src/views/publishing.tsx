@@ -172,6 +172,35 @@ export default function PublishingView({ projectId, sdk }: PublishingViewProps) 
 
   // ---------- Type mutations ----------
 
+  function openEntityList(t: PublishableType) {
+    if (typeof window === 'undefined') return
+    window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
+      detail: {
+        entityType: t.typeId,
+        entityId: 'list',
+        bobbinId: 'entities',
+        metadata: {
+          view: 'entity-list',
+          typeId: t.typeId,
+          typeLabel: t.label,
+          typeIcon: t.icon,
+        },
+      },
+    }))
+  }
+
+  function openTypeEditor(t: PublishableType) {
+    if (typeof window === 'undefined') return
+    window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
+      detail: {
+        entityType: 'entity_type_definitions',
+        entityId: 'config',
+        bobbinId: 'entities',
+        metadata: { view: 'config', editTypeId: t.typeId },
+      },
+    }))
+  }
+
   async function togglePublishType(t: PublishableType, next: boolean) {
     setBusy(`type:${t.typeId}`)
     try {
@@ -384,11 +413,11 @@ export default function PublishingView({ projectId, sdk }: PublishingViewProps) 
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-              Publishing
+              Types
             </h1>
             <p className="mt-0.5 text-sm text-gray-600 dark:text-gray-400">
-              Choose which entity sections and entries appear in your reader codex, and who can
-              see each one.
+              Every entity type in this project. Open one to browse or edit its entries, manage
+              what readers see, and tune subscriber access.
             </p>
           </div>
           <div className="flex items-center gap-3 text-xs">
@@ -506,6 +535,32 @@ export default function PublishingView({ projectId, sdk }: PublishingViewProps) 
                         </span>
                       </span>
                     </button>
+
+                    <div className="flex flex-shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => openEntityList(t)}
+                        title={`Browse ${t.label.toLowerCase()}`}
+                        className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                        aria-label={`Open ${t.label}`}
+                      >
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openTypeEditor(t)}
+                        title={`Edit ${t.label} schema`}
+                        className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                        aria-label={`Edit ${t.label} schema`}
+                      >
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.573-1.066z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                      </button>
+                    </div>
 
                     <div className="flex-shrink-0">
                       <PublishControl

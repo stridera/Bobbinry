@@ -188,6 +188,18 @@ export default function EntityListView({
     }
   }
 
+  function handleAllTypes() {
+    if (typeof window === 'undefined') return
+    window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
+      detail: {
+        entityType: 'entity_type_definitions',
+        entityId: 'publishing',
+        bobbinId: 'entities',
+        metadata: { view: 'publishing', typeLabel: 'Types', typeIcon: '📚' },
+      },
+    }))
+  }
+
   function handleEditType() {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
@@ -271,6 +283,17 @@ export default function EntityListView({
     <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900">
       {/* Header */}
       <div className="border-b border-gray-200 dark:border-gray-700 p-4 bg-white dark:bg-gray-800">
+        <button
+          type="button"
+          onClick={handleAllTypes}
+          className="group mb-3 inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+          title="Back to all types"
+        >
+          <svg className="h-3 w-3 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+          All types
+        </button>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             {typeConfig && <span className="text-3xl">{typeConfig.icon}</span>}
