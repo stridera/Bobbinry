@@ -65,6 +65,14 @@ export interface PublishControlProps {
    * the variant manage bar.
    */
   hideVariantPicker?: boolean
+
+  /**
+   * When set, all interactive controls (toggle, tier select, variant picker)
+   * are disabled and the reason is surfaced as a hover tooltip. Used by the
+   * Publishing view to indicate that the entity's parent section is still
+   * draft, so toggling publish here has no reader-visible effect yet.
+   */
+  disabledReason?: string | null
 }
 
 export function PublishControl({
@@ -83,12 +91,14 @@ export function PublishControl({
   variantAccessLevels,
   onChangeVariantTier,
   hideVariantPicker = false,
+  disabledReason,
 }: PublishControlProps) {
   const [pending, setPending] = useState<'publish' | 'tier' | 'variants' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [variantPickerOpen, setVariantPickerOpen] = useState(false)
 
   const showVariantTiers = hasTiers && !!variantAccessLevels && !!onChangeVariantTier
+  const isExternallyDisabled = Boolean(disabledReason)
 
   const hasVariants = !hideVariantPicker && variants.length > 0 && !!onChangeVariantSet
   const variantIdSet = new Set(publishedVariantIds)
@@ -167,12 +177,17 @@ export function PublishControl({
   const gap = compact ? 'gap-2' : 'gap-3'
 
   return (
-    <div className={`flex flex-col ${compact ? 'gap-1' : 'gap-1.5'}`}>
+    <div
+      className={`flex flex-col ${compact ? 'gap-1' : 'gap-1.5'} ${
+        isExternallyDisabled ? 'opacity-60' : ''
+      }`}
+      title={disabledReason ?? undefined}
+    >
       <div className={`flex items-center ${gap}`}>
         <Toggle
           on={isPublished}
           onClick={handleToggle}
-          disabled={pending === 'publish'}
+          disabled={pending === 'publish' || isExternallyDisabled}
           label={isPublished ? 'Published' : 'Draft'}
         />
         <span
@@ -193,14 +208,16 @@ export function PublishControl({
               <select
                 value={minimumTierLevel}
                 onChange={handleTierChange}
-                disabled={pending === 'tier' || !isPublished}
+                disabled={pending === 'tier' || !isPublished || isExternallyDisabled}
                 className={`rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-1.5 py-0.5 text-xs text-gray-900 dark:text-gray-100 disabled:opacity-50 ${
                   compact ? 'max-w-[7rem]' : 'max-w-[10rem]'
                 }`}
                 title={
-                  isPublished
-                    ? 'Minimum subscriber tier to view this'
-                    : 'Publish first to gate by tier'
+                  disabledReason
+                    ? disabledReason
+                    : isPublished
+                      ? 'Minimum subscriber tier to view this'
+                      : 'Publish first to gate by tier'
                 }
               >
                 <option value={0}>Public</option>
@@ -220,12 +237,14 @@ export function PublishControl({
           <button
             type="button"
             onClick={() => setVariantPickerOpen(o => !o)}
-            disabled={!isPublished || pending === 'variants'}
+            disabled={!isPublished || pending === 'variants' || isExternallyDisabled}
             className="flex items-center gap-1 self-start text-[11px] text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 disabled:opacity-50"
             title={
-              isPublished
-                ? 'Choose which base + variants show on the reader'
-                : 'Publish first to choose variants'
+              disabledReason
+                ? disabledReason
+                : isPublished
+                  ? 'Choose which base + variants show on the reader'
+                  : 'Publish first to choose variants'
             }
           >
             <svg

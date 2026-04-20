@@ -590,6 +590,11 @@ export default function PublishingView({ projectId, sdk }: PublishingViewProps) 
                                   onChangeVariantTier={(which, level) =>
                                     changeVariantTierForEntity(t.typeId, row, which, level)
                                   }
+                                  disabledReason={
+                                    t.isPublished
+                                      ? null
+                                      : `${t.label} is not published to readers yet`
+                                  }
                                   compact
                                 />
                               </div>
