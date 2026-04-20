@@ -135,7 +135,12 @@ export async function fetchProjectOwner(
   sdk: BobbinrySDK,
   projectId: string
 ): Promise<{ ownerId: string }> {
-  // BobbinrySDK exposes sdk.api.getProject on BobbinryAPI — reach through for now.
-  const project = await (sdk as any).api.getProject(projectId)
-  return { ownerId: project.ownerId as string }
+  // BobbinrySDK exposes sdk.api.getProject on BobbinryAPI, which wraps the
+  // project in a `project` key: { project: { id, ownerId, ... } }.
+  const response = await (sdk as any).api.getProject(projectId)
+  const ownerId = response?.project?.ownerId ?? response?.ownerId
+  if (typeof ownerId !== 'string') {
+    throw new Error(`Project ${projectId} did not return an owner id`)
+  }
+  return { ownerId }
 }
