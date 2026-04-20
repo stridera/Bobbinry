@@ -13,12 +13,18 @@ import { config } from '@/lib/config'
 import EntityModal from './EntityModal'
 import type { EntitiesPayload, PublishedEntity, PublishedType } from './entities-data'
 
+const OVERVIEW_PREVIEW_LIMIT = 6
+
 interface EntitiesTabProps {
   projectId: string
   authorUsername: string
   projectSlug: string
   apiToken?: string | undefined
   initialPayload?: EntitiesPayload | null
+  /** Type id when viewing a single section in focused mode; null = overview. */
+  focusedSection: string | null
+  /** Navigate to a focused section, or back to overview when null. */
+  onGoToSection: (typeId: string | null) => void
   /** Jump to the Support tab. Pass a tier level to highlight that card. */
   onSubscribeNudge: (tierLevel?: number) => void
 }
@@ -29,6 +35,8 @@ export default function EntitiesTab({
   projectSlug,
   apiToken,
   initialPayload,
+  focusedSection,
+  onGoToSection,
   onSubscribeNudge,
 }: EntitiesTabProps) {
   const [payload, setPayload] = useState<EntitiesPayload | null>(initialPayload ?? null)
@@ -104,10 +112,13 @@ export default function EntitiesTab({
   }
 
   const totalEntities = payload.types.reduce((acc, t) => acc + t.entities.length, 0)
+  const focused = focusedSection
+    ? payload.types.find(t => t.typeId === focusedSection) ?? null
+    : null
 
   return (
     <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
-      {/* Sub-nav */}
+      {/* Sub-nav — same shell for both modes; active item is highlighted in focused mode. */}
       <aside className="lg:sticky lg:top-4 lg:self-start">
         <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900/40">
           <div className="mb-2 flex items-center justify-between text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
@@ -115,36 +126,102 @@ export default function EntitiesTab({
             <span className="font-mono text-[10px]">{totalEntities}</span>
           </div>
           <ul className="space-y-0.5">
-            {payload.types.map(t => (
-              <li key={t.typeId}>
+            {focused && (
+              <li>
                 <button
                   type="button"
-                  onClick={() => scrollToSection(t.typeId)}
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                  onClick={() => onGoToSection(null)}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
                 >
-                  <span className="text-base">{t.icon}</span>
-                  <span className="flex-1 truncate">{t.label}</span>
-                  <span className="text-[10px] tabular-nums text-gray-400 dark:text-gray-500">
-                    {t.entities.length}
-                  </span>
+                  <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                  <span>All sections</span>
                 </button>
               </li>
-            ))}
+            )}
+            {payload.types.map(t => {
+              const active = focused?.typeId === t.typeId
+              return (
+                <li key={t.typeId}>
+                  <button
+                    type="button"
+                    onClick={() => (focused ? onGoToSection(t.typeId) : scrollToSection(t.typeId))}
+                    className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors ${
+                      active
+                        ? 'bg-blue-50 font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                        : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    <span className="text-base">{t.icon}</span>
+                    <span className="flex-1 truncate">{t.label}</span>
+                    <span className="text-[10px] tabular-nums text-gray-400 dark:text-gray-500">
+                      {t.entities.length}
+                    </span>
+                  </button>
+                </li>
+              )
+            })}
           </ul>
         </div>
       </aside>
 
-      {/* Type sections */}
-      <div className="min-w-0 space-y-10">
-        {(payload.lockedPreviews.types > 0 || payload.lockedPreviews.entities > 0) && (
-          <LockedNudge
-            locked={payload.lockedPreviews}
-            minLockedTier={findMinLockedTier(payload)}
-            onClick={onSubscribeNudge}
-          />
-        )}
+      {focused ? (
+        <FocusedSection
+          type={focused}
+          onBack={() => onGoToSection(null)}
+          onOpen={e => setOpen({ type: focused, entity: e })}
+          onSubscribeNudge={onSubscribeNudge}
+        />
+      ) : (
+        <Overview
+          payload={payload}
+          sectionRefs={sectionRefs}
+          onOpen={(type, entity) => setOpen({ type, entity })}
+          onViewAll={typeId => onGoToSection(typeId)}
+          onSubscribeNudge={onSubscribeNudge}
+        />
+      )}
 
-        {payload.types.map(t => (
+      {open && (
+        <EntityModal
+          type={open.type}
+          entity={open.entity}
+          subpageHref={`/read/${authorUsername}/${projectSlug}/entity/${open.entity.id}`}
+          onClose={() => setOpen(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function Overview({
+  payload,
+  sectionRefs,
+  onOpen,
+  onViewAll,
+  onSubscribeNudge,
+}: {
+  payload: EntitiesPayload
+  sectionRefs: React.MutableRefObject<Record<string, HTMLElement | null>>
+  onOpen: (type: PublishedType, entity: PublishedEntity) => void
+  onViewAll: (typeId: string) => void
+  onSubscribeNudge: (tierLevel?: number) => void
+}) {
+  return (
+    <div className="min-w-0 space-y-10">
+      {(payload.lockedPreviews.types > 0 || payload.lockedPreviews.entities > 0) && (
+        <LockedNudge
+          locked={payload.lockedPreviews}
+          minLockedTier={findMinLockedTier(payload)}
+          onClick={onSubscribeNudge}
+        />
+      )}
+
+      {payload.types.map(t => {
+        const overflow = Math.max(0, t.entities.length - OVERVIEW_PREVIEW_LIMIT)
+        const previewEntities = t.entities.slice(0, OVERVIEW_PREVIEW_LIMIT)
+        return (
           <section
             key={t.typeId}
             id={`codex-${t.typeId}`}
@@ -169,37 +246,163 @@ export default function EntitiesTab({
                 Nothing published in this section yet.
               </p>
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {t.entities.map(e => (
-                  <EntityCard key={e.id} type={t} entity={e} onOpen={() => setOpen({ type: t, entity: e })} />
-                ))}
-                {Object.entries(t.lockedByTier ?? {})
-                  .map(([k, v]) => [Number(k), v] as const)
-                  .sort(([a], [b]) => a - b)
-                  .flatMap(([tier, count]) =>
-                    Array.from({ length: count }, (_, i) => (
-                      <LockedTeaserCard
-                        key={`locked-${t.typeId}-${tier}-${i}`}
-                        typeIcon={t.icon}
-                        typeLabel={t.label}
-                        tierLevel={tier}
-                        onClick={onSubscribeNudge}
-                      />
-                    ))
-                  )}
-              </div>
+              <>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {previewEntities.map(e => (
+                    <EntityCard key={e.id} type={t} entity={e} onOpen={() => onOpen(t, e)} />
+                  ))}
+                  {Object.entries(t.lockedByTier ?? {})
+                    .map(([k, v]) => [Number(k), v] as const)
+                    .sort(([a], [b]) => a - b)
+                    .flatMap(([tier, count]) =>
+                      Array.from({ length: count }, (_, i) => (
+                        <LockedTeaserCard
+                          key={`locked-${t.typeId}-${tier}-${i}`}
+                          typeIcon={t.icon}
+                          typeLabel={t.label}
+                          tierLevel={tier}
+                          onClick={onSubscribeNudge}
+                        />
+                      ))
+                    )}
+                </div>
+                {overflow > 0 && (
+                  <div className="mt-3 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => onViewAll(t.typeId)}
+                      className="group inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                    >
+                      View all {t.entities.length} {t.label.toLowerCase()}
+                      <svg
+                        className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </section>
-        ))}
+        )
+      })}
+    </div>
+  )
+}
+
+function FocusedSection({
+  type,
+  onBack,
+  onOpen,
+  onSubscribeNudge,
+}: {
+  type: PublishedType
+  onBack: () => void
+  onOpen: (entity: PublishedEntity) => void
+  onSubscribeNudge: (tierLevel?: number) => void
+}) {
+  const [query, setQuery] = useState('')
+  const normalized = query.trim().toLowerCase()
+  const filtered = useMemo(() => {
+    if (!normalized) return type.entities
+    return type.entities.filter(e => {
+      const haystack = [
+        e.name ?? '',
+        e.description ?? '',
+        ...(Array.isArray(e.tags) ? e.tags : []),
+      ]
+        .join(' ')
+        .toLowerCase()
+      return haystack.includes(normalized)
+    })
+  }, [type.entities, normalized])
+
+  return (
+    <div className="min-w-0 space-y-4">
+      <button
+        type="button"
+        onClick={onBack}
+        className="group inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
+      >
+        <svg
+          className="h-3 w-3 transition-transform group-hover:-translate-x-0.5"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
+        Back to codex
+      </button>
+
+      <div className="flex items-end justify-between gap-3 border-b border-gray-200 pb-3 dark:border-gray-800">
+        <div className="flex items-center gap-3">
+          <span className="text-3xl">{type.icon}</span>
+          <div>
+            <h2 className="font-display text-2xl font-semibold text-gray-900 dark:text-gray-100">
+              {type.label}
+            </h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {type.entities.length} {type.entities.length === 1 ? 'entry' : 'entries'}
+              {filtered.length !== type.entities.length && ` · showing ${filtered.length}`}
+            </p>
+          </div>
+        </div>
+        {type.minimumTierLevel > 0 && <TierBadge level={type.minimumTierLevel} />}
       </div>
 
-      {open && (
-        <EntityModal
-          type={open.type}
-          entity={open.entity}
-          subpageHref={`/read/${authorUsername}/${projectSlug}/entity/${open.entity.id}`}
-          onClose={() => setOpen(null)}
+      <div className="relative">
+        <svg
+          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        <input
+          type="search"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder={`Search ${type.label.toLowerCase()}…`}
+          className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-blue-500 dark:focus:ring-blue-900/30"
+          autoFocus
         />
+      </div>
+
+      {filtered.length === 0 && type.entities.length > 0 ? (
+        <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+          No {type.label.toLowerCase()} match “{query}”.
+        </p>
+      ) : type.entities.length === 0 && !hasLocked(type) ? (
+        <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400 italic">
+          Nothing published in this section yet.
+        </p>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {filtered.map(e => (
+            <EntityCard key={e.id} type={type} entity={e} onOpen={() => onOpen(e)} />
+          ))}
+          {!normalized &&
+            Object.entries(type.lockedByTier ?? {})
+              .map(([k, v]) => [Number(k), v] as const)
+              .sort(([a], [b]) => a - b)
+              .flatMap(([tier, count]) =>
+                Array.from({ length: count }, (_, i) => (
+                  <LockedTeaserCard
+                    key={`locked-focused-${type.typeId}-${tier}-${i}`}
+                    typeIcon={type.icon}
+                    typeLabel={type.label}
+                    tierLevel={tier}
+                    onClick={onSubscribeNudge}
+                  />
+                ))
+              )}
+        </div>
       )}
     </div>
   )

@@ -121,9 +121,22 @@ function ProjectReadingContent() {
     const params = new URLSearchParams(searchParams.toString())
     if (tab === 'chapters') params.delete('tab')
     else params.set('tab', tab)
+    // Leaving the entities tab also drops the focused-section param.
+    if (tab !== 'entities') params.delete('section')
     const qs = params.toString()
     router.push(`/read/${authorUsername}/${projectSlug}${qs ? `?${qs}` : ''}`, { scroll: false })
   }, [authorUsername, projectSlug, router, searchParams])
+
+  /** Navigate to or out of a focused codex section under ?tab=entities. */
+  const goToSection = useCallback((typeId: string | null) => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('tab', 'entities')
+    if (typeId === null) params.delete('section')
+    else params.set('section', typeId)
+    router.push(`/read/${authorUsername}/${projectSlug}?${params.toString()}`, { scroll: false })
+  }, [authorUsername, projectSlug, router, searchParams])
+
+  const focusedSection = activeTab === 'entities' ? searchParams.get('section') : null
 
   // When we switch from Entities → Support via a tap on a locked card or the
   // nudge banner, the Support tab hasn't mounted yet — so the supportRef is
@@ -740,6 +753,8 @@ function ProjectReadingContent() {
           projectSlug={projectSlug}
           apiToken={apiToken}
           initialPayload={entitiesPayload}
+          focusedSection={focusedSection}
+          onGoToSection={goToSection}
           onSubscribeNudge={tierLevel => scrollToSupport(tierLevel)}
         />
       )}

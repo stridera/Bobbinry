@@ -221,6 +221,64 @@ const ENTITIES: SeedEntity[] = [
     tags: ['magic'],
     publish_order: 3,
   },
+  // Additional concepts so the overview triggers truncation + "View all"
+  {
+    type: 'concepts',
+    name: 'The Weaving Oath',
+    description: 'The pact said to bind every starweaver to the Loom — memorized by rote, enforced by conscience. No one alive is certain it was ever real.',
+    tags: ['magic', 'pact'],
+    publish_order: 4,
+  },
+  {
+    type: 'concepts',
+    name: 'Unraveling',
+    description: 'The slow dissolution that comes to those who invite more starlight than their body can carry. Voss\'s guide mentions it only once, in a footnote.',
+    tags: ['magic', 'danger'],
+    publish_order: 5,
+  },
+  {
+    type: 'concepts',
+    name: 'The Cold Hours',
+    description: 'The window between midnight and first bell when starthreads move most freely. Every practitioner Lira has read about worked these hours alone.',
+    tags: ['practice'],
+    publish_order: 6,
+  },
+  {
+    type: 'concepts',
+    name: 'First Sight',
+    description: 'The childhood gift of seeing what others miss — shimmer in water, ley lines under stone, the residue of old magic. Thought hereditary; never documented.',
+    tags: ['magic', 'family'],
+    publish_order: 7,
+  },
+  {
+    type: 'concepts',
+    name: 'The Silent Library',
+    description: 'A second, deeper archive beneath the restricted stacks. Spoken of in whispers. The Keeper denies it exists.',
+    tags: ['forbidden', 'academy'],
+    publish_order: 8,
+    minimum_tier_level: 1,
+  },
+  {
+    type: 'concepts',
+    name: 'The Lesser Pattern',
+    description: 'A simpler geometry said to be the foundation layer of the Loom — accessible even to untrained eyes at the right moment.',
+    tags: ['magic', 'cosmology'],
+    publish_order: 9,
+  },
+  {
+    type: 'concepts',
+    name: 'Anchor Song',
+    description: 'A wordless hum taught mother to daughter, designed to keep a threadweaver tethered to their body while they work.',
+    tags: ['practice', 'family'],
+    publish_order: 10,
+  },
+  {
+    type: 'concepts',
+    name: 'The Eleventh Constellation',
+    description: 'The absent constellation between Orion and Cassiopeia, where Lira first saw her starthread. The Academy\'s star charts show only empty sky.',
+    tags: ['cosmology'],
+    publish_order: 11,
+  },
 
   // Items
   {
