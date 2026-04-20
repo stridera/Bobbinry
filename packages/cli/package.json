@@ -36,7 +36,7 @@
   "author": "Bobbinry",
   "license": "AGPL-3.0-only",
   "dependencies": {
-    "commander": "^13.1.0"
+    "commander": "^14.0.3"
   },
   "devDependencies": {
     "@bobbinry/types": "workspace:*",
