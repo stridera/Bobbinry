@@ -525,7 +525,9 @@ function ProjectReadingContent() {
         { label: project.name }
       ]} />
 
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className={`mx-auto px-4 sm:px-6 lg:px-8 py-8 transition-[max-width] ${
+        activeTab === 'entities' ? 'max-w-6xl' : 'max-w-3xl'
+      }`}>
 
       {/* Success banner */}
       {(justSubscribed || searchParams.get('subscribed') === 'true') && (
@@ -695,6 +697,8 @@ function ProjectReadingContent() {
       {activeTab === 'entities' && entitiesPayload?.installed && (
         <EntitiesTab
           projectId={project.id}
+          authorUsername={authorUsername}
+          projectSlug={projectSlug}
           apiToken={apiToken}
           initialPayload={entitiesPayload}
           onSubscribeNudge={() => goToTab('support')}

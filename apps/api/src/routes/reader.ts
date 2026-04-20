@@ -2039,6 +2039,111 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   })
 
   /**
+   * Single published entity (for the /entity/<id> subpage and the modal view).
+   * Returns the type + entity so the client can render with LayoutRenderer
+   * without loading the full codex. Applies the same tier/scope gating as
+   * the listing endpoint.
+   */
+  fastify.get<{
+    Params: { projectId: string; entityId: string }
+  }>('/public/projects/:projectId/entities/:entityId', {
+    preHandler: optionalAuth
+  }, async (request, reply) => {
+    try {
+      const { projectId, entityId } = request.params
+
+      const [project] = await db
+        .select({ id: projects.id, ownerId: projects.ownerId })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1)
+      if (!project) return reply.status(404).send({ error: 'Project not found' })
+
+      const effective = await getEffectiveBobbins(projectId, project.ownerId)
+      const installed = effective.find(b => b.bobbinId === 'entities' && b.enabled)
+      if (!installed) return reply.status(404).send({ error: 'Entities not available' })
+
+      const callerTier = await resolveCallerTierLevel(projectId, request.user?.id)
+      const isOwner = callerTier === Number.POSITIVE_INFINITY
+
+      const collectionIds = await getCollectionIdsForProject(projectId)
+      const scopeFilter = buildScopeCondition(projectId, collectionIds, project.ownerId)
+
+      // Locate the entity row, constrained to this project's visible scope
+      // and to published state (or owner bypass).
+      const [entityRow] = await db
+        .select()
+        .from(entities)
+        .where(and(scopeFilter, eq(entities.id, entityId)))
+        .limit(1)
+      if (!entityRow) return reply.status(404).send({ error: 'Entity not found' })
+      if (entityRow.collectionName === 'entity_type_definitions') {
+        return reply.status(404).send({ error: 'Entity not found' })
+      }
+      if (!isOwner) {
+        if (!entityRow.isPublished) return reply.status(404).send({ error: 'Entity not found' })
+        if (entityRow.minimumTierLevel > callerTier) {
+          return reply.status(403).send({ error: 'Subscription required', minimumTierLevel: entityRow.minimumTierLevel })
+        }
+      }
+
+      // Load the type row (published + tier-visible) so we can return the
+      // layout metadata the client needs to render.
+      const [typeRow] = await db
+        .select()
+        .from(entities)
+        .where(and(
+          scopeFilter,
+          eq(entities.collectionName, 'entity_type_definitions'),
+          sql`${entities.entityData}->>'type_id' = ${entityRow.collectionName}`,
+        ))
+        .limit(1)
+      if (!typeRow) return reply.status(404).send({ error: 'Entity type not found' })
+      if (!isOwner && (!typeRow.isPublished || typeRow.minimumTierLevel > callerTier)) {
+        return reply.status(403).send({ error: 'Subscription required', minimumTierLevel: typeRow.minimumTierLevel })
+      }
+
+      const typeData = typeRow.entityData as Record<string, any>
+      const data = entityRow.entityData as Record<string, unknown>
+
+      return {
+        type: {
+          typeId: typeData.type_id,
+          label: typeData.label,
+          icon: typeData.icon ?? '📋',
+          listLayout: typeData.list_layout,
+          editorLayout: typeData.editor_layout,
+          customFields: typeData.custom_fields ?? [],
+          baseFields: typeData.base_fields ?? ['name', 'description', 'tags', 'image_url'],
+          versionableBaseFields: typeData.versionable_base_fields ?? [],
+          subtitleFields: typeData.subtitle_fields ?? [],
+          variantAxis: typeData.variant_axis ?? null,
+          minimumTierLevel: typeRow.minimumTierLevel,
+          publishOrder: typeRow.publishOrder,
+        },
+        entity: {
+          id: entityRow.id,
+          typeId: entityRow.collectionName,
+          name: (data?.name as string) ?? null,
+          description: (data?.description as string) ?? null,
+          imageUrl: (data?.image_url as string) ?? null,
+          tags: Array.isArray(data?.tags) ? data.tags : [],
+          entityData: data,
+          publishOrder: entityRow.publishOrder,
+          minimumTierLevel: entityRow.minimumTierLevel,
+          publishedAt: entityRow.publishedAt,
+          publishBase: entityRow.publishBase,
+          publishedVariantIds: entityRow.publishedVariantIds ?? [],
+        },
+        callerTierLevel: isOwner ? -1 : callerTier,
+      }
+    } catch (error) {
+      fastify.log.error(error, 'Failed to load single entity')
+      return reply.status(500).send({ error: 'Failed to load entity' })
+    }
+  })
+
+  /**
    * Lightweight list of published entity names for the chapter-page highlighter.
    * Returns only { id, name, typeId, typeIcon, typeLabel } rows — matches the
    * EntityEntry shape in bobbins/manuscript/src/extensions/entity-highlight.ts.

@@ -10,11 +10,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { config } from '@/lib/config'
-import EntityDetailDrawer from './EntityDetailDrawer'
+import EntityModal from './EntityModal'
 import type { EntitiesPayload, PublishedEntity, PublishedType } from './entities-data'
 
 interface EntitiesTabProps {
   projectId: string
+  authorUsername: string
+  projectSlug: string
   apiToken?: string | undefined
   initialPayload?: EntitiesPayload | null
   onSubscribeNudge: () => void
@@ -22,6 +24,8 @@ interface EntitiesTabProps {
 
 export default function EntitiesTab({
   projectId,
+  authorUsername,
+  projectSlug,
   apiToken,
   initialPayload,
   onSubscribeNudge,
@@ -167,9 +171,10 @@ export default function EntitiesTab({
       </div>
 
       {open && (
-        <EntityDetailDrawer
+        <EntityModal
           type={open.type}
           entity={open.entity}
+          subpageHref={`/read/${authorUsername}/${projectSlug}/entity/${open.entity.id}`}
           onClose={() => setOpen(null)}
         />
       )}
