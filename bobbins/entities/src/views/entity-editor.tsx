@@ -28,6 +28,13 @@ import {
 import { LayoutRenderer } from '../components/LayoutRenderer'
 import { SdkProvider } from '../components/UploadContext'
 import { checkTypeCompatibility } from '../components/FieldRenderers'
+import { PublishControl } from '../components/PublishControl'
+import {
+  fetchProjectOwner,
+  fetchSubscriptionTiers,
+  patchEntityPublish,
+  type SubscriptionTier,
+} from '../publish-api'
 
 interface EntityEditorViewProps {
   projectId: string
@@ -58,6 +65,8 @@ export default function EntityEditorView({
   // null = Base (no variant selected). Otherwise, a variant id from entity._variants.
   const [activeVariantId, setActiveVariantId] = useState<string | null>(null)
   const [managingVariants, setManagingVariants] = useState(false)
+  const [tiers, setTiers] = useState<SubscriptionTier[]>([])
+  const [tiersLoaded, setTiersLoaded] = useState(false)
 
   const isNewEntity = entityId === 'new'
 
@@ -76,6 +85,28 @@ export default function EntityEditorView({
       setViewMode('edit')
     }
   }, [entityId, typeConfig])
+
+  // Load the author's subscription tiers so the inline publish picker can
+  // show them. Single fetch per project; cheap to leave running even on new-
+  // entity flow so the control is ready once the entity is saved.
+  useEffect(() => {
+    let cancelled = false
+    if (tiersLoaded) return
+    ;(async () => {
+      try {
+        const { ownerId } = await fetchProjectOwner(sdk, projectId)
+        const res = await fetchSubscriptionTiers(sdk, ownerId)
+        if (!cancelled) {
+          setTiers([...res.tiers].sort((a, b) => a.tierLevel - b.tierLevel))
+          setTiersLoaded(true)
+        }
+      } catch (err) {
+        console.warn('[EntityEditor] Could not load tiers:', err)
+        if (!cancelled) setTiersLoaded(true)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [projectId, sdk, tiersLoaded])
 
   async function loadTypeConfig() {
     try {
@@ -500,6 +531,45 @@ export default function EntityEditorView({
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Inline publish control (only for saved entities — can't publish an unsaved draft) */}
+          {!isNewEntity && entityType && (
+            <PublishControl
+              isPublished={Boolean(entity.isPublished)}
+              minimumTierLevel={Number(entity.minimumTierLevel ?? 0)}
+              publishedAt={entity.publishedAt ?? null}
+              tiers={tiers}
+              hasTiers={tiers.length > 0}
+              onTogglePublish={async next => {
+                const result = await patchEntityPublish(
+                  sdk,
+                  projectId,
+                  entityType,
+                  entityId!,
+                  { isPublished: next }
+                )
+                setEntity(prev => ({
+                  ...prev,
+                  isPublished: result.isPublished,
+                  publishedAt: result.publishedAt,
+                }))
+              }}
+              onChangeTier={async nextLevel => {
+                const result = await patchEntityPublish(
+                  sdk,
+                  projectId,
+                  entityType,
+                  entityId!,
+                  { minimumTierLevel: nextLevel }
+                )
+                setEntity(prev => ({
+                  ...prev,
+                  minimumTierLevel: result.minimumTierLevel,
+                }))
+              }}
+              compact
+            />
+          )}
+
           {/* Edit mode controls (left side, takes available space) */}
           <div className="flex items-center gap-3 flex-1">
             {viewMode === 'edit' && (

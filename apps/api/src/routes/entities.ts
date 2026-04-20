@@ -49,7 +49,8 @@ async function resolveEntityTypeCollection(
 
 /** Format an entity row into the standard API response shape.
  * If `fields` is provided, the flattened entityData is projected down to
- * those keys only. `id` and `_meta` are always returned. */
+ * those keys only. `id`, top-level publish columns, and `_meta` are always
+ * returned. */
 function formatEntityResponse(row: typeof entities.$inferSelect, fields?: Set<string>) {
   const meta = {
     bobbinId: row.bobbinId,
@@ -60,16 +61,24 @@ function formatEntityResponse(row: typeof entities.$inferSelect, fields?: Set<st
     updatedAt: row.updatedAt
   }
 
+  const publishFields = {
+    isPublished: row.isPublished,
+    publishedAt: row.publishedAt,
+    publishOrder: row.publishOrder,
+    minimumTierLevel: row.minimumTierLevel,
+  }
+
   if (!fields) {
     return {
       id: row.id,
       ...(row.entityData as object),
+      ...publishFields,
       _meta: meta
     }
   }
 
   const data = row.entityData as Record<string, unknown>
-  const projected: Record<string, unknown> = { id: row.id }
+  const projected: Record<string, unknown> = { id: row.id, ...publishFields }
   for (const key of fields) {
     if (key in data) projected[key] = data[key]
   }

@@ -100,6 +100,10 @@ function formatTypeResponse(row: typeof entities.$inferSelect) {
   return {
     id: row.id,
     ...(row.entityData as object),
+    isPublished: row.isPublished,
+    publishedAt: row.publishedAt,
+    publishOrder: row.publishOrder,
+    minimumTierLevel: row.minimumTierLevel,
     _meta: {
       bobbinId: row.bobbinId,
       collection: row.collectionName,

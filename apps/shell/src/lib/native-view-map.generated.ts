@@ -22,9 +22,11 @@ export const NATIVE_VIEW_MAP: Record<string, () => Promise<any>> = {
   'ai-tools.panels/ai-panel': () => import('@bobbinry/ai-tools/panels/ai-panel'),
   'discord-notifier.panels/settings': () => import('@bobbinry/discord-notifier/panels/settings'),
   'google-drive-backup.panels/drive-sync': () => import('@bobbinry/google-drive-backup/panels/drive-sync'),
+  'feedback.panels/annotation-panel': () => import('@bobbinry/feedback/panels/annotation-panel'),
   'entities.config': () => import('@bobbinry/entities/views/config'),
   'entities.entity-list': () => import('@bobbinry/entities/views/entity-list'),
   'entities.entity-editor': () => import('@bobbinry/entities/views/entity-editor'),
+  'entities.publishing': () => import('@bobbinry/entities/views/publishing'),
   'entities.panels/navigation': () => import('@bobbinry/entities/panels/navigation'),
   'entities.panels/entity-preview': () => import('@bobbinry/entities/panels/entity-preview'),
   'relationships.graph': () => import('@bobbinry/relationships/views/graph'),
@@ -39,5 +41,4 @@ export const NATIVE_VIEW_MAP: Record<string, () => Promise<any>> = {
   'goals.panels/progress': () => import('@bobbinry/goals/panels/progress'),
   'web-publisher.release-config': () => import('@bobbinry/web-publisher/views/release-config'),
   'web-publisher.panels/chapter-publish': () => import('@bobbinry/web-publisher/panels/chapter-publish'),
-  'feedback.panels/annotation-panel': () => import('@bobbinry/feedback/panels/annotation-panel'),
 }

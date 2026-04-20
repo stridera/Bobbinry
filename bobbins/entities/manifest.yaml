@@ -1,6 +1,6 @@
 id: entities
 name: Entities
-version: 1.3.0
+version: 1.4.0
 author: "Bobbins Core"
 description: "Configurable entity system for characters, spells, locations, items, and more"
 tags: [worldbuilding, rpg, entities, configurable]
@@ -48,6 +48,12 @@ ui:
       source: "*"
       handlers: []
       priority: 10
+    - id: publishing
+      name: Publishing
+      type: custom
+      source: "*"
+      handlers: []
+      priority: 15
 
 interactions:
   actions:
