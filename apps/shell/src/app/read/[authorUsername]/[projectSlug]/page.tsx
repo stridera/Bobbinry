@@ -111,19 +111,18 @@ function ProjectReadingContent() {
   const supportRef = useRef<HTMLDivElement>(null)
 
   type TabId = 'chapters' | 'entities' | 'support'
-  const initialTab = ((): TabId => {
-    const t = searchParams.get('tab')
-    return t === 'entities' || t === 'support' ? t : 'chapters'
-  })()
-  const [activeTab, setActiveTab] = useState<TabId>(initialTab)
+  // Derive from the URL so browser back/forward stays in sync. router.push
+  // below creates history entries; hitting back returns to the previous tab.
+  const tabParam = searchParams.get('tab')
+  const activeTab: TabId =
+    tabParam === 'entities' || tabParam === 'support' ? tabParam : 'chapters'
 
   const goToTab = useCallback((tab: TabId) => {
-    setActiveTab(tab)
     const params = new URLSearchParams(searchParams.toString())
     if (tab === 'chapters') params.delete('tab')
     else params.set('tab', tab)
     const qs = params.toString()
-    router.replace(`/read/${authorUsername}/${projectSlug}${qs ? `?${qs}` : ''}`, { scroll: false })
+    router.push(`/read/${authorUsername}/${projectSlug}${qs ? `?${qs}` : ''}`, { scroll: false })
   }, [authorUsername, projectSlug, router, searchParams])
 
   // When we switch from Entities → Support via a tap on a locked card or the
