@@ -50,6 +50,16 @@ export interface PublishControlProps {
     publishedVariantIds: string[]
   }) => Promise<void>
   /**
+   * Per-variant (and base) minimum tier overrides. Map of variant id or
+   * '__base__' → min tier level. Missing keys default to 0. When omitted the
+   * tier selectors are hidden.
+   */
+  variantAccessLevels?: Record<string, number>
+  /**
+   * Persist a single variant's tier override. level === 0 clears the override.
+   */
+  onChangeVariantTier?: (which: string | '__base__', level: number) => Promise<void> | void
+  /**
    * Suppress the built-in variants expandable — useful when the caller (e.g.
    * the entity editor) manages variant publishing through another surface like
    * the variant manage bar.
@@ -70,11 +80,15 @@ export function PublishControl({
   publishBase = true,
   publishedVariantIds = [],
   onChangeVariantSet,
+  variantAccessLevels,
+  onChangeVariantTier,
   hideVariantPicker = false,
 }: PublishControlProps) {
   const [pending, setPending] = useState<'publish' | 'tier' | 'variants' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [variantPickerOpen, setVariantPickerOpen] = useState(false)
+
+  const showVariantTiers = hasTiers && !!variantAccessLevels && !!onChangeVariantTier
 
   const hasVariants = !hideVariantPicker && variants.length > 0 && !!onChangeVariantSet
   const variantIdSet = new Set(publishedVariantIds)
@@ -135,6 +149,19 @@ export function PublishControl({
 
   function toggleBase(next: boolean) {
     handleVariantChange(next, publishedVariantIds)
+  }
+
+  async function handleVariantTierChange(which: string | '__base__', level: number) {
+    if (!onChangeVariantTier) return
+    setPending('variants')
+    setError(null)
+    try {
+      await onChangeVariantTier(which, level)
+    } catch (err: any) {
+      setError(err?.message ?? 'Could not update variant tier')
+    } finally {
+      setPending(null)
+    }
   }
 
   const gap = compact ? 'gap-2' : 'gap-3'
@@ -213,20 +240,40 @@ export function PublishControl({
           </button>
           {variantPickerOpen && isPublished && (
             <div className="rounded-md border border-gray-200 bg-gray-50 p-2 dark:border-gray-700 dark:bg-gray-900/60">
-              <VariantCheckbox
+              <VariantRow
                 label="Base"
                 checked={publishBase}
                 disabled={pending === 'variants'}
                 onChange={toggleBase}
                 hint="Shared fields"
+                tierSelector={
+                  showVariantTiers ? (
+                    <VariantTierSelect
+                      level={variantAccessLevels?.['__base__'] ?? 0}
+                      tiers={tiers}
+                      disabled={!publishBase || pending === 'variants'}
+                      onChange={level => handleVariantTierChange('__base__', level)}
+                    />
+                  ) : undefined
+                }
               />
               {variants.map(v => (
-                <VariantCheckbox
+                <VariantRow
                   key={v.id}
                   label={v.label}
                   checked={variantIdSet.has(v.id)}
                   disabled={pending === 'variants'}
                   onChange={() => toggleVariantId(v.id)}
+                  tierSelector={
+                    showVariantTiers ? (
+                      <VariantTierSelect
+                        level={variantAccessLevels?.[v.id] ?? 0}
+                        tiers={tiers}
+                        disabled={!variantIdSet.has(v.id) || pending === 'variants'}
+                        onChange={level => handleVariantTierChange(v.id, level)}
+                      />
+                    ) : undefined
+                  }
                 />
               ))}
             </div>
@@ -262,35 +309,63 @@ function describeVariantSelection(
   return `${selectedVariantCount} of ${totalVariants} variants`
 }
 
-function VariantCheckbox({
+function VariantRow({
   label,
   checked,
   onChange,
   disabled,
   hint,
+  tierSelector,
 }: {
   label: string
   checked: boolean
   onChange: (next: boolean) => void
   disabled?: boolean
   hint?: string
+  tierSelector?: React.ReactNode
 }) {
   return (
-    <label
-      className={`flex items-center gap-2 py-0.5 text-[12px] ${
-        disabled ? 'opacity-60' : 'cursor-pointer'
-      }`}
+    <div className={`flex items-center gap-2 py-0.5 text-[12px] ${disabled ? 'opacity-60' : ''}`}>
+      <label className={`flex flex-1 min-w-0 items-center gap-2 ${disabled ? '' : 'cursor-pointer'}`}>
+        <input
+          type="checkbox"
+          checked={checked}
+          disabled={disabled}
+          onChange={e => onChange(e.target.checked)}
+          className="h-3.5 w-3.5 accent-blue-600"
+        />
+        <span className="truncate text-gray-800 dark:text-gray-200">{label}</span>
+        {hint && <span className="text-[10px] text-gray-500 dark:text-gray-400">· {hint}</span>}
+      </label>
+      {tierSelector}
+    </div>
+  )
+}
+
+function VariantTierSelect({
+  level,
+  tiers,
+  disabled,
+  onChange,
+}: {
+  level: number
+  tiers: SubscriptionTier[]
+  disabled?: boolean
+  onChange: (level: number) => void
+}) {
+  return (
+    <select
+      value={level}
+      disabled={disabled}
+      onChange={e => onChange(Number(e.target.value))}
+      title={disabled ? 'Enable this view first to gate it by tier' : 'Minimum subscriber tier for this view'}
+      className="max-w-[7rem] rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-1.5 py-0.5 text-[11px] text-gray-900 dark:text-gray-100 disabled:opacity-50"
     >
-      <input
-        type="checkbox"
-        checked={checked}
-        disabled={disabled}
-        onChange={e => onChange(e.target.checked)}
-        className="h-3.5 w-3.5 accent-blue-600"
-      />
-      <span className="text-gray-800 dark:text-gray-200">{label}</span>
-      {hint && <span className="text-[10px] text-gray-500 dark:text-gray-400">· {hint}</span>}
-    </label>
+      <option value={0}>Public</option>
+      {tiers.map(t => (
+        <option key={t.id} value={t.tierLevel}>{`T${t.tierLevel} · ${t.name}`}</option>
+      ))}
+    </select>
   )
 }
 

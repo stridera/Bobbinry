@@ -43,6 +43,7 @@ interface PublishableRow {
   minimumTierLevel: number
   publishBase: boolean
   publishedVariantIds: string[]
+  variantAccessLevels: Record<string, number>
   variants: VariantOption[]
 }
 
@@ -139,6 +140,10 @@ export default function PublishingView({ projectId, sdk }: PublishingViewProps) 
           minimumTierLevel: (d.minimumTierLevel ?? 0) as number,
           publishBase: d.publishBase ?? true,
           publishedVariantIds: Array.isArray(d.publishedVariantIds) ? d.publishedVariantIds : [],
+          variantAccessLevels:
+            d.variantAccessLevels && typeof d.variantAccessLevels === 'object'
+              ? (d.variantAccessLevels as Record<string, number>)
+              : {},
           variants: variantOptions,
         }
       })
@@ -301,6 +306,33 @@ export default function PublishingView({ projectId, sdk }: PublishingViewProps) 
                 publishBase: result.publishBase,
                 publishedVariantIds: result.publishedVariantIds,
               }
+            : r
+        ),
+      }))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function changeVariantTierForEntity(
+    typeId: string,
+    row: PublishableRow,
+    which: string | '__base__',
+    level: number
+  ) {
+    setBusy(`entity:${row.id}`)
+    try {
+      const next = { ...row.variantAccessLevels }
+      if (level === 0) delete next[which]
+      else next[which] = level
+      const result = await patchEntityPublish(sdk, projectId, typeId, row.id, {
+        variantAccessLevels: next,
+      })
+      setEntitiesByType(prev => ({
+        ...prev,
+        [typeId]: (prev[typeId] ?? []).map(r =>
+          r.id === row.id
+            ? { ...r, variantAccessLevels: result.variantAccessLevels }
             : r
         ),
       }))
@@ -490,6 +522,25 @@ export default function PublishingView({ projectId, sdk }: PublishingViewProps) 
 
                   {isExpanded && (
                     <div className="border-t border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-900/40">
+                      {!t.isPublished && list && list.some(r => r.isPublished) && (
+                        <div className="mb-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-200">
+                          <svg className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                          </svg>
+                          <div className="flex-1">
+                            <strong>{t.label} section isn't published to readers yet.</strong>{' '}
+                            Published entries below won't be visible until you toggle the section on.
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => togglePublishType(t, true)}
+                            disabled={busy === `type:${t.typeId}`}
+                            className="flex-shrink-0 rounded border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-60 dark:border-amber-700 dark:bg-gray-900 dark:text-amber-200 dark:hover:bg-amber-900/40"
+                          >
+                            Publish section
+                          </button>
+                        </div>
+                      )}
                       {list === undefined ? (
                         <div className="py-4 text-center text-xs text-gray-500 dark:text-gray-400">
                           Loading entities…
@@ -534,6 +585,10 @@ export default function PublishingView({ projectId, sdk }: PublishingViewProps) 
                                   publishedVariantIds={row.publishedVariantIds}
                                   onChangeVariantSet={next =>
                                     changeVariantSetForEntity(t.typeId, row, next)
+                                  }
+                                  variantAccessLevels={row.variantAccessLevels}
+                                  onChangeVariantTier={(which, level) =>
+                                    changeVariantTierForEntity(t.typeId, row, which, level)
                                   }
                                   compact
                                 />
