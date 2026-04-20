@@ -31,7 +31,11 @@ import { randomUUID } from 'crypto'
 import { env } from '../lib/env'
 import { optionalAuth, requireAuth, requireProjectOwnership } from '../middleware/auth'
 import { hashRssToken } from './rss-tokens'
-import { getEffectiveBobbins } from '../lib/effective-bobbins'
+import {
+  getEffectiveBobbins,
+  getCollectionIdsForProject,
+  buildScopeCondition,
+} from '../lib/effective-bobbins'
 
 // ============================================
 // AUTHOR RESOLUTION
@@ -1930,7 +1934,14 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       const callerTier = await resolveCallerTierLevel(projectId, request.user?.id)
       const isOwner = callerTier === Number.POSITIVE_INFINITY
 
-      // 1) Load all published type-definition rows for this project
+      // Resolve entity-visibility scope for this project: project, any
+      // collections it belongs to, and the owner's global entities. This
+      // mirrors buildScopeCondition() used by the author-side routes so
+      // collection-scoped type defs + entities show on the reader too.
+      const collectionIds = await getCollectionIdsForProject(projectId)
+      const scopeFilter = buildScopeCondition(projectId, collectionIds, project.ownerId)
+
+      // 1) Load all published type-definition rows visible from this project
       const typeRows = await db
         .select({
           id: entities.id,
@@ -1941,7 +1952,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         })
         .from(entities)
         .where(and(
-          eq(entities.projectId, projectId),
+          scopeFilter,
           eq(entities.collectionName, 'entity_type_definitions'),
           eq(entities.isPublished, true)
         ))
@@ -1962,7 +1973,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           .select()
           .from(entities)
           .where(and(
-            eq(entities.projectId, projectId),
+            scopeFilter,
             inArray(entities.collectionName, typeIds),
             eq(entities.isPublished, true)
           ))
@@ -2054,6 +2065,9 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       const callerTier = await resolveCallerTierLevel(projectId, request.user?.id)
       const isOwner = callerTier === Number.POSITIVE_INFINITY
 
+      const collectionIds = await getCollectionIdsForProject(projectId)
+      const scopeFilter = buildScopeCondition(projectId, collectionIds, project.ownerId)
+
       const typeRows = await db
         .select({
           id: entities.id,
@@ -2062,7 +2076,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         })
         .from(entities)
         .where(and(
-          eq(entities.projectId, projectId),
+          scopeFilter,
           eq(entities.collectionName, 'entity_type_definitions'),
           eq(entities.isPublished, true),
         ))
@@ -2105,7 +2119,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         })
         .from(entities)
         .where(and(
-          eq(entities.projectId, projectId),
+          scopeFilter,
           inArray(entities.collectionName, Array.from(visibleTypeMeta.keys())),
           eq(entities.isPublished, true),
         ))

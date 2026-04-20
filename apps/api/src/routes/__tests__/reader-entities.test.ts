@@ -1,7 +1,15 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from '@jest/globals'
 import { eq } from 'drizzle-orm'
 import { db } from '../../db/connection'
-import { bobbinsInstalled, entities, subscriptionTiers, subscriptions, users } from '../../db/schema'
+import {
+  bobbinsInstalled,
+  entities,
+  projectCollections,
+  projectCollectionMemberships,
+  subscriptionTiers,
+  subscriptions,
+  users,
+} from '../../db/schema'
 import {
   createTestApp,
   createTestToken,
@@ -332,6 +340,69 @@ describe('Public Reader — Entities', () => {
       const names = body.entities.map((e: any) => e.name).sort()
       // Only the published form's name appears; the werewolf alias is hidden.
       expect(names).toEqual(['Velka'])
+    })
+
+    it('includes collection-scoped entities when the project belongs to the collection', async () => {
+      const author = await createTestUser()
+      await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, author.id))
+      const project = await createTestProject(author.id)
+
+      // Create a collection and add the project to it
+      const [collection] = await db.insert(projectCollections).values({
+        userId: author.id,
+        name: 'Test Saga',
+      }).returning()
+      await db.insert(projectCollectionMemberships).values({
+        collectionId: collection!.id,
+        projectId: project.id,
+      })
+
+      // Install the entities bobbin at collection scope
+      await db.insert(bobbinsInstalled).values({
+        collectionId: collection!.id,
+        bobbinId: 'entities',
+        scope: 'collection',
+        enabled: true,
+        version: '1.0.0',
+        manifestJson: { id: 'entities', name: 'entities', version: '1.0.0' },
+      })
+
+      // Type + entity at collection scope (no project_id)
+      await db.insert(entities).values({
+        id: crypto.randomUUID(),
+        collectionId: collection!.id,
+        scope: 'collection',
+        bobbinId: 'entities',
+        collectionName: TYPE_COLLECTION,
+        entityData: {
+          type_id: 'characters',
+          label: 'Characters',
+          icon: '👤',
+          custom_fields: [],
+          list_layout: { display: 'grid', showFields: ['name'] },
+          editor_layout: { template: 'compact-card', imagePosition: 'top-right', imageSize: 'medium', headerFields: ['name'], sections: [] },
+        },
+        isPublished: true,
+      })
+      await db.insert(entities).values({
+        id: crypto.randomUUID(),
+        collectionId: collection!.id,
+        scope: 'collection',
+        bobbinId: 'entities',
+        collectionName: 'characters',
+        entityData: { name: 'Lira' },
+        isPublished: true,
+      })
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/public/projects/${project.id}/entities`,
+      })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.payload)
+      expect(body.installed).toBe(true)
+      expect(body.types).toHaveLength(1)
+      expect(body.types[0].entities.map((e: any) => e.name)).toEqual(['Lira'])
     })
 
     it('emits both names when both variants with versionable names are published', async () => {
