@@ -13,7 +13,7 @@ module.exports = {
     '^.+\\.js$': ['ts-jest', { tsconfig: { allowJs: true } }]
   },
   transformIgnorePatterns: [
-    'node_modules/(?!\\.bun/jose|jose/)'
+    'node_modules/(?!\\.bun/jose|jose/|\\.bun/nanoid|nanoid/)'
   ],
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',

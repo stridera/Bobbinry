@@ -31,6 +31,7 @@ import { randomUUID } from 'crypto'
 import { env } from '../lib/env'
 import { optionalAuth, requireAuth, requireProjectOwnership } from '../middleware/auth'
 import { hashRssToken } from './rss-tokens'
+import { getEffectiveBobbins } from '../lib/effective-bobbins'
 
 // ============================================
 // AUTHOR RESOLUTION
@@ -1860,6 +1861,251 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
     } catch (error) {
       fastify.log.error({ error, correlationId }, 'Failed to delete reaction')
       return reply.status(500).send({ error: 'Failed to delete reaction', correlationId })
+    }
+  })
+
+  // ============================================
+  // PUBLISHED ENTITIES (READER CODEX)
+  // ============================================
+
+  /**
+   * Resolve the caller's effective subscription tier level against a project
+   * owner. Owner → Infinity, active subscriber → their tier_level, otherwise 0.
+   */
+  async function resolveCallerTierLevel(projectId: string, callerId: string | undefined): Promise<number> {
+    if (!callerId) return 0
+    const [project] = await db
+      .select({ ownerId: projects.ownerId })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1)
+    if (!project) return 0
+    if (project.ownerId === callerId) return Number.POSITIVE_INFINITY
+
+    const [sub] = await db
+      .select({ tierLevel: subscriptionTiers.tierLevel })
+      .from(subscriptions)
+      .innerJoin(subscriptionTiers, eq(subscriptionTiers.id, subscriptions.tierId))
+      .where(and(
+        eq(subscriptions.subscriberId, callerId),
+        eq(subscriptions.authorId, project.ownerId),
+        eq(subscriptions.status, 'active'),
+        sql`${subscriptions.currentPeriodEnd} > NOW()`
+      ))
+      .orderBy(sql`${subscriptionTiers.tierLevel} DESC`)
+      .limit(1)
+
+    return sub?.tierLevel ?? 0
+  }
+
+  /**
+   * List published entities for the public reader, grouped by published type.
+   * Gated by subscriber tier level when minimum_tier_level > 0.
+   */
+  fastify.get<{
+    Params: { projectId: string }
+  }>('/public/projects/:projectId/entities', {
+    preHandler: optionalAuth
+  }, async (request, reply) => {
+    try {
+      const { projectId } = request.params
+
+      // Confirm project exists and grab owner for bobbin-installed lookup
+      const [project] = await db
+        .select({ id: projects.id, ownerId: projects.ownerId })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1)
+
+      if (!project) {
+        return reply.status(404).send({ error: 'Project not found' })
+      }
+
+      const effective = await getEffectiveBobbins(projectId, project.ownerId)
+      const entitiesInstalled = effective.find(b => b.bobbinId === 'entities' && b.enabled)
+      if (!entitiesInstalled) {
+        return { installed: false, callerTierLevel: 0, types: [], lockedPreviews: { types: 0, entities: 0 } }
+      }
+
+      const callerTier = await resolveCallerTierLevel(projectId, request.user?.id)
+      const isOwner = callerTier === Number.POSITIVE_INFINITY
+
+      // 1) Load all published type-definition rows for this project
+      const typeRows = await db
+        .select({
+          id: entities.id,
+          data: entities.entityData,
+          isPublished: entities.isPublished,
+          publishOrder: entities.publishOrder,
+          minimumTierLevel: entities.minimumTierLevel,
+        })
+        .from(entities)
+        .where(and(
+          eq(entities.projectId, projectId),
+          eq(entities.collectionName, 'entity_type_definitions'),
+          eq(entities.isPublished, true)
+        ))
+        .orderBy(asc(entities.publishOrder))
+
+      const visibleTypes = typeRows.filter(t => isOwner || t.minimumTierLevel <= callerTier)
+      const lockedTypes = typeRows.length - visibleTypes.length
+
+      // 2) Load published entities for each visible type, tier-filtered
+      let lockedEntityCount = 0
+      const typeIds = visibleTypes
+        .map(t => (t.data as Record<string, unknown>)?.type_id)
+        .filter((v): v is string => typeof v === 'string')
+
+      const entityRowsByType = new Map<string, typeof entities.$inferSelect[]>()
+      if (typeIds.length > 0) {
+        const entityRows = await db
+          .select()
+          .from(entities)
+          .where(and(
+            eq(entities.projectId, projectId),
+            inArray(entities.collectionName, typeIds),
+            eq(entities.isPublished, true)
+          ))
+          .orderBy(asc(entities.publishOrder))
+
+        for (const row of entityRows) {
+          const list = entityRowsByType.get(row.collectionName) ?? []
+          list.push(row)
+          entityRowsByType.set(row.collectionName, list)
+        }
+      }
+
+      const types = visibleTypes.map(t => {
+        const typeData = t.data as Record<string, any>
+        const typeId = typeData.type_id as string
+        const rows = entityRowsByType.get(typeId) ?? []
+        const visibleRows = isOwner ? rows : rows.filter(r => r.minimumTierLevel <= callerTier)
+        lockedEntityCount += rows.length - visibleRows.length
+
+        return {
+          typeId,
+          label: typeData.label,
+          icon: typeData.icon ?? '📋',
+          listLayout: typeData.list_layout,
+          customFields: typeData.custom_fields ?? [],
+          baseFields: typeData.base_fields ?? ['name', 'description', 'tags', 'image_url'],
+          subtitleFields: typeData.subtitle_fields ?? [],
+          minimumTierLevel: t.minimumTierLevel,
+          publishOrder: t.publishOrder,
+          entities: visibleRows.map(r => {
+            const data = r.entityData as Record<string, unknown>
+            return {
+              id: r.id,
+              typeId,
+              name: data?.name ?? null,
+              description: data?.description ?? null,
+              imageUrl: data?.image_url ?? null,
+              tags: Array.isArray(data?.tags) ? data.tags : [],
+              entityData: data,
+              publishOrder: r.publishOrder,
+              minimumTierLevel: r.minimumTierLevel,
+              publishedAt: r.publishedAt,
+            }
+          }),
+        }
+      })
+
+      return {
+        installed: true,
+        callerTierLevel: isOwner ? -1 : callerTier,
+        types,
+        lockedPreviews: { types: lockedTypes, entities: lockedEntityCount },
+      }
+    } catch (error) {
+      fastify.log.error(error, 'Failed to list published entities')
+      return reply.status(500).send({ error: 'Failed to list published entities' })
+    }
+  })
+
+  /**
+   * Lightweight list of published entity names for the chapter-page highlighter.
+   * Returns only { id, name, typeId, typeIcon, typeLabel } rows — matches the
+   * EntityEntry shape in bobbins/manuscript/src/extensions/entity-highlight.ts.
+   */
+  fastify.get<{
+    Params: { projectId: string }
+  }>('/public/projects/:projectId/entities/published-names', {
+    preHandler: optionalAuth
+  }, async (request, reply) => {
+    try {
+      const { projectId } = request.params
+
+      const [project] = await db
+        .select({ id: projects.id, ownerId: projects.ownerId })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1)
+      if (!project) return reply.status(404).send({ error: 'Project not found' })
+
+      const effective = await getEffectiveBobbins(projectId, project.ownerId)
+      const installed = effective.find(b => b.bobbinId === 'entities' && b.enabled)
+      if (!installed) return { installed: false, entities: [] }
+
+      const callerTier = await resolveCallerTierLevel(projectId, request.user?.id)
+      const isOwner = callerTier === Number.POSITIVE_INFINITY
+
+      const typeRows = await db
+        .select({
+          id: entities.id,
+          data: entities.entityData,
+          minimumTierLevel: entities.minimumTierLevel,
+        })
+        .from(entities)
+        .where(and(
+          eq(entities.projectId, projectId),
+          eq(entities.collectionName, 'entity_type_definitions'),
+          eq(entities.isPublished, true),
+        ))
+
+      const visibleTypeMeta = new Map<string, { label: string; icon: string }>()
+      for (const t of typeRows) {
+        if (!isOwner && t.minimumTierLevel > callerTier) continue
+        const d = t.data as Record<string, any>
+        if (typeof d?.type_id === 'string') {
+          visibleTypeMeta.set(d.type_id, { label: d.label ?? d.type_id, icon: d.icon ?? '📋' })
+        }
+      }
+
+      if (visibleTypeMeta.size === 0) return { installed: true, entities: [] }
+
+      const entityRows = await db
+        .select({
+          id: entities.id,
+          data: entities.entityData,
+          collectionName: entities.collectionName,
+          minimumTierLevel: entities.minimumTierLevel,
+        })
+        .from(entities)
+        .where(and(
+          eq(entities.projectId, projectId),
+          inArray(entities.collectionName, Array.from(visibleTypeMeta.keys())),
+          eq(entities.isPublished, true),
+        ))
+
+      const rows = entityRows
+        .filter(r => isOwner || r.minimumTierLevel <= callerTier)
+        .map(r => {
+          const meta = visibleTypeMeta.get(r.collectionName)!
+          const name = (r.data as Record<string, unknown>)?.name
+          return {
+            id: r.id,
+            name: typeof name === 'string' ? name : '',
+            typeId: r.collectionName,
+            typeIcon: meta.icon,
+            typeLabel: meta.label,
+          }
+        })
+        .filter(r => r.name.length > 0)
+
+      return { installed: true, entities: rows }
+    } catch (error) {
+      fastify.log.error(error, 'Failed to list published entity names')
+      return reply.status(500).send({ error: 'Failed to list entities' })
     }
   })
 

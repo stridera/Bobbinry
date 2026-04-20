@@ -176,6 +176,13 @@
       "when": 1776487187184,
       "tag": "0025_add_rss_feed_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1776667154126,
+      "tag": "0026_publish_entities",
+      "breakpoints": true
     }
   ]
 }

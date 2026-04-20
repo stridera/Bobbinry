@@ -715,6 +715,14 @@ export const entities = pgTable('entities', {
   collectionName: varchar('collection_name', { length: 255 }).notNull(),
   entityData: jsonb('entity_data').notNull(),
   version: integer('version').default(1).notNull(),
+  // Reader-publish state. Applies to both normal entity rows and
+  // entity-type-definition rows (where it means "publish this section").
+  // minimumTierLevel = 0 is public; >0 requires a subscription at that
+  // subscriptionTiers.tier_level or higher to the project owner.
+  isPublished: boolean('is_published').default(false).notNull(),
+  publishedAt: timestamp('published_at'),
+  publishOrder: integer('publish_order').default(0).notNull(),
+  minimumTierLevel: integer('minimum_tier_level').default(0).notNull(),
   lastEditedAt: timestamp('last_edited_at').defaultNow(),
   lastEditedBy: uuid('last_edited_by').references(() => users.id),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -725,6 +733,7 @@ export const entities = pgTable('entities', {
   userCollectionIdx: index('entities_user_collection_idx').on(table.userId, table.collectionName),
   searchIdx: index('entities_search_idx').using('gin', table.entityData),
   orderIdx: index('entities_order_idx').using('btree', table.projectId, table.collectionName, sql`(entity_data->>'order')`),
+  publicIdx: index('entities_public_idx').on(table.projectId, table.collectionName, table.isPublished, table.publishOrder),
   lastEditedIdx: index('entities_last_edited_idx').on(table.lastEditedAt),
   projectEditedIdx: index('entities_project_edited_idx').on(table.projectId, table.lastEditedAt)
 }))
