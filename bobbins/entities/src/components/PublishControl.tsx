@@ -49,6 +49,12 @@ export interface PublishControlProps {
     publishBase: boolean
     publishedVariantIds: string[]
   }) => Promise<void>
+  /**
+   * Suppress the built-in variants expandable — useful when the caller (e.g.
+   * the entity editor) manages variant publishing through another surface like
+   * the variant manage bar.
+   */
+  hideVariantPicker?: boolean
 }
 
 export function PublishControl({
@@ -64,12 +70,13 @@ export function PublishControl({
   publishBase = true,
   publishedVariantIds = [],
   onChangeVariantSet,
+  hideVariantPicker = false,
 }: PublishControlProps) {
   const [pending, setPending] = useState<'publish' | 'tier' | 'variants' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [variantPickerOpen, setVariantPickerOpen] = useState(false)
 
-  const hasVariants = variants.length > 0 && !!onChangeVariantSet
+  const hasVariants = !hideVariantPicker && variants.length > 0 && !!onChangeVariantSet
   const variantIdSet = new Set(publishedVariantIds)
   const variantCountLabel = hasVariants
     ? describeVariantSelection(publishBase, publishedVariantIds.length, variants.length)
@@ -211,7 +218,7 @@ export function PublishControl({
                 checked={publishBase}
                 disabled={pending === 'variants'}
                 onChange={toggleBase}
-                hint="Unoverlaid entity fields"
+                hint="Shared fields"
               />
               {variants.map(v => (
                 <VariantCheckbox

@@ -404,10 +404,28 @@ export default function EntityEditorView({
     await updateVariants(v => (v ? { ...v, active: id } : null))
   }
 
-  async function setVariantAxisValue(id: string, axisValue: number | null) {
+  async function moveVariant(id: string, delta: -1 | 1) {
     await updateVariants(v => {
       if (!v || !v.items[id]) return null
-      return { ...v, items: { ...v.items, [id]: { ...v.items[id]!, axis_value: axisValue } } }
+      const idx = v.order.indexOf(id)
+      if (idx === -1) return null
+      const target = idx + delta
+      if (target < 0 || target >= v.order.length) return null
+      const nextOrder = [...v.order]
+      ;[nextOrder[idx], nextOrder[target]] = [nextOrder[target]!, nextOrder[idx]!]
+
+      // For ordered axes, keep axis_value aligned with the new position so
+      // sortedVariantIds() (which prefers axis_value) matches the visual
+      // order. 1-based because authors think of "Book 1, Book 2…" not 0.
+      let nextItems = v.items
+      if (typeConfig?.variantAxis?.kind === 'ordered') {
+        nextItems = { ...v.items }
+        nextOrder.forEach((vid, i) => {
+          const item = nextItems[vid]
+          if (item) nextItems[vid] = { ...item, axis_value: i + 1 }
+        })
+      }
+      return { ...v, order: nextOrder, items: nextItems }
     })
   }
 
@@ -566,28 +584,7 @@ export default function EntityEditorView({
                   minimumTierLevel: result.minimumTierLevel,
                 }))
               }}
-              variants={variantIdsInOrder.map(id => ({
-                id,
-                label: variantsBlock?.items[id]?.label ?? id,
-              }))}
-              publishBase={entity.publishBase ?? true}
-              publishedVariantIds={
-                Array.isArray(entity.publishedVariantIds) ? entity.publishedVariantIds : []
-              }
-              onChangeVariantSet={async next => {
-                const result = await patchEntityPublish(
-                  sdk,
-                  projectId,
-                  entityType,
-                  entityId!,
-                  next
-                )
-                setEntity(prev => ({
-                  ...prev,
-                  publishBase: result.publishBase,
-                  publishedVariantIds: result.publishedVariantIds,
-                }))
-              }}
+              hideVariantPicker
               compact
             />
           )}
@@ -761,11 +758,44 @@ export default function EntityEditorView({
           entity={entity}
           axisKind={typeConfig.variantAxis?.kind ?? 'unordered'}
           axisLabel={typeConfig.variantAxis?.label ?? 'Variant'}
+          publishBase={entity.publishBase ?? true}
+          publishedVariantIds={
+            Array.isArray(entity.publishedVariantIds) ? entity.publishedVariantIds : []
+          }
+          isEntityPublished={Boolean(entity.isPublished) && !isNewEntity}
           onAdd={addVariant}
           onRename={renameVariant}
           onDelete={deleteVariant}
           onSetDefault={setDefaultVariant}
-          onSetAxisValue={setVariantAxisValue}
+          onMove={moveVariant}
+          onToggleVariantPublish={async (which, next) => {
+            if (isNewEntity || !entityType) return
+            const currentBase = entity.publishBase ?? true
+            const currentIds: string[] = Array.isArray(entity.publishedVariantIds)
+              ? entity.publishedVariantIds
+              : []
+            const nextState =
+              which === '__base__'
+                ? { publishBase: next, publishedVariantIds: currentIds }
+                : {
+                    publishBase: currentBase,
+                    publishedVariantIds: next
+                      ? Array.from(new Set([...currentIds, which]))
+                      : currentIds.filter(x => x !== which),
+                  }
+            const result = await patchEntityPublish(
+              sdk,
+              projectId,
+              entityType,
+              entityId!,
+              nextState
+            )
+            setEntity(prev => ({
+              ...prev,
+              publishBase: result.publishBase,
+              publishedVariantIds: result.publishedVariantIds,
+            }))
+          }}
         />
       )}
 
@@ -786,36 +816,49 @@ export default function EntityEditorView({
 }
 
 // ---------------------------------------------------------------------------
-// VariantManager — inline panel for adding / renaming / deleting variants.
-// Kept inside this file since it's tightly coupled to the editor's state.
+// VariantManager — inline panel for adding / renaming / deleting / ordering /
+// publishing variants. Kept inside this file since it's tightly coupled to the
+// editor's state.
 
 interface VariantManagerProps {
   entity: Record<string, any>
   axisKind: 'ordered' | 'unordered'
   axisLabel: string
+  publishBase: boolean
+  publishedVariantIds: string[]
+  /** Whether the publish checkboxes are meaningful. False for unsaved / unpublished entities. */
+  isEntityPublished: boolean
   onAdd: (label: string) => void
   onRename: (id: string, label: string) => void
   onDelete: (id: string) => void
   onSetDefault: (id: string | null) => void
-  onSetAxisValue: (id: string, axisValue: number | null) => void
+  onMove: (id: string, delta: -1 | 1) => void
+  /** Called with '__base__' when toggling the Base row. */
+  onToggleVariantPublish: (which: string | '__base__', next: boolean) => Promise<void> | void
 }
 
 function VariantManager({
   entity,
   axisKind,
   axisLabel,
+  publishBase,
+  publishedVariantIds,
+  isEntityPublished,
   onAdd,
   onRename,
   onDelete,
   onSetDefault,
-  onSetAxisValue,
+  onMove,
+  onToggleVariantPublish,
 }: VariantManagerProps) {
   const [newLabel, setNewLabel] = useState('')
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
+  const [publishError, setPublishError] = useState<string | null>(null)
   const variants = getVariants(entity)
   const ids = sortedVariantIds(entity, axisKind)
+  const publishedSet = new Set(publishedVariantIds)
 
   function commitAdd() {
     if (!newLabel.trim()) return
@@ -828,6 +871,28 @@ function VariantManager({
     onRename(id, renameDraft.trim())
     setRenamingId(null)
     setRenameDraft('')
+  }
+
+  async function togglePublish(which: string | '__base__', next: boolean) {
+    setPublishError(null)
+    // Compute what the effective selection will be to catch the "nothing
+    // visible" case locally, mirroring the server-side validation.
+    const nextBase = which === '__base__' ? next : publishBase
+    const nextIds =
+      which === '__base__'
+        ? publishedVariantIds
+        : next
+          ? Array.from(new Set([...publishedVariantIds, which]))
+          : publishedVariantIds.filter(x => x !== which)
+    if (isEntityPublished && !nextBase && nextIds.length === 0) {
+      setPublishError('Publishing requires the base or at least one variant to stay visible')
+      return
+    }
+    try {
+      await onToggleVariantPublish(which, next)
+    } catch (err: any) {
+      setPublishError(err?.message ?? 'Could not update publish state')
+    }
   }
 
   return (
@@ -851,16 +916,55 @@ function VariantManager({
         </button>
       </div>
 
-      {ids.length === 0 && (
-        <p className="text-xs text-gray-500 dark:text-gray-400">No variants yet. Add one above.</p>
+      {publishError && (
+        <p className="text-xs text-red-600 dark:text-red-400">{publishError}</p>
       )}
 
-      {ids.map(id => {
+      {/* Base row — the un-overridden view of the entity. Publishable alongside
+          variants so authors can, e.g., hide "base" and only publish specific
+          forms like Human + Werewolf. */}
+      <div className="flex flex-wrap items-center gap-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1.5">
+        <PublishCheckbox
+          checked={publishBase}
+          disabled={!isEntityPublished}
+          onChange={next => togglePublish('__base__', next)}
+          title={
+            isEntityPublished
+              ? 'Show the base (shared) view on the reader'
+              : 'Publish the entity to enable variant-level publishing'
+          }
+        />
+        <span className="text-sm font-medium text-gray-900 dark:text-gray-100 flex-1 min-w-0 truncate">
+          Base
+        </span>
+        <span className="text-[11px] text-gray-500 dark:text-gray-400">
+          Shared fields (shown when no variant is selected)
+        </span>
+      </div>
+
+      {ids.length === 0 && (
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          No {axisLabel.toLowerCase()} variants yet. Add one above.
+        </p>
+      )}
+
+      {ids.map((id, idx) => {
         const item = variants?.items[id]
         if (!item) return null
         const isDefault = variants?.active === id
+        const isPublished = publishedSet.has(id)
         return (
           <div key={id} className="flex flex-wrap items-center gap-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1.5">
+            <PublishCheckbox
+              checked={isPublished}
+              disabled={!isEntityPublished}
+              onChange={next => togglePublish(id, next)}
+              title={
+                isEntityPublished
+                  ? 'Show this variant on the reader'
+                  : 'Publish the entity to enable variant-level publishing'
+              }
+            />
             {renamingId === id ? (
               <>
                 <input
@@ -869,7 +973,7 @@ function VariantManager({
                   onChange={e => setRenameDraft(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') commitRename(id) }}
                   autoFocus
-                  className="flex-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-0.5 text-sm"
+                  className="flex-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-0.5 text-sm text-gray-900 dark:text-gray-100"
                 />
                 <button
                   type="button"
@@ -890,16 +994,32 @@ function VariantManager({
               <>
                 <span className="text-sm text-gray-900 dark:text-gray-100 flex-1 min-w-0 truncate">{item.label}</span>
                 {axisKind === 'ordered' && (
-                  <input
-                    type="number"
-                    value={item.axis_value == null ? '' : item.axis_value}
-                    onChange={e => {
-                      const raw = e.target.value
-                      onSetAxisValue(id, raw === '' ? null : Number(raw))
-                    }}
-                    title={`${axisLabel} value (sort key)`}
-                    className="w-16 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-1.5 py-0.5 text-xs"
-                  />
+                  <div className="flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      onClick={() => onMove(id, -1)}
+                      disabled={idx === 0}
+                      aria-label="Move up"
+                      title="Move earlier"
+                      className="h-5 w-5 flex items-center justify-center rounded text-gray-500 dark:text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200 disabled:opacity-30 disabled:hover:bg-transparent"
+                    >
+                      <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onMove(id, 1)}
+                      disabled={idx === ids.length - 1}
+                      aria-label="Move down"
+                      title="Move later"
+                      className="h-5 w-5 flex items-center justify-center rounded text-gray-500 dark:text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200 disabled:opacity-30 disabled:hover:bg-transparent"
+                    >
+                      <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                  </div>
                 )}
                 <button
                   type="button"
@@ -953,5 +1073,33 @@ function VariantManager({
         )
       })}
     </div>
+  )
+}
+
+function PublishCheckbox({
+  checked,
+  disabled,
+  onChange,
+  title,
+}: {
+  checked: boolean
+  disabled?: boolean
+  onChange: (next: boolean) => void
+  title?: string
+}) {
+  return (
+    <label
+      className={`flex items-center gap-1 ${disabled ? 'opacity-50' : 'cursor-pointer'}`}
+      title={title}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={e => onChange(e.target.checked)}
+        className="h-3.5 w-3.5 accent-emerald-600"
+      />
+      <span className="text-[11px] text-gray-600 dark:text-gray-400">Publish</span>
+    </label>
   )
 }
