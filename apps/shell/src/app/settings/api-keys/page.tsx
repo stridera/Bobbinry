@@ -7,11 +7,96 @@ import Link from 'next/link'
 import { SiteNav } from '@/components/SiteNav'
 import { apiFetch } from '@/lib/api'
 
-const AVAILABLE_SCOPES = [
-  { id: 'projects:read', label: 'Projects', description: 'Read your projects and their settings' },
-  { id: 'entities:read', label: 'Entities', description: 'Read entities across your collections' },
-  { id: 'stats:read', label: 'Stats', description: 'Read dashboard stats, activity, and project groupings' },
-] as const
+type ResourceId = 'projects' | 'entities' | 'stats'
+type Level = 'none' | 'read' | 'write'
+
+interface Resource {
+  id: ResourceId
+  label: string
+  description: string
+  maxLevel: 'read' | 'write'
+}
+
+const RESOURCES: Resource[] = [
+  {
+    id: 'projects',
+    label: 'Projects',
+    description: 'Your project list, settings, and metadata.',
+    maxLevel: 'write',
+  },
+  {
+    id: 'entities',
+    label: 'Entities',
+    description: 'Characters, places, lore, and other collection items — plus type definitions.',
+    maxLevel: 'write',
+  },
+  {
+    id: 'stats',
+    label: 'Stats',
+    description: 'Dashboard metrics, activity feeds, and project groupings.',
+    maxLevel: 'read',
+  },
+]
+
+const LEVEL_LABEL: Record<Level, string> = {
+  none: 'None',
+  read: 'Read',
+  write: 'Read & Write',
+}
+
+const EMPTY_PERMISSIONS: Record<ResourceId, Level> = {
+  projects: 'none',
+  entities: 'none',
+  stats: 'none',
+}
+
+const READ_ONLY_PRESET: Record<ResourceId, Level> = {
+  projects: 'read',
+  entities: 'read',
+  stats: 'read',
+}
+
+const FULL_ACCESS_PRESET: Record<ResourceId, Level> = {
+  projects: 'write',
+  entities: 'write',
+  stats: 'read',
+}
+
+function permissionsToScopes(perms: Record<ResourceId, Level>): string[] {
+  const scopes: string[] = []
+  for (const r of RESOURCES) {
+    const level = perms[r.id]
+    if (level === 'none') continue
+    scopes.push(`${r.id}:read`)
+    if (level === 'write') scopes.push(`${r.id}:write`)
+  }
+  return scopes
+}
+
+function samePermissions(
+  a: Record<ResourceId, Level>,
+  b: Record<ResourceId, Level>
+): boolean {
+  return RESOURCES.every(r => a[r.id] === b[r.id])
+}
+
+function groupScopesForDisplay(
+  scopes: string[]
+): Array<{ id: ResourceId; label: string; level: 'read' | 'write' }> {
+  const byResource: Partial<Record<ResourceId, Set<string>>> = {}
+  for (const s of scopes) {
+    const [resource, action] = s.split(':') as [ResourceId, string]
+    if (!RESOURCES.find(r => r.id === resource)) continue
+    const set = byResource[resource] ?? new Set<string>()
+    set.add(action)
+    byResource[resource] = set
+  }
+  return RESOURCES.filter(r => byResource[r.id]).map(r => ({
+    id: r.id,
+    label: r.label,
+    level: byResource[r.id]!.has('write') ? 'write' : 'read',
+  }))
+}
 
 interface ApiKey {
   id: string
@@ -33,9 +118,14 @@ export default function ApiKeysPage() {
   // Create form state
   const [showCreate, setShowCreate] = useState(false)
   const [name, setName] = useState('')
-  const [selectedScopes, setSelectedScopes] = useState<string[]>([])
+  const [permissions, setPermissions] =
+    useState<Record<ResourceId, Level>>(EMPTY_PERMISSIONS)
   const [expiresInDays, setExpiresInDays] = useState<string>('')
   const [creating, setCreating] = useState(false)
+
+  const selectedScopes = permissionsToScopes(permissions)
+  const isReadOnlyPreset = samePermissions(permissions, READ_ONLY_PRESET)
+  const isFullAccessPreset = samePermissions(permissions, FULL_ACCESS_PRESET)
 
   // Reveal state — shown once after creation
   const [revealedKey, setRevealedKey] = useState<string | null>(null)
@@ -95,7 +185,7 @@ export default function ApiKeysPage() {
         setRevealedKey(data.key)
         setCopied(false)
         setName('')
-        setSelectedScopes([])
+        setPermissions(EMPTY_PERMISSIONS)
         setExpiresInDays('')
         setShowCreate(false)
         await loadKeys()
@@ -134,14 +224,6 @@ export default function ApiKeysPage() {
     await navigator.clipboard.writeText(revealedKey)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
-  }
-
-  const toggleScope = (scopeId: string) => {
-    setSelectedScopes(prev =>
-      prev.includes(scopeId)
-        ? prev.filter(s => s !== scopeId)
-        : [...prev, scopeId]
-    )
   }
 
   const formatDate = (dateStr: string | null) => {
@@ -192,7 +274,7 @@ export default function ApiKeysPage() {
                 API Keys
               </h1>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                Create keys for programmatic read-only access to your data.
+                Create keys for programmatic access to your data.
               </p>
             </div>
             {!showCreate && !revealedKey && (
@@ -265,36 +347,105 @@ export default function ApiKeysPage() {
                 />
               </div>
 
-              {/* Scopes */}
+              {/* Permissions */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                  Scopes
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Permissions
                 </label>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                  Choose what data this key can access.
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                  Pick a level per resource. <span className="text-amber-700 dark:text-amber-400 font-medium">Read &amp; Write</span> lets callers create, update, and delete.
                 </p>
+
+                {/* Presets */}
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  <span className="text-[10px] uppercase tracking-[0.12em] text-gray-400 dark:text-gray-500 font-medium">
+                    Quick pick
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPermissions(READ_ONLY_PRESET)}
+                    className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
+                      isReadOnlyPreset
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-400'
+                    }`}
+                  >
+                    Read only
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPermissions(FULL_ACCESS_PRESET)}
+                    className={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
+                      isFullAccessPreset
+                        ? 'bg-amber-600 text-white border-amber-600'
+                        : 'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-amber-500 hover:text-amber-700 dark:hover:text-amber-400'
+                    }`}
+                  >
+                    Full access
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPermissions(EMPTY_PERMISSIONS)}
+                    className="ml-auto text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+                  >
+                    Clear
+                  </button>
+                </div>
+
+                {/* Segmented controls per resource */}
                 <div className="space-y-2">
-                  {AVAILABLE_SCOPES.map(scope => (
-                    <label
-                      key={scope.id}
-                      className="flex items-start gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedScopes.includes(scope.id)}
-                        onChange={() => toggleScope(scope.id)}
-                        className="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
-                      />
-                      <div>
-                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                          {scope.label}
-                        </span>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          {scope.description}
-                        </p>
+                  {RESOURCES.map(resource => {
+                    const current = permissions[resource.id]
+                    const levels: Level[] =
+                      resource.maxLevel === 'write'
+                        ? ['none', 'read', 'write']
+                        : ['none', 'read']
+                    return (
+                      <div
+                        key={resource.id}
+                        className="p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/40"
+                      >
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                              {resource.label}
+                            </div>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                              {resource.description}
+                            </p>
+                          </div>
+                          <div className="inline-flex items-center rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-0.5 flex-shrink-0 self-start sm:self-auto">
+                            {levels.map(level => {
+                              const active = current === level
+                              const tone =
+                                level === 'write'
+                                  ? 'bg-amber-600 text-white'
+                                  : level === 'read'
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+                              return (
+                                <button
+                                  key={level}
+                                  type="button"
+                                  onClick={() =>
+                                    setPermissions(p => ({ ...p, [resource.id]: level }))
+                                  }
+                                  className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+                                    active
+                                      ? `${tone} shadow-sm`
+                                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+                                  }`}
+                                  aria-pressed={active}
+                                >
+                                  {LEVEL_LABEL[level]}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
                       </div>
-                    </label>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
 
@@ -365,12 +516,18 @@ export default function ApiKeysPage() {
                         </code>
                       </div>
                       <div className="flex flex-wrap gap-1.5 mt-2">
-                        {key.scopes.map(scope => (
+                        {groupScopesForDisplay(key.scopes).map(g => (
                           <span
-                            key={scope}
-                            className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
+                            key={g.id}
+                            className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium ${
+                              g.level === 'write'
+                                ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400'
+                                : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                            }`}
                           >
-                            {scope}
+                            {g.label}
+                            <span className="mx-1 opacity-50">·</span>
+                            {g.level === 'write' ? 'Read & Write' : 'Read'}
                           </span>
                         ))}
                       </div>
@@ -397,13 +554,13 @@ export default function ApiKeysPage() {
         )}
 
         {/* API Documentation */}
-        <section className="mt-10 space-y-6">
+        <section className="mt-12 space-y-6">
           <div>
             <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1">
-              How to Connect
+              How to connect
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Pass your API key as a Bearer token in the <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">Authorization</code> header.
+              Send your key as a Bearer token in the <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">Authorization</code> header. All responses are JSON.
             </p>
           </div>
 
@@ -412,63 +569,86 @@ export default function ApiKeysPage() {
   https://api.bobbinry.com/api/projects`}</code>
           </pre>
 
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Available Scopes</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {AVAILABLE_SCOPES.map(scope => (
-                <div
-                  key={scope.id}
-                  className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2.5"
-                >
-                  <code className="text-xs font-mono text-blue-600 dark:text-blue-400">{scope.id}</code>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{scope.description}</p>
-                </div>
-              ))}
-            </div>
-          </div>
+          <ul className="text-xs text-gray-500 dark:text-gray-400 space-y-1.5 list-disc list-inside">
+            <li>Keys are prefixed with <code className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">bby_</code> and can be revoked at any time.</li>
+            <li>Entity endpoints require <code className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">projectId</code> (query or body).</li>
+            <li>Write endpoints return <code className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">403</code> if the key lacks the matching <code className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">:write</code> scope.</li>
+            <li>Rate limits: 100 req/min (free), 500 req/min (supporter).</li>
+          </ul>
 
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Available Endpoints</h3>
-            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+          <details className="group bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+            <summary className="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer list-none hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Endpoint reference</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Every endpoint reachable with an API key, grouped by required scope.</p>
+              </div>
+              <svg
+                className="w-4 h-4 text-gray-400 transition-transform group-open:rotate-180 flex-shrink-0"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </summary>
+            <div className="border-t border-gray-200 dark:border-gray-800 overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-                    <th className="text-left px-4 py-2 text-xs font-semibold text-gray-900 dark:text-gray-100">Endpoint</th>
-                    <th className="text-left px-4 py-2 text-xs font-semibold text-gray-900 dark:text-gray-100">Scope</th>
-                    <th className="text-left px-4 py-2 text-xs font-semibold text-gray-900 dark:text-gray-100">Description</th>
+                  <tr className="bg-gray-50 dark:bg-gray-800/50">
+                    <th className="text-left px-4 py-2 text-[11px] uppercase tracking-wider font-semibold text-gray-600 dark:text-gray-400">Endpoint</th>
+                    <th className="text-left px-4 py-2 text-[11px] uppercase tracking-wider font-semibold text-gray-600 dark:text-gray-400">Scope</th>
+                    <th className="text-left px-4 py-2 text-[11px] uppercase tracking-wider font-semibold text-gray-600 dark:text-gray-400">Description</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {[
-                    ['GET /api/projects', 'projects:read', 'List your projects'],
-                    ['GET /api/projects/:projectId', 'projects:read', 'Get a single project'],
-                    ['GET /api/collections/:collection/entities', 'entities:read', 'Query entities in a collection'],
-                    ['GET /api/entities/:entityId', 'entities:read', 'Get a single entity'],
-                    ['GET /api/dashboard/stats', 'stats:read', 'Dashboard overview stats'],
-                    ['GET /api/users/me/projects', 'stats:read', 'Projects with collection info'],
-                    ['GET /api/users/me/projects/grouped', 'stats:read', 'Projects grouped by collection'],
-                    ['GET /api/users/me/recent-activity', 'stats:read', 'Recent entity edits across projects'],
-                  ].map(([endpoint, scope, desc]) => (
-                    <tr key={endpoint}>
-                      <td className="px-4 py-2 font-mono text-[11px] text-blue-600 dark:text-blue-400 whitespace-nowrap">{endpoint}</td>
-                      <td className="px-4 py-2 font-mono text-[11px] text-gray-500 dark:text-gray-400 whitespace-nowrap">{scope}</td>
-                      <td className="px-4 py-2 text-xs text-gray-600 dark:text-gray-400">{desc}</td>
-                    </tr>
-                  ))}
+                  {(
+                    [
+                      ['GET /api/projects', 'projects:read', 'List your projects'],
+                      ['GET /api/projects/:projectId', 'projects:read', 'Get a single project'],
+                      ['POST /api/projects', 'projects:write', 'Create a new project'],
+                      ['GET /api/collections/:collection/entities', 'entities:read', 'Query entities in a collection'],
+                      ['GET /api/entities/:entityId', 'entities:read', 'Get a single entity'],
+                      ['GET /api/projects/:projectId/entity-types', 'entities:read', 'List entity type definitions'],
+                      ['GET /api/projects/:projectId/entity-types/:typeId', 'entities:read', 'Get a single entity type definition'],
+                      ['POST /api/entities', 'entities:write', 'Create an entity'],
+                      ['PUT /api/entities/:entityId', 'entities:write', 'Update an entity'],
+                      ['DELETE /api/entities/:entityId', 'entities:write', 'Delete an entity'],
+                      ['POST /api/entities/batch/atomic', 'entities:write', 'Atomic batch create / update / delete'],
+                      ['POST /api/projects/:projectId/entity-types', 'entities:write', 'Create an entity type definition'],
+                      ['PUT /api/projects/:projectId/entity-types/:typeId', 'entities:write', 'Update an entity type definition'],
+                      ['DELETE /api/projects/:projectId/entity-types/:typeId', 'entities:write', 'Delete an entity type definition'],
+                      ['GET /api/dashboard/stats', 'stats:read', 'Dashboard overview stats'],
+                      ['GET /api/users/me/projects', 'stats:read', 'Projects with collection info'],
+                      ['GET /api/users/me/projects/grouped', 'stats:read', 'Projects grouped by collection'],
+                      ['GET /api/users/me/recent-activity', 'stats:read', 'Recent entity edits across projects'],
+                    ] as const
+                  ).map(([endpoint, scope, desc]) => {
+                    const isWrite = scope.endsWith(':write')
+                    return (
+                      <tr key={endpoint}>
+                        <td className="px-4 py-2 font-mono text-[11px] text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                          {endpoint}
+                        </td>
+                        <td className="px-4 py-2 whitespace-nowrap">
+                          <span
+                            className={`inline-flex items-center px-1.5 py-0.5 rounded font-mono text-[10px] font-medium ${
+                              isWrite
+                                ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400'
+                                : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                            }`}
+                          >
+                            {scope}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2 text-xs text-gray-600 dark:text-gray-400">{desc}</td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
-          </div>
-
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Notes</h3>
-            <ul className="text-xs text-gray-500 dark:text-gray-400 space-y-1.5 list-disc list-inside">
-              <li>All endpoints are read-only. Responses are JSON.</li>
-              <li>Keys are prefixed with <code className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">bby_</code> and can be revoked at any time.</li>
-              <li>Entity endpoints require <code className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">?projectId=</code> as a query parameter.</li>
-              <li>Rate limits: 100 req/min (free), 500 req/min (supporter).</li>
-            </ul>
-          </div>
+          </details>
         </section>
       </div>
     </div>
