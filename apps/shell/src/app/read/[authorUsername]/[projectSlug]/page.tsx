@@ -8,6 +8,8 @@ import { config } from '@/lib/config'
 import { apiFetch } from '@/lib/api'
 import { ReaderNav } from '@/components/ReaderNav'
 import { OptimizedImage } from '@/components/OptimizedImage'
+import EntitiesTab from './EntitiesTab'
+import type { EntitiesPayload } from './entities-data'
 
 interface ProjectInfo {
   id: string
@@ -105,12 +107,36 @@ function ProjectReadingContent() {
   const [discountValidation, setDiscountValidation] = useState<{ valid: boolean; discountType?: string; discountValue?: string } | null>(null)
   const [validatingCode, setValidatingCode] = useState(false)
   const [collection, setCollection] = useState<CollectionInfo | null>(null)
+  const [entitiesPayload, setEntitiesPayload] = useState<EntitiesPayload | null>(null)
   const supportRef = useRef<HTMLDivElement>(null)
 
+  type TabId = 'chapters' | 'entities' | 'support'
+  const initialTab = ((): TabId => {
+    const t = searchParams.get('tab')
+    return t === 'entities' || t === 'support' ? t : 'chapters'
+  })()
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab)
+
+  const goToTab = useCallback((tab: TabId) => {
+    setActiveTab(tab)
+    const params = new URLSearchParams(searchParams.toString())
+    if (tab === 'chapters') params.delete('tab')
+    else params.set('tab', tab)
+    const qs = params.toString()
+    router.replace(`/read/${authorUsername}/${projectSlug}${qs ? `?${qs}` : ''}`, { scroll: false })
+  }, [authorUsername, projectSlug, router, searchParams])
+
   const scrollToSupport = useCallback(() => {
+    // Tabs: surface the Support tab instead of scrolling within a flat page.
+    if (activeTab !== 'support') {
+      goToTab('support')
+    }
     const el = supportRef.current
     if (!el) return
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    // Defer so the tab switch renders the section before we animate it.
+    requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
 
     const grid = el.querySelector('.grid')
     if (!grid) return
@@ -191,6 +217,26 @@ function ProjectReadingContent() {
     if (!project?.id) return
     loadFollowStatus(project.id)
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project?.id, apiToken])
+
+  // Probe whether the entities bobbin is installed + published so we know to
+  // render the Entities tab. Done in parallel with the other loaders so the
+  // tab strip can render without flicker. Public endpoint; pass bearer only
+  // if signed in so the caller's tier gets reflected in the payload.
+  useEffect(() => {
+    if (!project?.id) return
+    let cancelled = false
+    const headers: Record<string, string> = {}
+    if (apiToken) headers['Authorization'] = `Bearer ${apiToken}`
+    fetch(`${config.apiUrl}/api/public/projects/${project.id}/entities`, { headers })
+      .then(async r => (r.ok ? (r.json() as Promise<EntitiesPayload>) : null))
+      .then(data => {
+        if (!cancelled) setEntitiesPayload(data)
+      })
+      .catch(() => {
+        if (!cancelled) setEntitiesPayload(null)
+      })
+    return () => { cancelled = true }
   }, [project?.id, apiToken])
 
   // Load subscription state when author and session are ready
@@ -621,7 +667,42 @@ function ProjectReadingContent() {
         </div>
       )}
 
+      {/* Tab strip — Entities tab shows only when the author has the entities
+          bobbin installed (payload.installed === true). Support tab shows only
+          when tiers exist, mirroring the legacy flat-page behavior. */}
+      <div className="mb-6 flex items-center gap-1 border-b border-gray-200 dark:border-gray-800">
+        <TabButton active={activeTab === 'chapters'} onClick={() => goToTab('chapters')}>
+          Chapters
+        </TabButton>
+        {entitiesPayload?.installed && (
+          <TabButton active={activeTab === 'entities'} onClick={() => goToTab('entities')}>
+            Entities
+            {entitiesPayload.types.length > 0 && (
+              <span className="ml-1.5 text-[10px] tabular-nums text-gray-400 dark:text-gray-500">
+                {entitiesPayload.types.reduce((n, t) => n + t.entities.length, 0)}
+              </span>
+            )}
+          </TabButton>
+        )}
+        {tiers.length > 0 && (
+          <TabButton active={activeTab === 'support'} onClick={() => goToTab('support')}>
+            Support
+          </TabButton>
+        )}
+      </div>
+
+      {/* Entities tab */}
+      {activeTab === 'entities' && entitiesPayload?.installed && (
+        <EntitiesTab
+          projectId={project.id}
+          apiToken={apiToken}
+          initialPayload={entitiesPayload}
+          onSubscribeNudge={() => goToTab('support')}
+        />
+      )}
+
       {/* Table of Contents */}
+      {activeTab === 'chapters' && (
       <div className="mb-8">
         <h2 className="font-display text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">
           Table of Contents
@@ -701,10 +782,11 @@ function ProjectReadingContent() {
           </div>
         )}
       </div>
+      )}
 
       {/* Subscribe / Follow section */}
-      {tiers.length > 0 && (
-        <div ref={supportRef} id="support" className="border-t border-gray-200 dark:border-gray-800 pt-8">
+      {activeTab === 'support' && tiers.length > 0 && (
+        <div ref={supportRef} id="support">
           <h2 className="font-display text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">
             Support this Author
           </h2>
@@ -847,5 +929,30 @@ function ProjectReadingContent() {
       )}
       </div>
     </div>
+  )
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? 'page' : undefined}
+      className={`relative -mb-px px-4 py-2.5 text-sm font-medium transition-colors ${
+        active
+          ? 'border-b-2 border-blue-600 text-gray-900 dark:border-blue-400 dark:text-gray-100'
+          : 'border-b-2 border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+      }`}
+    >
+      {children}
+    </button>
   )
 }

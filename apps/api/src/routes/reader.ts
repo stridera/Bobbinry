@@ -1987,6 +1987,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           label: typeData.label,
           icon: typeData.icon ?? '📋',
           listLayout: typeData.list_layout,
+          editorLayout: typeData.editor_layout,
           customFields: typeData.custom_fields ?? [],
           baseFields: typeData.base_fields ?? ['name', 'description', 'tags', 'image_url'],
           versionableBaseFields: typeData.versionable_base_fields ?? [],
