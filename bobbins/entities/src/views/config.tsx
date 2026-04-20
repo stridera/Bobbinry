@@ -450,6 +450,33 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
     }
   }
 
+  async function handleDetachFromTemplate(type: EntityTypeDefinition) {
+    if (!type.templateId) {
+      setToast({ message: 'This entity type is not linked to a template.', variant: 'danger' })
+      return
+    }
+    try {
+      const result = await sdk.entities.detachTemplate(getTypeId(type))
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('bobbinry:entities-changed', {
+          detail: { collection: 'entity_type_definitions', action: 'updated' }
+        }))
+      }
+
+      setToast({
+        message: result.was_linked
+          ? `"${type.label}" detached from template. Future upstream updates won't apply.`
+          : `"${type.label}" was already standalone.`,
+        variant: 'success',
+      })
+      await loadEntityTypes()
+    } catch (error) {
+      console.error('[ConfigView] Failed to detach from template:', error)
+      setToast({ message: 'Failed to detach from template.', variant: 'danger' })
+    }
+  }
+
   async function handleSaveEntityType() {
     try {
       // When editing, preserve the original type_id (existing entities reference it)
@@ -600,6 +627,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
                   onViewAll={navigateToEntityList}
                   onNewEntity={navigateToNewEntity}
                   onUpdateFromTemplate={handleUpdateFromTemplate}
+                  onDetachFromTemplate={handleDetachFromTemplate}
                   onPublish={handlePublishAsTemplate}
                   needsSync={typeNeedsTemplateSync(type, apiTemplates)}
                 />
@@ -983,6 +1011,7 @@ function EntityTypeCard({
   onViewAll,
   onNewEntity,
   onUpdateFromTemplate,
+  onDetachFromTemplate,
   onPublish,
   needsSync,
 }: {
@@ -992,16 +1021,19 @@ function EntityTypeCard({
   onViewAll: (typeId: string, type: EntityTypeDefinition) => void
   onNewEntity: (typeId: string, type: EntityTypeDefinition) => void
   onUpdateFromTemplate: (type: EntityTypeDefinition) => void
+  onDetachFromTemplate: (type: EntityTypeDefinition) => void
   onPublish: (type: EntityTypeDefinition) => void
   needsSync: boolean
 }) {
   const typeId = getTypeId(type)
   const [menuOpen, setMenuOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmDetach, setConfirmDetach] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const fieldCount = (type.baseFields?.length || 4) + (type.customFields?.length || 0)
+  const isTemplateLinked = Boolean(type.templateId)
 
-  useClickOutside(menuRef, () => { setMenuOpen(false); setConfirmDelete(false) })
+  useClickOutside(menuRef, () => { setMenuOpen(false); setConfirmDelete(false); setConfirmDetach(false) })
 
   return (
     <div className="group relative rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-800 transition-all hover:shadow-md hover:border-gray-300 dark:hover:border-gray-600">
@@ -1038,6 +1070,38 @@ function EntityTypeCard({
                 </svg>
                 Sync Template
               </button>
+            )}
+            {isTemplateLinked && (
+              !confirmDetach ? (
+                <button
+                  onClick={() => setConfirmDetach(true)}
+                  className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-600 flex items-center gap-2 cursor-pointer"
+                  title="Stop receiving future upstream updates from this template"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                  </svg>
+                  Detach Template
+                </button>
+              ) : (
+                <div className="px-3 py-2 text-xs text-gray-200 bg-amber-900/30">
+                  <div className="mb-2">Future upstream updates won't apply. Your fields and entities stay.</div>
+                  <div className="flex gap-1.5">
+                    <button
+                      onClick={() => { setMenuOpen(false); setConfirmDetach(false); onDetachFromTemplate(type) }}
+                      className="flex-1 px-2 py-1 text-xs text-white bg-amber-600 hover:bg-amber-700 rounded font-medium cursor-pointer"
+                    >
+                      Detach
+                    </button>
+                    <button
+                      onClick={() => setConfirmDetach(false)}
+                      className="flex-1 px-2 py-1 text-xs text-gray-200 bg-gray-600 hover:bg-gray-500 rounded cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )
             )}
             <button
               onClick={() => { setMenuOpen(false); onPublish(type) }}

@@ -165,6 +165,33 @@ export function registerEntityTypesCommand(program: Command): void {
     })
 
   types
+    .command('detach')
+    .description('Detach an entity type from its shared template (future upstream updates will no longer apply)')
+    .argument('<type_id>', 'Type identifier')
+    .option('-p, --project <id>', 'Project ID (uses default if set)')
+    .action(async (typeId: string, cmdOpts: any) => {
+      const opts = getGlobalOpts()
+      try {
+        const projectId = resolveProjectId(cmdOpts.project)
+        const client = createClient(opts)
+        const result = await client.detachEntityTypeTemplate(projectId, typeId)
+
+        if (opts.json) {
+          output(result, true)
+          return
+        }
+
+        if (result.was_linked) {
+          console.log(`  Detached "${typeId}" from template "${result.previous_template_id}".`)
+        } else {
+          console.log(`  "${typeId}" was not linked to a template; nothing to do.`)
+        }
+      } catch (err) {
+        handleError(err, !!opts.json)
+      }
+    })
+
+  types
     .command('delete')
     .description('Delete an entity type (existing entities are NOT deleted)')
     .argument('<type_id>', 'Type identifier')

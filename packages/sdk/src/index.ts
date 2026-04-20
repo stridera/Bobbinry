@@ -411,6 +411,34 @@ export class EntityAPI {
       throw new Error(`Failed to delete entity (${response.status}): ${body || response.statusText}`)
     }
   }
+
+  /**
+   * Detach an entity type from its shared template. Clears template_id and
+   * template_version only — everything else (label, icon, custom_fields,
+   * editor_layout, _field_history, entities) is preserved. Idempotent:
+   * returns was_linked=false if the type was already standalone.
+   */
+  async detachTemplate(typeId: string): Promise<{
+    detached: boolean
+    was_linked: boolean
+    previous_template_id: string | null
+    type: Record<string, any>
+  }> {
+    const response = await fetch(
+      `${this.api.apiBaseUrl}/projects/${this.projectId}/entity-types/${encodeURIComponent(typeId)}/detach`,
+      {
+        method: 'POST',
+        headers: this.api.getAuthHeaders()
+      }
+    )
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => '')
+      throw new Error(`Failed to detach entity type from template (${response.status}): ${body || response.statusText}`)
+    }
+
+    return response.json()
+  }
 }
 
 // Shell configuration access

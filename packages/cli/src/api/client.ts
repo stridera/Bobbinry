@@ -209,6 +209,16 @@ export class BobbinryClient {
     return this.del(`/projects/${projectId}/entity-types/${encodeURIComponent(typeId)}`)
   }
 
+  async detachEntityTypeTemplate(projectId: string, typeId: string): Promise<{
+    detached: boolean
+    was_linked: boolean
+    previous_template_id: string | null
+    type: Record<string, any>
+  }> {
+    this.requireAuth()
+    return this.post(`/projects/${projectId}/entity-types/${encodeURIComponent(typeId)}/detach`)
+  }
+
   // ── Templates ─────────────────────────────────────────────
 
   async listTemplates(params?: {

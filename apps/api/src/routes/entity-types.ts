@@ -410,6 +410,94 @@ const entityTypesPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
+  // POST /projects/:projectId/entity-types/:typeId/detach — Detach from template
+  // Clears template_id and template_version only; preserves custom_fields,
+  // editor_layout, _field_history, schema_version, and all other fields. The
+  // detached type stays standalone — future upstream template sync (invoked
+  // from the UI) already skips types where templateId is null, so this is the
+  // only action needed. Idempotent: detaching an already-detached type returns
+  // 200 with was_linked: false.
+  fastify.post<{
+    Params: { projectId: string; typeId: string }
+  }>('/projects/:projectId/entity-types/:typeId/detach', {
+    preHandler: [requireAuth, requireScope('entities:write')],
+  }, async (request, reply) => {
+    try {
+      const { projectId, typeId } = TypeParamsSchema.parse(request.params)
+
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
+
+      const userId = request.user!.id
+      const collectionIds = await getCollectionIdsForProject(projectId)
+      const scopeFilter = buildScopeCondition(projectId, collectionIds, userId)
+
+      const current = await db
+        .select()
+        .from(entities)
+        .where(and(
+          scopeFilter,
+          eq(entities.collectionName, COLLECTION),
+          sql`${entities.entityData}->>'type_id' = ${typeId}`
+        ))
+        .limit(1)
+
+      if (current.length === 0) {
+        return reply.status(404).send({ error: 'Entity type not found' })
+      }
+
+      const row = current[0]!
+      const existingData = row.entityData as Record<string, any>
+      const previousTemplateId: string | null = existingData.template_id ?? null
+      const wasLinked = previousTemplateId !== null || existingData.template_version != null
+
+      if (!wasLinked) {
+        return {
+          detached: true,
+          was_linked: false,
+          previous_template_id: null,
+          type: formatTypeResponse(row),
+        }
+      }
+
+      const merged: Record<string, any> = {
+        ...existingData,
+        template_id: null,
+        template_version: null,
+        updated_at: new Date().toISOString(),
+      }
+
+      const newVersion = row.version + 1
+      const result = await db
+        .update(entities)
+        .set({
+          entityData: merged,
+          version: newVersion,
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(entities.id, row.id),
+          eq(entities.version, row.version)
+        ))
+        .returning()
+
+      if (result.length === 0) {
+        return reply.status(409).send({ error: 'Conflict: entity type was modified concurrently' })
+      }
+
+      return {
+        detached: true,
+        was_linked: true,
+        previous_template_id: previousTemplateId,
+        type: formatTypeResponse(result[0]!),
+      }
+    } catch (error) {
+      if (error instanceof z.ZodError) return sendZodError(reply, error)
+      fastify.log.error(error, 'Failed to detach entity type from template')
+      return reply.status(500).send({ error: 'Failed to detach entity type from template' })
+    }
+  })
+
   // DELETE /projects/:projectId/entity-types/:typeId — Delete a type def
   // Note: this does NOT cascade — existing entities of this type remain but will
   // show as "unknown type" in the UI. Caller should decide whether to migrate
