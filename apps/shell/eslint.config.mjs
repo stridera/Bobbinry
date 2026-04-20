@@ -67,6 +67,12 @@ const eslintConfig = [
     ],
   },
   {
+    // Pin React version to bypass eslint-plugin-react's version-detection path,
+    // which calls a context API removed in ESLint 10. Remove once eslint-plugin-react
+    // ships v10 compatibility (https://github.com/jsx-eslint/eslint-plugin-react/issues/3977).
+    settings: { react: { version: "19.2" } },
+  },
+  {
     plugins: {
       bobbinry: bobbinryPlugin,
     },
