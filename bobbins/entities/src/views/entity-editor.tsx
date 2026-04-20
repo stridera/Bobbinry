@@ -67,6 +67,8 @@ export default function EntityEditorView({
   const [managingVariants, setManagingVariants] = useState(false)
   const [tiers, setTiers] = useState<SubscriptionTier[]>([])
   const [tiersLoaded, setTiersLoaded] = useState(false)
+  const [typePublished, setTypePublished] = useState<boolean>(true)
+  const [typeLabel, setTypeLabel] = useState<string>('')
 
   const isNewEntity = entityId === 'new'
 
@@ -129,6 +131,8 @@ export default function EntityEditorView({
 
       const normalized = normalizeTypeConfig(config)
       setTypeConfig(normalized)
+      setTypePublished(Boolean((config as any).isPublished))
+      setTypeLabel(String((config as any).label ?? normalized.label ?? entityType ?? ''))
       console.log('[EntityEditor] Loaded type config:', normalized)
 
       setLoading(false)
@@ -585,6 +589,11 @@ export default function EntityEditorView({
                 }))
               }}
               hideVariantPicker
+              disabledReason={
+                typePublished
+                  ? null
+                  : `${typeLabel || 'This section'} is not published to readers yet`
+              }
               compact
             />
           )}
