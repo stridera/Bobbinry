@@ -1,9 +1,11 @@
 import {
   clearVariantOverride,
+  ensureUniqueVariantId,
   getVariants,
   listVariantIds,
   resolveEntityForVariant,
   setFieldOnEntity,
+  slugifyVariantId,
   sortedVariantIds,
   versionableFieldNames,
   VARIANTS_KEY,
@@ -270,5 +272,46 @@ describe('sortedVariantIds', () => {
       },
     }
     expect(sortedVariantIds(e, 'ordered')).toEqual(['c', 'a', 'b'])
+  })
+})
+
+describe('slugifyVariantId', () => {
+  it('lowercases and kebabs a label', () => {
+    expect(slugifyVariantId('Book 1')).toBe('book-1')
+    expect(slugifyVariantId('Cat Form')).toBe('cat-form')
+  })
+
+  it('strips punctuation and collapses separators', () => {
+    expect(slugifyVariantId('Book #5 -- Ending!')).toBe('book-5-ending')
+  })
+
+  it('trims leading and trailing separators', () => {
+    expect(slugifyVariantId('---Book 1---')).toBe('book-1')
+    expect(slugifyVariantId('  Book 1  ')).toBe('book-1')
+  })
+
+  it('falls back to a timestamped id for non-ascii-only labels', () => {
+    const result = slugifyVariantId('日本語')
+    expect(result.startsWith('variant-')).toBe(true)
+  })
+
+  it('returns a non-empty id for empty input', () => {
+    const result = slugifyVariantId('')
+    expect(result.startsWith('variant-')).toBe(true)
+  })
+})
+
+describe('ensureUniqueVariantId', () => {
+  it('returns the base id when it does not collide', () => {
+    expect(ensureUniqueVariantId('book-1', ['book-2'])).toBe('book-1')
+    expect(ensureUniqueVariantId('book-1', [])).toBe('book-1')
+  })
+
+  it('appends -2 for first collision', () => {
+    expect(ensureUniqueVariantId('book-1', ['book-1'])).toBe('book-1-2')
+  })
+
+  it('keeps incrementing past existing numbered ids', () => {
+    expect(ensureUniqueVariantId('book-1', ['book-1', 'book-1-2', 'book-1-3'])).toBe('book-1-4')
   })
 })
