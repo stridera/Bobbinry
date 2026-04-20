@@ -14,6 +14,8 @@ export interface PublishState {
   publishedAt: string | null
   publishOrder: number
   minimumTierLevel: number
+  publishBase: boolean
+  publishedVariantIds: string[]
 }
 
 export interface SubscriptionTier {
@@ -54,7 +56,13 @@ export async function patchEntityPublish(
   projectId: string,
   collection: string,
   entityId: string,
-  patch: { isPublished?: boolean; publishOrder?: number; minimumTierLevel?: number }
+  patch: {
+    isPublished?: boolean
+    publishOrder?: number
+    minimumTierLevel?: number
+    publishBase?: boolean
+    publishedVariantIds?: string[]
+  }
 ): Promise<PublishState> {
   const res = await fetch(`${baseUrl(sdk)}/entities/${entityId}/publish`, {
     method: 'PATCH',

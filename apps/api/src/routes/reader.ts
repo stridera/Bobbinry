@@ -1989,7 +1989,9 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           listLayout: typeData.list_layout,
           customFields: typeData.custom_fields ?? [],
           baseFields: typeData.base_fields ?? ['name', 'description', 'tags', 'image_url'],
+          versionableBaseFields: typeData.versionable_base_fields ?? [],
           subtitleFields: typeData.subtitle_fields ?? [],
+          variantAxis: typeData.variant_axis ?? null,
           minimumTierLevel: t.minimumTierLevel,
           publishOrder: t.publishOrder,
           entities: visibleRows.map(r => {
@@ -2005,6 +2007,8 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
               publishOrder: r.publishOrder,
               minimumTierLevel: r.minimumTierLevel,
               publishedAt: r.publishedAt,
+              publishBase: r.publishBase,
+              publishedVariantIds: r.publishedVariantIds ?? [],
             }
           }),
         }
@@ -2062,13 +2066,29 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           eq(entities.isPublished, true),
         ))
 
-      const visibleTypeMeta = new Map<string, { label: string; icon: string }>()
+      interface TypeMeta { label: string; icon: string; nameVersionable: boolean }
+      const visibleTypeMeta = new Map<string, TypeMeta>()
       for (const t of typeRows) {
         if (!isOwner && t.minimumTierLevel > callerTier) continue
         const d = t.data as Record<string, any>
-        if (typeof d?.type_id === 'string') {
-          visibleTypeMeta.set(d.type_id, { label: d.label ?? d.type_id, icon: d.icon ?? '📋' })
-        }
+        if (typeof d?.type_id !== 'string') continue
+        // Name is versionable if the type flags `name` in its versionable_base_fields,
+        // or if a custom field named `name` is marked versionable (rare — handled
+        // defensively).
+        const versionableBase: string[] = Array.isArray(d.versionable_base_fields)
+          ? d.versionable_base_fields
+          : []
+        const customFields: Array<{ name?: string; versionable?: boolean }> = Array.isArray(d.custom_fields)
+          ? d.custom_fields
+          : []
+        const nameVersionable =
+          versionableBase.includes('name') ||
+          customFields.some(f => f?.name === 'name' && f?.versionable === true)
+        visibleTypeMeta.set(d.type_id, {
+          label: d.label ?? d.type_id,
+          icon: d.icon ?? '📋',
+          nameVersionable,
+        })
       }
 
       if (visibleTypeMeta.size === 0) return { installed: true, entities: [] }
@@ -2079,6 +2099,8 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           data: entities.entityData,
           collectionName: entities.collectionName,
           minimumTierLevel: entities.minimumTierLevel,
+          publishBase: entities.publishBase,
+          publishedVariantIds: entities.publishedVariantIds,
         })
         .from(entities)
         .where(and(
@@ -2087,20 +2109,51 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           eq(entities.isPublished, true),
         ))
 
-      const rows = entityRows
-        .filter(r => isOwner || r.minimumTierLevel <= callerTier)
-        .map(r => {
-          const meta = visibleTypeMeta.get(r.collectionName)!
-          const name = (r.data as Record<string, unknown>)?.name
-          return {
+      // Build one row per (entity, distinct visible name). The highlight matcher
+      // on the client dedupes by lowercase name and keeps a list per match.
+      const rows: { id: string; name: string; typeId: string; typeIcon: string; typeLabel: string }[] = []
+      for (const r of entityRows) {
+        if (!isOwner && r.minimumTierLevel > callerTier) continue
+        const meta = visibleTypeMeta.get(r.collectionName)!
+        const data = r.data as Record<string, any>
+        const baseName = typeof data?.name === 'string' ? (data.name as string) : ''
+        const seen = new Set<string>()
+        const pushName = (candidate: unknown) => {
+          if (typeof candidate !== 'string') return
+          const trimmed = candidate.trim()
+          if (!trimmed) return
+          const key = trimmed.toLowerCase()
+          if (seen.has(key)) return
+          seen.add(key)
+          rows.push({
             id: r.id,
-            name: typeof name === 'string' ? name : '',
+            name: trimmed,
             typeId: r.collectionName,
             typeIcon: meta.icon,
             typeLabel: meta.label,
+          })
+        }
+
+        if (r.publishBase) pushName(baseName)
+
+        const variantIds = r.publishedVariantIds ?? []
+        if (variantIds.length > 0) {
+          const variantsRoot = data?._variants
+          const items = variantsRoot?.items as Record<string, { overrides?: Record<string, unknown> }> | undefined
+          if (items) {
+            for (const vid of variantIds) {
+              const item = items[vid]
+              if (!item) continue
+              if (meta.nameVersionable && item.overrides && typeof item.overrides.name === 'string') {
+                pushName(item.overrides.name)
+              } else {
+                // Fall back to base name for this entry since variant doesn't override it
+                pushName(baseName)
+              }
+            }
           }
-        })
-        .filter(r => r.name.length > 0)
+        }
+      }
 
       return { installed: true, entities: rows }
     } catch (error) {

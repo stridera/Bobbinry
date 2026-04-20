@@ -173,6 +173,121 @@ describe('Entity Publish API', () => {
     })
   })
 
+  describe('PATCH variant publishing', () => {
+    let user: any
+    let project: any
+    let token: string
+    let entity: any
+
+    beforeEach(async () => {
+      user = await createTestUser()
+      await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, user.id))
+      project = await createTestProject(user.id)
+      token = await createTestToken(user.id)
+      await seedType(project.id, 'characters')
+      // Seed an entity with two variants so we can exercise publish-by-variant
+      const [row] = await db.insert(entities).values({
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        scope: 'project',
+        bobbinId: 'entities',
+        collectionName: 'characters',
+        entityData: {
+          name: 'Velka',
+          _variants: {
+            order: ['book1', 'book2'],
+            items: {
+              book1: { label: 'Book 1', overrides: { description: 'young' } },
+              book2: { label: 'Book 2', overrides: { description: 'older' } },
+            },
+          },
+        },
+      }).returning()
+      entity = row!
+    })
+
+    it('persists publishBase and publishedVariantIds', async () => {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/entities/${entity.id}/publish`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          projectId: project.id,
+          collection: 'characters',
+          isPublished: true,
+          publishBase: false,
+          publishedVariantIds: ['book1'],
+        },
+      })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.payload)
+      expect(body.publishBase).toBe(false)
+      expect(body.publishedVariantIds).toEqual(['book1'])
+    })
+
+    it('rejects unknown variant ids', async () => {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/entities/${entity.id}/publish`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          projectId: project.id,
+          collection: 'characters',
+          publishedVariantIds: ['made-up'],
+        },
+      })
+      expect(res.statusCode).toBe(400)
+      expect(JSON.parse(res.payload).unknown).toContain('made-up')
+    })
+
+    it('rejects publishing with neither base nor variants', async () => {
+      // First publish the entity with base, then try to flip off base with no variants
+      const prime = await app.inject({
+        method: 'PATCH',
+        url: `/api/entities/${entity.id}/publish`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          projectId: project.id,
+          collection: 'characters',
+          isPublished: true,
+        },
+      })
+      expect(prime.statusCode).toBe(200)
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/entities/${entity.id}/publish`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          projectId: project.id,
+          collection: 'characters',
+          publishBase: false,
+          publishedVariantIds: [],
+        },
+      })
+      expect(res.statusCode).toBe(400)
+    })
+
+    it('allows publishing with only variants (base off)', async () => {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/entities/${entity.id}/publish`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          projectId: project.id,
+          collection: 'characters',
+          isPublished: true,
+          publishBase: false,
+          publishedVariantIds: ['book1', 'book2'],
+        },
+      })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.payload)
+      expect(body.publishBase).toBe(false)
+      expect(body.publishedVariantIds).toEqual(['book1', 'book2'])
+    })
+  })
+
   describe('PATCH /projects/:projectId/entity-types/:typeId/publish', () => {
     let user: any
     let project: any

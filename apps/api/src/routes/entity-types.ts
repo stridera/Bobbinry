@@ -104,6 +104,8 @@ function formatTypeResponse(row: typeof entities.$inferSelect) {
     publishedAt: row.publishedAt,
     publishOrder: row.publishOrder,
     minimumTierLevel: row.minimumTierLevel,
+    publishBase: row.publishBase,
+    publishedVariantIds: row.publishedVariantIds ?? [],
     _meta: {
       bobbinId: row.bobbinId,
       collection: row.collectionName,

@@ -66,6 +66,8 @@ function formatEntityResponse(row: typeof entities.$inferSelect, fields?: Set<st
     publishedAt: row.publishedAt,
     publishOrder: row.publishOrder,
     minimumTierLevel: row.minimumTierLevel,
+    publishBase: row.publishBase,
+    publishedVariantIds: row.publishedVariantIds ?? [],
   }
 
   if (!fields) {

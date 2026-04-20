@@ -275,5 +275,116 @@ describe('Public Reader — Entities', () => {
       expect(res.statusCode).toBe(200)
       expect(JSON.parse(res.payload)).toEqual({ installed: false, entities: [] })
     })
+
+    it('emits one alias per published variant when the name field is versionable', async () => {
+      const author = await createTestUser()
+      await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, author.id))
+      const project = await createTestProject(author.id)
+      await installEntitiesBobbin(project.id)
+
+      // Type with versionable_base_fields=['name'] — character forms use case
+      await db.insert(entities).values({
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        scope: 'project',
+        bobbinId: 'entities',
+        collectionName: TYPE_COLLECTION,
+        entityData: {
+          type_id: 'characters',
+          label: 'Characters',
+          icon: '👤',
+          custom_fields: [],
+          versionable_base_fields: ['name'],
+          list_layout: { display: 'grid', showFields: ['name'] },
+          editor_layout: { template: 'compact-card', imagePosition: 'top-right', imageSize: 'medium', headerFields: ['name'], sections: [] },
+        },
+        isPublished: true,
+      })
+
+      // Entity with two forms. Publish only the human form, not the werewolf form.
+      await db.insert(entities).values({
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        scope: 'project',
+        bobbinId: 'entities',
+        collectionName: 'characters',
+        entityData: {
+          name: 'Velka',
+          _variants: {
+            order: ['human', 'werewolf'],
+            items: {
+              human: { label: 'Human', overrides: { name: 'Velka' } },
+              werewolf: { label: 'Werewolf', overrides: { name: 'Valkyr the Beast' } },
+            },
+          },
+        },
+        isPublished: true,
+        publishBase: false,
+        publishedVariantIds: ['human'],
+      })
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/public/projects/${project.id}/entities/published-names`,
+      })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.payload)
+      const names = body.entities.map((e: any) => e.name).sort()
+      // Only the published form's name appears; the werewolf alias is hidden.
+      expect(names).toEqual(['Velka'])
+    })
+
+    it('emits both names when both variants with versionable names are published', async () => {
+      const author = await createTestUser()
+      await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, author.id))
+      const project = await createTestProject(author.id)
+      await installEntitiesBobbin(project.id)
+
+      await db.insert(entities).values({
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        scope: 'project',
+        bobbinId: 'entities',
+        collectionName: TYPE_COLLECTION,
+        entityData: {
+          type_id: 'characters',
+          label: 'Characters',
+          icon: '👤',
+          custom_fields: [],
+          versionable_base_fields: ['name'],
+          list_layout: { display: 'grid', showFields: ['name'] },
+          editor_layout: { template: 'compact-card', imagePosition: 'top-right', imageSize: 'medium', headerFields: ['name'], sections: [] },
+        },
+        isPublished: true,
+      })
+      await db.insert(entities).values({
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        scope: 'project',
+        bobbinId: 'entities',
+        collectionName: 'characters',
+        entityData: {
+          name: 'Velka',
+          _variants: {
+            order: ['human', 'werewolf'],
+            items: {
+              human: { label: 'Human', overrides: { name: 'Velka' } },
+              werewolf: { label: 'Werewolf', overrides: { name: 'Valkyr the Beast' } },
+            },
+          },
+        },
+        isPublished: true,
+        publishBase: false,
+        publishedVariantIds: ['human', 'werewolf'],
+      })
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/public/projects/${project.id}/entities/published-names`,
+      })
+      expect(res.statusCode).toBe(200)
+      const names = JSON.parse(res.payload).entities.map((e: any) => e.name).sort()
+      expect(names).toEqual(['Valkyr the Beast', 'Velka'])
+    })
   })
 })

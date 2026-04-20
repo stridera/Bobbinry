@@ -566,6 +566,28 @@ export default function EntityEditorView({
                   minimumTierLevel: result.minimumTierLevel,
                 }))
               }}
+              variants={variantIdsInOrder.map(id => ({
+                id,
+                label: variantsBlock?.items[id]?.label ?? id,
+              }))}
+              publishBase={entity.publishBase ?? true}
+              publishedVariantIds={
+                Array.isArray(entity.publishedVariantIds) ? entity.publishedVariantIds : []
+              }
+              onChangeVariantSet={async next => {
+                const result = await patchEntityPublish(
+                  sdk,
+                  projectId,
+                  entityType,
+                  entityId!,
+                  next
+                )
+                setEntity(prev => ({
+                  ...prev,
+                  publishBase: result.publishBase,
+                  publishedVariantIds: result.publishedVariantIds,
+                }))
+              }}
               compact
             />
           )}

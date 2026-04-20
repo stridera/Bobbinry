@@ -1,6 +1,6 @@
 {
-  "id": "c0e3f353-e1e2-4682-b46d-b027ca8e2b54",
-  "prevId": "22287131-a285-4fd1-93f3-3f70f3fe2573",
+  "id": "2e0b92d9-ceb5-4084-9fe5-a5336c80f4b4",
+  "prevId": "c0e3f353-e1e2-4682-b46d-b027ca8e2b54",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2338,6 +2338,20 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "publish_base": {
+          "name": "publish_base",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "published_variant_ids": {
+          "name": "published_variant_ids",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
         },
         "last_edited_at": {
           "name": "last_edited_at",

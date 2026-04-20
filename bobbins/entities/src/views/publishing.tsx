@@ -15,7 +15,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
 import { getTypeId, normalizeTypeConfig } from '../types'
 import type { EntityTypeDefinition } from '../types'
-import { PublishControl } from '../components/PublishControl'
+import { getVariants, sortedVariantIds } from '../variants'
+import { PublishControl, type VariantOption } from '../components/PublishControl'
 import {
   fetchProjectOwner,
   fetchSubscriptionTiers,
@@ -40,6 +41,9 @@ interface PublishableRow {
   publishedAt: string | null
   publishOrder: number
   minimumTierLevel: number
+  publishBase: boolean
+  publishedVariantIds: string[]
+  variants: VariantOption[]
 }
 
 interface PublishableType {
@@ -117,14 +121,27 @@ export default function PublishingView({ projectId, sdk }: PublishingViewProps) 
     if (entitiesByType[typeId]) return
     try {
       const res = await sdk.entities.query({ collection: typeId, limit: 1000 })
-      const rows: PublishableRow[] = (res.data as any[]).map(d => ({
-        id: d.id as string,
-        name: (d.name as string) ?? 'Untitled',
-        isPublished: Boolean(d.isPublished),
-        publishedAt: (d.publishedAt ?? null) as string | null,
-        publishOrder: (d.publishOrder ?? 0) as number,
-        minimumTierLevel: (d.minimumTierLevel ?? 0) as number,
-      }))
+      const type = types.find(t => t.typeId === typeId)
+      const axisKind = type?.config.variantAxis?.kind ?? null
+      const rows: PublishableRow[] = (res.data as any[]).map(d => {
+        const variantsBlock = getVariants(d)
+        const ids = variantsBlock ? sortedVariantIds(d, axisKind) : []
+        const variantOptions: VariantOption[] = ids.map(id => ({
+          id,
+          label: variantsBlock?.items[id]?.label ?? id,
+        }))
+        return {
+          id: d.id as string,
+          name: (d.name as string) ?? 'Untitled',
+          isPublished: Boolean(d.isPublished),
+          publishedAt: (d.publishedAt ?? null) as string | null,
+          publishOrder: (d.publishOrder ?? 0) as number,
+          minimumTierLevel: (d.minimumTierLevel ?? 0) as number,
+          publishBase: d.publishBase ?? true,
+          publishedVariantIds: Array.isArray(d.publishedVariantIds) ? d.publishedVariantIds : [],
+          variants: variantOptions,
+        }
+      })
       rows.sort((a, b) => {
         if (a.isPublished !== b.isPublished) return a.isPublished ? -1 : 1
         if (a.publishOrder !== b.publishOrder) return a.publishOrder - b.publishOrder
@@ -256,17 +273,36 @@ export default function PublishingView({ projectId, sdk }: PublishingViewProps) 
       await reorderEntities(sdk, projectId, typeId, next.map(r => r.id))
     } catch (err) {
       console.error('[Publishing] Entity reorder failed, reloading:', err)
-      const fresh = await sdk.entities.query({ collection: typeId, limit: 1000 })
+      // Evict and re-fetch through the normal loader so variants stay in sync
+      setEntitiesByType(prev => {
+        const { [typeId]: _dropped, ...rest } = prev
+        return rest
+      })
+      loadEntitiesForType(typeId)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function changeVariantSetForEntity(
+    typeId: string,
+    row: PublishableRow,
+    next: { publishBase: boolean; publishedVariantIds: string[] }
+  ) {
+    setBusy(`entity:${row.id}`)
+    try {
+      const result = await patchEntityPublish(sdk, projectId, typeId, row.id, next)
       setEntitiesByType(prev => ({
         ...prev,
-        [typeId]: (fresh.data as any[]).map(d => ({
-          id: d.id,
-          name: d.name ?? 'Untitled',
-          isPublished: Boolean(d.isPublished),
-          publishedAt: d.publishedAt ?? null,
-          publishOrder: d.publishOrder ?? 0,
-          minimumTierLevel: d.minimumTierLevel ?? 0,
-        })),
+        [typeId]: (prev[typeId] ?? []).map(r =>
+          r.id === row.id
+            ? {
+                ...r,
+                publishBase: result.publishBase,
+                publishedVariantIds: result.publishedVariantIds,
+              }
+            : r
+        ),
       }))
     } finally {
       setBusy(null)
@@ -492,6 +528,12 @@ export default function PublishingView({ projectId, sdk }: PublishingViewProps) 
                                   }
                                   onChangeTier={next =>
                                     changeTierForEntity(t.typeId, row, next)
+                                  }
+                                  variants={row.variants}
+                                  publishBase={row.publishBase}
+                                  publishedVariantIds={row.publishedVariantIds}
+                                  onChangeVariantSet={next =>
+                                    changeVariantSetForEntity(t.typeId, row, next)
                                   }
                                   compact
                                 />

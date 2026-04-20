@@ -723,6 +723,12 @@ export const entities = pgTable('entities', {
   publishedAt: timestamp('published_at'),
   publishOrder: integer('publish_order').default(0).notNull(),
   minimumTierLevel: integer('minimum_tier_level').default(0).notNull(),
+  // Variant-scoped publishing. For entities without _variants, publishBase=true
+  // and publishedVariantIds=[] reproduces the pre-variants behavior (show the
+  // base entity). When the entity has variants, the author can publish any
+  // subset of base + variant ids — the reader picks from those to render.
+  publishBase: boolean('publish_base').default(true).notNull(),
+  publishedVariantIds: text('published_variant_ids').array().default(sql`'{}'::text[]`).notNull(),
   lastEditedAt: timestamp('last_edited_at').defaultNow(),
   lastEditedBy: uuid('last_edited_by').references(() => users.id),
   createdAt: timestamp('created_at').defaultNow().notNull(),

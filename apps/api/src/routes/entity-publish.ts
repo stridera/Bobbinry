@@ -29,9 +29,17 @@ const PublishPatchBody = z.object({
   isPublished: z.boolean().optional(),
   publishOrder: z.number().int().optional(),
   minimumTierLevel: z.number().int().min(0).optional(),
-}).refine(b => b.isPublished !== undefined || b.publishOrder !== undefined || b.minimumTierLevel !== undefined, {
-  message: 'At least one of isPublished, publishOrder, minimumTierLevel is required',
-})
+  publishBase: z.boolean().optional(),
+  publishedVariantIds: z.array(z.string().min(1).max(200)).max(500).optional(),
+}).refine(
+  b =>
+    b.isPublished !== undefined ||
+    b.publishOrder !== undefined ||
+    b.minimumTierLevel !== undefined ||
+    b.publishBase !== undefined ||
+    b.publishedVariantIds !== undefined,
+  { message: 'At least one publish field is required' }
+)
 
 const EntityPublishPatch = PublishPatchBody.and(z.object({
   projectId: z.string().uuid(),
@@ -102,7 +110,14 @@ const entityPublishPlugin: FastifyPluginAsync = async (fastify) => {
       const scopeFilter = buildScopeCondition(body.projectId, collectionIds, userId)
 
       const [current] = await db
-        .select({ id: entities.id, isPublished: entities.isPublished, publishedAt: entities.publishedAt })
+        .select({
+          id: entities.id,
+          isPublished: entities.isPublished,
+          publishedAt: entities.publishedAt,
+          publishBase: entities.publishBase,
+          publishedVariantIds: entities.publishedVariantIds,
+          entityData: entities.entityData,
+        })
         .from(entities)
         .where(and(
           eq(entities.id, entityId),
@@ -113,6 +128,33 @@ const entityPublishPlugin: FastifyPluginAsync = async (fastify) => {
 
       if (!current) return reply.status(404).send({ error: 'Entity not found' })
 
+      // Validate that any passed publishedVariantIds exist on the entity's
+      // _variants.items map (tolerant of missing data — empty array is fine).
+      if (body.publishedVariantIds && body.publishedVariantIds.length > 0) {
+        const data = current.entityData as Record<string, any>
+        const items = data?._variants?.items as Record<string, unknown> | undefined
+        const known = items && typeof items === 'object' ? new Set(Object.keys(items)) : new Set<string>()
+        const unknown = body.publishedVariantIds.filter(id => !known.has(id))
+        if (unknown.length > 0) {
+          return reply.status(400).send({
+            error: 'One or more published variant ids are not present on this entity',
+            unknown,
+          })
+        }
+      }
+
+      // Compute the effective next state so we can enforce "if published, at
+      // least one of base or variants must be shown to the reader."
+      const nextIsPublished = body.isPublished ?? current.isPublished
+      const nextPublishBase = body.publishBase ?? current.publishBase
+      const nextVariantIds =
+        body.publishedVariantIds ?? (current.publishedVariantIds ?? [])
+      if (nextIsPublished && !nextPublishBase && nextVariantIds.length === 0) {
+        return reply.status(400).send({
+          error: 'Publishing an entity requires at least the base or one variant to be visible',
+        })
+      }
+
       const updates: Partial<typeof entities.$inferInsert> = { updatedAt: new Date() }
       if (body.isPublished !== undefined) {
         updates.isPublished = body.isPublished
@@ -122,6 +164,8 @@ const entityPublishPlugin: FastifyPluginAsync = async (fastify) => {
       }
       if (body.publishOrder !== undefined) updates.publishOrder = body.publishOrder
       if (body.minimumTierLevel !== undefined) updates.minimumTierLevel = body.minimumTierLevel
+      if (body.publishBase !== undefined) updates.publishBase = body.publishBase
+      if (body.publishedVariantIds !== undefined) updates.publishedVariantIds = body.publishedVariantIds
 
       const [result] = await db
         .update(entities)
@@ -133,6 +177,8 @@ const entityPublishPlugin: FastifyPluginAsync = async (fastify) => {
           publishedAt: entities.publishedAt,
           publishOrder: entities.publishOrder,
           minimumTierLevel: entities.minimumTierLevel,
+          publishBase: entities.publishBase,
+          publishedVariantIds: entities.publishedVariantIds,
         })
 
       return result

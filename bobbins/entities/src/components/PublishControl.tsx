@@ -8,6 +8,11 @@
 import { useState } from 'react'
 import type { SubscriptionTier } from '../publish-api'
 
+export interface VariantOption {
+  id: string
+  label: string
+}
+
 export interface PublishControlProps {
   /** Current publish state. */
   isPublished: boolean
@@ -25,6 +30,25 @@ export interface PublishControlProps {
   onChangeTier: (nextLevel: number) => Promise<void>
   /** Compact layout for tight headers. */
   compact?: boolean
+
+  /**
+   * Entity variants (sorted by axis). Passing a non-empty array enables the
+   * variant-publish picker; leave empty/undefined for entities without
+   * variants or when rendering on a type-def row.
+   */
+  variants?: VariantOption[]
+  /** Whether the base (un-overlaid) view is published. Default true. */
+  publishBase?: boolean
+  /** Ids in `variants` that are currently published. */
+  publishedVariantIds?: string[]
+  /**
+   * Persist the combined variant set. Called with the full next state so the
+   * server can validate "at least one of base/variants is selected."
+   */
+  onChangeVariantSet?: (next: {
+    publishBase: boolean
+    publishedVariantIds: string[]
+  }) => Promise<void>
 }
 
 export function PublishControl({
@@ -36,9 +60,20 @@ export function PublishControl({
   onTogglePublish,
   onChangeTier,
   compact = false,
+  variants = [],
+  publishBase = true,
+  publishedVariantIds = [],
+  onChangeVariantSet,
 }: PublishControlProps) {
-  const [pending, setPending] = useState<'publish' | 'tier' | null>(null)
+  const [pending, setPending] = useState<'publish' | 'tier' | 'variants' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [variantPickerOpen, setVariantPickerOpen] = useState(false)
+
+  const hasVariants = variants.length > 0 && !!onChangeVariantSet
+  const variantIdSet = new Set(publishedVariantIds)
+  const variantCountLabel = hasVariants
+    ? describeVariantSelection(publishBase, publishedVariantIds.length, variants.length)
+    : null
 
   async function handleToggle() {
     setPending('publish')
@@ -63,6 +98,36 @@ export function PublishControl({
     } finally {
       setPending(null)
     }
+  }
+
+  async function handleVariantChange(nextBase: boolean, nextVariantIds: string[]) {
+    if (!onChangeVariantSet) return
+    // Disallow publishing nothing when entity is live — the author gets
+    // immediate feedback instead of a server roundtrip.
+    if (isPublished && !nextBase && nextVariantIds.length === 0) {
+      setError('Publishing requires at least the base or one variant to be visible')
+      return
+    }
+    setPending('variants')
+    setError(null)
+    try {
+      await onChangeVariantSet({ publishBase: nextBase, publishedVariantIds: nextVariantIds })
+    } catch (err: any) {
+      setError(err?.message ?? 'Could not update published variants')
+    } finally {
+      setPending(null)
+    }
+  }
+
+  function toggleVariantId(id: string) {
+    const next = new Set(publishedVariantIds)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    handleVariantChange(publishBase, Array.from(next))
+  }
+
+  function toggleBase(next: boolean) {
+    handleVariantChange(next, publishedVariantIds)
   }
 
   const gap = compact ? 'gap-2' : 'gap-3'
@@ -116,6 +181,52 @@ export function PublishControl({
         )}
       </div>
 
+      {hasVariants && (
+        <div className="flex flex-col gap-1">
+          <button
+            type="button"
+            onClick={() => setVariantPickerOpen(o => !o)}
+            disabled={!isPublished || pending === 'variants'}
+            className="flex items-center gap-1 self-start text-[11px] text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 disabled:opacity-50"
+            title={
+              isPublished
+                ? 'Choose which base + variants show on the reader'
+                : 'Publish first to choose variants'
+            }
+          >
+            <svg
+              className={`h-2.5 w-2.5 transition-transform ${variantPickerOpen ? 'rotate-90' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            <span>{variantCountLabel}</span>
+          </button>
+          {variantPickerOpen && isPublished && (
+            <div className="rounded-md border border-gray-200 bg-gray-50 p-2 dark:border-gray-700 dark:bg-gray-900/60">
+              <VariantCheckbox
+                label="Base"
+                checked={publishBase}
+                disabled={pending === 'variants'}
+                onChange={toggleBase}
+                hint="Unoverlaid entity fields"
+              />
+              {variants.map(v => (
+                <VariantCheckbox
+                  key={v.id}
+                  label={v.label}
+                  checked={variantIdSet.has(v.id)}
+                  disabled={pending === 'variants'}
+                  onChange={() => toggleVariantId(v.id)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {publishedAt && !compact && (
         <span className="text-[11px] text-gray-500 dark:text-gray-400">
           First published {formatRelative(publishedAt)}
@@ -126,6 +237,53 @@ export function PublishControl({
         <span className="text-[11px] text-red-600 dark:text-red-400">{error}</span>
       )}
     </div>
+  )
+}
+
+function describeVariantSelection(
+  publishBase: boolean,
+  selectedVariantCount: number,
+  totalVariants: number
+): string {
+  if (publishBase && selectedVariantCount === 0) return 'Base only'
+  if (!publishBase && selectedVariantCount === 0) return 'Nothing selected'
+  if (!publishBase && selectedVariantCount === totalVariants) return 'All variants'
+  if (publishBase && selectedVariantCount === totalVariants) return 'Base + all variants'
+  if (publishBase) {
+    return `Base + ${selectedVariantCount} of ${totalVariants} variants`
+  }
+  return `${selectedVariantCount} of ${totalVariants} variants`
+}
+
+function VariantCheckbox({
+  label,
+  checked,
+  onChange,
+  disabled,
+  hint,
+}: {
+  label: string
+  checked: boolean
+  onChange: (next: boolean) => void
+  disabled?: boolean
+  hint?: string
+}) {
+  return (
+    <label
+      className={`flex items-center gap-2 py-0.5 text-[12px] ${
+        disabled ? 'opacity-60' : 'cursor-pointer'
+      }`}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={e => onChange(e.target.checked)}
+        className="h-3.5 w-3.5 accent-blue-600"
+      />
+      <span className="text-gray-800 dark:text-gray-200">{label}</span>
+      {hint && <span className="text-[10px] text-gray-500 dark:text-gray-400">· {hint}</span>}
+    </label>
   )
 }
 
