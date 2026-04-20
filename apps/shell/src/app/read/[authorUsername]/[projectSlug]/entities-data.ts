@@ -47,6 +47,8 @@ export interface PublishedType {
   variantAxis: VariantAxis | null
   minimumTierLevel: number
   publishOrder: number
+  /** Count of entities in this type the caller can't see yet, keyed by the tier level that would unlock them. */
+  lockedByTier?: Record<number, number>
   entities: PublishedEntity[]
 }
 

@@ -77,6 +77,7 @@ function MonetizationContent() {
   const { data: session, status } = useSession()
   const searchParams = useSearchParams()
   const [tiers, setTiers] = useState<SubscriptionTier[]>([])
+  const [tierUnlocks, setTierUnlocks] = useState<Record<number, { entityCount: number; variantCount: number; sample: string[] }>>({})
   const [discountCodes, setDiscountCodes] = useState<DiscountCode[]>([])
   const [authorProjects, setAuthorProjects] = useState<AuthorProject[]>([])
   const [paymentConfig, setPaymentConfig] = useState<PaymentConfig | null>(null)
@@ -144,8 +145,9 @@ function MonetizationContent() {
     if (!session?.apiToken || !session?.user?.id) return
     setLoading(true)
     try {
-      const [tiersRes, configRes, codesRes, projectsRes] = await Promise.all([
+      const [tiersRes, unlocksRes, configRes, codesRes, projectsRes] = await Promise.all([
         apiFetch(`/api/users/${session.user.id}/subscription-tiers`, session.apiToken),
+        apiFetch(`/api/users/${session.user.id}/tier-unlocks`, session.apiToken),
         apiFetch(`/api/users/${session.user.id}/payment-config`, session.apiToken),
         apiFetch(`/api/authors/${session.user.id}/discount-codes`, session.apiToken),
         apiFetch(`/api/users/me/projects`, session.apiToken)
@@ -154,6 +156,18 @@ function MonetizationContent() {
       if (tiersRes.ok) {
         const data = await tiersRes.json()
         setTiers(data.tiers || [])
+      }
+      if (unlocksRes.ok) {
+        const data = await unlocksRes.json()
+        const map: Record<number, { entityCount: number; variantCount: number; sample: string[] }> = {}
+        for (const row of data.tiers || []) {
+          map[row.tierLevel] = {
+            entityCount: row.entityCount,
+            variantCount: row.variantCount,
+            sample: row.sample,
+          }
+        }
+        setTierUnlocks(map)
       }
       if (configRes.ok) {
         const data = await configRes.json()
@@ -464,50 +478,71 @@ function MonetizationContent() {
 
           {/* Tier list */}
           <div className="space-y-3 mb-4">
-            {tiers.map(tier => (
-              <div key={tier.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-gray-100 dark:border-gray-700">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded">
-                      Level {tier.tierLevel}
-                    </span>
-                    <span className="font-medium text-gray-900 dark:text-gray-100">{tier.name}</span>
-                    {!tier.isActive && (
-                      <span className="text-xs text-red-500">inactive</span>
-                    )}
+            {tiers.map(tier => {
+              const unlocks = tierUnlocks[tier.tierLevel]
+              return (
+                <div key={tier.id} className="flex items-start justify-between gap-3 p-4 bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-gray-100 dark:border-gray-700">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded">
+                        Level {tier.tierLevel}
+                      </span>
+                      <span className="font-medium text-gray-900 dark:text-gray-100">{tier.name}</span>
+                      {!tier.isActive && (
+                        <span className="text-xs text-red-500">inactive</span>
+                      )}
+                    </div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                      ${tier.priceMonthly || '0'}/mo
+                      {tier.priceYearly && ` | $${tier.priceYearly}/yr`}
+                      {' | '}
+                      {tier.earlyAccessDays >= 99999 ? 'Instant access' : tier.earlyAccessDays === 0 ? 'Access on release day' : `${tier.earlyAccessDays}d early access`}
+                    </div>
+
+                    {/* Auto-derived: what this tier unlocks today (entities + variants) */}
+                    <TierUnlocksSummary unlocks={unlocks} tierLevel={tier.tierLevel} />
+
+                    {/* Author's freeform benefits, shown after the auto summary */}
+                    {(tier.benefits as string[] | null)?.length ? (
+                      <div className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                        <div className="font-medium text-gray-500 dark:text-gray-400 mb-0.5">Also includes:</div>
+                        <ul className="space-y-0.5">
+                          {(tier.benefits as string[]).map((b, i) => (
+                            <li key={i} className="flex items-start gap-1.5">
+                              <span className="text-gray-400 mt-0.5">•</span>
+                              <span>{b}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
                   </div>
-                  <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                    ${tier.priceMonthly || '0'}/mo
-                    {tier.priceYearly && ` | $${tier.priceYearly}/yr`}
-                    {' | '}
-                    {tier.earlyAccessDays >= 99999 ? 'Instant access' : tier.earlyAccessDays === 0 ? 'Access on release day' : `${tier.earlyAccessDays}d early access`}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => setEditingTier({
+                        id: tier.id,
+                        name: tier.name,
+                        description: tier.description || '',
+                        priceMonthly: tier.priceMonthly || '',
+                        priceYearly: tier.priceYearly || '',
+                        benefits: (tier.benefits as string[]) || [],
+                        earlyAccessDays: tier.earlyAccessDays,
+                        tierLevel: tier.tierLevel
+                      })}
+                      className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => setDeletingTier(tier)}
+                      className="text-sm text-red-600 dark:text-red-400 hover:underline"
+                    >
+                      Delete
+                    </button>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setEditingTier({
-                      id: tier.id,
-                      name: tier.name,
-                      description: tier.description || '',
-                      priceMonthly: tier.priceMonthly || '',
-                      priceYearly: tier.priceYearly || '',
-                      benefits: (tier.benefits as string[]) || [],
-                      earlyAccessDays: tier.earlyAccessDays,
-                      tierLevel: tier.tierLevel
-                    })}
-                    className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => setDeletingTier(tier)}
-                    className="text-sm text-red-600 dark:text-red-400 hover:underline"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
 
           {/* Tier editor */}
@@ -861,6 +896,38 @@ function MonetizationContent() {
         onConfirm={() => deletingTier && deleteTier(deletingTier.id)}
         onCancel={() => setDeletingTier(null)}
       />
+    </div>
+  )
+}
+
+function TierUnlocksSummary({
+  unlocks,
+  tierLevel,
+}: {
+  unlocks?: { entityCount: number; variantCount: number; sample: string[] } | undefined
+  tierLevel: number
+}) {
+  if (!unlocks || (unlocks.entityCount === 0 && unlocks.variantCount === 0)) {
+    return (
+      <div className="mt-2 text-xs text-gray-400 dark:text-gray-500 italic">
+        Nothing gated to this tier yet — gate individual entities at Level {tierLevel} from each project's Publishing view.
+      </div>
+    )
+  }
+  const bits: string[] = []
+  if (unlocks.entityCount > 0) bits.push(`${unlocks.entityCount} ${unlocks.entityCount === 1 ? 'entity' : 'entities'}`)
+  if (unlocks.variantCount > 0) bits.push(`${unlocks.variantCount} ${unlocks.variantCount === 1 ? 'variant' : 'variants'}`)
+  return (
+    <div className="mt-2 text-xs">
+      <div className="font-medium text-emerald-700 dark:text-emerald-400">
+        Unlocks at this tier: +{bits.join(', +')}
+      </div>
+      {unlocks.sample.length > 0 && (
+        <div className="mt-0.5 text-gray-500 dark:text-gray-400 truncate">
+          {unlocks.sample.slice(0, 3).join(' · ')}
+          {unlocks.entityCount + unlocks.variantCount > unlocks.sample.length && ' …'}
+        </div>
+      )}
     </div>
   )
 }

@@ -1993,6 +1993,16 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         const rows = entityRowsByType.get(typeId) ?? []
         const visibleRows = isOwner ? rows : rows.filter(r => r.minimumTierLevel <= callerTier)
         lockedEntityCount += rows.length - visibleRows.length
+        // Per-tier bucket of entities the caller can't see yet. Drives the
+        // spoiler-safe "🔒 Tier N" teaser cards on the reader.
+        const lockedByTier: Record<number, number> = {}
+        if (!isOwner) {
+          for (const r of rows) {
+            if (r.minimumTierLevel > callerTier) {
+              lockedByTier[r.minimumTierLevel] = (lockedByTier[r.minimumTierLevel] ?? 0) + 1
+            }
+          }
+        }
 
         return {
           typeId,
@@ -2007,6 +2017,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           variantAxis: typeData.variant_axis ?? null,
           minimumTierLevel: t.minimumTierLevel,
           publishOrder: t.publishOrder,
+          lockedByTier,
           entities: visibleRows.map(r => {
             const data = r.entityData as Record<string, unknown>
             const publishedVariantIds = r.publishedVariantIds ?? []

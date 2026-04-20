@@ -9,6 +9,7 @@ import {
   userReadingPreferences,
   betaReaders,
   projects,
+  projectCollections,
   projectPublishConfig,
   users,
   userBobbinsInstalled,
@@ -259,6 +260,137 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
     } catch (error) {
       fastify.log.error(error)
       return reply.status(500).send({ error: 'Failed to fetch subscription tiers' })
+    }
+  })
+
+  // ============================================
+  // TIER UNLOCKS — auto-derived view of what each subscription tier unlocks.
+  // Author-only. Returns per-tier counts of entities + variants gated exactly
+  // at that tier, plus a small name sample, so the monetization UI can show
+  // authors what they've actually wired up beyond the freeform benefits.
+  // ============================================
+  fastify.get<{
+    Params: { userId: string }
+  }>('/users/:userId/tier-unlocks', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
+    try {
+      const { userId } = request.params
+      if (!requireSelf(request, reply, userId)) return
+      if (!isValidUUID(userId)) return reply.status(400).send({ error: 'Invalid user ID' })
+
+      // Fetch tiers for this author (sorted by level so output is stable).
+      const tiers = await db
+        .select()
+        .from(subscriptionTiers)
+        .where(eq(subscriptionTiers.authorId, userId))
+        .orderBy(subscriptionTiers.tierLevel)
+
+      if (tiers.length === 0) {
+        return reply.send({ tiers: [] })
+      }
+
+      // Entities the author owns: their projects' rows + their collection-
+      // scoped rows + their global rows. Skip type-definition rows; those
+      // gate whole sections, not individual content.
+      const authorProjectIds = (
+        await db
+          .select({ id: projects.id })
+          .from(projects)
+          .where(eq(projects.ownerId, userId))
+      ).map(r => r.id)
+
+      const conditions = [eq(entities.userId, userId)]
+      if (authorProjectIds.length > 0) conditions.push(inArray(entities.projectId, authorProjectIds))
+      // Collection-scoped: collections where the author owns the collection.
+      const authorCollectionIds = (
+        await db
+          .select({ id: projectCollections.id })
+          .from(projectCollections)
+          .where(eq(projectCollections.userId, userId))
+      ).map(r => r.id)
+      if (authorCollectionIds.length > 0) conditions.push(inArray(entities.collectionId, authorCollectionIds))
+
+      const ownedRows = await db
+        .select({
+          id: entities.id,
+          entityData: entities.entityData,
+          isPublished: entities.isPublished,
+          minimumTierLevel: entities.minimumTierLevel,
+          publishBase: entities.publishBase,
+          publishedVariantIds: entities.publishedVariantIds,
+          variantAccessLevels: entities.variantAccessLevels,
+          collectionName: entities.collectionName,
+        })
+        .from(entities)
+        .where(and(
+          or(...conditions),
+          eq(entities.isPublished, true),
+        ))
+
+      // Bucket entities + variants by their effective tier level.
+      // Entity at level L means: visible only to subscribers ≥ L.
+      // Variant at level L = max(entity.minTier, variant override).
+      interface Bucket {
+        entityCount: number
+        variantCount: number
+        sample: string[]
+      }
+      const buckets = new Map<number, Bucket>()
+      const getBucket = (level: number) => {
+        let b = buckets.get(level)
+        if (!b) {
+          b = { entityCount: 0, variantCount: 0, sample: [] }
+          buckets.set(level, b)
+        }
+        return b
+      }
+      const SAMPLE_LIMIT = 5
+
+      for (const row of ownedRows) {
+        if (row.collectionName === 'entity_type_definitions') continue
+        const data = row.entityData as Record<string, any>
+        const name = typeof data?.name === 'string' ? data.name : '(unnamed)'
+
+        if (row.minimumTierLevel > 0) {
+          const b = getBucket(row.minimumTierLevel)
+          b.entityCount += 1
+          if (b.sample.length < SAMPLE_LIMIT) b.sample.push(name)
+        }
+
+        const variantAccess = (row.variantAccessLevels ?? {}) as Record<string, number>
+        const publishedVariantIds = row.publishedVariantIds ?? []
+
+        // Published variants (not the base) with an effective tier level above 0
+        for (const vid of publishedVariantIds) {
+          const effective = Math.max(row.minimumTierLevel, variantAccess[vid] ?? 0)
+          if (effective > 0) {
+            const variantLabel =
+              data?._variants?.items?.[vid]?.label ?? vid
+            const b = getBucket(effective)
+            b.variantCount += 1
+            if (b.sample.length < SAMPLE_LIMIT) b.sample.push(`${name} · ${variantLabel}`)
+          }
+        }
+        // Base view counted via the entity gate above; skip double-counting.
+      }
+
+      return reply.send({
+        tiers: tiers.map(t => {
+          const b = buckets.get(t.tierLevel)
+          return {
+            tierId: t.id,
+            tierLevel: t.tierLevel,
+            tierName: t.name,
+            entityCount: b?.entityCount ?? 0,
+            variantCount: b?.variantCount ?? 0,
+            sample: b?.sample ?? [],
+          }
+        }),
+      })
+    } catch (error) {
+      fastify.log.error(error, 'Failed to compute tier unlocks')
+      return reply.status(500).send({ error: 'Failed to compute tier unlocks' })
     }
   })
 

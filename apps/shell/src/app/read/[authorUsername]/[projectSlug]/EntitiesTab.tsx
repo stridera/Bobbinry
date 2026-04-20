@@ -155,7 +155,7 @@ export default function EntitiesTab({
               {t.minimumTierLevel > 0 && <TierBadge level={t.minimumTierLevel} />}
             </div>
 
-            {t.entities.length === 0 ? (
+            {t.entities.length === 0 && !hasLocked(t) ? (
               <p className="text-sm text-gray-500 dark:text-gray-400 italic">
                 Nothing published in this section yet.
               </p>
@@ -164,6 +164,20 @@ export default function EntitiesTab({
                 {t.entities.map(e => (
                   <EntityCard key={e.id} type={t} entity={e} onOpen={() => setOpen({ type: t, entity: e })} />
                 ))}
+                {Object.entries(t.lockedByTier ?? {})
+                  .map(([k, v]) => [Number(k), v] as const)
+                  .sort(([a], [b]) => a - b)
+                  .flatMap(([tier, count]) =>
+                    Array.from({ length: count }, (_, i) => (
+                      <LockedTeaserCard
+                        key={`locked-${t.typeId}-${tier}-${i}`}
+                        typeIcon={t.icon}
+                        typeLabel={t.label}
+                        tierLevel={tier}
+                        onClick={onSubscribeNudge}
+                      />
+                    ))
+                  )}
               </div>
             )}
           </section>
@@ -247,6 +261,44 @@ function EntityCard({
             ))}
           </div>
         )}
+      </div>
+    </button>
+  )
+}
+
+function hasLocked(t: PublishedType): boolean {
+  if (!t.lockedByTier) return false
+  return Object.values(t.lockedByTier).some(n => n > 0)
+}
+
+function LockedTeaserCard({
+  typeIcon,
+  typeLabel,
+  tierLevel,
+  onClick,
+}: {
+  typeIcon: string
+  typeLabel: string
+  tierLevel: number
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex aspect-[3/2] flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-purple-300 bg-gradient-to-br from-purple-50 to-purple-100/50 p-4 text-center transition-all hover:border-purple-400 hover:from-purple-100 dark:border-purple-700 dark:from-purple-950/30 dark:to-purple-900/20 dark:hover:border-purple-600"
+      title={`Locked ${typeLabel.toLowerCase().replace(/s$/, '')} — subscribe at tier ${tierLevel}+ to unlock`}
+      aria-label={`Locked — subscribe at tier ${tierLevel} or higher to reveal`}
+    >
+      <span className="text-2xl opacity-50">{typeIcon}</span>
+      <div className="flex items-center gap-1 text-xs font-medium text-purple-700 dark:text-purple-300">
+        <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+        </svg>
+        Tier {tierLevel}+
+      </div>
+      <div className="text-[10px] uppercase tracking-wide text-purple-500 dark:text-purple-400 group-hover:text-purple-600 dark:group-hover:text-purple-300">
+        Subscribe to unlock
       </div>
     </button>
   )
