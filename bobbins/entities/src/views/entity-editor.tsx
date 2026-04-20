@@ -762,6 +762,12 @@ export default function EntityEditorView({
           publishedVariantIds={
             Array.isArray(entity.publishedVariantIds) ? entity.publishedVariantIds : []
           }
+          variantAccessLevels={
+            entity.variantAccessLevels && typeof entity.variantAccessLevels === 'object'
+              ? entity.variantAccessLevels
+              : {}
+          }
+          tiers={tiers}
           isEntityPublished={Boolean(entity.isPublished) && !isNewEntity}
           onAdd={addVariant}
           onRename={renameVariant}
@@ -796,6 +802,26 @@ export default function EntityEditorView({
               publishedVariantIds: result.publishedVariantIds,
             }))
           }}
+          onChangeVariantTier={async (which, level) => {
+            if (isNewEntity || !entityType) return
+            const current: Record<string, number> =
+              entity.variantAccessLevels && typeof entity.variantAccessLevels === 'object'
+                ? { ...entity.variantAccessLevels }
+                : {}
+            if (level === 0) delete current[which]
+            else current[which] = level
+            const result = await patchEntityPublish(
+              sdk,
+              projectId,
+              entityType,
+              entityId!,
+              { variantAccessLevels: current }
+            )
+            setEntity(prev => ({
+              ...prev,
+              variantAccessLevels: result.variantAccessLevels,
+            }))
+          }}
         />
       )}
 
@@ -826,6 +852,10 @@ interface VariantManagerProps {
   axisLabel: string
   publishBase: boolean
   publishedVariantIds: string[]
+  /** Per-variant minimum tier level (0 = inherit entity-level gate). */
+  variantAccessLevels: Record<string, number>
+  /** Author's subscription tiers, sorted by tierLevel asc. */
+  tiers: SubscriptionTier[]
   /** Whether the publish checkboxes are meaningful. False for unsaved / unpublished entities. */
   isEntityPublished: boolean
   onAdd: (label: string) => void
@@ -835,6 +865,8 @@ interface VariantManagerProps {
   onMove: (id: string, delta: -1 | 1) => void
   /** Called with '__base__' when toggling the Base row. */
   onToggleVariantPublish: (which: string | '__base__', next: boolean) => Promise<void> | void
+  /** Called with '__base__' or a variant id + a new tier level (0 clears the override). */
+  onChangeVariantTier: (which: string | '__base__', level: number) => Promise<void> | void
 }
 
 function VariantManager({
@@ -843,6 +875,8 @@ function VariantManager({
   axisLabel,
   publishBase,
   publishedVariantIds,
+  variantAccessLevels,
+  tiers,
   isEntityPublished,
   onAdd,
   onRename,
@@ -850,6 +884,7 @@ function VariantManager({
   onSetDefault,
   onMove,
   onToggleVariantPublish,
+  onChangeVariantTier,
 }: VariantManagerProps) {
   const [newLabel, setNewLabel] = useState('')
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
@@ -940,6 +975,12 @@ function VariantManager({
         <span className="text-[11px] text-gray-500 dark:text-gray-400">
           Shared fields (shown when no variant is selected)
         </span>
+        <VariantTierSelect
+          level={variantAccessLevels['__base__'] ?? 0}
+          tiers={tiers}
+          disabled={!isEntityPublished || !publishBase}
+          onChange={level => onChangeVariantTier('__base__', level)}
+        />
       </div>
 
       {ids.length === 0 && (
@@ -1021,6 +1062,12 @@ function VariantManager({
                     </button>
                   </div>
                 )}
+                <VariantTierSelect
+                  level={variantAccessLevels[id] ?? 0}
+                  tiers={tiers}
+                  disabled={!isEntityPublished || !isPublished}
+                  onChange={level => onChangeVariantTier(id, level)}
+                />
                 <button
                   type="button"
                   onClick={() => onSetDefault(isDefault ? null : id)}
@@ -1100,6 +1147,45 @@ function PublishCheckbox({
         className="h-3.5 w-3.5 accent-emerald-600"
       />
       <span className="text-[11px] text-gray-600 dark:text-gray-400">Publish</span>
+    </label>
+  )
+}
+
+function VariantTierSelect({
+  level,
+  tiers,
+  disabled,
+  onChange,
+}: {
+  level: number
+  tiers: SubscriptionTier[]
+  disabled?: boolean
+  onChange: (level: number) => void
+}) {
+  if (tiers.length === 0) return null
+  return (
+    <label
+      className={`flex items-center gap-1 text-[11px] ${disabled ? 'opacity-50' : ''}`}
+      title={
+        disabled
+          ? 'Publish this view first to gate it by tier'
+          : 'Minimum subscriber tier for this view (the whole-entity tier acts as a floor)'
+      }
+    >
+      <span className="text-gray-500 dark:text-gray-400">Tier</span>
+      <select
+        value={level}
+        disabled={disabled}
+        onChange={e => onChange(Number(e.target.value))}
+        className="max-w-[8rem] rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-1.5 py-0.5 text-[11px] text-gray-900 dark:text-gray-100 disabled:opacity-50"
+      >
+        <option value={0}>Public</option>
+        {tiers.map(t => (
+          <option key={t.id} value={t.tierLevel}>
+            {`T${t.tierLevel} · ${t.name}`}
+          </option>
+        ))}
+      </select>
     </label>
   )
 }

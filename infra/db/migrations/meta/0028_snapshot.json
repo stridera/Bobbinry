@@ -1,6 +1,6 @@
 {
-  "id": "2e0b92d9-ceb5-4084-9fe5-a5336c80f4b4",
-  "prevId": "c0e3f353-e1e2-4682-b46d-b027ca8e2b54",
+  "id": "a4262135-71a4-4ada-9cce-00517bd5f3e3",
+  "prevId": "2e0b92d9-ceb5-4084-9fe5-a5336c80f4b4",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2352,6 +2352,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'{}'::text[]"
+        },
+        "variant_access_levels": {
+          "name": "variant_access_levels",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
         },
         "last_edited_at": {
           "name": "last_edited_at",

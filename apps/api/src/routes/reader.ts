@@ -1928,7 +1928,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       const effective = await getEffectiveBobbins(projectId, project.ownerId)
       const entitiesInstalled = effective.find(b => b.bobbinId === 'entities' && b.enabled)
       if (!entitiesInstalled) {
-        return { installed: false, callerTierLevel: 0, types: [], lockedPreviews: { types: 0, entities: 0 } }
+        return { installed: false, callerTierLevel: 0, types: [], lockedPreviews: { types: 0, entities: 0, variants: 0 } }
       }
 
       const callerTier = await resolveCallerTierLevel(projectId, request.user?.id)
@@ -1986,6 +1986,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         }
       }
 
+      let lockedVariantCount = 0
       const types = visibleTypes.map(t => {
         const typeData = t.data as Record<string, any>
         const typeId = typeData.type_id as string
@@ -2008,6 +2009,29 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           publishOrder: t.publishOrder,
           entities: visibleRows.map(r => {
             const data = r.entityData as Record<string, unknown>
+            const publishedVariantIds = r.publishedVariantIds ?? []
+            const variantAccess = (r.variantAccessLevels ?? {}) as Record<string, number>
+
+            // Filter out variants the caller can't reach. Effective gate is
+            // max(entity.minTier, variant's access level). Entity-level gate
+            // already applied above (visibleRows), so the only additional
+            // filter here is the per-variant level.
+            let visibleBase = r.publishBase
+            let visibleVariantIds = publishedVariantIds
+            if (!isOwner) {
+              const baseEffective = Math.max(r.minimumTierLevel, variantAccess['__base__'] ?? 0)
+              if (baseEffective > callerTier) visibleBase = false
+              const filteredIds = publishedVariantIds.filter(vid => {
+                const effective = Math.max(r.minimumTierLevel, variantAccess[vid] ?? 0)
+                return effective <= callerTier
+              })
+              const hiddenVariantCount =
+                (r.publishBase && !visibleBase ? 1 : 0) +
+                (publishedVariantIds.length - filteredIds.length)
+              lockedVariantCount += hiddenVariantCount
+              visibleVariantIds = filteredIds
+            }
+
             return {
               id: r.id,
               typeId,
@@ -2019,8 +2043,14 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
               publishOrder: r.publishOrder,
               minimumTierLevel: r.minimumTierLevel,
               publishedAt: r.publishedAt,
-              publishBase: r.publishBase,
-              publishedVariantIds: r.publishedVariantIds ?? [],
+              publishBase: visibleBase,
+              publishedVariantIds: visibleVariantIds,
+              variantAccessLevels: isOwner ? variantAccess : undefined,
+              lockedVariantCount:
+                !isOwner
+                  ? (r.publishBase && !visibleBase ? 1 : 0) +
+                    (publishedVariantIds.length - visibleVariantIds.length)
+                  : 0,
             }
           }),
         }
@@ -2030,7 +2060,11 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         installed: true,
         callerTierLevel: isOwner ? -1 : callerTier,
         types,
-        lockedPreviews: { types: lockedTypes, entities: lockedEntityCount },
+        lockedPreviews: {
+          types: lockedTypes,
+          entities: lockedEntityCount,
+          variants: lockedVariantCount,
+        },
       }
     } catch (error) {
       fastify.log.error(error, 'Failed to list published entities')
@@ -2105,6 +2139,23 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
 
       const typeData = typeRow.entityData as Record<string, any>
       const data = entityRow.entityData as Record<string, unknown>
+      const publishedVariantIds = entityRow.publishedVariantIds ?? []
+      const variantAccess = (entityRow.variantAccessLevels ?? {}) as Record<string, number>
+
+      let visibleBase = entityRow.publishBase
+      let visibleVariantIds = publishedVariantIds
+      let lockedVariantCount = 0
+      if (!isOwner) {
+        const baseEffective = Math.max(entityRow.minimumTierLevel, variantAccess['__base__'] ?? 0)
+        if (baseEffective > callerTier) visibleBase = false
+        visibleVariantIds = publishedVariantIds.filter(vid => {
+          const effective = Math.max(entityRow.minimumTierLevel, variantAccess[vid] ?? 0)
+          return effective <= callerTier
+        })
+        lockedVariantCount =
+          (entityRow.publishBase && !visibleBase ? 1 : 0) +
+          (publishedVariantIds.length - visibleVariantIds.length)
+      }
 
       return {
         type: {
@@ -2132,8 +2183,10 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           publishOrder: entityRow.publishOrder,
           minimumTierLevel: entityRow.minimumTierLevel,
           publishedAt: entityRow.publishedAt,
-          publishBase: entityRow.publishBase,
-          publishedVariantIds: entityRow.publishedVariantIds ?? [],
+          publishBase: visibleBase,
+          publishedVariantIds: visibleVariantIds,
+          variantAccessLevels: isOwner ? variantAccess : undefined,
+          lockedVariantCount,
         },
         callerTierLevel: isOwner ? -1 : callerTier,
       }

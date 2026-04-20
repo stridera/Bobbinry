@@ -729,6 +729,11 @@ export const entities = pgTable('entities', {
   // subset of base + variant ids — the reader picks from those to render.
   publishBase: boolean('publish_base').default(true).notNull(),
   publishedVariantIds: text('published_variant_ids').array().default(sql`'{}'::text[]`).notNull(),
+  // Per-variant tier overrides. Map of variant id (or '__base__' for the base
+  // view) → minTierLevel. Missing keys default to 0 (public). The effective
+  // tier for a variant is max(minimumTierLevel, variantAccessLevels[id] ?? 0)
+  // so the whole-entity gate acts as a floor.
+  variantAccessLevels: jsonb('variant_access_levels').default(sql`'{}'::jsonb`).notNull().$type<Record<string, number>>(),
   lastEditedAt: timestamp('last_edited_at').defaultNow(),
   lastEditedBy: uuid('last_edited_by').references(() => users.id),
   createdAt: timestamp('created_at').defaultNow().notNull(),

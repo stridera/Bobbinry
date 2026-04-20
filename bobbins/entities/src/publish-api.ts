@@ -16,6 +16,7 @@ export interface PublishState {
   minimumTierLevel: number
   publishBase: boolean
   publishedVariantIds: string[]
+  variantAccessLevels: Record<string, number>
 }
 
 export interface SubscriptionTier {
@@ -62,6 +63,7 @@ export async function patchEntityPublish(
     minimumTierLevel?: number
     publishBase?: boolean
     publishedVariantIds?: string[]
+    variantAccessLevels?: Record<string, number>
   }
 ): Promise<PublishState> {
   const res = await fetch(`${baseUrl(sdk)}/entities/${entityId}/publish`, {

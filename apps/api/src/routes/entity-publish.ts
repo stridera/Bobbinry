@@ -31,13 +31,17 @@ const PublishPatchBody = z.object({
   minimumTierLevel: z.number().int().min(0).optional(),
   publishBase: z.boolean().optional(),
   publishedVariantIds: z.array(z.string().min(1).max(200)).max(500).optional(),
+  // Map of variant id ('__base__' for the base view) to min tier level.
+  // Replaces the stored map when provided.
+  variantAccessLevels: z.record(z.string().min(1).max(200), z.number().int().min(0)).optional(),
 }).refine(
   b =>
     b.isPublished !== undefined ||
     b.publishOrder !== undefined ||
     b.minimumTierLevel !== undefined ||
     b.publishBase !== undefined ||
-    b.publishedVariantIds !== undefined,
+    b.publishedVariantIds !== undefined ||
+    b.variantAccessLevels !== undefined,
   { message: 'At least one publish field is required' }
 )
 
@@ -116,6 +120,7 @@ const entityPublishPlugin: FastifyPluginAsync = async (fastify) => {
           publishedAt: entities.publishedAt,
           publishBase: entities.publishBase,
           publishedVariantIds: entities.publishedVariantIds,
+          variantAccessLevels: entities.variantAccessLevels,
           entityData: entities.entityData,
         })
         .from(entities)
@@ -130,16 +135,38 @@ const entityPublishPlugin: FastifyPluginAsync = async (fastify) => {
 
       // Validate that any passed publishedVariantIds exist on the entity's
       // _variants.items map (tolerant of missing data — empty array is fine).
+      const data = current.entityData as Record<string, any>
+      const variantItems = data?._variants?.items as Record<string, unknown> | undefined
+      const knownVariantIds =
+        variantItems && typeof variantItems === 'object' ? new Set(Object.keys(variantItems)) : new Set<string>()
       if (body.publishedVariantIds && body.publishedVariantIds.length > 0) {
-        const data = current.entityData as Record<string, any>
-        const items = data?._variants?.items as Record<string, unknown> | undefined
-        const known = items && typeof items === 'object' ? new Set(Object.keys(items)) : new Set<string>()
-        const unknown = body.publishedVariantIds.filter(id => !known.has(id))
+        const unknown = body.publishedVariantIds.filter(id => !knownVariantIds.has(id))
         if (unknown.length > 0) {
           return reply.status(400).send({
             error: 'One or more published variant ids are not present on this entity',
             unknown,
           })
+        }
+      }
+
+      // Validate variantAccessLevels keys + tier levels when provided.
+      if (body.variantAccessLevels) {
+        const unknownKeys: string[] = []
+        for (const key of Object.keys(body.variantAccessLevels)) {
+          if (key === '__base__') continue
+          if (!knownVariantIds.has(key)) unknownKeys.push(key)
+        }
+        if (unknownKeys.length > 0) {
+          return reply.status(400).send({
+            error: 'variantAccessLevels contains variant ids not present on this entity',
+            unknown: unknownKeys,
+          })
+        }
+        for (const level of Object.values(body.variantAccessLevels)) {
+          if (level > 0) {
+            const check = await validateTierLevel(body.projectId, level)
+            if (!check.ok) return reply.status(400).send({ error: check.error })
+          }
         }
       }
 
@@ -166,6 +193,7 @@ const entityPublishPlugin: FastifyPluginAsync = async (fastify) => {
       if (body.minimumTierLevel !== undefined) updates.minimumTierLevel = body.minimumTierLevel
       if (body.publishBase !== undefined) updates.publishBase = body.publishBase
       if (body.publishedVariantIds !== undefined) updates.publishedVariantIds = body.publishedVariantIds
+      if (body.variantAccessLevels !== undefined) updates.variantAccessLevels = body.variantAccessLevels
 
       const [result] = await db
         .update(entities)
@@ -179,6 +207,7 @@ const entityPublishPlugin: FastifyPluginAsync = async (fastify) => {
           minimumTierLevel: entities.minimumTierLevel,
           publishBase: entities.publishBase,
           publishedVariantIds: entities.publishedVariantIds,
+          variantAccessLevels: entities.variantAccessLevels,
         })
 
       return result

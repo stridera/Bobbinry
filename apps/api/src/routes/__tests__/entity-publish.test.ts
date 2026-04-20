@@ -268,6 +268,50 @@ describe('Entity Publish API', () => {
       expect(res.statusCode).toBe(400)
     })
 
+    it('persists variantAccessLevels and validates variant ids + tier levels', async () => {
+      await seedTier(user.id, 1)
+
+      // Valid: map references real variant ids and an existing tier
+      const ok = await app.inject({
+        method: 'PATCH',
+        url: `/api/entities/${entity.id}/publish`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          projectId: project.id,
+          collection: 'characters',
+          variantAccessLevels: { __base__: 0, book1: 0, book2: 1 },
+        },
+      })
+      expect(ok.statusCode).toBe(200)
+      expect(JSON.parse(ok.payload).variantAccessLevels).toEqual({ __base__: 0, book1: 0, book2: 1 })
+
+      // Unknown variant id rejected
+      const bad = await app.inject({
+        method: 'PATCH',
+        url: `/api/entities/${entity.id}/publish`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          projectId: project.id,
+          collection: 'characters',
+          variantAccessLevels: { made_up: 1 },
+        },
+      })
+      expect(bad.statusCode).toBe(400)
+
+      // Tier level without a matching subscription tier rejected
+      const badTier = await app.inject({
+        method: 'PATCH',
+        url: `/api/entities/${entity.id}/publish`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          projectId: project.id,
+          collection: 'characters',
+          variantAccessLevels: { book1: 9 },
+        },
+      })
+      expect(badTier.statusCode).toBe(400)
+    })
+
     it('allows publishing with only variants (base off)', async () => {
       const res = await app.inject({
         method: 'PATCH',

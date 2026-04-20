@@ -220,6 +220,97 @@ describe('Public Reader — Entities', () => {
       expect(body.lockedPreviews.entities).toBe(0)
     })
 
+    it('hides individual published variants whose effective tier exceeds the caller', async () => {
+      const author = await createTestUser()
+      await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, author.id))
+      const project = await createTestProject(author.id)
+      await installEntitiesBobbin(project.id)
+
+      await seedType(project.id, 'characters', { isPublished: true, label: 'Characters' })
+      // Velka is public; her variants have mixed tier requirements
+      await db.insert(entities).values({
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        scope: 'project',
+        bobbinId: 'entities',
+        collectionName: 'characters',
+        entityData: {
+          name: 'Velka',
+          _variants: {
+            order: ['book1', 'book2', 'book3'],
+            items: {
+              book1: { label: 'Book 1', overrides: {} },
+              book2: { label: 'Book 2', overrides: {} },
+              book3: { label: 'Book 3', overrides: {} },
+            },
+          },
+        },
+        isPublished: true,
+        publishBase: true,
+        publishedVariantIds: ['book1', 'book2', 'book3'],
+        variantAccessLevels: { book2: 1, book3: 2 },
+      })
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/public/projects/${project.id}/entities`,
+      })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.payload)
+      const velka = body.types[0].entities[0]
+      // Anonymous caller (tier 0) sees base + book1 only
+      expect(velka.publishBase).toBe(true)
+      expect(velka.publishedVariantIds).toEqual(['book1'])
+      expect(velka.lockedVariantCount).toBe(2)
+      expect(body.lockedPreviews.variants).toBe(2)
+    })
+
+    it('reveals per-variant views to callers at the required tier', async () => {
+      const author = await createTestUser()
+      await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, author.id))
+      const subscriber = await createTestUser()
+      await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, subscriber.id))
+      const project = await createTestProject(author.id)
+      await installEntitiesBobbin(project.id)
+      await seedActiveSubscription(subscriber.id, author.id, 1)
+
+      await seedType(project.id, 'characters', { isPublished: true })
+      await db.insert(entities).values({
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        scope: 'project',
+        bobbinId: 'entities',
+        collectionName: 'characters',
+        entityData: {
+          name: 'Velka',
+          _variants: {
+            order: ['book1', 'book2', 'book3'],
+            items: {
+              book1: { label: 'Book 1', overrides: {} },
+              book2: { label: 'Book 2', overrides: {} },
+              book3: { label: 'Book 3', overrides: {} },
+            },
+          },
+        },
+        isPublished: true,
+        publishBase: true,
+        publishedVariantIds: ['book1', 'book2', 'book3'],
+        variantAccessLevels: { book2: 1, book3: 2 },
+      })
+
+      const token = await createTestToken(subscriber.id)
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/public/projects/${project.id}/entities`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(res.statusCode).toBe(200)
+      const velka = JSON.parse(res.payload).types[0].entities[0]
+      // Tier-1 subscriber sees base + book1 + book2 but not book3
+      expect(velka.publishedVariantIds).toEqual(['book1', 'book2'])
+      expect(velka.lockedVariantCount).toBe(1)
+    })
+
     it('grants the owner visibility regardless of publish/tier state', async () => {
       const author = await createTestUser()
       await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, author.id))

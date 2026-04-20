@@ -68,6 +68,7 @@ function formatEntityResponse(row: typeof entities.$inferSelect, fields?: Set<st
     minimumTierLevel: row.minimumTierLevel,
     publishBase: row.publishBase,
     publishedVariantIds: row.publishedVariantIds ?? [],
+    variantAccessLevels: (row.variantAccessLevels ?? {}) as Record<string, number>,
   }
 
   if (!fields) {
