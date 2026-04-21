@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
@@ -84,21 +84,7 @@ export default function BetaReadersPage() {
   const userId = session?.user?.id
   const apiToken = (session as any)?.apiToken as string | undefined
 
-  useEffect(() => {
-    if (userId && apiToken) {
-      loadProjects()
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, apiToken])
-
-  useEffect(() => {
-    if (userId && apiToken) {
-      loadData()
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, apiToken, selectedProjectId])
-
-  const loadProjects = async () => {
+  const loadProjects = useCallback(async () => {
     if (!apiToken) return
     try {
       const res = await apiFetch('/api/users/me/projects', apiToken)
@@ -113,9 +99,9 @@ export default function BetaReadersPage() {
     } catch {
       console.error('Failed to load projects')
     }
-  }
+  }, [apiToken])
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     if (!apiToken || !userId) return
     setLoading(true)
     try {
@@ -141,7 +127,19 @@ export default function BetaReadersPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [apiToken, userId, selectedProjectId])
+
+  useEffect(() => {
+    if (userId && apiToken) {
+      loadProjects()
+    }
+  }, [userId, apiToken, loadProjects])
+
+  useEffect(() => {
+    if (userId && apiToken) {
+      loadData()
+    }
+  }, [userId, apiToken, loadData])
 
   const lookupUser = async (username: string, setResult: (r: any) => void, setErr: (e: string | null) => void) => {
     if (!username.trim() || !apiToken) return

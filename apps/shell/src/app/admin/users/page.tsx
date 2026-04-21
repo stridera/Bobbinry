@@ -33,6 +33,7 @@ interface AdminUser {
 
 export default function AdminUsersPage() {
   const { data: session } = useSession()
+  const apiToken = session?.apiToken
   const { showError } = useToast()
   const [users, setUsers] = useState<AdminUser[]>([])
   const [total, setTotal] = useState(0)
@@ -45,7 +46,7 @@ export default function AdminUsersPage() {
   const limit = 50
 
   const fetchUsers = useCallback(async () => {
-    if (!session?.apiToken) return
+    if (!apiToken) return
     setLoading(true)
     setError(null)
 
@@ -53,7 +54,7 @@ export default function AdminUsersPage() {
     if (search) params.set('search', search)
 
     try {
-      const res = await apiFetch(`/api/admin/users?${params}`, session.apiToken)
+      const res = await apiFetch(`/api/admin/users?${params}`, apiToken)
       if (!res.ok) throw new Error('Failed to load users')
       const data = await res.json()
       setUsers(data.users)
@@ -63,7 +64,7 @@ export default function AdminUsersPage() {
     } finally {
       setLoading(false)
     }
-  }, [session?.apiToken, page, search, limit])
+  }, [apiToken, page, search, limit])
 
   useEffect(() => { fetchUsers() }, [fetchUsers])
 

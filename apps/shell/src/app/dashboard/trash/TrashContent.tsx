@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 import { SiteNav } from '@/components/SiteNav'
 import { ConfirmModal } from '@bobbinry/sdk'
@@ -32,12 +32,7 @@ export function TrashContent({ apiToken }: { apiToken: string }) {
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<TrashedItem | null>(null)
 
-  useEffect(() => {
-    loadTrash()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiToken])
-
-  const loadTrash = async () => {
+  const loadTrash = useCallback(async () => {
     try {
       const res = await apiFetch('/api/users/me/trash', apiToken)
       if (res.ok) {
@@ -48,7 +43,11 @@ export function TrashContent({ apiToken }: { apiToken: string }) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [apiToken])
+
+  useEffect(() => {
+    loadTrash()
+  }, [loadTrash])
 
   const handleRestore = async (type: 'project' | 'collection', id: string) => {
     setActionLoading(id)

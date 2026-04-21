@@ -222,7 +222,8 @@ function ProjectReadingContent() {
 
   const apiToken = (session as any)?.apiToken as string | undefined
   const userId = session?.user?.id
-  const isOwnProject = !!(userId && author?.userId === userId)
+  const authorUserId = author?.userId
+  const isOwnProject = !!(userId && authorUserId === userId)
 
   // Handle ?subscribed=true return from Stripe
   useEffect(() => {
@@ -259,62 +260,23 @@ function ProjectReadingContent() {
     return () => clearInterval(interval)
   }, [justSubscribed, subscribedTierId, author?.userId, userId, apiToken])
 
-  useEffect(() => {
-    loadProject()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authorUsername, projectSlug, session?.user?.id])
-
-  // Load follow status when project and session are ready
-  useEffect(() => {
-    if (!project?.id) return
-    loadFollowStatus(project.id)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project?.id, apiToken])
-
-  // Probe whether the entities bobbin is installed + published so we know to
-  // render the Entities tab. Done in parallel with the other loaders so the
-  // tab strip can render without flicker. Public endpoint; pass bearer only
-  // if signed in so the caller's tier gets reflected in the payload.
-  useEffect(() => {
-    if (!project?.id) return
-    let cancelled = false
-    const headers: Record<string, string> = {}
-    if (apiToken) headers['Authorization'] = `Bearer ${apiToken}`
-    fetch(`${config.apiUrl}/api/public/projects/${project.id}/entities`, { headers })
-      .then(async r => (r.ok ? (r.json() as Promise<EntitiesPayload>) : null))
-      .then(data => {
-        if (!cancelled) setEntitiesPayload(data)
-      })
-      .catch(() => {
-        if (!cancelled) setEntitiesPayload(null)
-      })
-    return () => { cancelled = true }
-  }, [project?.id, apiToken])
-
-  // Load subscription state when author and session are ready
-  useEffect(() => {
-    if (!author?.userId || !userId || !apiToken) return
-    loadSubscriptionState()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [author?.userId, userId, apiToken])
-
-  const loadSubscriptionState = async () => {
-    if (!userId || !apiToken || !author?.userId) return
+  const loadSubscriptionState = useCallback(async () => {
+    if (!userId || !apiToken || !authorUserId) return
     try {
       const res = await apiFetch(`/api/users/${userId}/subscriptions?status=active`, apiToken)
       if (res.ok) {
         const data = await res.json()
         const match = data.subscriptions?.find(
-          (s: any) => s.subscription?.authorId === author.userId
+          (s: any) => s.subscription?.authorId === authorUserId
         )
         if (match) {
           setSubscribedTierId(match.subscription.tierId)
         }
       }
     } catch {}
-  }
+  }, [userId, apiToken, authorUserId])
 
-  const loadFollowStatus = async (projectId: string) => {
+  const loadFollowStatus = useCallback(async (projectId: string) => {
     try {
       const headers: Record<string, string> = {}
       if (apiToken) headers['Authorization'] = `Bearer ${apiToken}`
@@ -329,9 +291,9 @@ function ProjectReadingContent() {
         setIsMuted(data.muted ?? false)
       }
     } catch {}
-  }
+  }, [apiToken])
 
-  const loadProject = async () => {
+  const loadProject = useCallback(async () => {
     setLoading(true)
     try {
       // Resolve by author + slug
@@ -348,8 +310,7 @@ function ProjectReadingContent() {
       setCollection(data.collection || null)
 
       // Load TOC and tiers in parallel
-      const uid = session?.user?.id
-      const tocUrl = `${config.apiUrl}/api/public/projects/${data.project.id}/toc${uid ? `?userId=${uid}` : ''}`
+      const tocUrl = `${config.apiUrl}/api/public/projects/${data.project.id}/toc${userId ? `?userId=${userId}` : ''}`
       const ownerId = data.project.ownerId || data.author?.userId
       const [tocRes, tiersRes] = await Promise.all([
         fetch(tocUrl),
@@ -373,7 +334,43 @@ function ProjectReadingContent() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [authorUsername, projectSlug, userId])
+
+  useEffect(() => {
+    loadProject()
+  }, [loadProject])
+
+  // Load follow status when project and session are ready
+  useEffect(() => {
+    if (!project?.id) return
+    loadFollowStatus(project.id)
+  }, [project?.id, loadFollowStatus])
+
+  // Probe whether the entities bobbin is installed + published so we know to
+  // render the Entities tab. Done in parallel with the other loaders so the
+  // tab strip can render without flicker. Public endpoint; pass bearer only
+  // if signed in so the caller's tier gets reflected in the payload.
+  useEffect(() => {
+    if (!project?.id) return
+    let cancelled = false
+    const headers: Record<string, string> = {}
+    if (apiToken) headers['Authorization'] = `Bearer ${apiToken}`
+    fetch(`${config.apiUrl}/api/public/projects/${project.id}/entities`, { headers })
+      .then(async r => (r.ok ? (r.json() as Promise<EntitiesPayload>) : null))
+      .then(data => {
+        if (!cancelled) setEntitiesPayload(data)
+      })
+      .catch(() => {
+        if (!cancelled) setEntitiesPayload(null)
+      })
+    return () => { cancelled = true }
+  }, [project?.id, apiToken])
+
+  // Load subscription state when author and session are ready
+  useEffect(() => {
+    if (!authorUserId || !userId || !apiToken) return
+    loadSubscriptionState()
+  }, [authorUserId, userId, apiToken, loadSubscriptionState])
 
   const handleFollowProject = async () => {
     if (!project?.id || !apiToken) return
@@ -516,6 +513,7 @@ function ProjectReadingContent() {
             return
           }
           if (data.checkoutUrl) {
+            // eslint-disable-next-line react-hooks/immutability -- external redirect, not React state
             window.location.href = data.checkoutUrl
             return
           }

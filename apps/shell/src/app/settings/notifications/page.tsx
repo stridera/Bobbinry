@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
@@ -77,6 +77,8 @@ function Toggle({
 
 export default function NotificationsSettingsPage() {
   const { data: session, status } = useSession()
+  const apiToken = session?.apiToken
+  const sessionUserId = session?.user?.id
   const [prefs, setPrefs] = useState<NotificationPrefs>(defaultPrefs)
   const [follows, setFollows] = useState<FollowedProject[]>([])
   const [loading, setLoading] = useState(true)
@@ -85,20 +87,13 @@ export default function NotificationsSettingsPage() {
   const [error, setError] = useState<string | null>(null)
   const [togglingMute, setTogglingMute] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (session?.user?.id && session?.apiToken) {
-      loadData()
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user?.id, session?.apiToken])
-
-  const loadData = async () => {
-    if (!session?.apiToken || !session?.user?.id) return
+  const loadData = useCallback(async () => {
+    if (!apiToken || !sessionUserId) return
     setLoading(true)
     try {
       const [prefsRes, followsRes] = await Promise.all([
-        apiFetch(`/api/users/${session.user.id}/notification-preferences`, session.apiToken),
-        apiFetch(`/api/users/${session.user.id}/follows`, session.apiToken),
+        apiFetch(`/api/users/${sessionUserId}/notification-preferences`, apiToken),
+        apiFetch(`/api/users/${sessionUserId}/follows`, apiToken),
       ])
 
       if (prefsRes.ok) {
@@ -114,7 +109,13 @@ export default function NotificationsSettingsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [apiToken, sessionUserId])
+
+  useEffect(() => {
+    if (sessionUserId && apiToken) {
+      loadData()
+    }
+  }, [sessionUserId, apiToken, loadData])
 
   const savePrefs = async (updated: NotificationPrefs) => {
     if (!session?.apiToken || !session?.user?.id) return

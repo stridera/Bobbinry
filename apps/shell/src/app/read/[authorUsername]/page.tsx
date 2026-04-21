@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -54,21 +54,7 @@ export default function AuthorReadPage() {
   const apiToken = (session as any)?.apiToken as string | undefined
   const userId = session?.user?.id
 
-  useEffect(() => {
-    loadAuthor()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authorUsername])
-
-  // Check follow status and subscription when data is ready
-  useEffect(() => {
-    if (!author || projects.length === 0) return
-    checkFollowStatuses()
-    checkSubscription()
-    checkTiers()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [author, projects, session])
-
-  const loadAuthor = async () => {
+  const loadAuthor = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -88,9 +74,9 @@ export default function AuthorReadPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [authorUsername])
 
-  const checkFollowStatuses = async () => {
+  const checkFollowStatuses = useCallback(async () => {
     if (!apiToken || projects.length === 0) return
     const headers: Record<string, string> = { 'Authorization': `Bearer ${apiToken}` }
     const results = await Promise.all(
@@ -109,25 +95,27 @@ export default function AuthorReadPage() {
       })
     )
     setFollowedProjects(new Set(results.filter(Boolean) as string[]))
-  }
+  }, [apiToken, projects])
 
-  const checkSubscription = async () => {
-    if (!userId || !author || !apiToken) return
+  const authorUserId = author?.userId
+
+  const checkSubscription = useCallback(async () => {
+    if (!userId || !authorUserId || !apiToken) return
     try {
       const res = await apiFetch(`/api/users/${userId}/subscriptions?status=active`, apiToken)
       if (res.ok) {
         const data = await res.json()
         const subs = data.subscriptions || []
-        setIsSubscribed(subs.some((s: any) => s.subscription?.authorId === author.userId))
+        setIsSubscribed(subs.some((s: any) => s.subscription?.authorId === authorUserId))
       }
     } catch {}
-  }
+  }, [userId, authorUserId, apiToken])
 
-  const checkTiers = async () => {
-    if (!author) return
+  const checkTiers = useCallback(async () => {
+    if (!authorUserId) return
     try {
       const res = await fetch(
-        `${config.apiUrl}/api/users/${author.userId}/subscription-tiers`
+        `${config.apiUrl}/api/users/${authorUserId}/subscription-tiers`
       )
       if (res.ok) {
         const data = await res.json()
@@ -135,7 +123,19 @@ export default function AuthorReadPage() {
         setHasPaidTiers(paidTiers.length > 0)
       }
     } catch {}
-  }
+  }, [authorUserId])
+
+  useEffect(() => {
+    loadAuthor()
+  }, [loadAuthor])
+
+  // Check follow status and subscription when data is ready
+  useEffect(() => {
+    if (!author || projects.length === 0) return
+    checkFollowStatuses()
+    checkSubscription()
+    checkTiers()
+  }, [author, projects.length, checkFollowStatuses, checkSubscription, checkTiers])
 
   const handleFollowProject = async (projectId: string) => {
     if (!apiToken) return

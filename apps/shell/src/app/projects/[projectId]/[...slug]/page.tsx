@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
@@ -75,12 +75,9 @@ export default function ProjectDeepLinkPage() {
     }
   }, [session?.apiToken, sdk])
 
-  // Load installed bobbins and their views
   const previousBobbinIdsRef = useRef<string[]>([])
-  const loadProject = useRef<(() => Promise<void>) | null>(null)
 
-  // Keep loadProject ref up to date
-  loadProject.current = async () => {
+  const loadProject = useCallback(async () => {
     try {
       console.log('🔄 DEEP LINK PAGE: Starting loadProject for:', projectId)
       setLoading(true)
@@ -90,18 +87,15 @@ export default function ProjectDeepLinkPage() {
       const newBobbins = response.bobbins || []
       const newBobbinIds = newBobbins.map((b: InstalledBobbin) => b.id)
 
-      // Unregister extensions for bobbins that were removed (using ref for previous state)
       const removedBobbinIds = previousBobbinIdsRef.current.filter(id => !newBobbinIds.includes(id))
       removedBobbinIds.forEach(bobbinId => {
         unregisterManifestExtensions(bobbinId)
       })
 
-      // Update the ref with current bobbin IDs
       previousBobbinIdsRef.current = newBobbinIds
 
       setInstalledBobbins(newBobbins)
 
-      // Register extensions for all installed bobbins
       if (newBobbins.length > 0) {
         newBobbins.forEach((bobbin: InstalledBobbin) => {
           registerManifestExtensions(bobbin.id, bobbin.manifest)
@@ -112,21 +106,21 @@ export default function ProjectDeepLinkPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [projectId, sdk, registerManifestExtensions, unregisterManifestExtensions])
 
   useEffect(() => {
     if (!session?.apiToken || !projectId) return
-    loadProject.current?.()
-  }, [projectId, sdk, session?.apiToken])
+    loadProject()
+  }, [loadProject, projectId, session?.apiToken])
 
   // Re-load bobbins when install/uninstall happens via the popover
   useEffect(() => {
     const handleBobbinsChanged = () => {
-      loadProject.current?.()
+      loadProject()
     }
     window.addEventListener('bobbinry:bobbins-changed', handleBobbinsChanged)
     return () => window.removeEventListener('bobbinry:bobbins-changed', handleBobbinsChanged)
-  }, [])
+  }, [loadProject])
 
   // Parse the slug and trigger navigation once loaded
   const slugKey = slug?.join('/') || ''

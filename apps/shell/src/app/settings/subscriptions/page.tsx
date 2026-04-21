@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useSession } from 'next-auth/react'
 import { useSearchParams } from 'next/navigation'
 import { redirect } from 'next/navigation'
@@ -56,6 +56,7 @@ export default function SubscriptionsPage() {
 
 function SubscriptionsContent() {
   const { data: session, status } = useSession()
+  const sessionUserId = session?.user?.id
   const searchParams = useSearchParams()
   const [subscriptions, setSubscriptions] = useState<SubscriptionData[]>([])
   const [loading, setLoading] = useState(true)
@@ -71,18 +72,11 @@ function SubscriptionsContent() {
     }
   }, [searchParams])
 
-  useEffect(() => {
-    if (session?.user?.id && apiToken) {
-      loadSubscriptions()
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user?.id, apiToken])
-
-  const loadSubscriptions = async () => {
-    if (!session?.user?.id || !apiToken) return
+  const loadSubscriptions = useCallback(async () => {
+    if (!sessionUserId || !apiToken) return
     setLoading(true)
     try {
-      const res = await apiFetch(`/api/users/${session.user.id}/subscriptions`, apiToken)
+      const res = await apiFetch(`/api/users/${sessionUserId}/subscriptions`, apiToken)
       if (res.ok) {
         const data = await res.json()
         setSubscriptions(data.subscriptions || [])
@@ -92,7 +86,13 @@ function SubscriptionsContent() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [sessionUserId, apiToken])
+
+  useEffect(() => {
+    if (sessionUserId && apiToken) {
+      loadSubscriptions()
+    }
+  }, [sessionUserId, apiToken, loadSubscriptions])
 
   const handleManageBilling = async (subscriptionId: string) => {
     if (!session?.user?.id || !apiToken) return
@@ -111,6 +111,7 @@ function SubscriptionsContent() {
       if (res.ok) {
         const data = await res.json()
         if (data.url) {
+          // eslint-disable-next-line react-hooks/immutability -- external redirect, not React state
           window.location.href = data.url
           return
         }

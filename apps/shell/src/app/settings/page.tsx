@@ -329,6 +329,8 @@ function TwoFactorSection({ apiToken }: { apiToken: string }) {
 
 export default function SettingsPage() {
   const { data: session, status, update: updateSession } = useSession()
+  const apiToken = session?.apiToken
+  const sessionUserId = session?.user?.id
   const [saving, setSaving] = useState(false)
   const [success, setSuccess] = useState<string | null>(null)
   const [profileError, setProfileError] = useState<string | null>(null)
@@ -346,17 +348,10 @@ export default function SettingsPage() {
     discordHandle: ''
   })
 
-  useEffect(() => {
-    if (session?.user?.id && session?.apiToken) {
-      loadProfile()
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user?.id, session?.apiToken])
-
-  const loadProfile = async () => {
-    if (!session?.apiToken || !session?.user?.id) return
+  const loadProfile = useCallback(async () => {
+    if (!apiToken || !sessionUserId) return
     try {
-      const res = await apiFetch(`/api/users/${session.user.id}/profile`, session.apiToken)
+      const res = await apiFetch(`/api/users/${sessionUserId}/profile`, apiToken)
       if (res.ok) {
         const data = await res.json()
         const p = data.profile
@@ -377,16 +372,22 @@ export default function SettingsPage() {
     } finally {
       setProfileLoaded(true)
     }
-  }
+  }, [apiToken, sessionUserId])
+
+  useEffect(() => {
+    if (sessionUserId && apiToken) {
+      loadProfile()
+    }
+  }, [sessionUserId, apiToken, loadProfile])
 
   const usernameError = validateUsername(profile.username)
 
   const handleAvatarUpload = useCallback(async (file: File) => {
-    if (!file.type.startsWith('image/') || !session?.apiToken) return
+    if (!file.type.startsWith('image/') || !apiToken) return
     setUploadingAvatar(true)
     setProfileError(null)
     try {
-      const presignRes = await apiFetch('/api/uploads/presign', session.apiToken, {
+      const presignRes = await apiFetch('/api/uploads/presign', apiToken, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename: file.name, contentType: file.type, size: file.size, context: 'avatar' })
@@ -398,7 +399,7 @@ export default function SettingsPage() {
       const { uploadUrl, fileKey } = await presignRes.json()
       const putRes = await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file })
       if (!putRes.ok) throw new Error(`Upload failed (${putRes.status})`)
-      const confirmRes = await apiFetch('/api/uploads/confirm', session.apiToken, {
+      const confirmRes = await apiFetch('/api/uploads/confirm', apiToken, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileKey, filename: file.name, contentType: file.type, size: file.size, context: 'avatar' })
@@ -417,7 +418,7 @@ export default function SettingsPage() {
     } finally {
       setUploadingAvatar(false)
     }
-  }, [session?.apiToken])
+  }, [apiToken])
 
   const saveProfile = async () => {
     if (!session?.apiToken || !session?.user?.id) return

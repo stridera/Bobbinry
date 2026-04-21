@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -97,24 +97,17 @@ export default function ProjectDashboardPage() {
   const params = useParams()
   const router = useRouter()
   const { data: session } = useSession()
+  const apiToken = session?.apiToken
   const projectId = params.projectId as string
 
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (session?.apiToken) {
-      loadDashboard()
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, session?.apiToken])
-
-  const loadDashboard = async () => {
-    const token = session?.apiToken
-    if (!token) return
+  const loadDashboard = useCallback(async () => {
+    if (!apiToken) return
     try {
-      const response = await apiFetch(`/api/projects/${projectId}/dashboard`, token)
+      const response = await apiFetch(`/api/projects/${projectId}/dashboard`, apiToken)
       if (response.ok) {
         const result = await response.json()
         setData(result)
@@ -127,7 +120,13 @@ export default function ProjectDashboardPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [projectId, apiToken])
+
+  useEffect(() => {
+    if (apiToken) {
+      loadDashboard()
+    }
+  }, [apiToken, loadDashboard])
 
   if (loading) {
     return (

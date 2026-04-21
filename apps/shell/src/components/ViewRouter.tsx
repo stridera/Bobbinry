@@ -204,6 +204,39 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
 
+  const loadView = useCallback((entry: ViewRegistryEntry, nav: NavigationState) => {
+    // Deduplicate: skip if we're already showing this exact view+entity combination
+    const viewKey = `${entry.viewId}:${nav.entityType}:${nav.entityId}`
+    if (loadingViewRef.current === viewKey) return
+    loadingViewRef.current = viewKey
+
+    // Dispatch view context change
+    if (typeof window !== 'undefined' && lastDispatchedViewRef.current !== viewKey) {
+      lastDispatchedViewRef.current = viewKey
+      window.dispatchEvent(new CustomEvent('bobbinry:view-context-change', {
+        detail: {
+          currentView: entry.viewId,
+          inView: 'project',
+          entityType: nav.entityType,
+          entityId: nav.entityId,
+          bobbinId: nav.bobbinId
+        }
+      }))
+    }
+
+    // Load component
+    if (entry.componentLoader) {
+      entry.componentLoader()
+        .then((component) => {
+          setViewComponent(() => component as React.ComponentType<any>)
+        })
+        .catch((error: unknown) => {
+          console.error('[ViewRouter] Failed to load component:', error)
+          setViewComponent(null)
+        })
+    }
+  }, [])
+
   // Resolve compatible views and load the component when navigation changes.
   useEffect(() => {
     if (!currentNav) {
@@ -268,7 +301,7 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
 
     setActiveViewId(selected.viewId)
     loadView(selected, currentNav)
-  }, [currentNav])
+  }, [currentNav, loadView])
 
   // Load component when user manually switches views via the tab bar.
   // The loadingViewRef guard ensures this is a no-op when activeViewId was
@@ -282,40 +315,7 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
 
     loadView(entry, currentNav)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeViewId])
-
-  function loadView(entry: ViewRegistryEntry, nav: NavigationState) {
-    // Deduplicate: skip if we're already showing this exact view+entity combination
-    const viewKey = `${entry.viewId}:${nav.entityType}:${nav.entityId}`
-    if (loadingViewRef.current === viewKey) return
-    loadingViewRef.current = viewKey
-
-    // Dispatch view context change
-    if (typeof window !== 'undefined' && lastDispatchedViewRef.current !== viewKey) {
-      lastDispatchedViewRef.current = viewKey
-      window.dispatchEvent(new CustomEvent('bobbinry:view-context-change', {
-        detail: {
-          currentView: entry.viewId,
-          inView: 'project',
-          entityType: nav.entityType,
-          entityId: nav.entityId,
-          bobbinId: nav.bobbinId
-        }
-      }))
-    }
-
-    // Load component
-    if (entry.componentLoader) {
-      entry.componentLoader()
-        .then((component) => {
-          setViewComponent(() => component as React.ComponentType<any>)
-        })
-        .catch((error: unknown) => {
-          console.error('[ViewRouter] Failed to load component:', error)
-          setViewComponent(null)
-        })
-    }
-  }
+  }, [activeViewId, loadView])
 
   const handleViewSwitch = useCallback((viewId: string) => {
     if (!currentNav) return

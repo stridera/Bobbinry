@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -132,7 +132,9 @@ function PublicProfileContent() {
   const [justSubscribed, setJustSubscribed] = useState(false)
 
   const apiToken = (session as any)?.apiToken as string | undefined
-  const isOwnProfile = session?.user?.id === profile?.userId
+  const sessionUserId = session?.user?.id
+  const profileUserId = profile?.userId
+  const isOwnProfile = sessionUserId === profileUserId
 
   // Handle ?subscribed=true return from Stripe
   useEffect(() => {
@@ -166,42 +168,7 @@ function PublicProfileContent() {
     return () => clearInterval(interval)
   }, [justSubscribed, subscribedTierId, profile?.userId, session?.user?.id, apiToken])
 
-  useEffect(() => {
-    loadProfile()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [username])
-
-  useEffect(() => {
-    if (profile?.userId && session?.user?.id && !isOwnProfile) {
-      checkFollowStatus()
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.userId, session?.user?.id])
-
-  // Load subscription state
-  useEffect(() => {
-    if (!profile?.userId || !session?.user?.id || !apiToken || isOwnProfile) return
-    loadSubscriptionState()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.userId, session?.user?.id, apiToken])
-
-  const loadSubscriptionState = async () => {
-    if (!session?.user?.id || !apiToken || !profile?.userId) return
-    try {
-      const res = await apiFetch(`/api/users/${session.user.id}/subscriptions?status=active`, apiToken)
-      if (res.ok) {
-        const data = await res.json()
-        const match = data.subscriptions?.find(
-          (s: any) => s.subscription?.authorId === profile.userId
-        )
-        if (match) {
-          setSubscribedTierId(match.subscription.tierId)
-        }
-      }
-    } catch {}
-  }
-
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -271,20 +238,52 @@ function PublicProfileContent() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [username, router])
 
-  const checkFollowStatus = async () => {
-    if (!session?.user?.id || !profile?.userId) return
+  const checkFollowStatus = useCallback(async () => {
+    if (!sessionUserId || !profileUserId) return
     try {
       const res = await fetch(
-        `${config.apiUrl}/api/users/${session.user.id}/is-following/${profile.userId}`
+        `${config.apiUrl}/api/users/${sessionUserId}/is-following/${profileUserId}`
       )
       if (res.ok) {
         const data = await res.json()
         setIsFollowing(data.isFollowing)
       }
     } catch {}
-  }
+  }, [sessionUserId, profileUserId])
+
+  const loadSubscriptionState = useCallback(async () => {
+    if (!sessionUserId || !apiToken || !profileUserId) return
+    try {
+      const res = await apiFetch(`/api/users/${sessionUserId}/subscriptions?status=active`, apiToken)
+      if (res.ok) {
+        const data = await res.json()
+        const match = data.subscriptions?.find(
+          (s: any) => s.subscription?.authorId === profileUserId
+        )
+        if (match) {
+          setSubscribedTierId(match.subscription.tierId)
+        }
+      }
+    } catch {}
+  }, [sessionUserId, apiToken, profileUserId])
+
+  useEffect(() => {
+    loadProfile()
+  }, [loadProfile])
+
+  useEffect(() => {
+    if (profileUserId && sessionUserId && !isOwnProfile) {
+      checkFollowStatus()
+    }
+  }, [profileUserId, sessionUserId, isOwnProfile, checkFollowStatus])
+
+  // Load subscription state
+  useEffect(() => {
+    if (!profileUserId || !sessionUserId || !apiToken || isOwnProfile) return
+    loadSubscriptionState()
+  }, [profileUserId, sessionUserId, apiToken, isOwnProfile, loadSubscriptionState])
 
   const handleFollow = async () => {
     if (!apiToken || !session?.user?.id || !profile?.userId) return
@@ -342,6 +341,7 @@ function PublicProfileContent() {
         if (res.ok) {
           const data = await res.json()
           if (data.checkoutUrl) {
+            // eslint-disable-next-line react-hooks/immutability -- external redirect, not React state
             window.location.href = data.checkoutUrl
             return
           }

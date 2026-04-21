@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -91,12 +91,7 @@ function FeedbackDashboardContent() {
   const [confirmingAccept, setConfirmingAccept] = useState<string | null>(null)
   const [acceptError, setAcceptError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (session?.apiToken) loadData()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, session?.apiToken, statusFilter, typeFilter, chapterFilter])
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     const token = session?.apiToken
     if (!token) return
     setLoading(true)
@@ -128,7 +123,11 @@ function FeedbackDashboardContent() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [projectId, session?.apiToken, statusFilter, typeFilter, chapterFilter])
+
+  useEffect(() => {
+    if (session?.apiToken) loadData()
+  }, [session?.apiToken, loadData])
 
   const updateStatus = async (annotationId: string, newStatus: string, response?: string) => {
     const token = session?.apiToken

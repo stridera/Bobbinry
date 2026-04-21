@@ -47,6 +47,7 @@ type Tab = 'codes' | 'campaigns'
 
 export default function AdminPromoCodesPage() {
   const { data: session } = useSession()
+  const apiToken = session?.apiToken
   const [tab, setTab] = useState<Tab>('codes')
   const [codes, setCodes] = useState<PromoCode[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
@@ -79,34 +80,35 @@ export default function AdminPromoCodesPage() {
   const [redemptionsLoading, setRedemptionsLoading] = useState(false)
 
   const fetchCodes = useCallback(async () => {
-    if (!session?.apiToken) return
+    if (!apiToken) return
     try {
-      const res = await apiFetch('/api/admin/promo-codes', session.apiToken)
+      const res = await apiFetch('/api/admin/promo-codes', apiToken)
       if (res.ok) setCodes((await res.json()).codes)
       else setError('Failed to load discount codes')
     } catch {
       setError('Failed to load discount codes')
     }
-  }, [session?.apiToken])
+  }, [apiToken])
 
   const fetchCampaigns = useCallback(async () => {
-    if (!session?.apiToken) return
+    if (!apiToken) return
     try {
-      const res = await apiFetch('/api/admin/campaigns', session.apiToken)
+      const res = await apiFetch('/api/admin/campaigns', apiToken)
       if (res.ok) setCampaigns((await res.json()).campaigns)
       else setError('Failed to load campaigns')
     } catch {
       setError('Failed to load campaigns')
     }
-  }, [session?.apiToken])
+  }, [apiToken])
 
   useEffect(() => {
-    if (!session?.apiToken) return
+    if (!apiToken) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
     setLoading(true)
     Promise.all([fetchCodes(), fetchCampaigns()])
       .catch(() => setError('Failed to load data'))
       .finally(() => setLoading(false))
-  }, [session?.apiToken, fetchCodes, fetchCampaigns])
+  }, [apiToken, fetchCodes, fetchCampaigns])
 
   const createCode = async (e: React.FormEvent) => {
     e.preventDefault()

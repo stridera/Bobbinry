@@ -6,7 +6,7 @@
  * Shows recent edits across all user's projects
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { formatDistanceToNow } from 'date-fns'
 import { apiFetch } from '@/lib/api'
@@ -27,12 +27,7 @@ export function RecentActivityPanel({ userId, apiToken }: { userId: string; apiT
   const [activity, setActivity] = useState<Activity[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    loadActivity()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, apiToken])
-
-  const loadActivity = async () => {
+  const loadActivity = useCallback(async () => {
     try {
       const response = await apiFetch('/api/users/me/recent-activity?limit=20', apiToken)
 
@@ -45,7 +40,11 @@ export function RecentActivityPanel({ userId, apiToken }: { userId: string; apiT
     } finally {
       setLoading(false)
     }
-  }
+  }, [apiToken])
+
+  useEffect(() => {
+    loadActivity()
+  }, [loadActivity])
 
   const getEntityTitle = (entity: any) => {
     return entity.entityData?.title || entity.entityData?.name || `${entity.collectionName} #${entity.id.slice(0, 8)}`

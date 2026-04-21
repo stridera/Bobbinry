@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useSession } from 'next-auth/react'
 import { useSearchParams, redirect } from 'next/navigation'
 import { apiFetch } from '@/lib/api'
@@ -40,6 +40,7 @@ export default function MembershipPage() {
 
 function MembershipContent() {
   const { data: session, status, update: updateSession } = useSession()
+  const apiToken = session?.apiToken
   const { showError } = useToast()
   const searchParams = useSearchParams()
   const [membershipData, setMembershipData] = useState<MembershipData | null>(null)
@@ -75,17 +76,10 @@ function MembershipContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [upgraded])
 
-  useEffect(() => {
-    if (session?.apiToken) {
-      loadMembership()
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.apiToken])
-
-  const loadMembership = async () => {
-    if (!session?.apiToken) return
+  const loadMembership = useCallback(async () => {
+    if (!apiToken) return
     try {
-      const res = await apiFetch('/api/membership', session.apiToken)
+      const res = await apiFetch('/api/membership', apiToken)
       if (res.ok) {
         const data = await res.json()
         setMembershipData(data)
@@ -95,7 +89,13 @@ function MembershipContent() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [apiToken])
+
+  useEffect(() => {
+    if (apiToken) {
+      loadMembership()
+    }
+  }, [apiToken, loadMembership])
 
   const handleUpgrade = async () => {
     if (!session?.apiToken) return

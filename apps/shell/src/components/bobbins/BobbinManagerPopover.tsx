@@ -36,6 +36,7 @@ function enrichWithInstalledStatus(bobbins: BobbinMetadata[], installedBobbins: 
 
 export function BobbinManagerPopover({ projectId, installedBobbins, onOpenFullMarketplace }: BobbinManagerPopoverProps) {
   const { data: session } = useSession()
+  const apiToken = session?.apiToken
   const [isOpen, setIsOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'installed' | 'browse'>('installed')
   const [rawMarketplaceBobbins, setRawMarketplaceBobbins] = useState<BobbinMetadata[]>([])
@@ -87,12 +88,12 @@ export function BobbinManagerPopover({ projectId, installedBobbins, onOpenFullMa
   })
 
   const handleInstall = useCallback(async (bobbin: BobbinMetadata) => {
-    if (!session?.apiToken) return
+    if (!apiToken) return
     setBusyId(bobbin.id)
     try {
       const response = await apiFetch(
         `/api/projects/${projectId}/bobbins/install`,
-        session.apiToken,
+        apiToken,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -112,15 +113,15 @@ export function BobbinManagerPopover({ projectId, installedBobbins, onOpenFullMa
     } finally {
       setBusyId(null)
     }
-  }, [session?.apiToken, projectId])
+  }, [apiToken, projectId])
 
   const handleUninstall = useCallback(async (bobbinId: string) => {
-    if (!session?.apiToken) return
+    if (!apiToken) return
     setBusyId(bobbinId)
     try {
       const response = await apiFetch(
         `/api/projects/${projectId}/bobbins/${bobbinId}`,
-        session.apiToken,
+        apiToken,
         { method: 'DELETE' }
       )
       if (!response.ok) {
@@ -133,7 +134,7 @@ export function BobbinManagerPopover({ projectId, installedBobbins, onOpenFullMa
     } finally {
       setBusyId(null)
     }
-  }, [session?.apiToken, projectId])
+  }, [apiToken, projectId])
 
   return (
     <div className="relative" ref={popoverRef}>

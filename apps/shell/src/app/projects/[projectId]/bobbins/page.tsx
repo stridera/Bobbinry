@@ -25,6 +25,7 @@ function BobbinsContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { data: session } = useSession()
+  const apiToken = session?.apiToken
   const projectId = params.projectId as string
   const slotFilter = searchParams.get('slot') || undefined
   const setupStatus = searchParams.get('setup')
@@ -113,9 +114,9 @@ function BobbinsContent() {
   }, [setupStatus])
 
   const loadUserCollections = useCallback(async () => {
-    if (collectionsLoaded || !session?.apiToken) return
+    if (collectionsLoaded || !apiToken) return
     try {
-      const res = await apiFetch('/api/users/me/collections', session.apiToken)
+      const res = await apiFetch('/api/users/me/collections', apiToken)
       if (res.ok) {
         const data = await res.json()
         setUserCollections((data.collections || []).map((c: any) => ({ id: c.id, name: c.name })))
@@ -125,7 +126,7 @@ function BobbinsContent() {
     } finally {
       setCollectionsLoaded(true)
     }
-  }, [collectionsLoaded, session?.apiToken])
+  }, [collectionsLoaded, apiToken])
 
   /** Called when user clicks Install — shows scope picker if bobbin supports multiple scopes */
   const handleInstallClick = (bobbin: BobbinMetadata) => {

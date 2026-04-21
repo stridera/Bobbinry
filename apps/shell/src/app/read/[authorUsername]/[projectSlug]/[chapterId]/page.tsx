@@ -204,6 +204,7 @@ function CommentThread({
 export default function ChapterReaderPage() {
   const params = useParams()
   const { data: session } = useSession()
+  const sessionUserId = session?.user?.id
   const authorUsername = params.authorUsername as string
   const projectSlug = params.projectSlug as string
   const chapterId = params.chapterId as string
@@ -295,10 +296,78 @@ export default function ChapterReaderPage() {
     setIsBookmarked(!!saved)
   }, [bookmarkKey])
 
+  const loadChapter = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      // Resolve by author + slug
+      const slugRes = await fetch(
+        `${config.apiUrl}/api/public/projects/by-author-and-slug/${encodeURIComponent(authorUsername)}/${encodeURIComponent(projectSlug)}`
+      )
+      if (!slugRes.ok) {
+        setError('Project not found')
+        return
+      }
+      const slugData = await slugRes.json()
+      const projId = slugData.project.id
+      setProjectId(projId)
+      setProjectName(slugData.project.name || projectSlug)
+      setAuthorDisplayName(slugData.author?.displayName || slugData.author?.userName || authorUsername)
+
+      const userId = sessionUserId
+      const chapterUrl = `${config.apiUrl}/api/public/projects/${projId}/chapters/${chapterId}${userId ? `?userId=${userId}` : ''}`
+
+      const res = await fetch(chapterUrl)
+      if (res.status === 403) {
+        const data = await res.json()
+        setEmbargoUntil(data.embargoUntil)
+        setError(data.error || 'Access denied')
+        return
+      }
+      if (!res.ok) {
+        setError('Chapter not found')
+        return
+      }
+
+      const data = await res.json()
+      setChapter(data.chapter)
+      setNav(data.navigation)
+
+      // Load reactions and comments in parallel
+      const [reactionsRes, commentsRes] = await Promise.all([
+        fetch(`${config.apiUrl}/api/public/chapters/${chapterId}/reactions`),
+        fetch(`${config.apiUrl}/api/public/chapters/${chapterId}/comments`)
+      ])
+
+      if (reactionsRes.ok) {
+        const rData = await reactionsRes.json()
+        setReactions(rData.reactions || [])
+      }
+      if (commentsRes.ok) {
+        const cData = await commentsRes.json()
+        setCommentsList(cData.comments || [])
+      }
+
+      // Track view
+      fetch(`${config.apiUrl}/api/public/projects/${projId}/chapters/${chapterId}/view`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: userId || undefined,
+          deviceType: window.innerWidth < 768 ? 'mobile' : window.innerWidth < 1024 ? 'tablet' : 'desktop',
+          referrer: document.referrer || undefined
+        })
+      }).catch(() => {})
+    } catch {
+      setError('Failed to load chapter')
+    } finally {
+      setLoading(false)
+    }
+  }, [authorUsername, projectSlug, chapterId, sessionUserId])
+
   useEffect(() => {
     loadChapter()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authorUsername, projectSlug, chapterId])
+  }, [loadChapter])
 
   // Load annotation access separately — session loads async after chapter
   useEffect(() => {
@@ -677,75 +746,6 @@ export default function ChapterReaderPage() {
       proseEl.removeEventListener('keydown', handleKey)
     }
   }, [projectId, session?.apiToken, loading])
-
-  const loadChapter = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      // Resolve by author + slug
-      const slugRes = await fetch(
-        `${config.apiUrl}/api/public/projects/by-author-and-slug/${encodeURIComponent(authorUsername)}/${encodeURIComponent(projectSlug)}`
-      )
-      if (!slugRes.ok) {
-        setError('Project not found')
-        return
-      }
-      const slugData = await slugRes.json()
-      const projId = slugData.project.id
-      setProjectId(projId)
-      setProjectName(slugData.project.name || projectSlug)
-      setAuthorDisplayName(slugData.author?.displayName || slugData.author?.userName || authorUsername)
-
-      const userId = session?.user?.id
-      const chapterUrl = `${config.apiUrl}/api/public/projects/${projId}/chapters/${chapterId}${userId ? `?userId=${userId}` : ''}`
-
-      const res = await fetch(chapterUrl)
-      if (res.status === 403) {
-        const data = await res.json()
-        setEmbargoUntil(data.embargoUntil)
-        setError(data.error || 'Access denied')
-        return
-      }
-      if (!res.ok) {
-        setError('Chapter not found')
-        return
-      }
-
-      const data = await res.json()
-      setChapter(data.chapter)
-      setNav(data.navigation)
-
-      // Load reactions and comments in parallel
-      const [reactionsRes, commentsRes] = await Promise.all([
-        fetch(`${config.apiUrl}/api/public/chapters/${chapterId}/reactions`),
-        fetch(`${config.apiUrl}/api/public/chapters/${chapterId}/comments`)
-      ])
-
-      if (reactionsRes.ok) {
-        const rData = await reactionsRes.json()
-        setReactions(rData.reactions || [])
-      }
-      if (commentsRes.ok) {
-        const cData = await commentsRes.json()
-        setCommentsList(cData.comments || [])
-      }
-
-      // Track view
-      fetch(`${config.apiUrl}/api/public/projects/${projId}/chapters/${chapterId}/view`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: userId || undefined,
-          deviceType: window.innerWidth < 768 ? 'mobile' : window.innerWidth < 1024 ? 'tablet' : 'desktop',
-          referrer: document.referrer || undefined
-        })
-      }).catch(() => {})
-    } catch {
-      setError('Failed to load chapter')
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const toggleReaction = async (type: string) => {
     if (!session?.user) return

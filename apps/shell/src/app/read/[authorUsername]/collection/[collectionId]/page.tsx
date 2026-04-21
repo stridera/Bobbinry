@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { config } from '@/lib/config'
@@ -45,12 +45,7 @@ export default function CollectionReadPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    loadCollection()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authorUsername, collectionId])
-
-  const loadCollection = async () => {
+  const loadCollection = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -70,7 +65,11 @@ export default function CollectionReadPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [authorUsername, collectionId])
+
+  useEffect(() => {
+    loadCollection()
+  }, [loadCollection])
 
   if (loading) {
     return (

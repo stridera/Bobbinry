@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useSession } from 'next-auth/react'
 import { useSearchParams } from 'next/navigation'
 import { redirect } from 'next/navigation'
@@ -75,6 +75,8 @@ export default function MonetizationPage() {
 
 function MonetizationContent() {
   const { data: session, status } = useSession()
+  const apiToken = session?.apiToken
+  const sessionUserId = session?.user?.id
   const searchParams = useSearchParams()
   const [tiers, setTiers] = useState<SubscriptionTier[]>([])
   const [tierUnlocks, setTierUnlocks] = useState<Record<number, { entityCount: number; variantCount: number; sample: string[] }>>({})
@@ -104,53 +106,16 @@ function MonetizationContent() {
     projectId: ''
   })
 
-  useEffect(() => {
-    if (session?.user?.id && session?.apiToken) {
-      loadData().then(() => {
-        // After returning from Stripe onboarding, verify the account status
-        if (searchParams.get('stripe') === 'complete') {
-          verifyOnboarding()
-        }
-      })
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user?.id, session?.apiToken])
-
-  const verifyOnboarding = async () => {
-    if (!session?.apiToken || !session?.user?.id) return
-    try {
-      const res = await apiFetch(
-        `/api/users/${session.user.id}/stripe/verify-onboarding`,
-        session.apiToken,
-        { method: 'POST' }
-      )
-      if (res.ok) {
-        const data = await res.json()
-        if (data.onboardingComplete) {
-          setSuccess('Stripe account connected successfully!')
-          setTimeout(() => setSuccess(null), 5000)
-          await loadData() // Reload to reflect updated payment config
-        } else if (data.detailsSubmitted) {
-          setSuccess('Stripe onboarding complete! Your account is pending verification by Stripe. This usually takes 1-2 business days.')
-          setTimeout(() => setSuccess(null), 10000)
-          await loadData()
-        }
-      }
-    } catch {
-      // Silently fail - user can manually retry
-    }
-  }
-
-  const loadData = async () => {
-    if (!session?.apiToken || !session?.user?.id) return
+  const loadData = useCallback(async () => {
+    if (!apiToken || !sessionUserId) return
     setLoading(true)
     try {
       const [tiersRes, unlocksRes, configRes, codesRes, projectsRes] = await Promise.all([
-        apiFetch(`/api/users/${session.user.id}/subscription-tiers`, session.apiToken),
-        apiFetch(`/api/users/${session.user.id}/tier-unlocks`, session.apiToken),
-        apiFetch(`/api/users/${session.user.id}/payment-config`, session.apiToken),
-        apiFetch(`/api/authors/${session.user.id}/discount-codes`, session.apiToken),
-        apiFetch(`/api/users/me/projects`, session.apiToken)
+        apiFetch(`/api/users/${sessionUserId}/subscription-tiers`, apiToken),
+        apiFetch(`/api/users/${sessionUserId}/tier-unlocks`, apiToken),
+        apiFetch(`/api/users/${sessionUserId}/payment-config`, apiToken),
+        apiFetch(`/api/authors/${sessionUserId}/discount-codes`, apiToken),
+        apiFetch(`/api/users/me/projects`, apiToken)
       ])
 
       if (tiersRes.ok) {
@@ -190,7 +155,43 @@ function MonetizationContent() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [apiToken, sessionUserId])
+
+  const verifyOnboarding = useCallback(async () => {
+    if (!apiToken || !sessionUserId) return
+    try {
+      const res = await apiFetch(
+        `/api/users/${sessionUserId}/stripe/verify-onboarding`,
+        apiToken,
+        { method: 'POST' }
+      )
+      if (res.ok) {
+        const data = await res.json()
+        if (data.onboardingComplete) {
+          setSuccess('Stripe account connected successfully!')
+          setTimeout(() => setSuccess(null), 5000)
+          await loadData() // Reload to reflect updated payment config
+        } else if (data.detailsSubmitted) {
+          setSuccess('Stripe onboarding complete! Your account is pending verification by Stripe. This usually takes 1-2 business days.')
+          setTimeout(() => setSuccess(null), 10000)
+          await loadData()
+        }
+      }
+    } catch {
+      // Silently fail - user can manually retry
+    }
+  }, [apiToken, sessionUserId, loadData])
+
+  useEffect(() => {
+    if (sessionUserId && apiToken) {
+      loadData().then(() => {
+        // After returning from Stripe onboarding, verify the account status
+        if (searchParams.get('stripe') === 'complete') {
+          verifyOnboarding()
+        }
+      })
+    }
+  }, [sessionUserId, apiToken, loadData, verifyOnboarding, searchParams])
 
   const saveTier = async () => {
     if (!session?.apiToken || !session?.user?.id || !editingTier) return

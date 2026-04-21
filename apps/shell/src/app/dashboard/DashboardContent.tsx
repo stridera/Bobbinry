@@ -6,7 +6,7 @@
  * Campfire-style dashboard with project cards and recent activity
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { ProjectCard } from './ProjectCard'
 import { RecentActivityPanel } from './RecentActivityPanel'
@@ -110,12 +110,7 @@ export function DashboardContent({ user, apiToken }: { user: User; apiToken: str
   const [showCreateCollection, setShowCreateCollection] = useState(false)
   const [sortBy, setSortBy] = useState<'recent' | 'alphabetical' | 'created'>('recent')
 
-  useEffect(() => {
-    loadDashboard()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user.id, apiToken])
-
-  const loadDashboard = async () => {
+  const loadDashboard = useCallback(async () => {
     try {
       const [projectsRes, statsRes] = await Promise.all([
         apiFetch('/api/users/me/projects/grouped', apiToken),
@@ -135,7 +130,11 @@ export function DashboardContent({ user, apiToken }: { user: User; apiToken: str
     } finally {
       setLoading(false)
     }
-  }
+  }, [apiToken])
+
+  useEffect(() => {
+    loadDashboard()
+  }, [loadDashboard])
 
   const filteredProjects = (projects: Project[]) => {
     return projects.filter(p => {

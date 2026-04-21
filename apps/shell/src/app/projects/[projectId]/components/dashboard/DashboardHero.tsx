@@ -15,6 +15,7 @@ interface DashboardHeroProps {
 
 export function DashboardHero({ projectId, name, description, coverImage, onUpdate }: DashboardHeroProps) {
   const { data: session } = useSession()
+  const apiToken = session?.apiToken
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState(name)
   const [editDescription, setEditDescription] = useState(description || '')
@@ -62,10 +63,10 @@ export function DashboardHero({ projectId, name, description, coverImage, onUpda
   }
 
   const handleUpload = useCallback(async (file: File) => {
-    if (!file.type.startsWith('image/') || !session?.apiToken) return
+    if (!file.type.startsWith('image/') || !apiToken) return
     setUploading(true)
     try {
-      const presignRes = await apiFetch('/api/uploads/presign', session.apiToken, {
+      const presignRes = await apiFetch('/api/uploads/presign', apiToken, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename: file.name, contentType: file.type, size: file.size, context: 'cover', projectId })
@@ -79,7 +80,7 @@ export function DashboardHero({ projectId, name, description, coverImage, onUpda
       if (!putRes.ok) {
         throw new Error(`Upload to storage failed (${putRes.status})`)
       }
-      const confirmRes = await apiFetch('/api/uploads/confirm', session.apiToken, {
+      const confirmRes = await apiFetch('/api/uploads/confirm', apiToken, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileKey, filename: file.name, contentType: file.type, size: file.size, context: 'cover', projectId })
@@ -91,7 +92,7 @@ export function DashboardHero({ projectId, name, description, coverImage, onUpda
       const { url } = await confirmRes.json()
 
       // Also persist to project
-      await apiFetch(`/api/projects/${projectId}`, session.apiToken, {
+      await apiFetch(`/api/projects/${projectId}`, apiToken, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, description, coverImage: url })
@@ -102,7 +103,7 @@ export function DashboardHero({ projectId, name, description, coverImage, onUpda
     } finally {
       setUploading(false)
     }
-  }, [session?.apiToken, projectId, name, description, onUpdate])
+  }, [apiToken, projectId, name, description, onUpdate])
 
   const handleRemoveCover = async () => {
     if (!session?.apiToken) return
