@@ -64,7 +64,7 @@ export function TipTapEditor({ content, onChange, readonly = false, placeholder 
       {!readonly && <Toolbar editor={editor} />}
       <EditorContent
         editor={editor}
-        className={`prose prose-sm dark:prose-invert max-w-none ${readonly ? 'px-0 py-0' : 'px-3 py-2 min-h-[80px]'} [&_.tiptap]:outline-none [&_.tiptap_p.is-editor-empty:first-child::before]:text-gray-400 [&_.tiptap_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)] [&_.tiptap_p.is-editor-empty:first-child::before]:float-left [&_.tiptap_p.is-editor-empty:first-child::before]:h-0 [&_.tiptap_p.is-editor-empty:first-child::before]:pointer-events-none`}
+        className={`prose prose-sm dark:prose-invert max-w-none px-3 py-2 ${readonly ? '' : 'min-h-[80px]'} [&_.tiptap]:outline-none [&_.tiptap_p.is-editor-empty:first-child::before]:text-gray-400 [&_.tiptap_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)] [&_.tiptap_p.is-editor-empty:first-child::before]:float-left [&_.tiptap_p.is-editor-empty:first-child::before]:h-0 [&_.tiptap_p.is-editor-empty:first-child::before]:pointer-events-none`}
       />
     </div>
   )

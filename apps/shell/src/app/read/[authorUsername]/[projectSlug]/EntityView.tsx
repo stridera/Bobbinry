@@ -31,9 +31,11 @@ interface EntityViewProps {
   headerAction?: React.ReactNode
   /** Route base for linking to other entities from relation pills. E.g. `/read/elena/saga/entity` — id is appended. */
   entityHrefBase?: string | undefined
+  /** When set, makes the entity header + variant bar stick at this Tailwind top-* class (e.g. `top-11` to sit below a 44px nav). */
+  stickyHeaderTopClass?: string | undefined
 }
 
-export default function EntityView({ type, entity, projectId, apiToken, bare = false, headerAction, entityHrefBase }: EntityViewProps) {
+export default function EntityView({ type, entity, projectId, apiToken, bare = false, headerAction, entityHrefBase, stickyHeaderTopClass }: EntityViewProps) {
   const visibleVariantIds = useMemo(() => {
     const ids: Array<string | null> = []
     if (entity.publishBase) ids.push(null)
@@ -95,54 +97,62 @@ export default function EntityView({ type, entity, projectId, apiToken, bare = f
 
   const layout = type.editorLayout || type.listLayout
   const showVariantBar = visibleVariantIds.length > 1
+  const showHeader = !bare
+  const stickyWrapperClass = stickyHeaderTopClass
+    ? `sticky ${stickyHeaderTopClass} z-20 bg-white/95 backdrop-blur-sm dark:bg-gray-900/95`
+    : ''
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {!bare && (
-        <div className="flex items-start justify-between gap-3 border-b border-gray-200 px-5 py-4 dark:border-gray-700">
-          <div className="flex min-w-0 items-start gap-3">
-            <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-gray-100 text-xl dark:bg-gray-800">
-              {type.icon}
-            </span>
-            <div className="min-w-0">
-              <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                {type.label}
+      {(showHeader || showVariantBar) && (
+        <div className={stickyWrapperClass}>
+          {showHeader && (
+            <div className="flex items-start justify-between gap-3 border-b border-gray-200 px-5 py-4 dark:border-gray-700">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-gray-100 text-xl dark:bg-gray-800">
+                  {type.icon}
+                </span>
+                <div className="min-w-0">
+                  <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    {type.label}
+                  </div>
+                  <div className="truncate text-lg font-semibold text-gray-900 dark:text-gray-100">
+                    {String(resolvedEntity.name ?? 'Untitled')}
+                  </div>
+                </div>
               </div>
-              <div className="truncate text-lg font-semibold text-gray-900 dark:text-gray-100">
-                {String(resolvedEntity.name ?? 'Untitled')}
+              {headerAction && (
+                <div className="flex-shrink-0">{headerAction}</div>
+              )}
+            </div>
+          )}
+
+          {showVariantBar && (
+            <div className="flex items-center gap-2 border-b border-gray-200 px-5 py-2 text-xs dark:border-gray-700">
+              <span className="text-gray-500 dark:text-gray-400">
+                {type.variantAxis?.label ?? 'View'}:
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {visibleVariantIds.map(id => {
+                  const active = id === selectedVariant
+                  return (
+                    <button
+                      key={id ?? '__base__'}
+                      type="button"
+                      onClick={() => setSelectedVariant(id)}
+                      className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                        active
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      {variantLabel(id)}
+                    </button>
+                  )
+                })}
               </div>
             </div>
-          </div>
-          {headerAction && (
-            <div className="flex-shrink-0">{headerAction}</div>
           )}
-        </div>
-      )}
-
-      {showVariantBar && (
-        <div className="flex items-center gap-2 border-b border-gray-200 px-5 py-2 text-xs dark:border-gray-700">
-          <span className="text-gray-500 dark:text-gray-400">
-            {type.variantAxis?.label ?? 'View'}:
-          </span>
-          <div className="flex flex-wrap gap-1">
-            {visibleVariantIds.map(id => {
-              const active = id === selectedVariant
-              return (
-                <button
-                  key={id ?? '__base__'}
-                  type="button"
-                  onClick={() => setSelectedVariant(id)}
-                  className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
-                    active
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  {variantLabel(id)}
-                </button>
-              )
-            })}
-          </div>
         </div>
       )}
 

@@ -98,49 +98,63 @@ function EntitySubpageContent() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       <ReaderNav crumbs={crumbs} />
-      <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 lg:px-8">
-        <Link
-          href={`/read/${authorUsername}/${projectSlug}?tab=entities`}
-          className="mb-4 inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
-        >
-          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-          Back to codex
-        </Link>
 
-        {loading && <Loader />}
+      {(loading || error || tierRequired !== null) && (
+        <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 lg:px-8">
+          <Link
+            href={`/read/${authorUsername}/${projectSlug}?tab=entities`}
+            className="mb-4 inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+          >
+            <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to codex
+          </Link>
 
-        {!loading && error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
-            {error}
-          </div>
-        )}
+          {loading && <Loader />}
 
-        {!loading && tierRequired !== null && (
-          <div className="rounded-lg border border-purple-200 bg-purple-50 p-6 text-sm text-purple-800 dark:border-purple-800 dark:bg-purple-900/20 dark:text-purple-200">
-            <p className="font-medium">This entity is available to subscribers at tier {tierRequired} or higher.</p>
+          {!loading && error && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+              {error}
+            </div>
+          )}
+
+          {!loading && tierRequired !== null && (
+            <div className="rounded-lg border border-purple-200 bg-purple-50 p-6 text-sm text-purple-800 dark:border-purple-800 dark:bg-purple-900/20 dark:text-purple-200">
+              <p className="font-medium">This entity is available to subscribers at tier {tierRequired} or higher.</p>
+              <Link
+                href={`/read/${authorUsername}/${projectSlug}?tab=support`}
+                className="mt-3 inline-flex items-center gap-1 rounded-md bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700"
+              >
+                View subscription tiers →
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!loading && payload && (
+        <EntityView
+          type={payload.type}
+          entity={payload.entity}
+          projectId={projectId}
+          apiToken={apiToken}
+          entityHrefBase={`/read/${authorUsername}/${projectSlug}/entity`}
+          stickyHeaderTopClass="top-11"
+          headerAction={
             <Link
-              href={`/read/${authorUsername}/${projectSlug}?tab=support`}
-              className="mt-3 inline-flex items-center gap-1 rounded-md bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700"
+              href={`/read/${authorUsername}/${projectSlug}?tab=entities`}
+              className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+              title="Back to codex"
             >
-              View subscription tiers →
+              <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Back to codex
             </Link>
-          </div>
-        )}
-
-        {!loading && payload && (
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
-            <EntityView
-              type={payload.type}
-              entity={payload.entity}
-              projectId={projectId}
-              apiToken={apiToken}
-              entityHrefBase={`/read/${authorUsername}/${projectSlug}/entity`}
-            />
-          </div>
-        )}
-      </div>
+          }
+        />
+      )}
     </div>
   )
 }
