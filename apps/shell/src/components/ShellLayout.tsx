@@ -86,6 +86,14 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
   const resizeDragRef = useRef<{ side: 'left' | 'right'; startX: number; startWidth: number } | null>(null)
 
   useEffect(() => {
+    // Restore persisted collapsed state before flipping isHydrated so the
+    // panels render in their saved positions on the first client paint.
+    const leftSaved = localStorage.getItem('shellPanelCollapsed:left')
+    const rightSaved = localStorage.getItem('shellPanelCollapsed:right')
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration bridge
+    if (leftSaved === 'true') setLeftPanelCollapsed(true)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration bridge
+    if (rightSaved === 'true') setRightPanelCollapsed(true)
     // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration bridge
     setIsHydrated(true)
   }, [])
@@ -97,6 +105,17 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
   useEffect(() => {
     localStorage.setItem('shellPanelWidth:right', String(rightPanelWidth))
   }, [rightPanelWidth])
+
+  // Persist panel collapsed state (gated on isHydrated so we don't stomp
+  // the stored value with the default `false` during the initial render).
+  useEffect(() => {
+    if (!isHydrated) return
+    localStorage.setItem('shellPanelCollapsed:left', String(leftPanelCollapsed))
+  }, [leftPanelCollapsed, isHydrated])
+  useEffect(() => {
+    if (!isHydrated) return
+    localStorage.setItem('shellPanelCollapsed:right', String(rightPanelCollapsed))
+  }, [rightPanelCollapsed, isHydrated])
 
   // Drag handler
   useEffect(() => {
