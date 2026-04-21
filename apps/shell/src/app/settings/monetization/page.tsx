@@ -184,6 +184,7 @@ function MonetizationContent() {
 
   useEffect(() => {
     if (sessionUserId && apiToken) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
       loadData().then(() => {
         // After returning from Stripe onboarding, verify the account status
         if (searchParams.get('stripe') === 'complete') {

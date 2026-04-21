@@ -126,15 +126,18 @@ export default function AuthorReadPage() {
   }, [authorUserId])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
     loadAuthor()
   }, [loadAuthor])
 
   // Check follow status and subscription when data is ready
   useEffect(() => {
     if (!author || projects.length === 0) return
+    /* eslint-disable react-hooks/set-state-in-effect -- initial fetch */
     checkFollowStatuses()
     checkSubscription()
     checkTiers()
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [author, projects.length, checkFollowStatuses, checkSubscription, checkTiers])
 
   const handleFollowProject = async (projectId: string) => {

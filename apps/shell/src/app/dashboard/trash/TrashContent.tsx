@@ -46,6 +46,7 @@ export function TrashContent({ apiToken }: { apiToken: string }) {
   }, [apiToken])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
     loadTrash()
   }, [loadTrash])
 

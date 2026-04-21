@@ -108,6 +108,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
   }, [user.id, apiToken])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
     void loadProjects()
   }, [loadProjects])
 

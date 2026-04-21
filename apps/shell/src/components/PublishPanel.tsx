@@ -90,6 +90,7 @@ export function PublishPanel(props: PublishPanelProps) {
   }, [projectId, apiToken, entityId])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
     loadData()
   }, [loadData])
 

@@ -376,6 +376,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (sessionUserId && apiToken) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
       loadProfile()
     }
   }, [sessionUserId, apiToken, loadProfile])

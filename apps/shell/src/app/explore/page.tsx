@@ -174,6 +174,7 @@ export default function ExplorePage() {
   // Fetch projects on filter change
   useEffect(() => {
     if (activeTab === 'stories') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch on filter change
       loadProjects(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -182,6 +183,7 @@ export default function ExplorePage() {
   // Fetch authors on filter change
   useEffect(() => {
     if (activeTab === 'authors') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch on filter change
       loadAuthors(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

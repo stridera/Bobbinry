@@ -126,6 +126,7 @@ function FeedbackDashboardContent() {
   }, [projectId, session?.apiToken, statusFilter, typeFilter, chapterFilter])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
     if (session?.apiToken) loadData()
   }, [session?.apiToken, loadData])
 

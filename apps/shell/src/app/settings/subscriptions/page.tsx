@@ -68,6 +68,7 @@ function SubscriptionsContent() {
 
   useEffect(() => {
     if (searchParams.get('subscribed') === 'true') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- derived from URL
       setJustSubscribed(true)
     }
   }, [searchParams])
@@ -90,6 +91,7 @@ function SubscriptionsContent() {
 
   useEffect(() => {
     if (sessionUserId && apiToken) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
       loadSubscriptions()
     }
   }, [sessionUserId, apiToken, loadSubscriptions])

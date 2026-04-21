@@ -106,6 +106,7 @@ function BobbinsContent() {
 
   useEffect(() => {
     if (setupStatus === 'template-failed') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- derived from URL, user-dismissable
       setActionMessage({
         type: 'error',
         text: 'Project created, but template bobbins did not fully install. Install missing bobbins below.'

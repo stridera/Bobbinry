@@ -66,6 +66,7 @@ export default function AdminUsersPage() {
     }
   }, [apiToken, page, search, limit])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
   useEffect(() => { fetchUsers() }, [fetchUsers])
 
   const handleSearch = (e: React.FormEvent) => {

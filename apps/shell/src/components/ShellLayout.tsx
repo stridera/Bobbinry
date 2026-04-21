@@ -90,12 +90,11 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
     // panels render in their saved positions on the first client paint.
     const leftSaved = localStorage.getItem('shellPanelCollapsed:left')
     const rightSaved = localStorage.getItem('shellPanelCollapsed:right')
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration bridge
+    /* eslint-disable react-hooks/set-state-in-effect -- hydration bridge */
     if (leftSaved === 'true') setLeftPanelCollapsed(true)
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration bridge
     if (rightSaved === 'true') setRightPanelCollapsed(true)
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration bridge
     setIsHydrated(true)
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [])
 
   // Persist panel widths

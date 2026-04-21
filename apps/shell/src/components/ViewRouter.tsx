@@ -240,9 +240,11 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
   // Resolve compatible views and load the component when navigation changes.
   useEffect(() => {
     if (!currentNav) {
+      /* eslint-disable react-hooks/set-state-in-effect -- reset view state when navigation clears */
       setCompatibleViews([])
       setActiveViewId(null)
       setViewComponent(null)
+      /* eslint-enable react-hooks/set-state-in-effect */
       lastDispatchedViewRef.current = null
       loadingViewRef.current = null
 

@@ -133,6 +133,7 @@ export function DashboardContent({ user, apiToken }: { user: User; apiToken: str
   }, [apiToken])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
     loadDashboard()
   }, [loadDashboard])
 

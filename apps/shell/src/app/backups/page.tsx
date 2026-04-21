@@ -63,10 +63,12 @@ function BackupsContent() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [disconnecting, setDisconnecting] = useState(false)
 
-  // Show OAuth result message from URL params
+  // Show OAuth result message from URL params — derived from searchParams,
+  // but setMessage is needed so the user can dismiss it.
   useEffect(() => {
     const driveParam = searchParams.get('drive')
     if (driveParam === 'connected') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- derived from URL, user-dismissable
       setMessage({ type: 'success', text: 'Google Drive connected successfully! Your projects will now be backed up automatically.' })
     } else if (driveParam === 'denied') {
       setMessage({ type: 'error', text: 'Google Drive authorization was denied.' })
@@ -90,6 +92,7 @@ function BackupsContent() {
   }, [apiToken])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
     if (apiToken) loadStatus()
   }, [apiToken, loadStatus])
 

@@ -208,6 +208,7 @@ export default function LibraryPage() {
       redirect('/login')
     }
     if (status === 'authenticated') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
       loadData()
     }
   }, [status, loadData])

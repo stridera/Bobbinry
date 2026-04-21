@@ -69,6 +69,7 @@ function MembershipContent() {
 
   useEffect(() => {
     if (upgraded === 'true') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- derived from URL, user-dismissable
       setSuccessMessage('Welcome to Supporter! Your membership is now active.')
       // Refresh session to pick up new tier
       updateSession({ membershipTier: 'supporter' })
@@ -93,6 +94,7 @@ function MembershipContent() {
 
   useEffect(() => {
     if (apiToken) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
       loadMembership()
     }
   }, [apiToken, loadMembership])

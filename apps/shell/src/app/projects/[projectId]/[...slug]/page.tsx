@@ -110,6 +110,7 @@ export default function ProjectDeepLinkPage() {
 
   useEffect(() => {
     if (!session?.apiToken || !projectId) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
     loadProject()
   }, [loadProject, projectId, session?.apiToken])
 

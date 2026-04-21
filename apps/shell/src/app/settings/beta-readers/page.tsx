@@ -131,12 +131,14 @@ export default function BetaReadersPage() {
 
   useEffect(() => {
     if (userId && apiToken) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
       loadProjects()
     }
   }, [userId, apiToken, loadProjects])
 
   useEffect(() => {
     if (userId && apiToken) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
       loadData()
     }
   }, [userId, apiToken, loadData])

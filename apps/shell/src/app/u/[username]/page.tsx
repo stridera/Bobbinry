@@ -139,6 +139,7 @@ function PublicProfileContent() {
   // Handle ?subscribed=true return from Stripe
   useEffect(() => {
     if (searchParams.get('subscribed') === 'true') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- derived from URL
       setJustSubscribed(true)
     }
   }, [searchParams])
@@ -270,11 +271,13 @@ function PublicProfileContent() {
   }, [sessionUserId, apiToken, profileUserId])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
     loadProfile()
   }, [loadProfile])
 
   useEffect(() => {
     if (profileUserId && sessionUserId && !isOwnProfile) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
       checkFollowStatus()
     }
   }, [profileUserId, sessionUserId, isOwnProfile, checkFollowStatus])
@@ -282,6 +285,7 @@ function PublicProfileContent() {
   // Load subscription state
   useEffect(() => {
     if (!profileUserId || !sessionUserId || !apiToken || isOwnProfile) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
     loadSubscriptionState()
   }, [profileUserId, sessionUserId, apiToken, isOwnProfile, loadSubscriptionState])
 

@@ -61,8 +61,10 @@ function EntitySubpageContent() {
   useEffect(() => {
     if (!projectId) return
     let cancelled = false
+    /* eslint-disable react-hooks/set-state-in-effect -- initial fetch */
     setLoading(true)
     setTierRequired(null)
+    /* eslint-enable react-hooks/set-state-in-effect */
     const headers: Record<string, string> = {}
     if (apiToken) headers['Authorization'] = `Bearer ${apiToken}`
     fetch(`${config.apiUrl}/api/public/projects/${projectId}/entities/${entityId}`, { headers })

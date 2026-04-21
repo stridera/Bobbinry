@@ -97,6 +97,7 @@ export default function ReadIndexPage() {
       return
     }
     if (status === 'authenticated') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
       loadData()
     }
   }, [status, loadData, router])

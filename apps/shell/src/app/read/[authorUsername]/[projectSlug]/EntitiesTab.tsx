@@ -47,6 +47,7 @@ export default function EntitiesTab({
 
   useEffect(() => {
     if (initialPayload) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration bridge
       setPayload(initialPayload)
       setLoading(false)
       return

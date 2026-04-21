@@ -170,6 +170,7 @@ export function ResizablePanelStack({
     if (storageKey === storageKeyRef.current) return
     storageKeyRef.current = storageKey
 
+    /* eslint-disable react-hooks/set-state-in-effect -- hydration bridge for localStorage panel state */
     if (typeof window === 'undefined') {
       setPanelState(createDefaultPanelState(panels, defaultVisibleCount))
       return
@@ -187,6 +188,7 @@ export function ResizablePanelStack({
     } catch {
       setPanelState(createDefaultPanelState(panels, defaultVisibleCount))
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [storageKey, panels, defaultVisibleCount])
 
   const orderedPanels = useMemo(() => {
@@ -215,6 +217,7 @@ export function ResizablePanelStack({
 
   const panelIds = panels.map(panel => panel.id).join(',')
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reconcile panel config on panels change
     setPanelState(previous => {
       const next = reconcilePanelState(previous, panels, defaultVisibleCount)
       return isSamePanelState(previous, next) ? previous : next

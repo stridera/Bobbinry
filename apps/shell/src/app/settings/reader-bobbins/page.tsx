@@ -77,6 +77,7 @@ export default function ReaderBobbinsPage() {
       return
     }
     if (status === 'authenticated') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
       loadInstalled()
     }
   }, [status, loadInstalled, router])

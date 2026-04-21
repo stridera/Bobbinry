@@ -113,6 +113,7 @@ export default function NotificationsSettingsPage() {
 
   useEffect(() => {
     if (sessionUserId && apiToken) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
       loadData()
     }
   }, [sessionUserId, apiToken, loadData])

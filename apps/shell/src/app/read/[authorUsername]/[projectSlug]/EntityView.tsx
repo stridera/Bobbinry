@@ -9,7 +9,7 @@
  * Kept dumb: the caller handles data fetching, selection state is internal.
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { LayoutRenderer } from '@bobbinry/entities/components/LayoutRenderer'
 import type { PublishedType, PublishedEntity } from './entities-data'
 import { resolveEntityForVariant } from './entities-data'

@@ -60,6 +60,7 @@ export function BobbinManagerPopover({ projectId, installedBobbins, onOpenFullMa
   // Load marketplace on first Browse tab switch
   useEffect(() => {
     if (activeTab === 'browse' && marketplaceStatus === 'idle') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch gated on tab switch
       setMarketplaceStatus('loading')
       fetch('/api/marketplace/bobbins')
         .then(res => res.json())

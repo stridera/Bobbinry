@@ -23,7 +23,7 @@ interface Activity {
   projectId: string
 }
 
-export function RecentActivityPanel({ userId, apiToken }: { userId: string; apiToken: string }) {
+export function RecentActivityPanel({ apiToken }: { userId: string; apiToken: string }) {
   const [activity, setActivity] = useState<Activity[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -43,6 +43,7 @@ export function RecentActivityPanel({ userId, apiToken }: { userId: string; apiT
   }, [apiToken])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
     loadActivity()
   }, [loadActivity])
 

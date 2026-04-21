@@ -228,6 +228,7 @@ function ProjectReadingContent() {
   // Handle ?subscribed=true return from Stripe
   useEffect(() => {
     if (searchParams.get('subscribed') === 'true') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- derived from URL
       setJustSubscribed(true)
       // Clear the query param to prevent re-triggering on re-renders
       router.replace(`/read/${authorUsername}/${projectSlug}`, { scroll: false })
@@ -337,12 +338,14 @@ function ProjectReadingContent() {
   }, [authorUsername, projectSlug, userId])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
     loadProject()
   }, [loadProject])
 
   // Load follow status when project and session are ready
   useEffect(() => {
     if (!project?.id) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
     loadFollowStatus(project.id)
   }, [project?.id, loadFollowStatus])
 
@@ -369,6 +372,7 @@ function ProjectReadingContent() {
   // Load subscription state when author and session are ready
   useEffect(() => {
     if (!authorUserId || !userId || !apiToken) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
     loadSubscriptionState()
   }, [authorUserId, userId, apiToken, loadSubscriptionState])
 

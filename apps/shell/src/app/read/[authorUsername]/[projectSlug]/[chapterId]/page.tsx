@@ -293,6 +293,7 @@ export default function ChapterReaderPage() {
   // Check for existing bookmark on mount
   useEffect(() => {
     const saved = localStorage.getItem(bookmarkKey)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration bridge
     setIsBookmarked(!!saved)
   }, [bookmarkKey])
 
@@ -366,6 +367,7 @@ export default function ChapterReaderPage() {
   }, [authorUsername, projectSlug, chapterId, sessionUserId])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
     loadChapter()
   }, [loadChapter])
 
@@ -396,11 +398,13 @@ export default function ChapterReaderPage() {
     if (saved) {
       try {
         const prefs = JSON.parse(saved)
+        /* eslint-disable react-hooks/set-state-in-effect -- hydration bridge */
         if (prefs.fontSize) setFontSize(prefs.fontSize)
         if (prefs.readerWidth) setReaderWidth(prefs.readerWidth)
         if (prefs.entityHighlightStyle === 'highlight' || prefs.entityHighlightStyle === 'underline' || prefs.entityHighlightStyle === 'off') {
           setEntityHighlightStyle(prefs.entityHighlightStyle)
         }
+        /* eslint-enable react-hooks/set-state-in-effect */
       } catch {}
     }
   }, [])
