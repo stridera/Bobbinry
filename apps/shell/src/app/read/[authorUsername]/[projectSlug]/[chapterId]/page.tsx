@@ -10,6 +10,8 @@ import { ReaderNav } from '@/components/ReaderNav'
 import { ExtensionSlot } from '@/components/ExtensionSlot'
 import { AnnotationSelectionPopover, type TextAnchor } from '@/components/AnnotationSelectionPopover'
 import { AnnotationForm } from '@/components/AnnotationForm'
+import EntityModal from '../EntityModal'
+import type { PublishedEntity, PublishedType } from '../entities-data'
 
 interface ChapterData {
   id: string
@@ -59,6 +61,15 @@ interface Annotation {
 type FontSize = 'small' | 'medium' | 'large' | 'xlarge'
 type ReaderTheme = 'light' | 'dark' | 'sepia'
 type ReaderWidth = 'narrow' | 'standard' | 'wide'
+type EntityHighlightStyle = 'highlight' | 'underline' | 'off'
+
+interface PublishedEntityName {
+  id: string
+  name: string
+  typeId: string
+  typeIcon: string
+  typeLabel: string
+}
 
 const FONT_SIZES: Record<FontSize, string> = {
   small: 'text-sm leading-6',
@@ -235,7 +246,13 @@ export default function ChapterReaderPage() {
     return 'light'
   })
   const [readerWidth, setReaderWidth] = useState<ReaderWidth>('standard')
+  const [entityHighlightStyle, setEntityHighlightStyle] = useState<EntityHighlightStyle>('highlight')
   const [showSettings, setShowSettings] = useState(false)
+
+  // Published-entity names + click-to-open modal state
+  const [publishedEntityNames, setPublishedEntityNames] = useState<PublishedEntityName[]>([])
+  const [openEntity, setOpenEntity] = useState<{ type: PublishedType; entity: PublishedEntity } | null>(null)
+  const [openEntityLoading, setOpenEntityLoading] = useState(false)
 
   // Progress tracking
   const contentRef = useRef<HTMLDivElement>(null)
@@ -312,6 +329,9 @@ export default function ChapterReaderPage() {
         const prefs = JSON.parse(saved)
         if (prefs.fontSize) setFontSize(prefs.fontSize)
         if (prefs.readerWidth) setReaderWidth(prefs.readerWidth)
+        if (prefs.entityHighlightStyle === 'highlight' || prefs.entityHighlightStyle === 'underline' || prefs.entityHighlightStyle === 'off') {
+          setEntityHighlightStyle(prefs.entityHighlightStyle)
+        }
       } catch {}
     }
   }, [])
@@ -473,6 +493,190 @@ export default function ChapterReaderPage() {
     observer.observe(proseEl, { childList: true })
     return () => observer.disconnect()
   }, [annotations, applyHighlights])
+
+  // --- Entity highlights ---
+  // Fetch the list of published entity names once per chapter — used to wrap
+  // matches in the prose with clickable highlight spans.
+  useEffect(() => {
+    if (!projectId) return
+    let cancelled = false
+    const headers: Record<string, string> = {}
+    if (session?.apiToken) headers['Authorization'] = `Bearer ${session.apiToken}`
+    fetch(`${config.apiUrl}/api/public/projects/${projectId}/entities/published-names`, { headers })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (!cancelled && d?.installed && Array.isArray(d.entities)) {
+          setPublishedEntityNames(d.entities)
+        }
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [projectId, session?.apiToken])
+
+  // Build + apply entity highlight spans after the chapter renders. Runs
+  // AFTER the annotation pass so we don't wrap annotation-marked text.
+  const applyEntityHighlights = useCallback(() => {
+    const proseEl = chapterContentRef.current
+    if (!proseEl) return
+
+    // Unwrap any existing entity spans first — the style might have changed,
+    // the entity list might have changed, or React just re-rendered.
+    proseEl.querySelectorAll('span[data-entity-id]').forEach(el => {
+      const parent = el.parentNode
+      if (parent) {
+        parent.replaceChild(document.createTextNode(el.textContent || ''), el)
+        parent.normalize()
+      }
+    })
+
+    if (entityHighlightStyle === 'off' || publishedEntityNames.length === 0) return
+
+    // Sort by name length desc so longer names ("Lira's Grandmother") match
+    // before shorter substrings ("Lira"). Dedupe by lowercase name.
+    const sorted = [...publishedEntityNames].sort((a, b) => b.name.length - a.name.length)
+    const seen = new Set<string>()
+    const patterns: string[] = []
+    const nameMap = new Map<string, PublishedEntityName[]>()
+    for (const e of sorted) {
+      const key = e.name.toLowerCase()
+      const list = nameMap.get(key) ?? []
+      list.push(e)
+      nameMap.set(key, list)
+      if (!seen.has(key)) {
+        seen.add(key)
+        patterns.push(e.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      }
+    }
+    if (patterns.length === 0) return
+    const regex = new RegExp(`\\b(${patterns.join('|')})\\b`, 'gi')
+
+    // Walk text nodes, skipping anything inside existing marks/links/code so
+    // we don't double-wrap or interrupt other interactive content.
+    const SKIP_TAGS = new Set(['A', 'MARK', 'CODE', 'PRE', 'BUTTON', 'SCRIPT', 'STYLE'])
+    const walker = document.createTreeWalker(proseEl, NodeFilter.SHOW_TEXT, {
+      acceptNode(n) {
+        let p: Node | null = n.parentNode
+        while (p && p !== proseEl) {
+          if (p.nodeType === 1) {
+            const tag = (p as Element).tagName
+            if (SKIP_TAGS.has(tag)) return NodeFilter.FILTER_REJECT
+            if ((p as Element).getAttribute('data-entity-id')) return NodeFilter.FILTER_REJECT
+          }
+          p = p.parentNode
+        }
+        return NodeFilter.FILTER_ACCEPT
+      },
+    })
+    const textNodes: Text[] = []
+    let cur: Text | null
+    while ((cur = walker.nextNode() as Text | null)) textNodes.push(cur)
+
+    for (const textNode of textNodes) {
+      const text = textNode.textContent || ''
+      regex.lastIndex = 0
+      if (!regex.test(text)) continue
+      regex.lastIndex = 0
+      const frag = document.createDocumentFragment()
+      let lastIndex = 0
+      let m: RegExpExecArray | null
+      while ((m = regex.exec(text)) !== null) {
+        const start = m.index
+        const end = start + m[0].length
+        if (start > lastIndex) {
+          frag.appendChild(document.createTextNode(text.slice(lastIndex, start)))
+        }
+        const entries = nameMap.get(m[0].toLowerCase())
+        if (!entries || entries.length === 0) {
+          frag.appendChild(document.createTextNode(m[0]))
+          lastIndex = end
+          continue
+        }
+        const span = document.createElement('span')
+        span.className = `entity-highlight entity-highlight--${entityHighlightStyle}`
+        span.setAttribute('data-entity-id', entries.map(e => e.id).join(','))
+        span.setAttribute('data-entity-type', entries[0]!.typeId)
+        span.setAttribute('data-entity-name', m[0])
+        span.setAttribute('role', 'button')
+        span.setAttribute('tabindex', '0')
+        span.setAttribute('title', `${entries[0]!.typeLabel} · click to open`)
+        span.textContent = m[0]
+        frag.appendChild(span)
+        lastIndex = end
+      }
+      if (lastIndex < text.length) {
+        frag.appendChild(document.createTextNode(text.slice(lastIndex)))
+      }
+      textNode.parentNode?.replaceChild(frag, textNode)
+    }
+  }, [publishedEntityNames, entityHighlightStyle])
+
+  // Re-apply whenever the entity list, style, annotations (which rewrap), or
+  // chapter change. Annotation highlights run first; we follow them.
+  // `loading` is a dep because the prose div doesn't mount until loading
+  // flips to false — the ref would otherwise be null when we try to apply.
+  useEffect(() => {
+    applyEntityHighlights()
+  }, [applyEntityHighlights, chapter, annotations, loading])
+
+  // React's dangerouslySetInnerHTML can rewrite innerHTML on later renders,
+  // wiping the spans we added. Watch for content replacement and re-apply.
+  useEffect(() => {
+    const proseEl = chapterContentRef.current
+    if (!proseEl) return
+    const observer = new MutationObserver(() => {
+      if (publishedEntityNames.length === 0 || entityHighlightStyle === 'off') return
+      if (proseEl.querySelector('span[data-entity-id]')) return // already applied
+      applyEntityHighlights()
+    })
+    observer.observe(proseEl, { childList: true, subtree: false })
+    return () => observer.disconnect()
+  }, [applyEntityHighlights, publishedEntityNames.length, entityHighlightStyle, loading])
+
+  // Delegated click handler: open the entity modal when any highlight span
+  // is activated. Uses the first id when multiple entities share the name.
+  useEffect(() => {
+    const proseEl = chapterContentRef.current
+    if (!proseEl || !projectId) return
+
+    async function openEntityById(entityId: string) {
+      setOpenEntityLoading(true)
+      try {
+        const headers: Record<string, string> = {}
+        if (session?.apiToken) headers['Authorization'] = `Bearer ${session.apiToken}`
+        const res = await fetch(
+          `${config.apiUrl}/api/public/projects/${projectId}/entities/${entityId}`,
+          { headers }
+        )
+        if (!res.ok) return
+        const data = await res.json()
+        setOpenEntity({ type: data.type, entity: data.entity })
+      } catch {
+        // swallow — noisy toast isn't worth it for a tap-to-preview
+      } finally {
+        setOpenEntityLoading(false)
+      }
+    }
+
+    function handle(e: Event) {
+      const target = (e.target as HTMLElement | null)?.closest('[data-entity-id]') as HTMLElement | null
+      if (!target) return
+      const idAttr = target.getAttribute('data-entity-id')
+      if (!idAttr) return
+      e.preventDefault()
+      const firstId = idAttr.split(',')[0]
+      if (firstId) openEntityById(firstId)
+    }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key !== 'Enter' && e.key !== ' ') return
+      handle(e)
+    }
+    proseEl.addEventListener('click', handle)
+    proseEl.addEventListener('keydown', handleKey)
+    return () => {
+      proseEl.removeEventListener('click', handle)
+      proseEl.removeEventListener('keydown', handleKey)
+    }
+  }, [projectId, session?.apiToken, loading])
 
   const loadChapter = async () => {
     setLoading(true)
@@ -847,10 +1051,60 @@ export default function ChapterReaderPage() {
                   ))}
                 </div>
               </div>
+              {publishedEntityNames.length > 0 && (
+                <div>
+                  <span className={`text-xs ${mutedText} block mb-1`}>Entities</span>
+                  <div className="flex gap-1">
+                    {([
+                      { id: 'highlight' as const, label: 'Highlight' },
+                      { id: 'underline' as const, label: 'Underline' },
+                      { id: 'off' as const, label: 'Off' },
+                    ]).map(opt => (
+                      <button
+                        key={opt.id}
+                        onClick={() => { setEntityHighlightStyle(opt.id); savePrefs('entityHighlightStyle', opt.id) }}
+                        className={`px-2 py-1 rounded text-xs ${entityHighlightStyle === opt.id ? activeBg : hoverBg}`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
       </div>
+
+      {/* Styles for entity highlights applied post-render. Scoped to the
+          reader page so editor + other prose areas are untouched. Kept in
+          sync with the reader themes (light/dark/sepia) by reading from CSS
+          variables on the containing theme wrapper. */}
+      <style>{`
+        .entity-highlight {
+          cursor: pointer;
+          transition: background-color 120ms ease, border-color 120ms ease;
+        }
+        .entity-highlight--highlight {
+          background-color: rgba(147, 51, 234, 0.14);
+          border-radius: 2px;
+          padding: 0 2px;
+        }
+        .entity-highlight--highlight:hover,
+        .entity-highlight--highlight:focus {
+          background-color: rgba(147, 51, 234, 0.28);
+          outline: none;
+        }
+        .entity-highlight--underline {
+          border-bottom: 1px dotted rgba(147, 51, 234, 0.6);
+        }
+        .entity-highlight--underline:hover,
+        .entity-highlight--underline:focus {
+          border-bottom-color: rgba(147, 51, 234, 1);
+          background-color: rgba(147, 51, 234, 0.1);
+          outline: none;
+        }
+      `}</style>
 
       {/* Chapter content + annotation sidebar layout */}
       <div className="flex justify-center">
@@ -1053,6 +1307,22 @@ export default function ChapterReaderPage() {
           </div>
         )}
       </div>
+
+      {openEntity && (
+        <EntityModal
+          type={openEntity.type}
+          entity={openEntity.entity}
+          subpageHref={`/read/${authorUsername}/${projectSlug}/entity/${openEntity.entity.id}`}
+          onClose={() => setOpenEntity(null)}
+        />
+      )}
+      {openEntityLoading && !openEntity && (
+        <div className="fixed inset-0 z-40 pointer-events-none flex items-start justify-center p-8">
+          <div className="rounded-full bg-black/60 px-3 py-1.5 text-xs font-medium text-white shadow-lg">
+            Loading entity…
+          </div>
+        </div>
+      )}
     </div>
   )
 }
