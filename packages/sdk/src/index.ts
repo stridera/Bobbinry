@@ -963,7 +963,7 @@ export {
   PanelPill,
   PanelSectionTitle
 } from './panel-ui'
-export { escapePlainText, getSanitizedHtmlProps, sanitizeHtml } from './html'
+export { escapePlainText, getSanitizedHtmlProps, htmlToPlainText, sanitizeHtml } from './html'
 export { ConfirmModal } from './confirm-modal'
 export type { ConfirmModalProps } from './confirm-modal'
 

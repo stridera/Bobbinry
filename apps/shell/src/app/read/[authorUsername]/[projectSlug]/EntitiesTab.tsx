@@ -9,6 +9,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { htmlToPlainText } from '@bobbinry/sdk'
 import { config } from '@/lib/config'
 import EntityModal from './EntityModal'
 import type { EntitiesPayload, PublishedEntity, PublishedType } from './entities-data'
@@ -188,6 +189,8 @@ export default function EntitiesTab({
         <EntityModal
           type={open.type}
           entity={open.entity}
+          projectId={projectId}
+          apiToken={apiToken}
           subpageHref={`/read/${authorUsername}/${projectSlug}/entity/${open.entity.id}`}
           onClose={() => setOpen(null)}
         />
@@ -313,7 +316,7 @@ function FocusedSection({
     return type.entities.filter(e => {
       const haystack = [
         e.name ?? '',
-        e.description ?? '',
+        htmlToPlainText(e.description),
         ...(Array.isArray(e.tags) ? e.tags : []),
       ]
         .join(' ')
@@ -428,7 +431,9 @@ function EntityCard({
     return typeof override === 'string' ? override : entity.name
   }, [entity])
 
-  const description = entity.description?.toString().trim()
+  // Descriptions are stored as rich-text HTML; strip tags for the card preview
+  // so `<p></p>` markers don't leak into the line-clamped text.
+  const description = htmlToPlainText(entity.description) || null
 
   return (
     <button

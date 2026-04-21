@@ -131,7 +131,12 @@ function EntitySubpageContent() {
 
         {!loading && payload && (
           <div className="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
-            <EntityView type={payload.type} entity={payload.entity} />
+            <EntityView
+              type={payload.type}
+              entity={payload.entity}
+              projectId={projectId}
+              apiToken={apiToken}
+            />
           </div>
         )}
       </div>

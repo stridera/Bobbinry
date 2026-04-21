@@ -1312,10 +1312,12 @@ export default function ChapterReaderPage() {
         )}
       </div>
 
-      {openEntity && (
+      {openEntity && projectId && (
         <EntityModal
           type={openEntity.type}
           entity={openEntity.entity}
+          projectId={projectId}
+          apiToken={session?.apiToken}
           subpageHref={`/read/${authorUsername}/${projectSlug}/entity/${openEntity.entity.id}`}
           onClose={() => setOpenEntity(null)}
         />

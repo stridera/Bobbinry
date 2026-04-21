@@ -8,7 +8,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { getSanitizedHtmlProps, useClickOutside } from '@bobbinry/sdk'
 import type { FieldDefinition, FieldType } from '../types'
 import { normalizeJsonSchema } from '../types'
-import { useUpload, useEntityContext } from './UploadContext'
+import { useUpload, useEntityContext, useResolvedEntityNamesContext } from './UploadContext'
 import { ObjectFormRenderer, ListFormRenderer, KeyedListFormRenderer, FreeformKeyValueEditor } from './json-renderers'
 import { TipTapEditor } from './TipTapEditor'
 
@@ -630,21 +630,36 @@ export function ImageFieldRenderer({ field, value, onChange }: Omit<FieldRendere
   )
 }
 
-/** Shared hook: resolve entity IDs to display names in parallel */
+/**
+ * Shared hook: resolve entity IDs to display names.
+ *
+ * Prefers a pre-resolved names map from context (e.g. the public reader
+ * fetches a flat id→name table up front) and falls back to per-ID SDK
+ * lookups when an SDK context is available (the editor's relation picker).
+ *
+ * `isResolving` is true while an SDK fetch is outstanding; callers use it
+ * to distinguish "still loading" from "no way to resolve this ID" so they
+ * can render a terminal fallback instead of a perpetual spinner.
+ */
 function useResolvedEntityNames(
   targetEntityType: string | undefined,
   ids: string[]
-): Map<string, string> {
+): { names: Map<string, string>; isResolving: boolean } {
   const entityCtx = useEntityContext()
-  const [names, setNames] = useState<Map<string, string>>(new Map())
+  const preResolved = useResolvedEntityNamesContext()
+  const [sdkNames, setSdkNames] = useState<Map<string, string>>(new Map())
+  const [isResolving, setIsResolving] = useState(false)
 
   useEffect(() => {
     if (!entityCtx || !targetEntityType || ids.length === 0) return
-    let cancelled = false
-
-    // Only resolve IDs we haven't seen yet
-    const unresolvedIds = ids.filter(id => !names.has(id))
+    // IDs covered by the synchronous map don't need SDK lookups.
+    const unresolvedIds = ids.filter(id =>
+      !sdkNames.has(id) && !(preResolved?.has(id) ?? false)
+    )
     if (unresolvedIds.length === 0) return
+
+    let cancelled = false
+    setIsResolving(true)
 
     Promise.allSettled(
       unresolvedIds.map(id =>
@@ -657,19 +672,28 @@ function useResolvedEntityNames(
       )
     ).then(results => {
       if (cancelled) return
-      setNames(prev => {
+      setSdkNames(prev => {
         const next = new Map(prev)
         for (const r of results) {
           if (r.status === 'fulfilled') next.set(r.value[0], r.value[1])
         }
         return next
       })
+      setIsResolving(false)
     })
 
-    return () => { cancelled = true }
-  }, [ids.join(','), targetEntityType, entityCtx])
+    return () => {
+      cancelled = true
+      setIsResolving(false)
+    }
+  }, [ids.join(','), targetEntityType, entityCtx, preResolved])
 
-  return names
+  // Merge sources: SDK results take precedence over the pre-resolved map
+  // because an editor may have a fresher name than the reader's snapshot.
+  const merged = new Map<string, string>()
+  if (preResolved) for (const [id, name] of preResolved) merged.set(id, name)
+  for (const [id, name] of sdkNames) merged.set(id, name)
+  return { names: merged, isResolving }
 }
 
 export function RelationFieldRenderer({ field, value, onChange }: Omit<FieldRendererProps, 'display'>) {
@@ -686,7 +710,7 @@ export function RelationFieldRenderer({ field, value, onChange }: Omit<FieldRend
     ? (Array.isArray(value) ? value : [])
     : (value ? [value] : [])
 
-  const selectedNames = useResolvedEntityNames(field.targetEntityType, selectedIds)
+  const { names: selectedNames } = useResolvedEntityNames(field.targetEntityType, selectedIds)
 
   // Search target entity type as user types (instant on open, debounced on typing)
   useEffect(() => {
@@ -933,7 +957,7 @@ function RelationReadonlyDisplay({ field, value }: { field: FieldDefinition; val
     ? (Array.isArray(value) ? value : [])
     : (value ? [value] : [])
 
-  const names = useResolvedEntityNames(field.targetEntityType, ids)
+  const { names, isResolving } = useResolvedEntityNames(field.targetEntityType, ids)
 
   if (ids.length === 0) {
     return <span className="text-gray-400 dark:text-gray-500 italic">Not set</span>
@@ -941,14 +965,40 @@ function RelationReadonlyDisplay({ field, value }: { field: FieldDefinition; val
 
   return (
     <div className="flex flex-wrap gap-1">
-      {ids.map(id => (
-        <span
-          key={id}
-          className="px-2 py-1 bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 rounded text-xs"
-        >
-          {names.get(id) || 'Loading...'}
-        </span>
-      ))}
+      {ids.map(id => {
+        const name = names.get(id)
+        if (name) {
+          return (
+            <span
+              key={id}
+              className="px-2 py-1 bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 rounded text-xs"
+            >
+              {name}
+            </span>
+          )
+        }
+        // No resolution and nothing in flight — the referenced entity is
+        // either tier-locked or unpublished for this viewer.
+        if (!isResolving) {
+          return (
+            <span
+              key={id}
+              className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 rounded text-xs italic"
+              title="This reference isn't available to you"
+            >
+              Locked
+            </span>
+          )
+        }
+        return (
+          <span
+            key={id}
+            className="px-2 py-1 bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 rounded text-xs"
+          >
+            Loading…
+          </span>
+        )
+      })}
     </div>
   )
 }

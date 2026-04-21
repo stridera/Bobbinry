@@ -6,24 +6,32 @@
  * EntityModal (overlay render from the Entities tab + chapter highlight)
  * and the /entity/<id> subpage.
  *
- * Kept dumb: the caller handles data fetching, selection state is internal.
+ * Kept dumb: the caller handles the main entity fetch and passes in
+ * projectId/apiToken so this view can resolve relation-field references
+ * (class, race, etc.) against the public published-names table.
  */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { LayoutRenderer } from '@bobbinry/entities/components/LayoutRenderer'
+import { ResolvedEntityNamesProvider } from '@bobbinry/entities/components/UploadContext'
+import { config } from '@/lib/config'
 import type { PublishedType, PublishedEntity } from './entities-data'
 import { resolveEntityForVariant } from './entities-data'
 
 interface EntityViewProps {
   type: PublishedType
   entity: PublishedEntity
+  /** Project containing this entity — used to look up published entity names for relation fields. */
+  projectId: string
+  /** Optional bearer token so tier-gated names resolve for subscribed viewers. */
+  apiToken?: string | undefined
   /** Render chromeless (no header or variant bar) — use when the enclosing page has its own header. */
   bare?: boolean
   /** Show a trailing header action slot (e.g. "Open as page" link). */
   headerAction?: React.ReactNode
 }
 
-export default function EntityView({ type, entity, bare = false, headerAction }: EntityViewProps) {
+export default function EntityView({ type, entity, projectId, apiToken, bare = false, headerAction }: EntityViewProps) {
   const visibleVariantIds = useMemo(() => {
     const ids: Array<string | null> = []
     if (entity.publishBase) ids.push(null)
@@ -58,6 +66,30 @@ export default function EntityView({ type, entity, bare = false, headerAction }:
     () => resolveEntityForVariant(entity.entityData, versionableFieldSet, selectedVariant),
     [entity.entityData, versionableFieldSet, selectedVariant]
   )
+
+  // Fetch a flat id → display-name table so relation fields (class, race, etc.)
+  // can resolve linked entities without an authenticated SDK context. The
+  // endpoint returns one row per (entity, visible name/alias); we keep the
+  // first row per id (base name) and skip subsequent alias rows.
+  const [relationNames, setRelationNames] = useState<Map<string, string>>(new Map())
+  useEffect(() => {
+    if (!projectId) return
+    let cancelled = false
+    const headers: Record<string, string> = {}
+    if (apiToken) headers['Authorization'] = `Bearer ${apiToken}`
+    fetch(`${config.apiUrl}/api/public/projects/${projectId}/entities/published-names`, { headers })
+      .then(r => (r.ok ? r.json() : null))
+      .then((data: { entities?: Array<{ id: string; name: string }> } | null) => {
+        if (cancelled || !data?.entities) return
+        const map = new Map<string, string>()
+        for (const row of data.entities) {
+          if (!map.has(row.id)) map.set(row.id, row.name)
+        }
+        setRelationNames(map)
+      })
+      .catch(() => { /* relation pills fall back to "Locked" — acceptable */ })
+    return () => { cancelled = true }
+  }, [projectId, apiToken])
 
   const layout = type.editorLayout || type.listLayout
   const showVariantBar = visibleVariantIds.length > 1
@@ -113,13 +145,15 @@ export default function EntityView({ type, entity, bare = false, headerAction }:
       )}
 
       <div className="flex-1 overflow-y-auto px-5 py-5">
-        <LayoutRenderer
-          layout={layout as any}
-          fields={type.customFields as any}
-          entity={resolvedEntity}
-          onFieldChange={() => {}}
-          readonly
-        />
+        <ResolvedEntityNamesProvider names={relationNames}>
+          <LayoutRenderer
+            layout={layout as any}
+            fields={type.customFields as any}
+            entity={resolvedEntity}
+            onFieldChange={() => {}}
+            readonly
+          />
+        </ResolvedEntityNamesProvider>
       </div>
     </div>
   )

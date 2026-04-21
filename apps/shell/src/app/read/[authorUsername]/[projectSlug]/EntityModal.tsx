@@ -16,12 +16,14 @@ import type { PublishedEntity, PublishedType } from './entities-data'
 interface EntityModalProps {
   type: PublishedType
   entity: PublishedEntity
+  projectId: string
+  apiToken?: string | undefined
   onClose: () => void
   /** Route to the entity's full subpage. Rendered as an "Open as page" link. */
   subpageHref: string
 }
 
-export default function EntityModal({ type, entity, onClose, subpageHref }: EntityModalProps) {
+export default function EntityModal({ type, entity, projectId, apiToken, onClose, subpageHref }: EntityModalProps) {
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose()
@@ -74,7 +76,13 @@ export default function EntityModal({ type, entity, onClose, subpageHref }: Enti
       />
 
       <div className="relative my-auto flex max-h-[calc(100vh-3rem)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
-        <EntityView type={type} entity={entity} headerAction={headerAction} />
+        <EntityView
+          type={type}
+          entity={entity}
+          projectId={projectId}
+          apiToken={apiToken}
+          headerAction={headerAction}
+        />
       </div>
     </div>,
     document.body

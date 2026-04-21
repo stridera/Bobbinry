@@ -81,3 +81,33 @@ export function getSanitizedHtmlProps(html: string | null | undefined): Sanitize
 export function escapePlainText(text: string | null | undefined): string {
   return escapeHtml(typeof text === 'string' ? text : '')
 }
+
+/**
+ * Strip all HTML tags and decode common entities so a rich-text field can be
+ * rendered as a short text preview (card subtitles, line-clamped descriptions,
+ * metadata slots). Whitespace is collapsed so `<p>A</p><p>B</p>` becomes
+ * `"A B"` rather than `"A\nB"`. Use this for plain-text slots; use
+ * `sanitizeHtml` / `getSanitizedHtmlProps` when you actually want formatting.
+ */
+export function htmlToPlainText(html: string | null | undefined): string {
+  if (typeof html !== 'string' || html.length === 0) return ''
+
+  let text: string
+  if (typeof window !== 'undefined' && typeof DOMParser !== 'undefined') {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(html, 'text/html')
+    text = doc.body.textContent ?? ''
+  } else {
+    text = html.replace(/<[^>]*>/g, ' ')
+  }
+
+  return text
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim()
+}
