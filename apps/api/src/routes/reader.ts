@@ -2337,6 +2337,13 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
             }
           }
         }
+
+        // Aliases are entity-level alternate names (nicknames, epithets, titles).
+        // Emit one row per alias so the client matcher treats them as separate
+        // match targets that resolve to the same entity id.
+        if (Array.isArray(data?.aliases)) {
+          for (const alias of data.aliases) pushName(alias)
+        }
       }
 
       return { installed: true, entities: rows }

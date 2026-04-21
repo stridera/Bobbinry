@@ -625,13 +625,23 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
               })
               return ((entitiesRes.data as any[]) || [])
                 .filter((entity: any) => entity.name)
-                .map((entity: any) => ({
-                  id: entity.id,
-                  name: entity.name,
-                  typeId,
-                  typeIcon,
-                  typeLabel,
-                }))
+                .flatMap((entity: any) => {
+                  const base = {
+                    id: entity.id,
+                    typeId,
+                    typeIcon,
+                    typeLabel,
+                  }
+                  const out: EntityEntry[] = [{ ...base, name: entity.name }]
+                  if (Array.isArray(entity.aliases)) {
+                    for (const alias of entity.aliases) {
+                      if (typeof alias === 'string' && alias.trim()) {
+                        out.push({ ...base, name: alias.trim() })
+                      }
+                    }
+                  }
+                  return out
+                })
             } catch {
               return [] // Skip types that fail to query
             }

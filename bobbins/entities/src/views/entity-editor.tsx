@@ -837,6 +837,15 @@ export default function EntityEditorView({
       {/* Editor Content */}
       <div className="flex-1 overflow-auto p-6">
         <SdkProvider sdk={sdk} projectId={projectId}>
+          <AliasesField
+            entity={entity ?? {}}
+            readonly={viewMode === 'view'}
+            onChange={nextAliases => {
+              setEntity(prev => ({ ...(prev ?? {}), aliases: nextAliases }))
+              setSaveStatus('unsaved')
+              setSaveError(false)
+            }}
+          />
           <LayoutRenderer
             layout={typeConfig.editorLayout}
             fields={typeConfig.customFields}
@@ -845,6 +854,93 @@ export default function EntityEditorView({
             readonly={viewMode === 'view'}
           />
         </SdkProvider>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// AliasesField — alternate names that highlight to the same entity in chapter
+// reading. Stored as `entityData.aliases: string[]`. Entity-level (not per-
+// variant) since most aliases transcend a given moment (titles, nicknames).
+
+function AliasesField({
+  entity,
+  readonly,
+  onChange,
+}: {
+  entity: Record<string, any>
+  readonly: boolean
+  onChange: (next: string[]) => void
+}) {
+  const aliases: string[] = Array.isArray(entity.aliases) ? entity.aliases : []
+  const [draft, setDraft] = useState('')
+
+  function commitDraft() {
+    const trimmed = draft.trim()
+    if (!trimmed) return
+    // Accept comma-separated batch input: "Strider, Wingfoot, Elessar"
+    const parts = trimmed
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+    const existingLower = new Set(aliases.map(a => a.toLowerCase()))
+    const additions = parts.filter(p => !existingLower.has(p.toLowerCase()))
+    if (additions.length > 0) onChange([...aliases, ...additions])
+    setDraft('')
+  }
+
+  function removeAlias(alias: string) {
+    onChange(aliases.filter(a => a !== alias))
+  }
+
+  if (readonly && aliases.length === 0) return null
+
+  return (
+    <div className="mb-4 rounded-md border border-gray-200 bg-gray-50/60 px-3 py-2 dark:border-gray-700 dark:bg-gray-800/40">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+          Aliases
+        </span>
+        <span className="text-[10px] text-gray-400 dark:text-gray-500">
+          Alternate names that also highlight in chapters
+        </span>
+      </div>
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+        {aliases.map(alias => (
+          <span
+            key={alias}
+            className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-2 py-0.5 text-xs text-gray-800 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
+          >
+            {alias}
+            {!readonly && (
+              <button
+                type="button"
+                onClick={() => removeAlias(alias)}
+                aria-label={`Remove alias ${alias}`}
+                className="rounded-full px-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+              >
+                ×
+              </button>
+            )}
+          </span>
+        ))}
+        {!readonly && (
+          <input
+            type="text"
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onBlur={commitDraft}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ',') {
+                e.preventDefault()
+                commitDraft()
+              }
+            }}
+            placeholder={aliases.length === 0 ? 'Add an alias…' : 'Add another…'}
+            className="min-w-[10ch] flex-1 border-0 bg-transparent px-1 py-0.5 text-xs text-gray-800 placeholder:text-gray-400 focus:outline-none dark:text-gray-200 dark:placeholder:text-gray-500"
+          />
+        )}
       </div>
     </div>
   )
