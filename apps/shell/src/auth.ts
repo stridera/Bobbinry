@@ -85,8 +85,10 @@ async function findOrCreateOAuthUser(email: string, name: string | null): Promis
     const lookupUrl = `${config.apiUrl}/api/users/by-email?email=${encodeURIComponent(email)}`
     const lookupHeaders = await buildInternalSignedHeaders('GET', lookupUrl)
     // Try to log in first (user may already exist from a previous OAuth or credentials signup)
+    // 5s cap so a hung API surfaces AccessDenied fast instead of waiting on undici defaults (~37s observed).
     const lookupRes = await fetch(lookupUrl, {
-      headers: lookupHeaders
+      headers: lookupHeaders,
+      signal: AbortSignal.timeout(5000)
     })
     if (lookupRes.ok) {
       return await lookupRes.json()
@@ -99,7 +101,8 @@ async function findOrCreateOAuthUser(email: string, name: string | null): Promis
     const createRes = await fetch(`${config.apiUrl}/api/auth/oauth-provision`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...signedHeaders },
-      body: JSON.stringify(createBody)
+      body: JSON.stringify(createBody),
+      signal: AbortSignal.timeout(5000)
     })
 
     if (createRes.ok) {
@@ -233,7 +236,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.emailVerified = !!(user as any).emailVerified
         // Use profile displayName as the canonical display name
         try {
-          const profileRes = await fetch(`${config.apiUrl}/api/users/${user.id}/profile`)
+          const profileRes = await fetch(`${config.apiUrl}/api/users/${user.id}/profile`, {
+            signal: AbortSignal.timeout(5000)
+          })
           if (profileRes.ok) {
             const { profile } = await profileRes.json()
             if (profile?.displayName) {
@@ -264,6 +269,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         try {
           const membershipRes = await fetch(`${config.apiUrl}/api/membership`, {
             headers: { Authorization: `Bearer ${token.apiToken}` },
+            signal: AbortSignal.timeout(5000)
           })
           if (membershipRes.ok) {
             const data = await membershipRes.json()

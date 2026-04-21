@@ -74,6 +74,10 @@ export function build(opts = {}): FastifyInstance {
     },
     genReqId: () => randomUUID(),
     maxParamLength: 512,
+    // Guard against event-loop / DB-pool hangs: if a request isn't served in 30s, return 408
+    // so the HTTP handler is released instead of piling up forever.
+    connectionTimeout: 30_000,
+    requestTimeout: 30_000,
     ...opts
   })
 

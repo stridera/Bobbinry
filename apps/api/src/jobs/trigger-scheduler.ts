@@ -344,30 +344,36 @@ export function startTriggerScheduler(): void {
   console.log('[trigger-scheduler] Starting trigger scheduler (1-minute interval)')
 
   async function tick() {
-    const { installed, diskManifests } = await getInstalledBobbins()
-    const tasks: Promise<any>[] = [
-      processScheduleTriggers(installed, diskManifests),
-      processBackupSync(installed, diskManifests),
-      processScheduledReleases(),
-      processEmbargoReleases(),
-    ]
+    try {
+      const { installed, diskManifests } = await getInstalledBobbins()
+      const tasks: Promise<any>[] = [
+        processScheduleTriggers(installed, diskManifests),
+        processBackupSync(installed, diskManifests),
+        processScheduledReleases(),
+        processEmbargoReleases(),
+      ]
 
-    // Run trash purge hourly (at minute 0)
-    if (new Date().getUTCMinutes() === 0) {
-      tasks.push(processTrashPurge())
+      // Run trash purge hourly (at minute 0)
+      if (new Date().getUTCMinutes() === 0) {
+        tasks.push(processTrashPurge())
+      }
+
+      // Reconcile subscription state with Stripe every 15 minutes
+      if (new Date().getUTCMinutes() % 15 === 0) {
+        tasks.push(processSubscriptionExpiration())
+      }
+
+      // Send admin daily report at 14:00 UTC
+      if (new Date().getUTCHours() === 14 && new Date().getUTCMinutes() === 0) {
+        tasks.push(processAdminDailyReport())
+      }
+
+      await Promise.allSettled(tasks)
+    } catch (err) {
+      // Without this, a throw from getInstalledBobbins (e.g. transient DB/DNS failure)
+      // becomes an unhandled promise rejection on every setInterval firing.
+      console.error('[trigger-scheduler] Tick failed:', err)
     }
-
-    // Reconcile subscription state with Stripe every 15 minutes
-    if (new Date().getUTCMinutes() % 15 === 0) {
-      tasks.push(processSubscriptionExpiration())
-    }
-
-    // Send admin daily report at 14:00 UTC
-    if (new Date().getUTCHours() === 14 && new Date().getUTCMinutes() === 0) {
-      tasks.push(processAdminDailyReport())
-    }
-
-    await Promise.allSettled(tasks)
   }
 
   intervalId = setInterval(tick, 60 * 1000)
