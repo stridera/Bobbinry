@@ -240,13 +240,42 @@ export default function EntityListView({
     )
   }
 
+  function humanizeFieldName(name: string): string {
+    return name
+      .split('_')
+      .map(part => (part ? part[0]!.toUpperCase() + part.slice(1) : part))
+      .join(' ')
+  }
+
   function getSubtitleText(entity: any): string {
     if (!typeConfig?.subtitleFields.length) return ''
 
     return typeConfig.subtitleFields
-      .map(fieldName => entity[fieldName])
-      .filter(Boolean)
+      .map(fieldName => {
+        const value = entity[fieldName]
+        if (value == null || value === '' || (Array.isArray(value) && value.length === 0)) {
+          return null
+        }
+        const fieldDef = typeConfig.customFields.find((f: any) => f.name === fieldName)
+        // Relations resolve to raw ids here — skip rather than show a UUID.
+        if (fieldDef?.type === 'relation') return null
+        const label = fieldDef?.label ?? humanizeFieldName(fieldName)
+        const rendered = Array.isArray(value) ? value.join(', ') : String(value)
+        return `${label} ${rendered}`
+      })
+      .filter((x): x is string => Boolean(x))
       .join(' • ')
+  }
+
+  function stripHtml(html: string): string {
+    return html
+      .replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/\s+/g, ' ')
+      .trim()
   }
 
   if (loading) {
@@ -282,7 +311,7 @@ export default function EntityListView({
   return (
     <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900">
       {/* Header */}
-      <div className="border-b border-gray-200 dark:border-gray-700 p-4 bg-white dark:bg-gray-800">
+      <div className="border-b border-gray-200 dark:border-gray-700 p-8 bg-white dark:bg-gray-800">
         <button
           type="button"
           onClick={handleAllTypes}
@@ -296,9 +325,9 @@ export default function EntityListView({
         </button>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            {typeConfig && <span className="text-3xl">{typeConfig.icon}</span>}
+            {typeConfig && <span className="text-4xl">{typeConfig.icon}</span>}
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+              <h1 className="mb-2 text-3xl font-bold text-gray-900 dark:text-gray-100">
                 {typeConfig?.label || 'Entities'}
               </h1>
               <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -382,7 +411,7 @@ export default function EntityListView({
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto p-8">
         {filteredEntities.length === 0 ? (
           <div className="text-center text-gray-600 dark:text-gray-400 mt-12">
             {searchTerm || selectedTags.length > 0 ? (
@@ -400,50 +429,77 @@ export default function EntityListView({
         ) : (
           <>
             {/* Grid/List Display */}
-            <div className={displayStyle === 'grid' ? `grid ${gridClasses} gap-6` : 'space-y-4'}>
-              {paginatedEntities.map(entity => (
-                <div
-                  key={entity.id}
-                  onClick={() => handleEntityClick(entity)}
-                  className={`border border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-400 dark:hover:border-blue-600 cursor-pointer bg-white dark:bg-gray-800 hover:shadow-lg transition-all ${
-                    displayStyle === 'list' ? 'flex items-center gap-4 p-4' : 'p-6'
-                  }`}
-                >
-                  {entity.image_url && (
-                    <img
-                      src={entity.image_url}
-                      alt={entity.name}
-                      className={
-                        displayStyle === 'list'
-                          ? 'w-16 h-16 object-cover rounded'
-                          : 'w-full h-48 object-cover rounded mb-4'
-                      }
-                    />
-                  )}
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1">
-                      {entity.name || 'Untitled'}
-                    </h3>
-                    {getSubtitleText(entity) && (
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                        {getSubtitleText(entity)}
-                      </p>
+            <div
+              className={
+                displayStyle === 'grid'
+                  ? `grid ${gridClasses} gap-6`
+                  : 'mx-auto max-w-4xl space-y-4'
+              }
+            >
+              {paginatedEntities.map(entity => {
+                const subtitle = getSubtitleText(entity)
+                const rawDescription =
+                  typeof entity.description === 'string' ? entity.description : ''
+                const description = stripHtml(rawDescription)
+                const showDescriptionFallback = !subtitle && description.length > 0
+                return (
+                  <div
+                    key={entity.id}
+                    onClick={() => handleEntityClick(entity)}
+                    className={`border-2 border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-400 dark:hover:border-blue-600 cursor-pointer bg-white dark:bg-gray-800 hover:shadow-md transition-all ${
+                      displayStyle === 'list' ? 'flex items-center gap-4 p-5' : 'p-6'
+                    }`}
+                  >
+                    {displayStyle === 'list' ? (
+                      entity.image_url ? (
+                        <img
+                          src={entity.image_url}
+                          alt={entity.name}
+                          className="w-16 h-16 flex-shrink-0 object-cover rounded"
+                        />
+                      ) : (
+                        <div className="w-16 h-16 flex-shrink-0 flex items-center justify-center rounded bg-gray-100 dark:bg-gray-700 text-3xl">
+                          {typeConfig?.icon ?? '📄'}
+                        </div>
+                      )
+                    ) : (
+                      entity.image_url && (
+                        <img
+                          src={entity.image_url}
+                          alt={entity.name}
+                          className="w-full h-48 object-cover rounded mb-4"
+                        />
+                      )
                     )}
-                    {entity.tags && entity.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {entity.tags.map((tag: string, i: number) => (
-                          <span
-                            key={i}
-                            className="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-xs"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1">
+                        {entity.name || 'Untitled'}
+                      </h3>
+                      {subtitle ? (
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                          {subtitle}
+                        </p>
+                      ) : showDescriptionFallback ? (
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-2 line-clamp-2">
+                          {description}
+                        </p>
+                      ) : null}
+                      {entity.tags && entity.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {entity.tags.map((tag: string, i: number) => (
+                            <span
+                              key={i}
+                              className="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-xs"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
 
             {/* Pagination */}

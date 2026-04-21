@@ -4,15 +4,27 @@
  * Consolidated author-facing UI for marking entity types and entities as
  * "publish to reader," gating them behind a minimum subscription tier,
  * and controlling the order they appear in the reader's Entities tab.
- *
- * Reorder is done via arrow buttons (up/down one step) rather than
- * drag-and-drop to keep the entities bobbin dep-light. The server-side
- * reorder endpoints take the full ordered list, so we rewrite it on each
- * move. Fine for typical worldbuilding scale (<500 entities per type).
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
+import {
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { getTypeId, normalizeTypeConfig } from '../types'
 import type { EntityTypeDefinition } from '../types'
 import { getVariants, sortedVariantIds } from '../variants'
@@ -191,18 +203,6 @@ export default function PublishingView({ projectId, sdk }: PublishingViewProps) 
     }))
   }
 
-  function openTypeEditor(t: PublishableType) {
-    if (typeof window === 'undefined') return
-    window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
-      detail: {
-        entityType: 'entity_type_definitions',
-        entityId: 'config',
-        bobbinId: 'entities',
-        metadata: { view: 'config', editTypeId: t.typeId },
-      },
-    }))
-  }
-
   async function togglePublishType(t: PublishableType, next: boolean) {
     setBusy(`type:${t.typeId}`)
     try {
@@ -214,6 +214,17 @@ export default function PublishingView({ projectId, sdk }: PublishingViewProps) 
             : r
         )
       )
+      // On publish, reveal the entity list so the author can see they still
+      // need to publish individual entries under this section.
+      if (result.isPublished) {
+        setExpanded(prev => {
+          if (prev.has(t.typeId)) return prev
+          const nextSet = new Set(prev)
+          nextSet.add(t.typeId)
+          return nextSet
+        })
+        loadEntitiesForType(t.typeId)
+      }
     } finally {
       setBusy(null)
     }
@@ -235,21 +246,22 @@ export default function PublishingView({ projectId, sdk }: PublishingViewProps) 
     }
   }
 
-  async function moveType(typeId: string, delta: -1 | 1) {
-    const idx = types.findIndex(t => t.typeId === typeId)
-    if (idx === -1) return
-    const target = idx + delta
-    if (target < 0 || target >= types.length) return
-    const next = [...types]
-    ;[next[idx], next[target]] = [next[target]!, next[idx]!]
-    // Optimistic: reassign publishOrder by index so the UI sorts stably next time
+  async function reorderTypesByIds(orderedTypeIds: string[]) {
+    const byId = new Map(types.map(t => [t.typeId, t]))
+    const next = orderedTypeIds
+      .map(id => byId.get(id))
+      .filter((t): t is PublishableType => Boolean(t))
+    if (next.length !== types.length) return
+    // Reassign publishOrder so future re-sorts stay stable.
     next.forEach((t, i) => (t.publishOrder = i))
+    const prevTypes = types
     setTypes(next)
-    setBusy(`type:${typeId}`)
+    setBusy('type:*')
     try {
       await reorderTypes(sdk, projectId, next.map(t => t.typeId))
     } catch (err) {
       console.error('[Publishing] Reorder failed, reloading:', err)
+      setTypes(prevTypes)
       await refresh()
     } finally {
       setBusy(null)
@@ -294,17 +306,16 @@ export default function PublishingView({ projectId, sdk }: PublishingViewProps) 
     }
   }
 
-  async function moveEntity(typeId: string, entityId: string, delta: -1 | 1) {
+  async function reorderEntitiesByIds(typeId: string, orderedEntityIds: string[]) {
     const list = entitiesByType[typeId] ?? []
-    const idx = list.findIndex(r => r.id === entityId)
-    if (idx === -1) return
-    const target = idx + delta
-    if (target < 0 || target >= list.length) return
-    const next = [...list]
-    ;[next[idx], next[target]] = [next[target]!, next[idx]!]
+    const byId = new Map(list.map(r => [r.id, r]))
+    const next = orderedEntityIds
+      .map(id => byId.get(id))
+      .filter((r): r is PublishableRow => Boolean(r))
+    if (next.length !== list.length) return
     next.forEach((r, i) => (r.publishOrder = i))
     setEntitiesByType(prev => ({ ...prev, [typeId]: next }))
-    setBusy(`entity:${entityId}`)
+    setBusy(`entity:${typeId}:*`)
     try {
       await reorderEntities(sdk, projectId, typeId, next.map(r => r.id))
     } catch (err) {
@@ -387,6 +398,32 @@ export default function PublishingView({ projectId, sdk }: PublishingViewProps) 
     return { liveTypes, liveEntities }
   }, [types, entitiesByType])
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
+
+  const handleTypeDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = filteredTypes.findIndex(t => t.typeId === active.id)
+    const newIndex = filteredTypes.findIndex(t => t.typeId === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+    const next = arrayMove(filteredTypes, oldIndex, newIndex)
+    void reorderTypesByIds(next.map(t => t.typeId))
+  }
+
+  const handleEntityDragEnd = (typeId: string) => (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const list = entitiesByType[typeId] ?? []
+    const oldIndex = list.findIndex(r => r.id === active.id)
+    const newIndex = list.findIndex(r => r.id === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+    const next = arrayMove(list, oldIndex, newIndex)
+    void reorderEntitiesByIds(typeId, next.map(r => r.id))
+  }
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center text-gray-500 dark:text-gray-400">
@@ -411,13 +448,13 @@ export default function PublishingView({ projectId, sdk }: PublishingViewProps) 
   return (
     <div className="flex h-full flex-col bg-gray-50 dark:bg-gray-900">
       {/* Header */}
-      <div className="border-b border-gray-200 bg-white px-6 py-4 dark:border-gray-700 dark:bg-gray-800">
+      <div className="border-b border-gray-200 bg-white px-8 py-6 dark:border-gray-700 dark:bg-gray-800">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+            <h1 className="mb-2 text-3xl font-bold text-gray-900 dark:text-gray-100">
               Types
             </h1>
-            <p className="mt-0.5 text-sm text-gray-600 dark:text-gray-400">
+            <p className="text-sm text-gray-600 dark:text-gray-400">
               Every entity type in this project. Open one to browse or edit its entries, manage
               what readers see, and tune subscriber access.
             </p>
@@ -469,7 +506,7 @@ export default function PublishingView({ projectId, sdk }: PublishingViewProps) 
       </div>
 
       {/* Types list */}
-      <div className="flex-1 overflow-y-auto px-6 py-4">
+      <div className="flex-1 overflow-y-auto p-8">
         {filteredTypes.length === 0 ? (
           <EmptyState
             title={types.length === 0 ? 'No entity types yet' : 'All types are drafts'}
@@ -480,327 +517,475 @@ export default function PublishingView({ projectId, sdk }: PublishingViewProps) 
             }
           />
         ) : (
-          <ul className="space-y-3">
-            {filteredTypes.map((t, i) => {
-              const isExpanded = expanded.has(t.typeId)
-              const list = entitiesByType[t.typeId]
-              const entityCount = list?.length ?? 0
-              const publishedEntityCount = list?.filter(r => r.isPublished).length ?? 0
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleTypeDragEnd}
+          >
+            <SortableContext
+              items={filteredTypes.map(t => t.typeId)}
+              strategy={verticalListSortingStrategy}
+            >
+              <ul className="space-y-4">
+                {filteredTypes.map(t => {
+                  const isExpanded = expanded.has(t.typeId)
+                  const list = entitiesByType[t.typeId]
+                  const entityCount = list?.length ?? 0
+                  const publishedEntityCount = list?.filter(r => r.isPublished).length ?? 0
 
-              return (
-                <li
-                  key={t.typeId}
-                  className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
-                >
-                  <div className="flex items-start gap-3 px-4 py-3">
-                    <ReorderButtons
-                      onUp={() => moveType(t.typeId, -1)}
-                      onDown={() => moveType(t.typeId, 1)}
-                      disableUp={i === 0}
-                      disableDown={i === filteredTypes.length - 1}
-                      busy={busy === `type:${t.typeId}`}
-                    />
-
-                    <button
-                      type="button"
-                      onClick={() => toggleExpand(t.typeId)}
-                      className="flex flex-1 items-start gap-3 text-left"
+                  return (
+                    <SortableTypeRow
+                      key={t.typeId}
+                      t={t}
+                      isExpanded={isExpanded}
+                      list={list}
+                      entityCount={entityCount}
+                      publishedEntityCount={publishedEntityCount}
+                      tiers={tiers}
+                      hasTiers={hasTiers}
+                      onToggleExpand={() => toggleExpand(t.typeId)}
+                      onOpenEntityList={() => openEntityList(t)}
+                      onTogglePublish={next => togglePublishType(t, next)}
+                      onChangeTier={next => changeTierForType(t, next)}
                     >
-                      <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-gray-100 text-lg dark:bg-gray-700">
-                        {t.icon}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-2">
-                          <span className="font-medium text-gray-900 dark:text-gray-100">
-                            {t.label}
-                          </span>
-                          <svg
-                            className={`h-3 w-3 text-gray-400 transition-transform ${
-                              isExpanded ? 'rotate-90' : ''
-                            }`}
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M9 5l7 7-7 7"
-                            />
-                          </svg>
-                        </span>
-                        <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">
-                          {list
-                            ? `${publishedEntityCount} of ${entityCount} entities published`
-                            : 'Expand to load entities'}
-                        </span>
-                      </span>
-                    </button>
+                      {isExpanded && (
+                        <div className="border-t border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-900/40">
+                          {!t.isPublished && list && list.some(r => r.isPublished) && (
+                            <div className="mb-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-200">
+                              <svg className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                              </svg>
+                              <div className="flex-1">
+                                <strong>{t.label} section isn't published to readers yet.</strong>{' '}
+                                Published entries below won't be visible until you toggle the section on.
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => togglePublishType(t, true)}
+                                disabled={busy === `type:${t.typeId}`}
+                                className="flex-shrink-0 rounded border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-60 dark:border-amber-700 dark:bg-gray-900 dark:text-amber-200 dark:hover:bg-amber-900/40"
+                              >
+                                Publish section
+                              </button>
+                            </div>
+                          )}
+                          {list === undefined ? (
+                            <div className="py-4 text-center text-xs text-gray-500 dark:text-gray-400">
+                              Loading entities…
+                            </div>
+                          ) : list.length === 0 ? (
+                            <div className="py-4 text-center text-xs text-gray-500 dark:text-gray-400">
+                              No {t.label.toLowerCase()} yet.
+                            </div>
+                          ) : (
+                            (() => {
+                              const SEARCH_THRESHOLD = 6
+                              const DEFAULT_CAP = 8
+                              const search = searchByType[t.typeId] ?? ''
+                              const showAll = showAllByType[t.typeId] ?? false
+                              const q = search.trim().toLowerCase()
+                              const filtered = q
+                                ? list.filter(r => r.name.toLowerCase().includes(q))
+                                : list
+                              const canTruncate = !q && !showAll && filtered.length > DEFAULT_CAP
+                              const visible = canTruncate ? filtered.slice(0, DEFAULT_CAP) : filtered
+                              const dragDisabled = Boolean(q)
 
-                    <div className="flex flex-shrink-0 items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => openEntityList(t)}
-                        title={`Browse ${t.label.toLowerCase()}`}
-                        className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
-                        aria-label={`Open ${t.label}`}
-                      >
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openTypeEditor(t)}
-                        title={`Edit ${t.label} schema`}
-                        className="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
-                        aria-label={`Edit ${t.label} schema`}
-                      >
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.573-1.066z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                      </button>
-                    </div>
-
-                    <div className="flex-shrink-0">
-                      <PublishControl
-                        isPublished={t.isPublished}
-                        minimumTierLevel={t.minimumTierLevel}
-                        publishedAt={t.publishedAt}
-                        tiers={tiers}
-                        hasTiers={hasTiers}
-                        onTogglePublish={next => togglePublishType(t, next)}
-                        onChangeTier={next => changeTierForType(t, next)}
-                      />
-                    </div>
-                  </div>
-
-                  {isExpanded && (
-                    <div className="border-t border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-900/40">
-                      {!t.isPublished && list && list.some(r => r.isPublished) && (
-                        <div className="mb-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-200">
-                          <svg className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                          </svg>
-                          <div className="flex-1">
-                            <strong>{t.label} section isn't published to readers yet.</strong>{' '}
-                            Published entries below won't be visible until you toggle the section on.
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => togglePublishType(t, true)}
-                            disabled={busy === `type:${t.typeId}`}
-                            className="flex-shrink-0 rounded border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-60 dark:border-amber-700 dark:bg-gray-900 dark:text-amber-200 dark:hover:bg-amber-900/40"
-                          >
-                            Publish section
-                          </button>
-                        </div>
-                      )}
-                      {list === undefined ? (
-                        <div className="py-4 text-center text-xs text-gray-500 dark:text-gray-400">
-                          Loading entities…
-                        </div>
-                      ) : list.length === 0 ? (
-                        <div className="py-4 text-center text-xs text-gray-500 dark:text-gray-400">
-                          No {t.label.toLowerCase()} yet.
-                        </div>
-                      ) : (
-                        (() => {
-                          const SEARCH_THRESHOLD = 6
-                          const DEFAULT_CAP = 8
-                          const search = searchByType[t.typeId] ?? ''
-                          const showAll = showAllByType[t.typeId] ?? false
-                          const q = search.trim().toLowerCase()
-                          const filtered = q
-                            ? list.filter(r => r.name.toLowerCase().includes(q))
-                            : list
-                          const canTruncate = !q && !showAll && filtered.length > DEFAULT_CAP
-                          const visible = canTruncate ? filtered.slice(0, DEFAULT_CAP) : filtered
-
-                          return (
-                            <>
-                              {list.length > SEARCH_THRESHOLD && (
-                                <div className="mb-2 flex items-center gap-2">
-                                  <div className="relative flex-1">
-                                    <svg
-                                      className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400 dark:text-gray-500"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      viewBox="0 0 24 24"
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d="M21 21l-4.35-4.35M11 18a7 7 0 110-14 7 7 0 010 14z"
-                                      />
-                                    </svg>
-                                    <input
-                                      type="text"
-                                      value={search}
-                                      onChange={e =>
-                                        setSearchByType(prev => ({
-                                          ...prev,
-                                          [t.typeId]: e.target.value,
-                                        }))
-                                      }
-                                      placeholder={`Search ${list.length} ${t.label.toLowerCase()}…`}
-                                      className="w-full rounded-md border border-gray-200 bg-white py-1.5 pl-7 pr-2 text-xs text-gray-800 placeholder:text-gray-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:placeholder:text-gray-500 dark:focus:border-blue-500 dark:focus:ring-blue-500/30"
-                                    />
-                                  </div>
-                                  {q && (
-                                    <span className="text-[11px] text-gray-500 dark:text-gray-400">
-                                      {filtered.length} of {list.length}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                              {filtered.length === 0 ? (
-                                <div className="py-4 text-center text-xs text-gray-500 dark:text-gray-400">
-                                  No matches for "{search}".
-                                </div>
-                              ) : (
-                                <ul className="space-y-1">
-                                  {visible.map(row => {
-                                    const fullIdx = list.findIndex(r => r.id === row.id)
-                                    return (
-                                      <li
-                                        key={row.id}
-                                        className="flex items-center gap-3 rounded-md bg-white px-3 py-2 dark:bg-gray-800"
-                                      >
-                                        <ReorderButtons
-                                          onUp={() => moveEntity(t.typeId, row.id, -1)}
-                                          onDown={() => moveEntity(t.typeId, row.id, 1)}
-                                          disableUp={fullIdx === 0 || Boolean(q)}
-                                          disableDown={fullIdx === list.length - 1 || Boolean(q)}
-                                          busy={busy === `entity:${row.id}`}
-                                          small
-                                        />
-                                        <span className="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200">
-                                          {row.name}
-                                        </span>
-                                        <div className="flex-shrink-0">
-                                          <PublishControl
-                                            isPublished={row.isPublished}
-                                            minimumTierLevel={row.minimumTierLevel}
-                                            publishedAt={row.publishedAt}
-                                            tiers={tiers}
-                                            hasTiers={hasTiers}
-                                            onTogglePublish={next =>
-                                              togglePublishEntity(t.typeId, row, next)
-                                            }
-                                            onChangeTier={next =>
-                                              changeTierForEntity(t.typeId, row, next)
-                                            }
-                                            variants={row.variants}
-                                            publishBase={row.publishBase}
-                                            publishedVariantIds={row.publishedVariantIds}
-                                            onChangeVariantSet={next =>
-                                              changeVariantSetForEntity(t.typeId, row, next)
-                                            }
-                                            variantAccessLevels={row.variantAccessLevels}
-                                            onChangeVariantTier={(which, level) =>
-                                              changeVariantTierForEntity(
-                                                t.typeId,
-                                                row,
-                                                which,
-                                                level
-                                              )
-                                            }
-                                            disabledReason={
-                                              t.isPublished
-                                                ? null
-                                                : `${t.label} is not published to readers yet`
-                                            }
-                                            compact
+                              return (
+                                <>
+                                  {list.length > SEARCH_THRESHOLD && (
+                                    <div className="mb-2 flex items-center gap-2">
+                                      <div className="relative flex-1">
+                                        <svg
+                                          className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          viewBox="0 0 24 24"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M21 21l-4.35-4.35M11 18a7 7 0 110-14 7 7 0 010 14z"
                                           />
-                                        </div>
-                                      </li>
-                                    )
-                                  })}
-                                </ul>
-                              )}
-                              {canTruncate && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setShowAllByType(prev => ({ ...prev, [t.typeId]: true }))
-                                  }
-                                  className="mt-2 w-full rounded-md border border-dashed border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:border-gray-400 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:border-gray-500 dark:hover:bg-gray-700/50"
-                                >
-                                  Show all {list.length} {t.label.toLowerCase()}
-                                </button>
-                              )}
-                              {!canTruncate && showAll && !q && list.length > DEFAULT_CAP && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setShowAllByType(prev => ({ ...prev, [t.typeId]: false }))
-                                  }
-                                  className="mt-2 w-full rounded-md border border-dashed border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:border-gray-400 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:border-gray-500 dark:hover:bg-gray-700/50"
-                                >
-                                  Show fewer
-                                </button>
-                              )}
-                            </>
-                          )
-                        })()
+                                        </svg>
+                                        <input
+                                          type="text"
+                                          value={search}
+                                          onChange={e =>
+                                            setSearchByType(prev => ({
+                                              ...prev,
+                                              [t.typeId]: e.target.value,
+                                            }))
+                                          }
+                                          placeholder={`Search ${list.length} ${t.label.toLowerCase()}…`}
+                                          className="w-full rounded-md border border-gray-200 bg-white py-1.5 pl-7 pr-2 text-xs text-gray-800 placeholder:text-gray-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:placeholder:text-gray-500 dark:focus:border-blue-500 dark:focus:ring-blue-500/30"
+                                        />
+                                      </div>
+                                      {q && (
+                                        <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                                          {filtered.length} of {list.length}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                  {filtered.length === 0 ? (
+                                    <div className="py-4 text-center text-xs text-gray-500 dark:text-gray-400">
+                                      No matches for "{search}".
+                                    </div>
+                                  ) : (
+                                    <DndContext
+                                      sensors={sensors}
+                                      collisionDetection={closestCenter}
+                                      onDragEnd={handleEntityDragEnd(t.typeId)}
+                                    >
+                                      <SortableContext
+                                        items={list.map(r => r.id)}
+                                        strategy={verticalListSortingStrategy}
+                                      >
+                                        <ul className="space-y-1">
+                                          {visible.map(row => (
+                                            <SortableEntityRow
+                                              key={row.id}
+                                              row={row}
+                                              typeId={t.typeId}
+                                              typeLabel={t.label}
+                                              typeIsPublished={t.isPublished}
+                                              tiers={tiers}
+                                              hasTiers={hasTiers}
+                                              dragDisabled={dragDisabled}
+                                              onNavigate={() => {
+                                                if (typeof window === 'undefined') return
+                                                window.dispatchEvent(
+                                                  new CustomEvent('bobbinry:navigate', {
+                                                    detail: {
+                                                      entityType: t.typeId,
+                                                      entityId: row.id,
+                                                      bobbinId: 'entities',
+                                                      metadata: { view: 'entity-editor' },
+                                                    },
+                                                  })
+                                                )
+                                              }}
+                                              onTogglePublish={next =>
+                                                togglePublishEntity(t.typeId, row, next)
+                                              }
+                                              onChangeTier={next =>
+                                                changeTierForEntity(t.typeId, row, next)
+                                              }
+                                              onChangeVariantSet={next =>
+                                                changeVariantSetForEntity(t.typeId, row, next)
+                                              }
+                                              onChangeVariantTier={(which, level) =>
+                                                changeVariantTierForEntity(
+                                                  t.typeId,
+                                                  row,
+                                                  which,
+                                                  level
+                                                )
+                                              }
+                                            />
+                                          ))}
+                                        </ul>
+                                      </SortableContext>
+                                    </DndContext>
+                                  )}
+                                  {canTruncate && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setShowAllByType(prev => ({ ...prev, [t.typeId]: true }))
+                                      }
+                                      className="mt-2 w-full rounded-md border border-dashed border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:border-gray-400 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:border-gray-500 dark:hover:bg-gray-700/50"
+                                    >
+                                      Show all {list.length} {t.label.toLowerCase()}
+                                    </button>
+                                  )}
+                                  {!canTruncate && showAll && !q && list.length > DEFAULT_CAP && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setShowAllByType(prev => ({ ...prev, [t.typeId]: false }))
+                                      }
+                                      className="mt-2 w-full rounded-md border border-dashed border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:border-gray-400 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:border-gray-500 dark:hover:bg-gray-700/50"
+                                    >
+                                      Show fewer
+                                    </button>
+                                  )}
+                                </>
+                              )
+                            })()
+                          )}
+                        </div>
                       )}
-                    </div>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
+                    </SortableTypeRow>
+                  )
+                })}
+              </ul>
+            </SortableContext>
+          </DndContext>
         )}
       </div>
     </div>
   )
 }
 
-function ReorderButtons({
-  onUp,
-  onDown,
-  disableUp,
-  disableDown,
-  busy,
+// ---------------- Sortable row components ----------------
+
+interface SortableTypeRowProps {
+  t: PublishableType
+  isExpanded: boolean
+  list: PublishableRow[] | undefined
+  entityCount: number
+  publishedEntityCount: number
+  tiers: SubscriptionTier[]
+  hasTiers: boolean
+  onToggleExpand: () => void
+  onOpenEntityList: () => void
+  onTogglePublish: (next: boolean) => Promise<void>
+  onChangeTier: (next: number) => Promise<void>
+  children?: React.ReactNode
+}
+
+function SortableTypeRow({
+  t,
+  isExpanded,
+  list,
+  entityCount,
+  publishedEntityCount,
+  tiers,
+  hasTiers,
+  onToggleExpand,
+  onOpenEntityList,
+  onTogglePublish,
+  onChangeTier,
+  children,
+}: SortableTypeRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: t.typeId,
+  })
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      className={`overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 ${
+        isDragging ? 'shadow-2xl z-10' : ''
+      }`}
+    >
+      <div className="flex items-center gap-3 px-4 py-3">
+        <DragHandle attributes={attributes} listeners={listeners} />
+
+        <button
+          type="button"
+          onClick={onOpenEntityList}
+          title={`Browse ${t.label.toLowerCase()}`}
+          className="group flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-gray-100 text-lg transition-colors hover:bg-blue-50 dark:bg-gray-700 dark:hover:bg-blue-900/30"
+          aria-label={`Browse ${t.label}`}
+        >
+          {t.icon}
+        </button>
+
+        <div className="min-w-0 flex-1">
+          <button
+            type="button"
+            onClick={onOpenEntityList}
+            title={`Browse ${t.label.toLowerCase()}`}
+            className="block w-full truncate text-left font-medium text-gray-900 transition-colors hover:text-blue-600 dark:text-gray-100 dark:hover:text-blue-400"
+          >
+            {t.label}
+          </button>
+          <button
+            type="button"
+            onClick={onToggleExpand}
+            aria-label={
+              isExpanded ? `Collapse ${t.label} entities` : `Expand ${t.label} entities`
+            }
+            aria-expanded={isExpanded}
+            className="mt-0.5 inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+          >
+            <svg
+              className={`h-3 w-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+            <span>
+              {list
+                ? `${publishedEntityCount} of ${entityCount} entities published`
+                : 'Expand to load entities'}
+            </span>
+          </button>
+        </div>
+
+        <div className="flex-shrink-0">
+          <PublishControl
+            isPublished={t.isPublished}
+            minimumTierLevel={t.minimumTierLevel}
+            publishedAt={t.publishedAt}
+            tiers={tiers}
+            hasTiers={hasTiers}
+            onTogglePublish={onTogglePublish}
+            onChangeTier={onChangeTier}
+          />
+        </div>
+      </div>
+
+      {children}
+    </li>
+  )
+}
+
+interface SortableEntityRowProps {
+  row: PublishableRow
+  typeId: string
+  typeLabel: string
+  typeIsPublished: boolean
+  tiers: SubscriptionTier[]
+  hasTiers: boolean
+  dragDisabled: boolean
+  onNavigate: () => void
+  onTogglePublish: (next: boolean) => Promise<void>
+  onChangeTier: (next: number) => Promise<void>
+  onChangeVariantSet: (next: { publishBase: boolean; publishedVariantIds: string[] }) => Promise<void>
+  onChangeVariantTier: (which: string | '__base__', level: number) => Promise<void> | void
+}
+
+function SortableEntityRow({
+  row,
+  typeLabel,
+  typeIsPublished,
+  tiers,
+  hasTiers,
+  dragDisabled,
+  onNavigate,
+  onTogglePublish,
+  onChangeTier,
+  onChangeVariantSet,
+  onChangeVariantTier,
+}: SortableEntityRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: row.id,
+    disabled: dragDisabled,
+  })
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-3 rounded-md bg-white px-3 py-2 dark:bg-gray-800 ${
+        isDragging ? 'shadow-xl z-10' : ''
+      }`}
+    >
+      <DragHandle
+        attributes={attributes}
+        listeners={listeners}
+        disabled={dragDisabled}
+        disabledTitle="Clear search to reorder"
+        small
+      />
+      <button
+        type="button"
+        onClick={onNavigate}
+        className="min-w-0 flex-1 truncate text-left text-sm text-gray-800 hover:text-blue-600 hover:underline dark:text-gray-200 dark:hover:text-blue-400"
+      >
+        {row.name}
+      </button>
+      <div className="flex-shrink-0">
+        <PublishControl
+          isPublished={row.isPublished}
+          minimumTierLevel={row.minimumTierLevel}
+          publishedAt={row.publishedAt}
+          tiers={tiers}
+          hasTiers={hasTiers}
+          onTogglePublish={onTogglePublish}
+          onChangeTier={onChangeTier}
+          variants={row.variants}
+          publishBase={row.publishBase}
+          publishedVariantIds={row.publishedVariantIds}
+          onChangeVariantSet={onChangeVariantSet}
+          variantAccessLevels={row.variantAccessLevels}
+          onChangeVariantTier={onChangeVariantTier}
+          disabledReason={
+            typeIsPublished ? null : `${typeLabel} is not published to readers yet`
+          }
+          compact
+        />
+      </div>
+    </li>
+  )
+}
+
+function DragHandle({
+  attributes,
+  listeners,
+  disabled = false,
+  disabledTitle,
   small = false,
 }: {
-  onUp: () => void
-  onDown: () => void
-  disableUp?: boolean
-  disableDown?: boolean
-  busy?: boolean
+  attributes: ReturnType<typeof useSortable>['attributes']
+  listeners: ReturnType<typeof useSortable>['listeners']
+  disabled?: boolean
+  disabledTitle?: string
   small?: boolean
 }) {
-  const size = small ? 'h-5 w-5' : 'h-6 w-6'
+  const size = small ? 'h-4 w-4' : 'h-5 w-5'
+  const baseClass = `${size} flex-shrink-0 text-gray-400 dark:text-gray-500 transition-colors`
+
+  if (disabled) {
+    return (
+      <span
+        className={`${baseClass} cursor-not-allowed opacity-40`}
+        title={disabledTitle}
+        aria-label="Reorder disabled"
+      >
+        <GripIcon />
+      </span>
+    )
+  }
+
   return (
-    <div className="flex flex-col items-center gap-0.5">
-      <button
-        type="button"
-        onClick={onUp}
-        disabled={disableUp || busy}
-        aria-label="Move up"
-        className={`${size} flex items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30 disabled:hover:bg-transparent dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-300`}
-      >
-        <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-        </svg>
-      </button>
-      <button
-        type="button"
-        onClick={onDown}
-        disabled={disableDown || busy}
-        aria-label="Move down"
-        className={`${size} flex items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30 disabled:hover:bg-transparent dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-300`}
-      >
-        <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-    </div>
+    <button
+      type="button"
+      {...attributes}
+      {...listeners}
+      className={`${baseClass} cursor-grab hover:text-gray-600 dark:hover:text-gray-300 active:cursor-grabbing`}
+      aria-label="Drag to reorder"
+    >
+      <GripIcon />
+    </button>
+  )
+}
+
+function GripIcon() {
+  return (
+    <svg className="h-full w-full" fill="currentColor" viewBox="0 0 20 20">
+      <circle cx="7" cy="5" r="1.5" />
+      <circle cx="7" cy="10" r="1.5" />
+      <circle cx="7" cy="15" r="1.5" />
+      <circle cx="13" cy="5" r="1.5" />
+      <circle cx="13" cy="10" r="1.5" />
+      <circle cx="13" cy="15" r="1.5" />
+    </svg>
   )
 }
 

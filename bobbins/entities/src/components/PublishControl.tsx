@@ -320,12 +320,8 @@ function describeVariantSelection(
 ): string {
   if (publishBase && selectedVariantCount === 0) return 'Base only'
   if (!publishBase && selectedVariantCount === 0) return 'Nothing selected'
-  if (!publishBase && selectedVariantCount === totalVariants) return 'All variants'
-  if (publishBase && selectedVariantCount === totalVariants) return 'Base + all variants'
-  if (publishBase) {
-    return `Base + ${selectedVariantCount} of ${totalVariants} variants`
-  }
-  return `${selectedVariantCount} of ${totalVariants} variants`
+  const variantPart = `${selectedVariantCount} of ${totalVariants} variants`
+  return publishBase ? `Base + ${variantPart}` : variantPart
 }
 
 function VariantRow({
