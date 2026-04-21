@@ -69,6 +69,8 @@ export default function PublishingView({ projectId, sdk }: PublishingViewProps) 
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [showUnpublished, setShowUnpublished] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
+  const [searchByType, setSearchByType] = useState<Record<string, string>>({})
+  const [showAllByType, setShowAllByType] = useState<Record<string, boolean>>({})
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -605,57 +607,146 @@ export default function PublishingView({ projectId, sdk }: PublishingViewProps) 
                           No {t.label.toLowerCase()} yet.
                         </div>
                       ) : (
-                        <ul className="space-y-1">
-                          {list.map((row, ridx) => (
-                            <li
-                              key={row.id}
-                              className="flex items-center gap-3 rounded-md bg-white px-3 py-2 dark:bg-gray-800"
-                            >
-                              <ReorderButtons
-                                onUp={() => moveEntity(t.typeId, row.id, -1)}
-                                onDown={() => moveEntity(t.typeId, row.id, 1)}
-                                disableUp={ridx === 0}
-                                disableDown={ridx === list.length - 1}
-                                busy={busy === `entity:${row.id}`}
-                                small
-                              />
-                              <span className="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200">
-                                {row.name}
-                              </span>
-                              <div className="flex-shrink-0">
-                                <PublishControl
-                                  isPublished={row.isPublished}
-                                  minimumTierLevel={row.minimumTierLevel}
-                                  publishedAt={row.publishedAt}
-                                  tiers={tiers}
-                                  hasTiers={hasTiers}
-                                  onTogglePublish={next =>
-                                    togglePublishEntity(t.typeId, row, next)
+                        (() => {
+                          const SEARCH_THRESHOLD = 6
+                          const DEFAULT_CAP = 8
+                          const search = searchByType[t.typeId] ?? ''
+                          const showAll = showAllByType[t.typeId] ?? false
+                          const q = search.trim().toLowerCase()
+                          const filtered = q
+                            ? list.filter(r => r.name.toLowerCase().includes(q))
+                            : list
+                          const canTruncate = !q && !showAll && filtered.length > DEFAULT_CAP
+                          const visible = canTruncate ? filtered.slice(0, DEFAULT_CAP) : filtered
+
+                          return (
+                            <>
+                              {list.length > SEARCH_THRESHOLD && (
+                                <div className="mb-2 flex items-center gap-2">
+                                  <div className="relative flex-1">
+                                    <svg
+                                      className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M21 21l-4.35-4.35M11 18a7 7 0 110-14 7 7 0 010 14z"
+                                      />
+                                    </svg>
+                                    <input
+                                      type="text"
+                                      value={search}
+                                      onChange={e =>
+                                        setSearchByType(prev => ({
+                                          ...prev,
+                                          [t.typeId]: e.target.value,
+                                        }))
+                                      }
+                                      placeholder={`Search ${list.length} ${t.label.toLowerCase()}…`}
+                                      className="w-full rounded-md border border-gray-200 bg-white py-1.5 pl-7 pr-2 text-xs text-gray-800 placeholder:text-gray-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:placeholder:text-gray-500 dark:focus:border-blue-500 dark:focus:ring-blue-500/30"
+                                    />
+                                  </div>
+                                  {q && (
+                                    <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                                      {filtered.length} of {list.length}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                              {filtered.length === 0 ? (
+                                <div className="py-4 text-center text-xs text-gray-500 dark:text-gray-400">
+                                  No matches for "{search}".
+                                </div>
+                              ) : (
+                                <ul className="space-y-1">
+                                  {visible.map(row => {
+                                    const fullIdx = list.findIndex(r => r.id === row.id)
+                                    return (
+                                      <li
+                                        key={row.id}
+                                        className="flex items-center gap-3 rounded-md bg-white px-3 py-2 dark:bg-gray-800"
+                                      >
+                                        <ReorderButtons
+                                          onUp={() => moveEntity(t.typeId, row.id, -1)}
+                                          onDown={() => moveEntity(t.typeId, row.id, 1)}
+                                          disableUp={fullIdx === 0 || Boolean(q)}
+                                          disableDown={fullIdx === list.length - 1 || Boolean(q)}
+                                          busy={busy === `entity:${row.id}`}
+                                          small
+                                        />
+                                        <span className="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200">
+                                          {row.name}
+                                        </span>
+                                        <div className="flex-shrink-0">
+                                          <PublishControl
+                                            isPublished={row.isPublished}
+                                            minimumTierLevel={row.minimumTierLevel}
+                                            publishedAt={row.publishedAt}
+                                            tiers={tiers}
+                                            hasTiers={hasTiers}
+                                            onTogglePublish={next =>
+                                              togglePublishEntity(t.typeId, row, next)
+                                            }
+                                            onChangeTier={next =>
+                                              changeTierForEntity(t.typeId, row, next)
+                                            }
+                                            variants={row.variants}
+                                            publishBase={row.publishBase}
+                                            publishedVariantIds={row.publishedVariantIds}
+                                            onChangeVariantSet={next =>
+                                              changeVariantSetForEntity(t.typeId, row, next)
+                                            }
+                                            variantAccessLevels={row.variantAccessLevels}
+                                            onChangeVariantTier={(which, level) =>
+                                              changeVariantTierForEntity(
+                                                t.typeId,
+                                                row,
+                                                which,
+                                                level
+                                              )
+                                            }
+                                            disabledReason={
+                                              t.isPublished
+                                                ? null
+                                                : `${t.label} is not published to readers yet`
+                                            }
+                                            compact
+                                          />
+                                        </div>
+                                      </li>
+                                    )
+                                  })}
+                                </ul>
+                              )}
+                              {canTruncate && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setShowAllByType(prev => ({ ...prev, [t.typeId]: true }))
                                   }
-                                  onChangeTier={next =>
-                                    changeTierForEntity(t.typeId, row, next)
+                                  className="mt-2 w-full rounded-md border border-dashed border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:border-gray-400 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:border-gray-500 dark:hover:bg-gray-700/50"
+                                >
+                                  Show all {list.length} {t.label.toLowerCase()}
+                                </button>
+                              )}
+                              {!canTruncate && showAll && !q && list.length > DEFAULT_CAP && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setShowAllByType(prev => ({ ...prev, [t.typeId]: false }))
                                   }
-                                  variants={row.variants}
-                                  publishBase={row.publishBase}
-                                  publishedVariantIds={row.publishedVariantIds}
-                                  onChangeVariantSet={next =>
-                                    changeVariantSetForEntity(t.typeId, row, next)
-                                  }
-                                  variantAccessLevels={row.variantAccessLevels}
-                                  onChangeVariantTier={(which, level) =>
-                                    changeVariantTierForEntity(t.typeId, row, which, level)
-                                  }
-                                  disabledReason={
-                                    t.isPublished
-                                      ? null
-                                      : `${t.label} is not published to readers yet`
-                                  }
-                                  compact
-                                />
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
+                                  className="mt-2 w-full rounded-md border border-dashed border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:border-gray-400 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:border-gray-500 dark:hover:bg-gray-700/50"
+                                >
+                                  Show fewer
+                                </button>
+                              )}
+                            </>
+                          )
+                        })()
                       )}
                     </div>
                   )}
