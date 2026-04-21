@@ -66,3 +66,36 @@ export function ResolvedEntityNamesProvider({
 export function useResolvedEntityNamesContext(): Map<string, string> | null {
   return useContext(ResolvedEntityNamesContext)
 }
+
+/**
+ * Link-builder for relation pills. Reader supplies an href so middle-click /
+ * cmd-click work naturally; editor supplies an onClick that dispatches its
+ * internal navigation event. Returning null means the target isn't navigable
+ * (e.g. unresolved / locked) and the pill renders as plain text.
+ */
+export interface EntityLinkProps {
+  href?: string
+  onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void
+}
+
+type EntityLinkBuilder = (entityType: string, entityId: string) => EntityLinkProps | null
+
+const EntityNavContext = createContext<EntityLinkBuilder | null>(null)
+
+export function EntityNavProvider({
+  getLinkProps,
+  children,
+}: {
+  getLinkProps: EntityLinkBuilder
+  children: React.ReactNode
+}) {
+  return (
+    <EntityNavContext.Provider value={getLinkProps}>
+      {children}
+    </EntityNavContext.Provider>
+  )
+}
+
+export function useEntityNavContext(): EntityLinkBuilder | null {
+  return useContext(EntityNavContext)
+}

@@ -21,9 +21,11 @@ interface EntityModalProps {
   onClose: () => void
   /** Route to the entity's full subpage. Rendered as an "Open as page" link. */
   subpageHref: string
+  /** Base for relation-pill links to sibling entities — `${base}/${id}`. */
+  entityHrefBase?: string
 }
 
-export default function EntityModal({ type, entity, projectId, apiToken, onClose, subpageHref }: EntityModalProps) {
+export default function EntityModal({ type, entity, projectId, apiToken, onClose, subpageHref, entityHrefBase }: EntityModalProps) {
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose()
@@ -82,6 +84,7 @@ export default function EntityModal({ type, entity, projectId, apiToken, onClose
           projectId={projectId}
           apiToken={apiToken}
           headerAction={headerAction}
+          entityHrefBase={entityHrefBase}
         />
       </div>
     </div>,

@@ -8,7 +8,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { getSanitizedHtmlProps, useClickOutside } from '@bobbinry/sdk'
 import type { FieldDefinition, FieldType } from '../types'
 import { normalizeJsonSchema } from '../types'
-import { useUpload, useEntityContext, useResolvedEntityNamesContext } from './UploadContext'
+import { useUpload, useEntityContext, useResolvedEntityNamesContext, useEntityNavContext } from './UploadContext'
 import { ObjectFormRenderer, ListFormRenderer, KeyedListFormRenderer, FreeformKeyValueEditor } from './json-renderers'
 import { TipTapEditor } from './TipTapEditor'
 
@@ -958,21 +958,37 @@ function RelationReadonlyDisplay({ field, value }: { field: FieldDefinition; val
     : (value ? [value] : [])
 
   const { names, isResolving } = useResolvedEntityNames(field.targetEntityType, ids)
+  const getLinkProps = useEntityNavContext()
 
   if (ids.length === 0) {
     return <span className="text-gray-400 dark:text-gray-500 italic">Not set</span>
   }
+
+  const pillClass = 'px-2 py-1 bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 rounded text-xs'
+  const linkClass = `${pillClass} hover:bg-purple-200 dark:hover:bg-purple-900/60 hover:underline transition-colors`
 
   return (
     <div className="flex flex-wrap gap-1">
       {ids.map(id => {
         const name = names.get(id)
         if (name) {
+          const linkProps = field.targetEntityType
+            ? getLinkProps?.(field.targetEntityType, id) ?? null
+            : null
+          if (linkProps) {
+            return (
+              <a
+                key={id}
+                href={linkProps.href ?? '#'}
+                onClick={linkProps.onClick}
+                className={linkClass}
+              >
+                {name}
+              </a>
+            )
+          }
           return (
-            <span
-              key={id}
-              className="px-2 py-1 bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 rounded text-xs"
-            >
+            <span key={id} className={pillClass}>
               {name}
             </span>
           )
@@ -991,10 +1007,7 @@ function RelationReadonlyDisplay({ field, value }: { field: FieldDefinition; val
           )
         }
         return (
-          <span
-            key={id}
-            className="px-2 py-1 bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 rounded text-xs"
-          >
+          <span key={id} className={pillClass}>
             Loading…
           </span>
         )

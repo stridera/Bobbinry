@@ -13,7 +13,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { LayoutRenderer } from '@bobbinry/entities/components/LayoutRenderer'
-import { ResolvedEntityNamesProvider } from '@bobbinry/entities/components/UploadContext'
+import { ResolvedEntityNamesProvider, EntityNavProvider } from '@bobbinry/entities/components/UploadContext'
 import { config } from '@/lib/config'
 import type { PublishedType, PublishedEntity } from './entities-data'
 import { resolveEntityForVariant } from './entities-data'
@@ -29,9 +29,11 @@ interface EntityViewProps {
   bare?: boolean
   /** Show a trailing header action slot (e.g. "Open as page" link). */
   headerAction?: React.ReactNode
+  /** Route base for linking to other entities from relation pills. E.g. `/read/elena/saga/entity` — id is appended. */
+  entityHrefBase?: string | undefined
 }
 
-export default function EntityView({ type, entity, projectId, apiToken, bare = false, headerAction }: EntityViewProps) {
+export default function EntityView({ type, entity, projectId, apiToken, bare = false, headerAction, entityHrefBase }: EntityViewProps) {
   const visibleVariantIds = useMemo(() => {
     const ids: Array<string | null> = []
     if (entity.publishBase) ids.push(null)
@@ -146,13 +148,19 @@ export default function EntityView({ type, entity, projectId, apiToken, bare = f
 
       <div className="flex-1 overflow-y-auto px-5 py-5">
         <ResolvedEntityNamesProvider names={relationNames}>
-          <LayoutRenderer
-            layout={layout as any}
-            fields={type.customFields as any}
-            entity={resolvedEntity}
-            onFieldChange={() => {}}
-            readonly
-          />
+          <EntityNavProvider
+            getLinkProps={(_entityType, id) =>
+              entityHrefBase ? { href: `${entityHrefBase}/${id}` } : null
+            }
+          >
+            <LayoutRenderer
+              layout={layout as any}
+              fields={type.customFields as any}
+              entity={resolvedEntity}
+              onFieldChange={() => {}}
+              readonly
+            />
+          </EntityNavProvider>
         </ResolvedEntityNamesProvider>
       </div>
     </div>

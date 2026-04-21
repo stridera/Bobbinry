@@ -192,6 +192,7 @@ export default function EntitiesTab({
           projectId={projectId}
           apiToken={apiToken}
           subpageHref={`/read/${authorUsername}/${projectSlug}/entity/${open.entity.id}`}
+          entityHrefBase={`/read/${authorUsername}/${projectSlug}/entity`}
           onClose={() => setOpen(null)}
         />
       )}

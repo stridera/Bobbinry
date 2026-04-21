@@ -136,6 +136,7 @@ function EntitySubpageContent() {
               entity={payload.entity}
               projectId={projectId}
               apiToken={apiToken}
+              entityHrefBase={`/read/${authorUsername}/${projectSlug}/entity`}
             />
           </div>
         )}

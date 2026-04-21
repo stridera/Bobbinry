@@ -26,7 +26,7 @@ import {
   versionableFieldNames,
 } from '../variants'
 import { LayoutRenderer } from '../components/LayoutRenderer'
-import { SdkProvider } from '../components/UploadContext'
+import { SdkProvider, EntityNavProvider } from '../components/UploadContext'
 import { checkTypeCompatibility } from '../components/FieldRenderers'
 import { PublishControl } from '../components/PublishControl'
 import {
@@ -837,22 +837,40 @@ export default function EntityEditorView({
       {/* Editor Content */}
       <div className="flex-1 overflow-auto p-8">
         <SdkProvider sdk={sdk} projectId={projectId}>
-          <AliasesField
-            entity={entity ?? {}}
-            readonly={viewMode === 'view'}
-            onChange={nextAliases => {
-              setEntity(prev => ({ ...(prev ?? {}), aliases: nextAliases }))
-              setSaveStatus('unsaved')
-              setSaveError(false)
-            }}
-          />
-          <LayoutRenderer
-            layout={typeConfig.editorLayout}
-            fields={typeConfig.customFields}
-            entity={displayEntity}
-            onFieldChange={handleFieldChange}
-            readonly={viewMode === 'view'}
-          />
+          <EntityNavProvider
+            getLinkProps={(targetType, targetId) => ({
+              href: '#',
+              onClick: (e) => {
+                e.preventDefault()
+                if (typeof window === 'undefined') return
+                window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
+                  detail: {
+                    entityType: targetType,
+                    entityId: targetId,
+                    bobbinId: 'entities',
+                    metadata: { view: 'entity-editor' },
+                  },
+                }))
+              },
+            })}
+          >
+            <AliasesField
+              entity={entity ?? {}}
+              readonly={viewMode === 'view'}
+              onChange={nextAliases => {
+                setEntity(prev => ({ ...(prev ?? {}), aliases: nextAliases }))
+                setSaveStatus('unsaved')
+                setSaveError(false)
+              }}
+            />
+            <LayoutRenderer
+              layout={typeConfig.editorLayout}
+              fields={typeConfig.customFields}
+              entity={displayEntity}
+              onFieldChange={handleFieldChange}
+              readonly={viewMode === 'view'}
+            />
+          </EntityNavProvider>
         </SdkProvider>
       </div>
     </div>

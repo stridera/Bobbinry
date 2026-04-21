@@ -1319,6 +1319,7 @@ export default function ChapterReaderPage() {
           projectId={projectId}
           apiToken={session?.apiToken}
           subpageHref={`/read/${authorUsername}/${projectSlug}/entity/${openEntity.entity.id}`}
+          entityHrefBase={`/read/${authorUsername}/${projectSlug}/entity`}
           onClose={() => setOpenEntity(null)}
         />
       )}
