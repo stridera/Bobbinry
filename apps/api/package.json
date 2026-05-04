@@ -24,8 +24,8 @@
   "author": "",
   "license": "AGPL-3.0-only",
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1033.0",
-    "@aws-sdk/s3-request-presigner": "^3.1033.0",
+    "@aws-sdk/client-s3": "^3.1041.0",
+    "@aws-sdk/s3-request-presigner": "^3.1041.0",
     "@bobbinry/action-runtime": "workspace:*",
     "@bobbinry/compiler": "workspace:*",
     "@fastify/cors": "^11.2.0",
@@ -38,9 +38,9 @@
     "fastify-plugin": "^5.1.0",
     "fastify-raw-body": "^5.0.0",
     "html-to-text": "^10.0.0",
-    "jose": "^6.2.2",
-    "nanoid": "^5.1.9",
-    "otpauth": "^9.5.0",
+    "jose": "^6.2.3",
+    "nanoid": "^5.1.11",
+    "otpauth": "^9.5.1",
     "pdfkit": "^0.18.0",
     "pg": "^8.20.0",
     "pino": "^10.3.1",
@@ -48,10 +48,10 @@
     "qrcode": "^1.5.4",
     "resend": "^6.12.2",
     "sharp": "^0.34.5",
-    "stripe": "^22.0.2",
+    "stripe": "^22.1.0",
     "turndown": "^7.2.4",
-    "yaml": "^2.8.3",
-    "zod": "^4.3.6"
+    "yaml": "^2.8.4",
+    "zod": "^4.4.2"
   },
   "devDependencies": {
     "@jest/globals": "^30.3.0",
