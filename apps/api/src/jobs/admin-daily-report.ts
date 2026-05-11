@@ -3,7 +3,10 @@
  *
  * Gathers 24-hour platform metrics and emails a summary to all owner-badge users.
  * Only sends when there is something to report (growth or errors).
- * Triggered daily at 14:00 UTC from the trigger scheduler.
+ *
+ * Idempotent: gated on a row in cron_runs so the trigger-scheduler can invoke
+ * this every tick and the function self-rate-limits. Self-heals if a tick is
+ * missed near 14:00 UTC — the next tick after the fire time claims and sends.
  */
 
 import { db } from '../db/connection'
@@ -20,9 +23,13 @@ import {
   projectDestinations,
   uploads,
   userBadges,
+  cronRuns,
 } from '../db/schema'
 import { eq, and, sql, count } from 'drizzle-orm'
 import { sendEmail, buildAdminDailyReportHtml, buildAdminDailyReportText } from '../lib/email'
+
+const JOB_NAME = 'admin_daily_report'
+const FIRE_HOUR_UTC = 14
 
 export interface AdminDailyReport {
   // Growth
@@ -40,6 +47,24 @@ export interface AdminDailyReport {
   failedPayments: number
   failedSyncs: number
   reportedUploads: number
+}
+
+export interface AdminDailyReportResult {
+  ok: boolean
+  claimed: boolean
+  skipped?: 'before_fire_time' | 'already_ran' | 'no_growth' | 'no_admins'
+  sent?: boolean
+  error?: string
+}
+
+/** Today's 14:00 UTC, regardless of whether it has passed yet. */
+export function todayFireTime(now: Date): Date {
+  return new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+    FIRE_HOUR_UTC, 0, 0,
+  ))
 }
 
 async function getAdminEmails(): Promise<string[]> {
@@ -114,7 +139,69 @@ async function gatherReportData(): Promise<AdminDailyReport> {
   }
 }
 
-export async function processAdminDailyReport(): Promise<void> {
+/**
+ * Atomically claim today's run. Returns true if this caller owns the run,
+ * false if another concurrent tick already claimed it.
+ *
+ * On force=true, always wins the claim and marks the row forced so it does
+ * not block the legitimate 14:00 UTC firing later in the day.
+ */
+async function claimRun(now: Date, force: boolean): Promise<boolean> {
+  const fireTime = todayFireTime(now)
+  const claimed = await db
+    .insert(cronRuns)
+    .values({
+      jobName: JOB_NAME,
+      lastRunAt: now,
+      lastStatus: 'success',
+      lastError: null,
+      forced: force,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: cronRuns.jobName,
+      set: {
+        lastRunAt: now,
+        lastStatus: 'success',
+        lastError: null,
+        forced: force,
+        updatedAt: now,
+      },
+      setWhere: force
+        ? sql`true`
+        : sql`${cronRuns.lastRunAt} < ${fireTime} OR ${cronRuns.forced} = true`,
+    })
+    .returning({ jobName: cronRuns.jobName })
+  return claimed.length > 0
+}
+
+async function recordTerminal(
+  status: 'success' | 'skipped' | 'failed',
+  error: string | null,
+): Promise<void> {
+  await db
+    .update(cronRuns)
+    .set({ lastStatus: status, lastError: error, updatedAt: new Date() })
+    .where(eq(cronRuns.jobName, JOB_NAME))
+}
+
+export async function processAdminDailyReport(
+  opts: { force?: boolean } = {},
+): Promise<AdminDailyReportResult> {
+  const force = !!opts.force
+  const now = new Date()
+
+  // Time gate (skip silently — every tick calls us)
+  if (!force && now < todayFireTime(now)) {
+    return { ok: true, claimed: false, skipped: 'before_fire_time' }
+  }
+
+  // Atomic claim
+  const claimed = await claimRun(now, force)
+  if (!claimed) {
+    return { ok: true, claimed: false, skipped: 'already_ran' }
+  }
+
   try {
     const report = await gatherReportData()
 
@@ -134,16 +221,18 @@ export async function processAdminDailyReport(): Promise<void> {
 
     if (!hasGrowth && !hasErrors) {
       console.log('[admin-daily-report] Nothing to report, skipping email')
-      return
+      await recordTerminal('skipped', null)
+      return { ok: true, claimed: true, skipped: 'no_growth' }
     }
 
     const adminEmails = await getAdminEmails()
     if (adminEmails.length === 0) {
       console.log('[admin-daily-report] No admin emails found, skipping')
-      return
+      await recordTerminal('skipped', null)
+      return { ok: true, claimed: true, skipped: 'no_admins' }
     }
 
-    const dateStr = new Date().toLocaleDateString('en-US', {
+    const dateStr = now.toLocaleDateString('en-US', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -154,15 +243,27 @@ export async function processAdminDailyReport(): Promise<void> {
     const html = buildAdminDailyReportHtml(report)
     const text = buildAdminDailyReportText(report)
 
-    await sendEmail({
+    const sent = await sendEmail({
       to: adminEmails,
       subject: `Bobbinry Daily Report — ${dateStr}`,
       html,
       text,
     })
 
-    console.log(`[admin-daily-report] Sent report to ${adminEmails.length} admin(s)`)
+    if (sent) {
+      console.log(`[admin-daily-report] Sent report to ${adminEmails.length} admin(s)`)
+      await recordTerminal('success', null)
+      return { ok: true, claimed: true, sent: true }
+    }
+
+    const errMsg = 'sendEmail returned false (missing RESEND_API_KEY or upstream error)'
+    console.error(`[admin-daily-report] ${errMsg}`)
+    await recordTerminal('failed', errMsg)
+    return { ok: false, claimed: true, sent: false, error: errMsg }
   } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err)
     console.error('[admin-daily-report] Failed to send daily report:', err)
+    await recordTerminal('failed', errMsg).catch(() => {})
+    return { ok: false, claimed: true, error: errMsg }
   }
 }

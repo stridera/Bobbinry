@@ -363,10 +363,8 @@ export function startTriggerScheduler(): void {
         tasks.push(processSubscriptionExpiration())
       }
 
-      // Send admin daily report at 14:00 UTC
-      if (new Date().getUTCHours() === 14 && new Date().getUTCMinutes() === 0) {
-        tasks.push(processAdminDailyReport())
-      }
+      // Admin daily report self-gates on the cron_runs row — safe to call every tick
+      tasks.push(processAdminDailyReport())
 
       await Promise.allSettled(tasks)
     } catch (err) {

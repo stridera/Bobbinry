@@ -9,6 +9,12 @@ import { db } from '../db/connection'
 import { users, projects, userBadges, userProfiles, siteMemberships } from '../db/schema'
 import { eq, sql, ilike, or, and, count, desc, isNull } from 'drizzle-orm'
 import { requireAuth, requireOwner, denyApiKeyAuth } from '../middleware/auth'
+import { processAdminDailyReport } from '../jobs/admin-daily-report'
+
+type CronHandler = (opts: { force?: boolean }) => Promise<unknown>
+const cronJobs: Record<string, CronHandler> = {
+  admin_daily_report: processAdminDailyReport,
+}
 
 const adminPlugin: FastifyPluginAsync = async (fastify) => {
   const adminPreHandler = [requireAuth, requireOwner, denyApiKeyAuth]
@@ -323,6 +329,29 @@ const adminPlugin: FastifyPluginAsync = async (fastify) => {
     }
 
     return reply.send({ success: true })
+  })
+
+  /**
+   * POST /admin/cron/run/:job?force=true
+   * Manually invoke a scheduled job. `force=true` bypasses the time + already-ran
+   * gates so it can be used for backfills or smoke tests.
+   */
+  fastify.post<{
+    Params: { job: string }
+    Querystring: { force?: string }
+  }>('/admin/cron/run/:job', {
+    preHandler: adminPreHandler,
+  }, async (request, reply) => {
+    const { job } = request.params
+    const force = request.query.force === 'true'
+
+    const handler = cronJobs[job]
+    if (!handler) {
+      return reply.status(404).send({ error: `unknown cron job: ${job}` })
+    }
+
+    const result = await handler({ force })
+    return reply.send(result)
   })
 }
 

@@ -690,6 +690,16 @@ export const manifestsVersions = pgTable('manifests_versions', {
   bobbinVersionIdx: uniqueIndex('manifests_versions_bobbin_version_idx').on(table.bobbinId, table.version)
 }))
 
+// Cron run tracking — one row per scheduled job, used as an idempotency claim
+export const cronRuns = pgTable('cron_runs', {
+  jobName: varchar('job_name', { length: 100 }).primaryKey(),
+  lastRunAt: timestamp('last_run_at').defaultNow().notNull(),
+  lastStatus: varchar('last_status', { length: 20 }).notNull(), // 'success' | 'skipped' | 'failed'
+  lastError: text('last_error'),
+  forced: boolean('forced').default(false).notNull(), // gate ignores rows where forced=true
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
 // Publish targets - static site generation results
 export const publishTargets = pgTable('publish_targets', {
   id: uuid('id').defaultRandom().primaryKey(),
