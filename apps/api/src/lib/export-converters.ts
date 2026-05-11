@@ -1,7 +1,8 @@
 import PDFDocument from 'pdfkit'
 import { convert as htmlToText } from 'html-to-text'
 import TurndownService from 'turndown'
-import archiver from 'archiver'
+// @ts-expect-error — archiver 8 ships named class exports but @types/archiver still v7
+import { ZipArchive } from 'archiver'
 import EPub from 'epub-gen-memory'
 
 // ============================================
@@ -177,7 +178,7 @@ export async function generateChaptersZip(
   format: 'pdf' | 'epub' | 'txt' | 'markdown',
   turndown: TurndownService
 ): Promise<Buffer> {
-  const archive = archiver('zip', { zlib: { level: 6 } })
+  const archive = new ZipArchive({ zlib: { level: 6 } })
 
   for (const [i, ch] of chapters.entries()) {
     const prefix = String(i + 1).padStart(2, '0')
