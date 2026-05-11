@@ -1,8 +1,8 @@
 # ---- Build stage ----
-FROM node:22-slim AS builder
+FROM node:24-slim AS builder
 
 # Install bun
-RUN npm install -g bun@1.3.10
+RUN npm install -g bun@1.3.13
 
 WORKDIR /app
 
@@ -63,7 +63,7 @@ RUN npx turbo build --filter=api
 RUN npx tsc -p bobbins/google-drive-backup/tsconfig.actions.json
 
 # ---- Runtime stage ----
-FROM node:22-slim AS runtime
+FROM node:24-slim AS runtime
 
 WORKDIR /app
 

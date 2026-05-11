@@ -13,7 +13,9 @@ module.exports = {
     '^.+\\.js$': ['ts-jest', { tsconfig: { allowJs: true } }]
   },
   transformIgnorePatterns: [
-    'node_modules/(?!\\.bun/jose|jose/|\\.bun/nanoid|nanoid/)'
+    // ESM modules — jest must transform these or the import fails at runtime.
+    // Match both the .bun-hashed dir and the bare package dir.
+    'node_modules/(?!(\\.bun/)?(jose|nanoid|archiver|compress-commons|zip-stream|crc32-stream|is-stream|minimatch|brace-expansion|balanced-match)(@|/))'
   ],
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',
