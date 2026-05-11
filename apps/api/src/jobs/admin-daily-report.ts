@@ -25,7 +25,7 @@ import {
   userBadges,
   cronRuns,
 } from '../db/schema'
-import { eq, and, sql, count } from 'drizzle-orm'
+import { eq, and, sql, count, gt, isNull } from 'drizzle-orm'
 import { sendEmail, buildAdminDailyReportHtml, buildAdminDailyReportText } from '../lib/email'
 
 const JOB_NAME = 'admin_daily_report'
@@ -98,29 +98,29 @@ async function gatherReportData(): Promise<AdminDailyReport> {
     [reported],
   ] = await Promise.all([
     db.select({ count: count() }).from(users)
-      .where(sql`${users.createdAt} > ${cutoff}`),
+      .where(gt(users.createdAt, cutoff)),
     db.select({ count: count() }).from(projects)
-      .where(sql`${projects.createdAt} > ${cutoff} AND ${projects.deletedAt} IS NULL`),
+      .where(and(gt(projects.createdAt, cutoff), isNull(projects.deletedAt))),
     db.select({ count: count() }).from(chapterPublications)
-      .where(sql`${chapterPublications.firstPublishedAt} > ${cutoff}`),
+      .where(gt(chapterPublications.firstPublishedAt, cutoff)),
     db.select({ count: count() }).from(subscriptions)
-      .where(sql`${subscriptions.createdAt} > ${cutoff}`),
+      .where(gt(subscriptions.createdAt, cutoff)),
     db.select({ count: count() }).from(siteMemberships)
-      .where(sql`${siteMemberships.createdAt} > ${cutoff} AND ${siteMemberships.tier} = 'supporter'`),
+      .where(and(gt(siteMemberships.createdAt, cutoff), eq(siteMemberships.tier, 'supporter'))),
     db.select({ count: count() }).from(projectFollows)
-      .where(sql`${projectFollows.createdAt} > ${cutoff}`),
+      .where(gt(projectFollows.createdAt, cutoff)),
     db.select({ count: count() }).from(userFollowers)
-      .where(sql`${userFollowers.createdAt} > ${cutoff}`),
+      .where(gt(userFollowers.createdAt, cutoff)),
     db.select({ count: count() }).from(chapterViews)
-      .where(sql`${chapterViews.startedAt} > ${cutoff}`),
+      .where(gt(chapterViews.startedAt, cutoff)),
     db.select({ count: count() }).from(chapterViews)
-      .where(sql`${chapterViews.completedAt} > ${cutoff}`),
+      .where(gt(chapterViews.completedAt, cutoff)),
     db.select({ count: count() }).from(subscriptionPayments)
-      .where(sql`${subscriptionPayments.status} = 'failed' AND ${subscriptionPayments.createdAt} > ${cutoff}`),
+      .where(and(eq(subscriptionPayments.status, 'failed'), gt(subscriptionPayments.createdAt, cutoff))),
     db.select({ count: count() }).from(projectDestinations)
-      .where(sql`${projectDestinations.lastSyncStatus} = 'failed' AND ${projectDestinations.updatedAt} > ${cutoff}`),
+      .where(and(eq(projectDestinations.lastSyncStatus, 'failed'), gt(projectDestinations.updatedAt, cutoff))),
     db.select({ count: count() }).from(uploads)
-      .where(sql`${uploads.status} = 'reported' AND ${uploads.updatedAt} > ${cutoff}`),
+      .where(and(eq(uploads.status, 'reported'), gt(uploads.updatedAt, cutoff))),
   ])
 
   return {
@@ -169,7 +169,7 @@ async function claimRun(now: Date, force: boolean): Promise<boolean> {
       },
       setWhere: force
         ? sql`true`
-        : sql`${cronRuns.lastRunAt} < ${fireTime} OR ${cronRuns.forced} = true`,
+        : sql`${cronRuns.lastRunAt} < ${fireTime.toISOString()} OR ${cronRuns.forced} = true`,
     })
     .returning({ jobName: cronRuns.jobName })
   return claimed.length > 0
