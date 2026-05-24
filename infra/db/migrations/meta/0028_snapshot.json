@@ -1877,6 +1877,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "last_sent_at": {
+          "name": "last_sent_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},

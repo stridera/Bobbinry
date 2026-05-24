@@ -698,6 +698,7 @@ export const cronRuns = pgTable('cron_runs', {
   lastError: text('last_error'),
   forced: boolean('forced').default(false).notNull(), // gate ignores rows where forced=true
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  lastSentAt: timestamp('last_sent_at'), // last time the job actually sent output; used as cutoff for windowed reports
 })
 
 // Publish targets - static site generation results

@@ -267,6 +267,9 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
             publishedVersion: version,
             publishedAt: baseReleaseDate,
             publicReleaseDate,
+            firstPublishedAt: publishStatus === 'published'
+              ? (existing.firstPublishedAt ?? now)
+              : existing.firstPublishedAt,
             lastPublishedAt: publishStatus === 'published' ? now : existing.lastPublishedAt,
             updatedAt: now
           })
@@ -285,7 +288,9 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
             publishedVersion: version,
             publishedAt: baseReleaseDate,
             publicReleaseDate,
-            firstPublishedAt: firstPublishedAt ? new Date(firstPublishedAt) : baseReleaseDate,
+            firstPublishedAt: publishStatus === 'published'
+              ? (firstPublishedAt ? new Date(firstPublishedAt) : now)
+              : null,
             lastPublishedAt: publishStatus === 'published' ? now : null
           })
           .returning()

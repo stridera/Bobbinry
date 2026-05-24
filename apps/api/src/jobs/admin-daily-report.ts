@@ -1,12 +1,17 @@
 /**
  * Admin Daily Report
  *
- * Gathers 24-hour platform metrics and emails a summary to all owner-badge users.
- * Only sends when there is something to report (growth or errors).
+ * Gathers platform metrics since the last successful send (or the last 24h
+ * as a fallback) and emails a summary to all owner-badge users. Only sends
+ * when there is something to report (growth, errors, or moderation queue).
  *
  * Idempotent: gated on a row in cron_runs so the trigger-scheduler can invoke
  * this every tick and the function self-rate-limits. Self-heals if a tick is
  * missed near 14:00 UTC — the next tick after the fire time claims and sends.
+ *
+ * Windowing: the cutoff is `cron_runs.last_sent_at` if set (so a previously
+ * missed/skipped day's events roll into the next send), capped at 7 days back
+ * to keep query plans bounded.
  */
 
 import { db } from '../db/connection'
@@ -24,15 +29,20 @@ import {
   uploads,
   userBadges,
   cronRuns,
+  comments,
+  reactions,
+  chapterAnnotations,
+  entities,
 } from '../db/schema'
-import { eq, and, sql, count, gt, isNull } from 'drizzle-orm'
+import { eq, and, sql, count, gt, isNull, notInArray } from 'drizzle-orm'
 import { sendEmail, buildAdminDailyReportHtml, buildAdminDailyReportText } from '../lib/email'
 
 const JOB_NAME = 'admin_daily_report'
 const FIRE_HOUR_UTC = 14
+const MAX_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
 
 export interface AdminDailyReport {
-  // Growth
+  // Growth — counted toward the gating decision
   newSignups: number
   newProjects: number
   chaptersFirstPublished: number
@@ -40,13 +50,18 @@ export interface AdminDailyReport {
   newSupporterMemberships: number
   newProjectFollows: number
   newUserFollows: number
-  // Reading
+  // Activity — reported when present, but does not trigger a send on its own
   chapterViewsStarted: number
   chapterReadsCompleted: number
-  // Errors
+  newComments: number
+  newReactions: number
+  newAnnotations: number
+  entitiesEdited: number
+  // Attention bucket
   failedPayments: number
   failedSyncs: number
   reportedUploads: number
+  pendingComments: number
 }
 
 export interface AdminDailyReportResult {
@@ -67,6 +82,26 @@ export function todayFireTime(now: Date): Date {
   ))
 }
 
+/**
+ * Compute the report's cutoff: prefer the last successful send (so missed
+ * days roll into the next report), fall back to a fixed 24h window, and cap
+ * at 7 days back to bound query work.
+ */
+export async function getCutoff(now: Date): Promise<{ cutoff: Date; capped: boolean }> {
+  const fallback = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+  const floor = new Date(now.getTime() - MAX_WINDOW_MS)
+
+  const [row] = await db
+    .select({ lastSentAt: cronRuns.lastSentAt })
+    .from(cronRuns)
+    .where(eq(cronRuns.jobName, JOB_NAME))
+    .limit(1)
+
+  const candidate = row?.lastSentAt ?? fallback
+  if (candidate < floor) return { cutoff: floor, capped: true }
+  return { cutoff: candidate, capped: false }
+}
+
 async function getAdminEmails(): Promise<string[]> {
   const rows = await db
     .select({ email: users.email })
@@ -80,9 +115,7 @@ async function getAdminEmails(): Promise<string[]> {
   return rows.map(r => r.email)
 }
 
-async function gatherReportData(): Promise<AdminDailyReport> {
-  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000)
-
+export async function gatherReportData(cutoff: Date): Promise<AdminDailyReport> {
   const [
     [signups],
     [newProjects],
@@ -93,9 +126,14 @@ async function gatherReportData(): Promise<AdminDailyReport> {
     [usrFollows],
     [views],
     [completed],
+    [newComm],
+    [newReact],
+    [newAnnot],
+    [edits],
     [failedPay],
     [failedSync],
     [reported],
+    [pendComm],
   ] = await Promise.all([
     db.select({ count: count() }).from(users)
       .where(gt(users.createdAt, cutoff)),
@@ -115,12 +153,25 @@ async function gatherReportData(): Promise<AdminDailyReport> {
       .where(gt(chapterViews.startedAt, cutoff)),
     db.select({ count: count() }).from(chapterViews)
       .where(gt(chapterViews.completedAt, cutoff)),
+    db.select({ count: count() }).from(comments)
+      .where(and(
+        gt(comments.createdAt, cutoff),
+        notInArray(comments.moderationStatus, ['deleted', 'hidden']),
+      )),
+    db.select({ count: count() }).from(reactions)
+      .where(gt(reactions.createdAt, cutoff)),
+    db.select({ count: count() }).from(chapterAnnotations)
+      .where(gt(chapterAnnotations.createdAt, cutoff)),
+    db.select({ count: count() }).from(entities)
+      .where(gt(entities.lastEditedAt, cutoff)),
     db.select({ count: count() }).from(subscriptionPayments)
       .where(and(eq(subscriptionPayments.status, 'failed'), gt(subscriptionPayments.createdAt, cutoff))),
     db.select({ count: count() }).from(projectDestinations)
       .where(and(eq(projectDestinations.lastSyncStatus, 'failed'), gt(projectDestinations.updatedAt, cutoff))),
     db.select({ count: count() }).from(uploads)
       .where(and(eq(uploads.status, 'reported'), gt(uploads.updatedAt, cutoff))),
+    db.select({ count: count() }).from(comments)
+      .where(and(eq(comments.moderationStatus, 'pending'), gt(comments.createdAt, cutoff))),
   ])
 
   return {
@@ -133,9 +184,14 @@ async function gatherReportData(): Promise<AdminDailyReport> {
     newUserFollows: usrFollows?.count ?? 0,
     chapterViewsStarted: views?.count ?? 0,
     chapterReadsCompleted: completed?.count ?? 0,
+    newComments: newComm?.count ?? 0,
+    newReactions: newReact?.count ?? 0,
+    newAnnotations: newAnnot?.count ?? 0,
+    entitiesEdited: edits?.count ?? 0,
     failedPayments: failedPay?.count ?? 0,
     failedSyncs: failedSync?.count ?? 0,
     reportedUploads: reported?.count ?? 0,
+    pendingComments: pendComm?.count ?? 0,
   }
 }
 
@@ -178,10 +234,16 @@ async function claimRun(now: Date, force: boolean): Promise<boolean> {
 async function recordTerminal(
   status: 'success' | 'skipped' | 'failed',
   error: string | null,
+  sentAt: Date | null = null,
 ): Promise<void> {
   await db
     .update(cronRuns)
-    .set({ lastStatus: status, lastError: error, updatedAt: new Date() })
+    .set({
+      lastStatus: status,
+      lastError: error,
+      updatedAt: new Date(),
+      ...(sentAt ? { lastSentAt: sentAt } : {}),
+    })
     .where(eq(cronRuns.jobName, JOB_NAME))
 }
 
@@ -203,7 +265,8 @@ export async function processAdminDailyReport(
   }
 
   try {
-    const report = await gatherReportData()
+    const { cutoff } = await getCutoff(now)
+    const report = await gatherReportData(cutoff)
 
     const hasGrowth =
       report.newSignups > 0 ||
@@ -217,7 +280,8 @@ export async function processAdminDailyReport(
     const hasErrors =
       report.failedPayments > 0 ||
       report.failedSyncs > 0 ||
-      report.reportedUploads > 0
+      report.reportedUploads > 0 ||
+      report.pendingComments > 0
 
     if (!hasGrowth && !hasErrors) {
       console.log('[admin-daily-report] Nothing to report, skipping email')
@@ -232,6 +296,10 @@ export async function processAdminDailyReport(
       return { ok: true, claimed: true, skipped: 'no_admins' }
     }
 
+    const windowMs = now.getTime() - cutoff.getTime()
+    const multiDay = windowMs > 36 * 60 * 60 * 1000
+    const days = Math.max(1, Math.round(windowMs / (24 * 60 * 60 * 1000)))
+
     const dateStr = now.toLocaleDateString('en-US', {
       weekday: 'long',
       year: 'numeric',
@@ -240,19 +308,23 @@ export async function processAdminDailyReport(
       timeZone: 'UTC',
     })
 
-    const html = buildAdminDailyReportHtml(report)
-    const text = buildAdminDailyReportText(report)
+    const subject = multiDay
+      ? `Bobbinry Report — last ${days} days`
+      : `Bobbinry Daily Report — ${dateStr}`
+
+    const html = buildAdminDailyReportHtml(report, { since: cutoff, until: now })
+    const text = buildAdminDailyReportText(report, { since: cutoff, until: now })
 
     const sent = await sendEmail({
       to: adminEmails,
-      subject: `Bobbinry Daily Report — ${dateStr}`,
+      subject,
       html,
       text,
     })
 
     if (sent) {
       console.log(`[admin-daily-report] Sent report to ${adminEmails.length} admin(s)`)
-      await recordTerminal('success', null)
+      await recordTerminal('success', null, now)
       return { ok: true, claimed: true, sent: true }
     }
 

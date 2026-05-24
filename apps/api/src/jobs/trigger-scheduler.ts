@@ -10,7 +10,7 @@
 
 import { db } from '../db/connection'
 import { bobbinsInstalled, entities, projectDestinations, chapterPublications } from '../db/schema'
-import { eq, and, gt, lte } from 'drizzle-orm'
+import { eq, and, gt, lte, sql } from 'drizzle-orm'
 import { processEmbargoReleases, initTierDispatch } from './tier-dispatch'
 import { processTrashPurge } from './trash-purge'
 import { processSubscriptionExpiration } from './subscription-expiration'
@@ -312,6 +312,9 @@ export async function processScheduledReleases(): Promise<void> {
         .update(chapterPublications)
         .set({
           publishStatus: 'published',
+          // Stamp firstPublishedAt the first time a chapter actually becomes visible.
+          // COALESCE preserves any earlier value (defensive against future code paths).
+          firstPublishedAt: sql`COALESCE(${chapterPublications.firstPublishedAt}, ${now})`,
           lastPublishedAt: now,
           updatedAt: now,
         })

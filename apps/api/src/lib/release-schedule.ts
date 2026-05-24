@@ -255,7 +255,8 @@ export async function upsertScheduledChapterPublication(
       publishedVersion,
       publishedAt: scheduledAt,
       publicReleaseDate,
-      firstPublishedAt: scheduledAt,
+      // firstPublishedAt stays NULL until the chapter actually becomes visible
+      // (processScheduledReleases auto-release, or a manual publish transition).
     })
     .returning()
 

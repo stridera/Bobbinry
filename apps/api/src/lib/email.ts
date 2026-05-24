@@ -302,8 +302,63 @@ export async function sendNewFollowerEmail(
 
 import type { AdminDailyReport } from '../jobs/admin-daily-report'
 
-export function buildAdminDailyReportHtml(report: AdminDailyReport): string {
-  const dateStr = new Date().toLocaleDateString('en-US', {
+export interface AdminDailyReportWindow {
+  since: Date
+  until: Date
+}
+
+const AUTHOR_EDITS_NOISE_FLOOR = 10
+
+function plural(n: number, singular: string, suffix: string = 's'): string {
+  return n === 1 ? singular : singular + suffix
+}
+
+function formatWindow(window: AdminDailyReportWindow): string {
+  const fmt = (d: Date) => d.toLocaleString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'UTC',
+  })
+  return `${fmt(window.since)} UTC → ${fmt(window.until)} UTC`
+}
+
+function bulletRowHtml(count: number, label: string): string {
+  return `
+      <tr>
+        <td style="padding:4px 12px 4px 0;font-size:16px;color:${COLORS.accent};font-weight:bold;vertical-align:top;">&bull;</td>
+        <td style="padding:4px 0;font-size:15px;color:${COLORS.text};line-height:22px;"><strong>${count}</strong> ${escapeHtml(label)}</td>
+      </tr>`
+}
+
+function sectionHeaderHtml(title: string): string {
+  return `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0 0;">
+      <tr><td style="border-top:1px solid ${COLORS.divider};padding-top:16px;">
+        <h2 style="margin:0 0 12px;font-family:${FONT_HEADING};font-size:18px;color:${COLORS.accent};">${escapeHtml(title)}</h2>
+      </td></tr>
+    </table>`
+}
+
+function bulletTableHtml(rows: [number, string][]): string {
+  let html = `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 8px;">`
+  for (const [count, label] of rows) html += bulletRowHtml(count, label)
+  html += `</table>`
+  return html
+}
+
+function nonZeroRows(...rows: [number, string][]): [number, string][] {
+  return rows.filter(([n]) => n > 0)
+}
+
+export function buildAdminDailyReportHtml(
+  report: AdminDailyReport,
+  window: AdminDailyReportWindow,
+): string {
+  const dateStr = window.until.toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
@@ -311,78 +366,64 @@ export function buildAdminDailyReportHtml(report: AdminDailyReport): string {
     timeZone: 'UTC',
   })
 
-  // Build growth rows (only non-zero metrics)
-  const growthMetrics: [number, string][] = [
-    [report.newSignups, 'new sign-up' + (report.newSignups !== 1 ? 's' : '')],
-    [report.newProjects, 'new project' + (report.newProjects !== 1 ? 's' : '') + ' created'],
-    [report.chaptersFirstPublished, 'chapter' + (report.chaptersFirstPublished !== 1 ? 's' : '') + ' first published'],
-    [report.newSubscriptions, 'new subscription' + (report.newSubscriptions !== 1 ? 's' : '')],
-    [report.newSupporterMemberships, 'new supporter membership' + (report.newSupporterMemberships !== 1 ? 's' : '')],
-    [report.newProjectFollows, 'new project follow' + (report.newProjectFollows !== 1 ? 's' : '')],
-    [report.newUserFollows, 'new user follow' + (report.newUserFollows !== 1 ? 's' : '')],
-  ]
-  const growthRows = growthMetrics.filter(([n]) => n > 0)
+  const growthRows = nonZeroRows(
+    [report.newSignups, plural(report.newSignups, 'new sign-up')],
+    [report.newProjects, plural(report.newProjects, 'new project') + ' created'],
+    [report.chaptersFirstPublished, plural(report.chaptersFirstPublished, 'chapter') + ' first published'],
+    [report.newSubscriptions, plural(report.newSubscriptions, 'new subscription')],
+    [report.newSupporterMemberships, plural(report.newSupporterMemberships, 'new supporter membership')],
+    [report.newProjectFollows, plural(report.newProjectFollows, 'new project follow')],
+    [report.newUserFollows, plural(report.newUserFollows, 'new user follow')],
+  )
 
-  const hasErrors = report.failedPayments > 0 || report.failedSyncs > 0 || report.reportedUploads > 0
+  const activityRows = nonZeroRows(
+    [report.chapterViewsStarted, plural(report.chapterViewsStarted, 'chapter view')],
+    [report.chapterReadsCompleted, plural(report.chapterReadsCompleted, 'chapter read') + ' completed'],
+    [report.newComments, plural(report.newComments, 'new comment')],
+    [report.newReactions, plural(report.newReactions, 'new reaction')],
+    [report.newAnnotations, plural(report.newAnnotations, 'new annotation')],
+  )
+  if (report.entitiesEdited > AUTHOR_EDITS_NOISE_FLOOR) {
+    activityRows.push([report.entitiesEdited, 'author edit' + (report.entitiesEdited !== 1 ? 's' : '')])
+  }
+
+  const attentionRows = nonZeroRows(
+    [report.failedPayments, plural(report.failedPayments, 'failed payment')],
+    [report.failedSyncs, plural(report.failedSyncs, 'failed sync')],
+    [report.reportedUploads, plural(report.reportedUploads, 'reported upload')],
+    [report.pendingComments, plural(report.pendingComments, 'comment') + ' awaiting moderation'],
+  )
 
   let content = `
-    <h1 style="margin:0 0 4px;font-family:${FONT_HEADING};font-size:24px;color:${COLORS.text};">Daily Report</h1>
+    <h1 style="margin:0 0 4px;font-family:${FONT_HEADING};font-size:24px;color:${COLORS.text};">Bobbinry Report</h1>
     <p style="margin:0 0 20px;font-size:14px;color:${COLORS.muted};line-height:20px;">${dateStr}</p>
   `
 
   if (growthRows.length > 0) {
-    content += `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 8px;">`
-    for (const [count, label] of growthRows) {
-      content += `
-      <tr>
-        <td style="padding:4px 12px 4px 0;font-size:16px;color:${COLORS.accent};font-weight:bold;vertical-align:top;">&bull;</td>
-        <td style="padding:4px 0;font-size:15px;color:${COLORS.text};line-height:22px;"><strong>${count}</strong> ${escapeHtml(label)}</td>
-      </tr>`
-    }
-    content += `</table>`
-
-    // Reading stats as muted context line
-    if (report.chapterViewsStarted > 0 || report.chapterReadsCompleted > 0) {
-      const parts: string[] = []
-      if (report.chapterViewsStarted > 0) parts.push(`${report.chapterViewsStarted} chapter view${report.chapterViewsStarted !== 1 ? 's' : ''}`)
-      if (report.chapterReadsCompleted > 0) parts.push(`${report.chapterReadsCompleted} completed`)
-      content += `<p style="margin:8px 0 0;font-size:13px;color:${COLORS.muted};line-height:20px;">${parts.join(', ')}</p>`
-    }
+    content += bulletTableHtml(growthRows)
   }
 
-  if (hasErrors) {
-    content += `
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0 0;">
-      <tr><td style="border-top:1px solid ${COLORS.divider};padding-top:16px;">
-        <h2 style="margin:0 0 12px;font-family:${FONT_HEADING};font-size:18px;color:${COLORS.accent};">Attention Needed</h2>
-      </td></tr>
-    </table>
-    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 8px;">`
+  if (activityRows.length > 0) {
+    content += sectionHeaderHtml('Activity')
+    content += bulletTableHtml(activityRows)
+  }
 
-    const errorMetrics: [number, string][] = [
-      [report.failedPayments, 'failed payment' + (report.failedPayments !== 1 ? 's' : '')],
-      [report.failedSyncs, 'failed sync' + (report.failedSyncs !== 1 ? 's' : '')],
-      [report.reportedUploads, 'reported upload' + (report.reportedUploads !== 1 ? 's' : '')],
-    ]
-    for (const [count, label] of errorMetrics) {
-      if (count > 0) {
-        content += `
-      <tr>
-        <td style="padding:4px 12px 4px 0;font-size:16px;color:${COLORS.accent};font-weight:bold;vertical-align:top;">&bull;</td>
-        <td style="padding:4px 0;font-size:15px;color:${COLORS.text};line-height:22px;"><strong>${count}</strong> ${escapeHtml(label)}</td>
-      </tr>`
-      }
-    }
-    content += `</table>`
+  if (attentionRows.length > 0) {
+    content += sectionHeaderHtml('Attention Needed')
+    content += bulletTableHtml(attentionRows)
   }
 
   content += emailButton('View Admin Dashboard', `${env.WEB_ORIGIN}/admin`)
+  content += `<p style="margin:16px 0 0;font-size:12px;color:${COLORS.muted};line-height:18px;">Covers ${escapeHtml(formatWindow(window))}</p>`
 
   return emailLayout(content)
 }
 
-export function buildAdminDailyReportText(report: AdminDailyReport): string {
-  const dateStr = new Date().toLocaleDateString('en-US', {
+export function buildAdminDailyReportText(
+  report: AdminDailyReport,
+  window: AdminDailyReportWindow,
+): string {
+  const dateStr = window.until.toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
@@ -390,39 +431,50 @@ export function buildAdminDailyReportText(report: AdminDailyReport): string {
     timeZone: 'UTC',
   })
 
-  const lines: string[] = [`Bobbinry Daily Report — ${dateStr}`, '']
+  const lines: string[] = [`Bobbinry Report — ${dateStr}`, '']
 
-  const growthMetrics: [number, string][] = [
-    [report.newSignups, 'new sign-up' + (report.newSignups !== 1 ? 's' : '')],
-    [report.newProjects, 'new project' + (report.newProjects !== 1 ? 's' : '') + ' created'],
-    [report.chaptersFirstPublished, 'chapter' + (report.chaptersFirstPublished !== 1 ? 's' : '') + ' first published'],
-    [report.newSubscriptions, 'new subscription' + (report.newSubscriptions !== 1 ? 's' : '')],
-    [report.newSupporterMemberships, 'new supporter membership' + (report.newSupporterMemberships !== 1 ? 's' : '')],
-    [report.newProjectFollows, 'new project follow' + (report.newProjectFollows !== 1 ? 's' : '')],
-    [report.newUserFollows, 'new user follow' + (report.newUserFollows !== 1 ? 's' : '')],
-  ]
-  const growthRows = growthMetrics.filter(([n]) => n > 0)
-  if (growthRows.length > 0) {
-    for (const [count, label] of growthRows) {
-      lines.push(`• ${count} ${label}`)
-    }
-    if (report.chapterViewsStarted > 0 || report.chapterReadsCompleted > 0) {
-      const parts: string[] = []
-      if (report.chapterViewsStarted > 0) parts.push(`${report.chapterViewsStarted} chapter view${report.chapterViewsStarted !== 1 ? 's' : ''}`)
-      if (report.chapterReadsCompleted > 0) parts.push(`${report.chapterReadsCompleted} completed`)
-      lines.push(`  (${parts.join(', ')})`)
-    }
+  const growthRows = nonZeroRows(
+    [report.newSignups, plural(report.newSignups, 'new sign-up')],
+    [report.newProjects, plural(report.newProjects, 'new project') + ' created'],
+    [report.chaptersFirstPublished, plural(report.chaptersFirstPublished, 'chapter') + ' first published'],
+    [report.newSubscriptions, plural(report.newSubscriptions, 'new subscription')],
+    [report.newSupporterMemberships, plural(report.newSupporterMemberships, 'new supporter membership')],
+    [report.newProjectFollows, plural(report.newProjectFollows, 'new project follow')],
+    [report.newUserFollows, plural(report.newUserFollows, 'new user follow')],
+  )
+
+  for (const [count, label] of growthRows) lines.push(`• ${count} ${label}`)
+
+  const activityRows = nonZeroRows(
+    [report.chapterViewsStarted, plural(report.chapterViewsStarted, 'chapter view')],
+    [report.chapterReadsCompleted, plural(report.chapterReadsCompleted, 'chapter read') + ' completed'],
+    [report.newComments, plural(report.newComments, 'new comment')],
+    [report.newReactions, plural(report.newReactions, 'new reaction')],
+    [report.newAnnotations, plural(report.newAnnotations, 'new annotation')],
+  )
+  if (report.entitiesEdited > AUTHOR_EDITS_NOISE_FLOOR) {
+    activityRows.push([report.entitiesEdited, 'author edit' + (report.entitiesEdited !== 1 ? 's' : '')])
   }
 
-  const hasErrors = report.failedPayments > 0 || report.failedSyncs > 0 || report.reportedUploads > 0
-  if (hasErrors) {
+  if (activityRows.length > 0) {
+    lines.push('', 'ACTIVITY:')
+    for (const [count, label] of activityRows) lines.push(`• ${count} ${label}`)
+  }
+
+  const attentionRows = nonZeroRows(
+    [report.failedPayments, plural(report.failedPayments, 'failed payment')],
+    [report.failedSyncs, plural(report.failedSyncs, 'failed sync')],
+    [report.reportedUploads, plural(report.reportedUploads, 'reported upload')],
+    [report.pendingComments, plural(report.pendingComments, 'comment') + ' awaiting moderation'],
+  )
+
+  if (attentionRows.length > 0) {
     lines.push('', 'ATTENTION NEEDED:')
-    if (report.failedPayments > 0) lines.push(`• ${report.failedPayments} failed payment${report.failedPayments !== 1 ? 's' : ''}`)
-    if (report.failedSyncs > 0) lines.push(`• ${report.failedSyncs} failed sync${report.failedSyncs !== 1 ? 's' : ''}`)
-    if (report.reportedUploads > 0) lines.push(`• ${report.reportedUploads} reported upload${report.reportedUploads !== 1 ? 's' : ''}`)
+    for (const [count, label] of attentionRows) lines.push(`• ${count} ${label}`)
   }
 
   lines.push('', `View dashboard: ${env.WEB_ORIGIN}/admin`)
+  lines.push('', `Covers ${formatWindow(window)}`)
 
   return lines.join('\n')
 }
