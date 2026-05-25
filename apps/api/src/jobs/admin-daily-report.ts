@@ -36,10 +36,12 @@ import {
 } from '../db/schema'
 import { eq, and, sql, count, gt, isNull, notInArray } from 'drizzle-orm'
 import { sendEmail, buildAdminDailyReportHtml, buildAdminDailyReportText } from '../lib/email'
+import { env } from '../lib/env'
 
 const JOB_NAME = 'admin_daily_report'
 const FIRE_HOUR_UTC = 14
 const MAX_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+const PROD_WEB_ORIGIN = 'https://bobbinry.com'
 
 export interface AdminDailyReport {
   // Growth — counted toward the gating decision
@@ -67,7 +69,7 @@ export interface AdminDailyReport {
 export interface AdminDailyReportResult {
   ok: boolean
   claimed: boolean
-  skipped?: 'before_fire_time' | 'already_ran' | 'no_growth' | 'no_admins'
+  skipped?: 'not_production' | 'before_fire_time' | 'already_ran' | 'no_growth' | 'no_admins'
   sent?: boolean
   error?: string
 }
@@ -252,6 +254,13 @@ export async function processAdminDailyReport(
 ): Promise<AdminDailyReportResult> {
   const force = !!opts.force
   const now = new Date()
+
+  // Production gate — every dev/staging environment also runs this on its own
+  // scheduler, but only prod should email the admin list. Force bypasses so
+  // manual testing from the admin route still works in dev.
+  if (!force && env.WEB_ORIGIN !== PROD_WEB_ORIGIN) {
+    return { ok: true, claimed: false, skipped: 'not_production' }
+  }
 
   // Time gate (skip silently — every tick calls us)
   if (!force && now < todayFireTime(now)) {

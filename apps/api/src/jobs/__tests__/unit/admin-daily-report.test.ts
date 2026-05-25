@@ -79,6 +79,14 @@ jest.mock('../../../lib/email', () => ({
   buildAdminDailyReportText: () => 'text',
 }))
 
+// Tests run against the prod gate by default; override per-case via `webOriginValue`.
+let webOriginValue = 'https://bobbinry.com'
+jest.mock('../../../lib/env', () => ({
+  get env() {
+    return { WEB_ORIGIN: webOriginValue }
+  },
+}))
+
 import {
   processAdminDailyReport,
   todayFireTime,
@@ -101,6 +109,7 @@ beforeEach(() => {
   mockReturning.mockResolvedValue([{ jobName: 'admin_daily_report' }])
   mockUpdateWhere.mockResolvedValue(undefined)
   mockSendEmail.mockResolvedValue(true)
+  webOriginValue = 'https://bobbinry.com'
   setReportInputs()
 })
 
@@ -152,6 +161,25 @@ describe('gatherReportData', () => {
 })
 
 describe('processAdminDailyReport', () => {
+  it('skips with skipped=not_production when WEB_ORIGIN is not prod and not forced', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-05-10T14:01:00Z'))
+    webOriginValue = 'https://bobbinry.utaboshi.com'
+    const result = await processAdminDailyReport()
+    expect(result).toMatchObject({ ok: true, claimed: false, skipped: 'not_production' })
+    expect(mockInsert).not.toHaveBeenCalled()
+    expect(mockSendEmail).not.toHaveBeenCalled()
+    jest.useRealTimers()
+  })
+
+  it('force=true bypasses the production gate', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-05-10T14:01:00Z'))
+    webOriginValue = 'https://bobbinry.utaboshi.com'
+    setReportInputs({ count: 1 })
+    const result = await processAdminDailyReport({ force: true })
+    expect(result).toMatchObject({ ok: true, claimed: true, sent: true })
+    jest.useRealTimers()
+  })
+
   it('skips with skipped=before_fire_time when now is before today 14:00 UTC and not forced', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-05-10T13:59:00Z'))
     const result = await processAdminDailyReport()
