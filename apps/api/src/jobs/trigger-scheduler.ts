@@ -10,7 +10,7 @@
 
 import { db } from '../db/connection'
 import { bobbinsInstalled, entities, projectDestinations, chapterPublications } from '../db/schema'
-import { eq, and, gt, lte, sql } from 'drizzle-orm'
+import { eq, and, gt, lte, isNull } from 'drizzle-orm'
 import { processEmbargoReleases, initTierDispatch } from './tier-dispatch'
 import { processTrashPurge } from './trash-purge'
 import { processSubscriptionExpiration } from './subscription-expiration'
@@ -307,14 +307,22 @@ export async function processScheduledReleases(): Promise<void> {
 
     if (duePublications.length === 0) return
 
+    // Stamp firstPublishedAt for any due-but-unstamped rows in a single UPDATE.
+    // (Drizzle's sql template tag doesn't auto-bind JS Date — see commit 2699f73.)
+    await db
+      .update(chapterPublications)
+      .set({ firstPublishedAt: now })
+      .where(and(
+        eq(chapterPublications.publishStatus, 'scheduled'),
+        isNull(chapterPublications.firstPublishedAt),
+        lte(chapterPublications.publishedAt, now),
+      ))
+
     for (const publication of duePublications) {
       await db
         .update(chapterPublications)
         .set({
           publishStatus: 'published',
-          // Stamp firstPublishedAt the first time a chapter actually becomes visible.
-          // COALESCE preserves any earlier value (defensive against future code paths).
-          firstPublishedAt: sql`COALESCE(${chapterPublications.firstPublishedAt}, ${now})`,
           lastPublishedAt: now,
           updatedAt: now,
         })
