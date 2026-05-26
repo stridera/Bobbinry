@@ -439,8 +439,9 @@ function PickStep({ onPickFile }: { onPickFile: (file: File) => void }) {
       </h3>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-5 max-w-md mx-auto">
         Currently supported: <code className="font-mono text-xs">.txt</code>,{' '}
-        <code className="font-mono text-xs">.md</code>, and{' '}
-        <code className="font-mono text-xs">.docx</code>. Other formats land in later phases.
+        <code className="font-mono text-xs">.md</code>,{' '}
+        <code className="font-mono text-xs">.docx</code>, and{' '}
+        <code className="font-mono text-xs">.epub</code>. Other formats land in later phases.
       </p>
 
       <label className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white rounded-lg font-medium text-sm transition-colors cursor-pointer">
