@@ -132,6 +132,70 @@ export function contentAvailable(projectId: string, entityId: string, tierId: st
   }
 }
 
+export function importParseCompleted(
+  projectId: string,
+  userId: string,
+  format: string,
+  segmentCount: number,
+  durationMs: number,
+): DomainEvent {
+  return {
+    type: 'import:parseCompleted',
+    timestamp: new Date(),
+    projectId,
+    userId,
+    payload: { format, segmentCount, durationMs }
+  }
+}
+
+export function importParseFailed(
+  projectId: string,
+  userId: string,
+  format: string | null,
+  code: string,
+  durationMs: number,
+): DomainEvent {
+  return {
+    type: 'import:parseFailed',
+    timestamp: new Date(),
+    projectId,
+    userId,
+    payload: { format, code, durationMs }
+  }
+}
+
+export function importCommitCompleted(
+  projectId: string,
+  userId: string,
+  containerId: string,
+  segmentCount: number,
+  durationMs: number,
+): DomainEvent {
+  return {
+    type: 'import:commitCompleted',
+    timestamp: new Date(),
+    projectId,
+    userId,
+    payload: { containerId, segmentCount, durationMs }
+  }
+}
+
+export function importCommitFailed(
+  projectId: string,
+  userId: string,
+  containerId: string | null,
+  code: string,
+  durationMs: number,
+): DomainEvent {
+  return {
+    type: 'import:commitFailed',
+    timestamp: new Date(),
+    projectId,
+    userId,
+    payload: { containerId, code, durationMs }
+  }
+}
+
 export function subscriptionChanged(
   authorId: string,
   subscriberId: string,

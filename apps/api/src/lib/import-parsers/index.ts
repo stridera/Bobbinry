@@ -109,8 +109,11 @@ export async function parseBuffer(
       const { parseRtf } = await import('./rtf')
       return parseRtf(buffer, ctx)
     }
+    case 'pdf': {
+      const { parsePdf } = await import('./pdf')
+      return parsePdf(buffer, ctx)
+    }
     case 'html':
-    case 'pdf':
       throw new UnsupportedFormatError(format)
   }
 }

@@ -7,6 +7,13 @@ primary_region = "sjc"
 [env]
   NODE_ENV = "production"
   PORT = "8080"
+  # Cap V8's old-space heap so Node starts GC'ing well before it hits the
+  # cgroup memory limit. Without this, V8 grows opportunistically and the
+  # kernel kills the process (SIGKILL → opaque "connection closed" errors
+  # at the proxy). With it, OOM situations surface as real 500s with a
+  # stack trace. Sized for the current shared-cpu-1x:1024MB machine
+  # (~100MB headroom for non-heap allocations).
+  NODE_OPTIONS = "--max-old-space-size=900"
 
 [http_service]
   internal_port = 8080

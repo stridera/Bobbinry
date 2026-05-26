@@ -1,12 +1,26 @@
 /**
  * Microsoft Word (.docx) manuscript parser.
  *
- * Uses `mammoth` for OOXML → HTML conversion, then splits the result on
- * explicit page breaks (`<w:br w:type="page"/>`). If the document has no
- * page breaks, the parser falls back to splitting on top-level `<h1>`
- * headings — most Word manuscripts use the "Heading 1" style for chapter
- * titles without ever inserting a page break, and a single-segment fallback
- * would be a poor experience.
+ * Splitting strategy is a four-stage cascade, in decreasing order of
+ * reliability:
+ *
+ *   1. **OOXML pre-pass.** Before handing the buffer to mammoth, we
+ *      unzip the package, walk `word/document.xml`, and record the text
+ *      content of every paragraph that has either `<w:pageBreakBefore/>`
+ *      in its `<w:pPr>` or a `<w:br w:type="page"/>` in its descendants.
+ *      Mammoth strips both signals silently, so we have to read them
+ *      ourselves. After mammoth runs, we find those paragraphs in the
+ *      rendered HTML by text-content matching and inject a sentinel.
+ *
+ *   2. Top-level `<h1>` headings. Many manuscripts use Word's "Heading 1"
+ *      style for chapter titles without inserting any page break.
+ *
+ *   3. Chapter-keyword text pattern. A `<p>` whose text matches
+ *      /^(chapter|prologue|epilogue|part|book)\b/ and is ≤ 80 chars.
+ *      Catches docs that label chapters in plain bold text and use no
+ *      heading styles.
+ *
+ *   4. Single segment with a STRUCTURE_GUESSED warning.
  *
  * Embedded images are extracted via mammoth's `convertImage` hook, uploaded
  * to S3 by the shared image helper, and the `<img src>` rewritten in place
@@ -18,6 +32,8 @@
 
 import { randomUUID } from 'crypto'
 import mammoth from 'mammoth'
+import JSZip from 'jszip'
+import { XMLParser } from 'fast-xml-parser'
 import * as cheerio from 'cheerio'
 import type {
   ImportSegment,
@@ -31,40 +47,202 @@ import { uploadImportImage } from './images'
 const PAGE_BREAK_MARKER = '☃___bbnr_pb_marker___☃'
 const FIRST_LINE_LIMIT = 140
 const TITLE_FALLBACK_LIMIT = 80
+const CHAPTER_PARAGRAPH_RE = /^(chapter|prologue|epilogue|part|book)\b/i
+const CHAPTER_PARAGRAPH_MAX_LEN = 80
+const MATCH_PREFIX_LEN = 80
 
-interface DocxParaNode {
-  type: string
-  children?: DocxParaNode[]
-  styleId?: string | null
-  styleName?: string | null
-  numbering?: unknown
-  alignment?: unknown
-  value?: string
-  breakType?: string
+const ooxmlParser = new XMLParser({
+  ignoreAttributes: false,
+  attributeNamePrefix: '@_',
+  preserveOrder: true,
+  parseAttributeValue: false,
+  trimValues: false,
+})
+
+type XmlNode = Record<string, unknown>
+
+function isObject(value: unknown): value is XmlNode {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function hasExplicitPageBreak(paragraph: DocxParaNode): boolean {
-  if (!Array.isArray(paragraph.children)) return false
-  return paragraph.children.some(child =>
-    child.type === 'run'
-    && Array.isArray(child.children)
-    && child.children.some(grand =>
-      grand.type === 'break' && grand.breakType === 'page'
-    )
-  )
-}
-
-function injectPageBreakMarker(paragraph: DocxParaNode): DocxParaNode {
-  return {
-    ...paragraph,
-    children: [
-      {
-        type: 'run',
-        children: [{ type: 'text', value: PAGE_BREAK_MARKER }],
-      },
-      ...(paragraph.children ?? []),
-    ],
+/** Walk a preserveOrder XML tree, invoking `visit` for each `<w:p>` in
+ *  document order. Recurses into the visited paragraph's children too so
+ *  nested paragraphs (text boxes, footnotes) are reached — mammoth walks
+ *  the same tree depth-first so this matches its ordering. */
+function walkParagraphs(node: unknown, visit: (paraChildren: unknown[]) => void): void {
+  if (Array.isArray(node)) {
+    for (const item of node) walkParagraphs(item, visit)
+    return
   }
+  if (!isObject(node)) return
+  for (const [key, value] of Object.entries(node)) {
+    if (key === ':@') continue
+    if (key === 'w:p' && Array.isArray(value)) {
+      visit(value)
+      walkParagraphs(value, visit)
+    } else {
+      walkParagraphs(value, visit)
+    }
+  }
+}
+
+function paragraphHasPageBreakBefore(paraChildren: unknown[]): boolean {
+  for (const child of paraChildren) {
+    if (!isObject(child)) continue
+    const pPr = child['w:pPr']
+    if (!Array.isArray(pPr)) continue
+    for (const pPrItem of pPr) {
+      if (isObject(pPrItem) && 'w:pageBreakBefore' in pPrItem) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+function paragraphHasExplicitBreak(paraChildren: unknown[]): boolean {
+  function find(value: unknown): boolean {
+    if (Array.isArray(value)) return value.some(find)
+    if (!isObject(value)) return false
+    for (const [key, val] of Object.entries(value)) {
+      if (key === ':@') continue
+      if (key === 'w:br') {
+        const items = Array.isArray(val) ? val : [val]
+        for (const item of items) {
+          if (!isObject(item)) continue
+          const attrs = item[':@']
+          if (isObject(attrs) && attrs['@_w:type'] === 'page') return true
+        }
+      }
+      if (find(val)) return true
+    }
+    return false
+  }
+  return find(paraChildren)
+}
+
+function extractParagraphText(paraChildren: unknown[]): string {
+  let out = ''
+  function walk(value: unknown): void {
+    if (typeof value === 'string') {
+      out += value
+      return
+    }
+    if (Array.isArray(value)) {
+      for (const v of value) walk(v)
+      return
+    }
+    if (!isObject(value)) return
+    if ('#text' in value) {
+      out += String(value['#text'] ?? '')
+      return
+    }
+    for (const [key, val] of Object.entries(value)) {
+      if (key === ':@') continue
+      walk(val)
+    }
+  }
+  walk(paraChildren)
+  return out
+}
+
+function normalizeWhitespace(s: string): string {
+  return s.replace(/\s+/g, ' ').trim()
+}
+
+/** Pre-pass: walk the raw OOXML, gather paragraph metadata in document order,
+ *  and return text snippets we can use to locate each break in the rendered
+ *  HTML. If a break paragraph has no text of its own (the common Word idiom
+ *  of an empty paragraph with pageBreakBefore set, followed by the chapter
+ *  title in the next paragraph), the snippet falls through to the next
+ *  non-empty paragraph since semantically the break belongs to that chapter. */
+async function findPageBreakParagraphTexts(buffer: Buffer): Promise<string[]> {
+  let zip: JSZip
+  try {
+    zip = await JSZip.loadAsync(buffer)
+  } catch {
+    return []
+  }
+  const file = zip.file('word/document.xml')
+  if (!file) return []
+  const xmlText = await file.async('string')
+
+  let parsed: unknown
+  try {
+    parsed = ooxmlParser.parse(xmlText)
+  } catch {
+    return []
+  }
+
+  const tuples: Array<{ hasBreak: boolean; text: string }> = []
+  walkParagraphs(parsed, (paraChildren) => {
+    const hasBreak =
+      paragraphHasPageBreakBefore(paraChildren)
+      || paragraphHasExplicitBreak(paraChildren)
+    const text = normalizeWhitespace(extractParagraphText(paraChildren))
+    tuples.push({ hasBreak, text })
+  })
+
+  const result: string[] = []
+  for (let i = 0; i < tuples.length; i++) {
+    if (!tuples[i]!.hasBreak) continue
+    let snippet = tuples[i]!.text
+    if (snippet.length === 0) {
+      // Walk forward to the next non-empty paragraph.
+      for (let j = i + 1; j < tuples.length; j++) {
+        if (tuples[j]!.text.length > 0) {
+          snippet = tuples[j]!.text
+          break
+        }
+      }
+    }
+    if (snippet.length > 0) result.push(snippet)
+  }
+  return result
+}
+
+/** Inject the page-break sentinel into every paragraph in the rendered HTML
+ *  whose text matches one of the pre-pass break texts, in document order.
+ *  Each break is matched at most once and the search advances monotonically
+ *  so repeated chapter titles ("Chapter One" appearing twice) don't double-fire. */
+function injectMarkersByText(html: string, breakTexts: string[]): { html: string; matched: number } {
+  if (breakTexts.length === 0) return { html, matched: 0 }
+
+  const $ = cheerio.load(`<div id="root">${html}</div>`, null, false)
+  const root = $('#root')
+  const candidates = root.find('p, h1, h2, h3, h4, h5, h6').toArray()
+
+  let cursor = 0
+  let matched = 0
+  for (const target of breakTexts) {
+    const normalizedTarget = normalizeWhitespace(target)
+    if (normalizedTarget.length === 0) continue
+    const useExact = normalizedTarget.length <= MATCH_PREFIX_LEN
+    const targetKey = normalizedTarget.slice(0, MATCH_PREFIX_LEN)
+
+    let found = -1
+    for (let i = cursor; i < candidates.length; i++) {
+      const elem = candidates[i]!
+      const elemText = normalizeWhitespace($(elem).text())
+      if (elemText.length === 0) continue
+      const ok = useExact
+        ? elemText === normalizedTarget
+        : elemText.startsWith(targetKey)
+      if (ok) {
+        found = i
+        break
+      }
+    }
+    if (found === -1) continue
+
+    const target$ = $(candidates[found]!)
+    const inner = target$.html() ?? ''
+    target$.html(PAGE_BREAK_MARKER + inner)
+    cursor = found + 1
+    matched += 1
+  }
+
+  return { html: root.html() ?? html, matched }
 }
 
 function countWordsFromText(text: string): number {
@@ -133,6 +311,39 @@ function splitByMarker(html: string): string[] {
   return segmentHtmls
 }
 
+/** Split on paragraphs whose text content matches a chapter-keyword pattern.
+ *
+ * This is the last-resort fallback for documents that paginate via
+ * `<w:pageBreakBefore/>` (which mammoth strips silently) and use no
+ * heading styles — many manuscripts ship that way, with chapter starts
+ * labeled in plain bold text like `<p><strong>Chapter One</strong></p>`.
+ */
+function splitByChapterParagraphs(html: string): string[] {
+  const $ = cheerio.load(`<div id="root">${html}</div>`, null, false)
+  const root = $('#root')
+
+  const segmentHtmls: string[] = []
+  let current: string[] = []
+  let sawMarker = false
+
+  root.children().each((_idx, elem) => {
+    const tagName = $(elem).prop('tagName')?.toLowerCase()
+    if (tagName === 'p') {
+      const text = $(elem).text().trim()
+      if (text.length > 0 && text.length <= CHAPTER_PARAGRAPH_MAX_LEN && CHAPTER_PARAGRAPH_RE.test(text)) {
+        if (current.length > 0) segmentHtmls.push(current.join(''))
+        current = [$.html(elem)]
+        sawMarker = true
+        return
+      }
+    }
+    current.push($.html(elem))
+  })
+
+  if (current.length > 0) segmentHtmls.push(current.join(''))
+  return sawMarker ? segmentHtmls : [html]
+}
+
 /** Split a single HTML chunk on top-level <h1> elements. */
 function splitByH1(html: string): string[] {
   const $ = cheerio.load(`<div id="root">${html}</div>`, null, false)
@@ -168,23 +379,20 @@ export async function parseDocx(
   const warnings: ImportWarning[] = []
   const imageErrors: string[] = []
 
-  // Mammoth's TS types don't expose `transforms` directly; cast around it.
-  const mammothAny = mammoth as unknown as {
-    transforms: {
-      paragraph: (fn: (p: DocxParaNode) => DocxParaNode) => unknown
-    }
-    images: { imgElement: (fn: (image: MammothImage) => Promise<{ src: string; alt?: string }>) => unknown }
-  }
+  // Pre-pass: read the raw OOXML to find paragraphs that carry a page break
+  // (pageBreakBefore property OR <w:br w:type="page"/>). Mammoth strips both
+  // signals silently, so we have to recover them ourselves and re-inject a
+  // marker into the rendered HTML after mammoth runs.
+  const breakTexts = await findPageBreakParagraphTexts(buffer)
 
-  const transformDocument = mammothAny.transforms.paragraph((para) => {
-    if (hasExplicitPageBreak(para)) return injectPageBreakMarker(para)
-    return para
-  })
-
+  // Mammoth's TS types don't expose `images.imgElement`'s shape cleanly.
   interface MammothImage {
     contentType: string
     altText?: string
     read: (encoding: 'base64') => Promise<string>
+  }
+  const mammothAny = mammoth as unknown as {
+    images: { imgElement: (fn: (image: MammothImage) => Promise<{ src: string; alt?: string }>) => unknown }
   }
 
   const convertImage = mammothAny.images.imgElement(async (image: MammothImage) => {
@@ -207,14 +415,27 @@ export async function parseDocx(
   try {
     const result = await mammoth.convertToHtml(
       { buffer },
-      {
-        transformDocument: transformDocument as never,
-        convertImage: convertImage as never,
-      },
+      { convertImage: convertImage as never },
     )
     html = result.value
   } catch (err) {
     throw new Error(`Word document could not be read: ${err instanceof Error ? err.message : 'unknown error'}`)
+  }
+
+  // Post-pass: inject the page-break marker before each paragraph whose
+  // OOXML counterpart had a break. Matches by text content so paragraph
+  // restructuring inside mammoth (empty drops, merges) doesn't break
+  // alignment.
+  if (breakTexts.length > 0) {
+    const injected = injectMarkersByText(html, breakTexts)
+    html = injected.html
+    if (injected.matched < breakTexts.length) {
+      const unmatched = breakTexts.length - injected.matched
+      warnings.push({
+        code: 'STRUCTURE_GUESSED',
+        message: `Couldn't locate ${unmatched} of ${breakTexts.length} page breaks in the rendered output — those chapters may not split correctly.`,
+      })
+    }
   }
 
   if (imageErrors.length > 0) {
@@ -243,16 +464,40 @@ export async function parseDocx(
     }
   }
 
-  // First split by explicit page breaks. If exactly one chunk results, try H1.
+  // Cascade: pre-pass markers → top-level <h1> → chapter-keyword paragraphs.
+  // Each stage is only tried if the previous produced no splits, because the
+  // earlier signals are more reliable.
   let rawSegments = stripEmpty(splitByMarker(html))
   if (rawSegments.length <= 1) {
     rawSegments = stripEmpty(splitByH1(rawSegments[0] ?? html))
-    if (rawSegments.length === 1) {
+  }
+  if (rawSegments.length <= 1) {
+    rawSegments = stripEmpty(splitByChapterParagraphs(rawSegments[0] ?? html))
+    if (rawSegments.length > 1) {
+      // Tell the user we fell back to text-pattern detection so they know
+      // to double-check the boundaries.
       warnings.push({
         code: 'STRUCTURE_GUESSED',
         message:
-          'No page breaks or top-level headings found — imported as a single chapter. Split it manually in the preview.',
+          'Chapters detected by text pattern (no page breaks or heading styles found). Review the boundaries before committing.',
       })
+    } else {
+      warnings.push({
+        code: 'STRUCTURE_GUESSED',
+        message:
+          'No page breaks, heading styles, or chapter markers found — imported as a single chapter. Split it manually in the preview.',
+      })
+    }
+  } else {
+    // Pre-pass found breaks. Word manuscripts frequently lack a break
+    // between the cover/title block and the first chapter (chapter 1 just
+    // continues on the same page as the title). Re-run chapter-keyword
+    // splitting on the leading segment so the cover doesn't bundle with
+    // chapter one. Only the FIRST segment is re-split because every other
+    // segment was already opened by an explicit page break.
+    const firstSplit = stripEmpty(splitByChapterParagraphs(rawSegments[0] ?? ''))
+    if (firstSplit.length > 1) {
+      rawSegments = [...firstSplit, ...rawSegments.slice(1)]
     }
   }
 
