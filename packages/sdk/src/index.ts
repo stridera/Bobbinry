@@ -865,6 +865,84 @@ export class UploadAPI {
   }
 }
 
+// Import types and API — used by the manuscript-import wizard
+export interface ImportSegment {
+  tempId: string
+  suggestedTitle: string
+  html: string
+  wordCount: number
+  firstLine: string
+}
+
+export interface ImportWarning {
+  code:
+    | 'IMAGE_FAILED'
+    | 'EXTERNAL_IMAGE_LEFT'
+    | 'FORMATTING_LOST'
+    | 'STRUCTURE_GUESSED'
+    | 'EMPTY_DOCUMENT'
+  message: string
+  detail?: string
+}
+
+export interface ParseResult {
+  segments: ImportSegment[]
+  warnings: ImportWarning[]
+  sourceFormat: string
+}
+
+export interface CommitResult {
+  entities: Array<{ id: string; title: string; order: number }>
+}
+
+export class ImportAPI {
+  private api: BobbinryAPI
+
+  constructor(api: BobbinryAPI) {
+    this.api = api
+  }
+
+  /**
+   * Parse an uploaded source file into proposed chapter segments. The source
+   * file must have been uploaded via sdk.uploads.upload({ context: 'import' })
+   * first; pass the fileKey returned by that call.
+   */
+  async parse(fileKey: string, projectId: string): Promise<ParseResult> {
+    const response = await fetch(`${this.api.apiBaseUrl}/import/parse`, {
+      method: 'POST',
+      headers: this.api.getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ fileKey, projectId }),
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: 'Parse failed' }))
+      throw new Error(err.error || `Import parse failed: ${response.statusText}`)
+    }
+    return response.json()
+  }
+
+  /**
+   * Commit reviewed segments as `content` entities under the given container.
+   * Array order in `segments` is the final chapter order; the server places
+   * the new chapters after any existing siblings in the container.
+   */
+  async commit(
+    projectId: string,
+    containerId: string,
+    segments: Array<{ title: string; html: string }>,
+  ): Promise<CommitResult> {
+    const response = await fetch(`${this.api.apiBaseUrl}/import/commit`, {
+      method: 'POST',
+      headers: this.api.getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ projectId, containerId, segments }),
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: 'Commit failed' }))
+      throw new Error(err.error || `Import commit failed: ${response.statusText}`)
+    }
+    return response.json()
+  }
+}
+
 export class TemplateAPI {
   private api: BobbinryAPI
 
@@ -940,6 +1018,7 @@ export class BobbinrySDK {
   public publishing: PublishingAPI
   public reader: ReaderAPI
   public uploads: UploadAPI
+  public import: ImportAPI
   public templates: TemplateAPI
 
   constructor(componentId: string, apiBaseURL?: string) {
@@ -950,6 +1029,7 @@ export class BobbinrySDK {
     this.publishing = new PublishingAPI(this.api)
     this.reader = new ReaderAPI(this.api)
     this.uploads = new UploadAPI(this.api)
+    this.import = new ImportAPI(this.api)
     this.templates = new TemplateAPI(this.api)
   }
 

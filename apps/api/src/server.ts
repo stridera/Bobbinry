@@ -38,6 +38,7 @@ import { initDiscordRolesHandler } from './jobs/discord-roles-handler'
 import apiKeysPlugin from './routes/api-keys'
 import rssTokensPlugin from './routes/rss-tokens'
 import exportPlugin from './routes/export'
+import importPlugin from './routes/import'
 import templatesPlugin from './routes/templates'
 import entityTypesPlugin from './routes/entity-types'
 import entityPublishPlugin from './routes/entity-publish'
@@ -271,6 +272,7 @@ export function build(opts = {}): FastifyInstance {
   server.register(apiKeysPlugin, { prefix: '/api' })
   server.register(rssTokensPlugin, { prefix: '/api' })
   server.register(exportPlugin, { prefix: '/api' })
+  server.register(importPlugin, { prefix: '/api' })
   server.register(promoCodesPlugin, { prefix: '/api' })
 
 
