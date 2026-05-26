@@ -35,7 +35,27 @@ const ALLOWED_IMAGE_TYPES = new Set([
   'image/gif',
 ])
 
-const UPLOAD_CONTEXTS = new Set(['cover', 'entity', 'editor', 'avatar', 'map'])
+// Source documents accepted for the manuscript import flow. These are read
+// once by the importer (POST /import/parse) and then deleted from S3 — they
+// are not served back to browsers, so script-bearing formats are acceptable
+// here as long as the import pipeline sanitizes parser output.
+const ALLOWED_IMPORT_TYPES = new Set([
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+  'application/epub+zip',           // .epub
+  'application/pdf',                // .pdf
+  'application/vnd.oasis.opendocument.text', // .odt
+  'application/rtf',                // .rtf (RFC 1521)
+  'text/rtf',                       // .rtf (legacy)
+  'text/markdown',                  // .md
+  'text/plain',                     // .txt
+  'text/html',                      // .html
+])
+
+const UPLOAD_CONTEXTS = new Set(['cover', 'entity', 'editor', 'avatar', 'map', 'import'])
+
+function getAllowedTypes(context: string): Set<string> {
+  return context === 'import' ? ALLOWED_IMPORT_TYPES : ALLOWED_IMAGE_TYPES
+}
 
 /** Size limits are now managed by getSizeLimits() in lib/membership.ts */
 
@@ -45,6 +65,15 @@ function extFromMime(mime: string): string {
     'image/png': 'png',
     'image/webp': 'webp',
     'image/gif': 'gif',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+    'application/epub+zip': 'epub',
+    'application/pdf': 'pdf',
+    'application/vnd.oasis.opendocument.text': 'odt',
+    'application/rtf': 'rtf',
+    'text/rtf': 'rtf',
+    'text/markdown': 'md',
+    'text/plain': 'txt',
+    'text/html': 'html',
   }
   return map[mime] || 'bin'
 }
@@ -72,6 +101,8 @@ function buildS3Key(opts: {
       return `users/${opts.userId}/avatars/${id}.${ext}`
     case 'map':
       return `projects/${opts.projectId}/entities/${opts.collection || '_'}/${opts.entityId || '_'}/${id}.${ext}`
+    case 'import':
+      return `projects/${opts.projectId}/imports/${id}.${ext}`
     default:
       return `misc/${id}.${ext}`
   }
@@ -112,9 +143,10 @@ async function uploadsPlugin(fastify: FastifyInstance) {
       })
     }
 
-    // Validate content type
-    if (!contentType || !ALLOWED_IMAGE_TYPES.has(contentType)) {
-      return reply.status(400).send({ error: `Unsupported content type. Allowed: ${[...ALLOWED_IMAGE_TYPES].join(', ')}` })
+    // Validate content type (allowed set varies by context)
+    const allowedTypes = getAllowedTypes(context)
+    if (!contentType || !allowedTypes.has(contentType)) {
+      return reply.status(400).send({ error: `Unsupported content type. Allowed: ${[...allowedTypes].join(', ')}` })
     }
 
     // Validate file size (tier-aware)

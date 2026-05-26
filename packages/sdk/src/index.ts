@@ -339,6 +339,31 @@ export class EntityAPI {
     return response.json()
   }
 
+  /**
+   * Create many entities in one atomic transaction. All items go into the same
+   * collection; if any insert fails, the whole batch rolls back. Capped at 500
+   * items server-side. Use the atomic-batch endpoint for mixed create/update/delete.
+   */
+  async createBatch<T = any>(collection: string, items: Array<Partial<T>>): Promise<T[]> {
+    const response = await fetch(`${this.api.apiBaseUrl}/entities/batch`, {
+      method: 'POST',
+      headers: this.api.getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        collection,
+        projectId: this.projectId,
+        items
+      })
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+      throw new Error(`Failed to create entities (batch): ${errorData.error || response.statusText}`)
+    }
+
+    const result = await response.json()
+    return result.entities || []
+  }
+
   async update<T = any>(collection: string, id: string, data: Partial<T>, expectedVersion?: number): Promise<T> {
     const body: Record<string, any> = {
       collection,
@@ -721,7 +746,7 @@ export class ReaderAPI {
 export interface UploadOptions {
   file: File
   projectId?: string
-  context: 'cover' | 'entity' | 'editor' | 'avatar' | 'map'
+  context: 'cover' | 'entity' | 'editor' | 'avatar' | 'map' | 'import'
   entityId?: string
   collection?: string
   onProgress?: (percent: number) => void
