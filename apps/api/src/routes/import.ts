@@ -30,6 +30,14 @@ import {
   type ImportSegment,
   type ImportWarning,
 } from '../lib/import-parsers'
+import { ZipBombError } from '../lib/import-parsers/zip-safe'
+import {
+  serverEventBus,
+  importParseCompleted,
+  importParseFailed,
+  importCommitCompleted,
+  importCommitFailed,
+} from '../lib/event-bus'
 
 const PARSE_PAYLOAD_CAP_BYTES = 10 * 1024 * 1024 // 10 MB JSON response cap
 const COMMIT_MAX_SEGMENTS = 500
@@ -79,10 +87,29 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/import/parse', {
     preHandler: [requireAuth, requireScope('entities:write')],
   }, async (request, reply) => {
+    const startedAt = Date.now()
+    let resolvedFormat: string | null = null
+    let resolvedProjectId: string | null = null
+    let resolvedUserId: string | null = null
+
+    const emitFailure = (code: string) => {
+      if (resolvedProjectId && resolvedUserId) {
+        serverEventBus.fire(importParseFailed(
+          resolvedProjectId,
+          resolvedUserId,
+          resolvedFormat,
+          code,
+          Date.now() - startedAt,
+        ))
+      }
+    }
+
     try {
       const body = ParseRequestSchema.parse(request.body)
       const { fileKey, projectId } = body
       const user = request.user!
+      resolvedProjectId = projectId
+      resolvedUserId = user.id
 
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
       if (!hasAccess) return
@@ -105,6 +132,7 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
         .limit(1)
 
       if (!upload || upload.status !== 'active') {
+        emitFailure('IMPORT_UPLOAD_NOT_FOUND')
         return reply.status(404).send({
           error: 'Upload not found for this project',
           code: 'IMPORT_UPLOAD_NOT_FOUND',
@@ -113,15 +141,18 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
 
       const format = formatFromMime(upload.contentType)
       if (!format) {
+        emitFailure('IMPORT_FORMAT_UNSUPPORTED')
         return reply.status(400).send({
           error: `Unsupported import format: ${upload.contentType}`,
           code: 'IMPORT_FORMAT_UNSUPPORTED',
         })
       }
+      resolvedFormat = format
 
       // Fetch source file from S3.
       const obj = await getObject(fileKey)
       if (!obj) {
+        emitFailure('IMPORT_SOURCE_MISSING')
         return reply.status(404).send({
           error: 'Source file no longer present in storage',
           code: 'IMPORT_SOURCE_MISSING',
@@ -133,6 +164,7 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
         buffer = await streamToBuffer(obj.body)
       } catch (err) {
         fastify.log.error({ err, fileKey }, 'Failed to read import source from S3')
+        emitFailure('IMPORT_SOURCE_READ_FAILED')
         return reply.status(500).send({
           error: 'Failed to read source file',
           code: 'IMPORT_SOURCE_READ_FAILED',
@@ -153,6 +185,12 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
             status: 501,
             code: 'IMPORT_FORMAT_NOT_YET_IMPLEMENTED',
             message: `Format '${err.format}' is recognized but not yet supported in this build`,
+          }
+        } else if (err instanceof ZipBombError) {
+          parseError = {
+            status: 413,
+            code: 'IMPORT_ZIP_BOMB',
+            message: err.message,
           }
         } else {
           fastify.log.error({ err, format, fileKey }, 'Import parser failed')
@@ -177,6 +215,7 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
       }
 
       if (parseError) {
+        emitFailure(parseError.code)
         return reply.status(parseError.status).send({
           error: parseError.message,
           code: parseError.code,
@@ -188,24 +227,37 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
       // failures on commit anyway.
       const totalHtmlBytes = segments.reduce((sum, s) => sum + Buffer.byteLength(s.html), 0)
       if (totalHtmlBytes > PARSE_PAYLOAD_CAP_BYTES) {
+        emitFailure('IMPORT_PAYLOAD_TOO_LARGE')
         return reply.status(413).send({
           error: `Parsed manuscript exceeds the ${PARSE_PAYLOAD_CAP_BYTES} byte preview cap`,
           code: 'IMPORT_PAYLOAD_TOO_LARGE',
         })
       }
 
+      serverEventBus.fire(importParseCompleted(
+        projectId,
+        user.id,
+        format,
+        segments.length,
+        Date.now() - startedAt,
+      ))
+
       return { segments, warnings, sourceFormat: format }
 
     } catch (error) {
       fastify.log.error(error)
       if (error instanceof z.ZodError) {
+        emitFailure('IMPORT_VALIDATION_FAILED')
         return reply.status(400).send({
           error: 'Validation failed',
+          code: 'IMPORT_VALIDATION_FAILED',
           issues: error.issues.map(i => ({ field: i.path.join('.'), message: i.message })),
         })
       }
+      emitFailure('IMPORT_INTERNAL_ERROR')
       return reply.status(500).send({
         error: 'Import parse failed',
+        code: 'IMPORT_INTERNAL_ERROR',
         details: error instanceof Error ? error.message : 'Unknown error',
       })
     }
@@ -221,10 +273,30 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/import/commit', {
     preHandler: [requireAuth, requireScope('entities:write')],
   }, async (request, reply) => {
+    const startedAt = Date.now()
+    let resolvedProjectId: string | null = null
+    let resolvedUserId: string | null = null
+    let resolvedContainerId: string | null = null
+
+    const emitCommitFailure = (code: string) => {
+      if (resolvedProjectId && resolvedUserId) {
+        serverEventBus.fire(importCommitFailed(
+          resolvedProjectId,
+          resolvedUserId,
+          resolvedContainerId,
+          code,
+          Date.now() - startedAt,
+        ))
+      }
+    }
+
     try {
       const body = CommitRequestSchema.parse(request.body)
       const { projectId, containerId, segments } = body
       const user = request.user!
+      resolvedProjectId = projectId
+      resolvedUserId = user.id
+      resolvedContainerId = containerId
 
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
       if (!hasAccess) return
@@ -243,6 +315,7 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
         .limit(1)
 
       if (!container) {
+        emitCommitFailure('IMPORT_CONTAINER_NOT_FOUND')
         return reply.status(422).send({
           error: 'Target container not found in this project',
           code: 'IMPORT_CONTAINER_NOT_FOUND',
@@ -253,6 +326,7 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
       const effective = await getEffectiveBobbins(projectId, user.id)
       const match = await findBobbinForCollectionAcrossScopes(effective, 'content')
       if (!match) {
+        emitCommitFailure('IMPORT_MANUSCRIPT_NOT_INSTALLED')
         return reply.status(400).send({
           error: 'Manuscript bobbin is not installed for this project',
           code: 'IMPORT_MANUSCRIPT_NOT_INSTALLED',
@@ -332,18 +406,30 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
         return insertedIds
       })
 
+      serverEventBus.fire(importCommitCompleted(
+        projectId,
+        user.id,
+        containerId,
+        created.length,
+        Date.now() - startedAt,
+      ))
+
       return { entities: created }
 
     } catch (error) {
       fastify.log.error(error)
       if (error instanceof z.ZodError) {
+        emitCommitFailure('IMPORT_VALIDATION_FAILED')
         return reply.status(400).send({
           error: 'Validation failed',
+          code: 'IMPORT_VALIDATION_FAILED',
           issues: error.issues.map(i => ({ field: i.path.join('.'), message: i.message })),
         })
       }
+      emitCommitFailure('IMPORT_INTERNAL_ERROR')
       return reply.status(500).send({
         error: 'Import commit failed (batch rolled back)',
+        code: 'IMPORT_INTERNAL_ERROR',
         details: error instanceof Error ? error.message : 'Unknown error',
       })
     }
