@@ -77,6 +77,7 @@ export function getSizeLimits(tier: MembershipTier): Record<string, number> {
     editor: 10 * 1024 * 1024,  // 10 MB
     avatar: 5 * 1024 * 1024,   // 5 MB
     map: 50 * 1024 * 1024,     // 50 MB
+    import: 25 * 1024 * 1024,  // 25 MB — manuscript import source (docx/epub/pdf/etc.)
   }
 
   if (tier === 'supporter') {

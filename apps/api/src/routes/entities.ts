@@ -150,6 +150,17 @@ const EntityUpdateSchema = EntityCreateSchema.extend({
   expectedVersion: z.number().int().positive().optional()
 })
 
+const EntityBatchCreateSchema = z.object({
+  collection: z.string()
+    .min(1, 'Collection name required')
+    .max(100, 'Collection name too long')
+    .regex(/^[a-zA-Z0-9_-]+$/, 'Collection name contains invalid characters'),
+  projectId: z.string().uuid('Invalid project ID format'),
+  items: z.array(z.record(z.string(), z.any()))
+    .min(1, 'At least one item required')
+    .max(500, 'Batch size capped at 500 items')
+})
+
 const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
 
   // Query entities from a collection (requires project ownership)
@@ -615,6 +626,118 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       fastify.log.error(error)
       return reply.status(500).send({
         error: 'Failed to delete entity',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      })
+    }
+  })
+
+  // Homogeneous batch create — all items go into the same collection in the
+  // same project. The whole batch lands atomically (transaction); any insert
+  // failing rolls everything back. Use POST /entities/batch/atomic when you
+  // need mixed create/update/delete operations.
+  fastify.post<{
+    Body: {
+      collection: string
+      projectId: string
+      items: Array<Record<string, any>>
+    }
+  }>('/entities/batch', {
+    preHandler: [requireAuth, requireScope('entities:write')]
+  }, async (request, reply) => {
+    try {
+      const body = EntityBatchCreateSchema.parse(request.body)
+      const { collection, projectId, items } = body
+
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
+
+      // Resolve the target bobbin ONCE — every item shares the collection,
+      // so per-item lookups would be redundant work.
+      const userId = request.user!.id
+      const effective = await getEffectiveBobbins(projectId, userId)
+
+      if (effective.length === 0) {
+        return reply.status(400).send({ error: 'No bobbins installed in project' })
+      }
+
+      let match = await findBobbinForCollectionAcrossScopes(effective, collection)
+
+      if (!match) {
+        const collectionIds = await getCollectionIdsForProject(projectId)
+        const scopeFilter = buildScopeCondition(projectId, collectionIds, userId)
+        match = await resolveEntityTypeCollection(effective, collection, scopeFilter)
+      }
+
+      if (!match) {
+        return reply.status(400).send({
+          error: `Collection '${collection}' not found in any installed bobbin`
+        })
+      }
+
+      // Capture the narrowed bobbin so TS keeps the non-null type inside the
+      // async transaction callback.
+      const resolved = match
+
+      const created = await db.transaction(async (tx) => {
+        const inserted: Array<typeof entities.$inferSelect> = []
+
+        for (const itemData of items) {
+          const data: Record<string, any> = { ...itemData }
+          const now = new Date().toISOString()
+          data.created_at = data.created_at ?? now
+          data.updated_at = now
+
+          if (collection === 'content' && typeof data.body === 'string') {
+            data.word_count = countWordsFromHtml(data.body)
+          }
+
+          const insertValues: Record<string, any> = {
+            id: crypto.randomUUID(),
+            bobbinId: resolved.bobbinId,
+            collectionName: collection,
+            entityData: data,
+            scope: resolved.scope,
+          }
+
+          if (resolved.scope === 'project') {
+            insertValues.projectId = projectId
+          } else if (resolved.scope === 'collection') {
+            insertValues.collectionId = resolved.scopeOwnerId
+          } else {
+            insertValues.userId = userId
+          }
+
+          const result = await tx
+            .insert(entities)
+            .values(insertValues as any)
+            .returning()
+
+          if (!result[0]) {
+            throw new Error('Insert returned no row')
+          }
+          inserted.push(result[0])
+        }
+
+        return inserted
+      })
+
+      return { entities: created.map(row => formatEntityResponse(row)) }
+
+    } catch (error) {
+      fastify.log.error(error)
+
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          issues: error.issues.map(issue => ({
+            field: issue.path.join('.'),
+            message: issue.message
+          }))
+        })
+      }
+
+      return reply.status(500).send({
+        error: 'Failed to create entities (batch rolled back)',
         details: error instanceof Error ? error.message : 'Unknown error'
       })
     }
