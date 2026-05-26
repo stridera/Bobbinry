@@ -1,0 +1,353 @@
+/**
+ * Manuscript-import routes.
+ *
+ *   POST /import/parse  — read an uploaded source file from S3, dispatch to
+ *                         the format-specific parser, return proposed
+ *                         segments + warnings, delete the source from S3.
+ *   POST /import/commit — validate the target container, then atomically
+ *                         insert each segment as a `content` entity under
+ *                         the manuscript bobbin.
+ *
+ * Phase 3 ships txt + markdown. Later phases add docx/epub/pdf/odt/rtf/html
+ * by extending the parser dispatcher only — this route is format-agnostic.
+ */
+
+import { FastifyPluginAsync } from 'fastify'
+import { z } from 'zod'
+import { and, eq, sql } from 'drizzle-orm'
+import { db } from '../db/connection'
+import { entities, uploads } from '../db/schema'
+import { requireAuth, requireProjectOwnership, requireScope } from '../middleware/auth'
+import { getObject, deleteObject } from '../lib/s3'
+import {
+  findBobbinForCollectionAcrossScopes,
+} from '../lib/disk-manifests'
+import { getEffectiveBobbins } from '../lib/effective-bobbins'
+import {
+  formatFromMime,
+  parseBuffer,
+  UnsupportedFormatError,
+  type ImportSegment,
+  type ImportWarning,
+} from '../lib/import-parsers'
+
+const PARSE_PAYLOAD_CAP_BYTES = 10 * 1024 * 1024 // 10 MB JSON response cap
+const COMMIT_MAX_SEGMENTS = 500
+
+const ParseRequestSchema = z.object({
+  fileKey: z.string().min(1).max(1024),
+  projectId: z.string().uuid('Invalid project ID format'),
+})
+
+const CommitRequestSchema = z.object({
+  projectId: z.string().uuid('Invalid project ID format'),
+  containerId: z.string().uuid('Invalid container ID format'),
+  segments: z.array(z.object({
+    title: z.string().min(1).max(500),
+    html: z.string().max(2 * 1024 * 1024), // 2 MB per chapter is plenty
+  }))
+    .min(1, 'At least one segment required')
+    .max(COMMIT_MAX_SEGMENTS, `Cannot commit more than ${COMMIT_MAX_SEGMENTS} segments at once`),
+})
+
+/** Drain an S3 response body to a Buffer. The AWS SDK returns the body as a
+ *  Node Readable in our environment; we read it fully because the parsers
+ *  need the whole document at once. */
+async function streamToBuffer(stream: NodeJS.ReadableStream | ReadableStream): Promise<Buffer> {
+  const chunks: Buffer[] = []
+  const nodeStream = stream as NodeJS.ReadableStream
+  for await (const chunk of nodeStream) {
+    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : Buffer.from(chunk as Uint8Array))
+  }
+  return Buffer.concat(chunks)
+}
+
+function countWordsFromHtml(html: string): number {
+  return html
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&[a-z]+;/gi, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 0)
+    .length
+}
+
+const importPlugin: FastifyPluginAsync = async (fastify) => {
+
+  // POST /import/parse — turn an uploaded source file into proposed segments.
+  fastify.post<{
+    Body: { fileKey: string; projectId: string }
+  }>('/import/parse', {
+    preHandler: [requireAuth, requireScope('entities:write')],
+  }, async (request, reply) => {
+    try {
+      const body = ParseRequestSchema.parse(request.body)
+      const { fileKey, projectId } = body
+      const user = request.user!
+
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
+
+      // Look up the upload row — also enforces ownership and context.
+      const [upload] = await db
+        .select({
+          s3Key: uploads.s3Key,
+          contentType: uploads.contentType,
+          size: uploads.size,
+          status: uploads.status,
+        })
+        .from(uploads)
+        .where(and(
+          eq(uploads.s3Key, fileKey),
+          eq(uploads.userId, user.id),
+          eq(uploads.projectId, projectId),
+          eq(uploads.context, 'import'),
+        ))
+        .limit(1)
+
+      if (!upload || upload.status !== 'active') {
+        return reply.status(404).send({
+          error: 'Upload not found for this project',
+          code: 'IMPORT_UPLOAD_NOT_FOUND',
+        })
+      }
+
+      const format = formatFromMime(upload.contentType)
+      if (!format) {
+        return reply.status(400).send({
+          error: `Unsupported import format: ${upload.contentType}`,
+          code: 'IMPORT_FORMAT_UNSUPPORTED',
+        })
+      }
+
+      // Fetch source file from S3.
+      const obj = await getObject(fileKey)
+      if (!obj) {
+        return reply.status(404).send({
+          error: 'Source file no longer present in storage',
+          code: 'IMPORT_SOURCE_MISSING',
+        })
+      }
+
+      let buffer: Buffer
+      try {
+        buffer = await streamToBuffer(obj.body)
+      } catch (err) {
+        fastify.log.error({ err, fileKey }, 'Failed to read import source from S3')
+        return reply.status(500).send({
+          error: 'Failed to read source file',
+          code: 'IMPORT_SOURCE_READ_FAILED',
+        })
+      }
+
+      let segments: ImportSegment[] = []
+      let warnings: ImportWarning[] = []
+      let parseError: { status: number; code: string; message: string } | null = null
+
+      try {
+        const result = await parseBuffer(format, buffer, { userId: user.id, projectId })
+        segments = result.segments
+        warnings = result.warnings
+      } catch (err) {
+        if (err instanceof UnsupportedFormatError) {
+          parseError = {
+            status: 501,
+            code: 'IMPORT_FORMAT_NOT_YET_IMPLEMENTED',
+            message: `Format '${err.format}' is recognized but not yet supported in this build`,
+          }
+        } else {
+          fastify.log.error({ err, format, fileKey }, 'Import parser failed')
+          parseError = {
+            status: 422,
+            code: 'IMPORT_PARSE_FAILED',
+            message: err instanceof Error ? err.message : 'Parser failed',
+          }
+        }
+      }
+
+      // Best-effort source cleanup regardless of parse outcome — the buffer
+      // is in memory and the segments round-trip through the client. The
+      // source byte-for-byte isn't needed past this point.
+      try {
+        await deleteObject(fileKey)
+        await db.update(uploads)
+          .set({ status: 'removed', updatedAt: new Date() })
+          .where(eq(uploads.s3Key, fileKey))
+      } catch (err) {
+        fastify.log.warn({ err, fileKey }, 'Source cleanup after import parse failed (non-fatal)')
+      }
+
+      if (parseError) {
+        return reply.status(parseError.status).send({
+          error: parseError.message,
+          code: parseError.code,
+        })
+      }
+
+      // Defend against the response blowing past the body cap — the JSON
+      // round-trips through the client, so massive payloads risk request
+      // failures on commit anyway.
+      const totalHtmlBytes = segments.reduce((sum, s) => sum + Buffer.byteLength(s.html), 0)
+      if (totalHtmlBytes > PARSE_PAYLOAD_CAP_BYTES) {
+        return reply.status(413).send({
+          error: `Parsed manuscript exceeds the ${PARSE_PAYLOAD_CAP_BYTES} byte preview cap`,
+          code: 'IMPORT_PAYLOAD_TOO_LARGE',
+        })
+      }
+
+      return { segments, warnings, sourceFormat: format }
+
+    } catch (error) {
+      fastify.log.error(error)
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          issues: error.issues.map(i => ({ field: i.path.join('.'), message: i.message })),
+        })
+      }
+      return reply.status(500).send({
+        error: 'Import parse failed',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      })
+    }
+  })
+
+  // POST /import/commit — turn approved segments into manuscript chapters.
+  fastify.post<{
+    Body: {
+      projectId: string
+      containerId: string
+      segments: Array<{ title: string; html: string }>
+    }
+  }>('/import/commit', {
+    preHandler: [requireAuth, requireScope('entities:write')],
+  }, async (request, reply) => {
+    try {
+      const body = CommitRequestSchema.parse(request.body)
+      const { projectId, containerId, segments } = body
+      const user = request.user!
+
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
+
+      // Verify the container exists, lives in this project, and is a
+      // manuscript-bobbin container.
+      const [container] = await db
+        .select({ id: entities.id })
+        .from(entities)
+        .where(and(
+          eq(entities.id, containerId),
+          eq(entities.projectId, projectId),
+          eq(entities.bobbinId, 'manuscript'),
+          eq(entities.collectionName, 'containers'),
+        ))
+        .limit(1)
+
+      if (!container) {
+        return reply.status(422).send({
+          error: 'Target container not found in this project',
+          code: 'IMPORT_CONTAINER_NOT_FOUND',
+        })
+      }
+
+      // Resolve the content collection to its bobbin once (manuscript).
+      const effective = await getEffectiveBobbins(projectId, user.id)
+      const match = await findBobbinForCollectionAcrossScopes(effective, 'content')
+      if (!match) {
+        return reply.status(400).send({
+          error: 'Manuscript bobbin is not installed for this project',
+          code: 'IMPORT_MANUSCRIPT_NOT_INSTALLED',
+        })
+      }
+
+      // Find the current max order for this container so new chapters land
+      // at the end. Both camelCase and snake_case container keys are checked
+      // because legacy entity rows may use either shape (mirrors the same
+      // pattern in entities.ts deleteContainerCascade).
+      const [maxRow] = await db
+        .select({
+          maxOrder: sql<string | null>`
+            COALESCE(
+              MAX((${entities.entityData}->>'order')::bigint),
+              0
+            )::text
+          `,
+        })
+        .from(entities)
+        .where(and(
+          eq(entities.projectId, projectId),
+          eq(entities.collectionName, 'content'),
+          sql`(${entities.entityData}->>'container_id' = ${containerId}
+            OR ${entities.entityData}->>'containerId' = ${containerId})`,
+        ))
+
+      const startingOrder = Number(maxRow?.maxOrder ?? 0)
+      const orderStep = 100
+
+      const created = await db.transaction(async (tx) => {
+        const insertedIds: Array<{ id: string; title: string; order: number }> = []
+
+        for (let i = 0; i < segments.length; i++) {
+          const seg = segments[i]!
+          const order = startingOrder + (i + 1) * orderStep
+          const now = new Date().toISOString()
+
+          const data: Record<string, any> = {
+            title: seg.title,
+            container_id: containerId,
+            type: 'scene',
+            body: seg.html,
+            order,
+            word_count: countWordsFromHtml(seg.html),
+            status: 'draft',
+            created_at: now,
+            updated_at: now,
+          }
+
+          const insertValues: Record<string, any> = {
+            id: crypto.randomUUID(),
+            bobbinId: match.bobbinId,
+            collectionName: 'content',
+            entityData: data,
+            scope: match.scope,
+          }
+
+          if (match.scope === 'project') {
+            insertValues.projectId = projectId
+          } else if (match.scope === 'collection') {
+            insertValues.collectionId = match.scopeOwnerId
+          } else {
+            insertValues.userId = user.id
+          }
+
+          const result = await tx
+            .insert(entities)
+            .values(insertValues as any)
+            .returning({ id: entities.id })
+
+          const row = result[0]
+          if (!row) throw new Error('Insert returned no row')
+          insertedIds.push({ id: row.id, title: seg.title, order })
+        }
+
+        return insertedIds
+      })
+
+      return { entities: created }
+
+    } catch (error) {
+      fastify.log.error(error)
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          issues: error.issues.map(i => ({ field: i.path.join('.'), message: i.message })),
+        })
+      }
+      return reply.status(500).send({
+        error: 'Import commit failed (batch rolled back)',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      })
+    }
+  })
+}
+
+export default importPlugin

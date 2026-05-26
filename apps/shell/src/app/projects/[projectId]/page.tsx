@@ -11,6 +11,7 @@ import { TagsEditor } from './components/dashboard/TagsEditor'
 import { ChapterOverview } from './components/dashboard/ChapterOverview'
 import { ProjectManagement } from './components/dashboard/ProjectManagement'
 import { ExportProject } from './components/dashboard/ExportProject'
+import { ImportManuscript } from './components/dashboard/ImportManuscript'
 
 interface Tag {
   id: string
@@ -348,6 +349,11 @@ export default function ProjectDashboardPage() {
             </div>
           </div>
         </div>
+
+        <ImportManuscript
+          projectId={projectId}
+          onImportComplete={() => loadDashboard()}
+        />
 
         <ExportProject
           projectId={projectId}
