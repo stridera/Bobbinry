@@ -101,9 +101,15 @@ export async function parseBuffer(
       const { parseEpub } = await import('./epub')
       return parseEpub(buffer, ctx)
     }
+    case 'odt': {
+      const { parseOdt } = await import('./odt')
+      return parseOdt(buffer, ctx)
+    }
+    case 'rtf': {
+      const { parseRtf } = await import('./rtf')
+      return parseRtf(buffer, ctx)
+    }
     case 'html':
-    case 'odt':
-    case 'rtf':
     case 'pdf':
       throw new UnsupportedFormatError(format)
   }
