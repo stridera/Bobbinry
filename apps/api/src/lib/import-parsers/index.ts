@@ -97,8 +97,11 @@ export async function parseBuffer(
       const { parseDocx } = await import('./docx')
       return parseDocx(buffer, ctx)
     }
+    case 'epub': {
+      const { parseEpub } = await import('./epub')
+      return parseEpub(buffer, ctx)
+    }
     case 'html':
-    case 'epub':
     case 'odt':
     case 'rtf':
     case 'pdf':

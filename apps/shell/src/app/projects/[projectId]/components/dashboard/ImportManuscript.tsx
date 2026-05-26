@@ -8,7 +8,7 @@ interface ImportManuscriptProps {
   onImportComplete?: () => void
 }
 
-const SUPPORTED_FORMATS_HINT = '.txt, .md, .docx — .epub, .pdf, .odt, .rtf, .html coming soon'
+const SUPPORTED_FORMATS_HINT = '.txt, .md, .docx, .epub — .pdf, .odt, .rtf, .html coming soon'
 
 export function ImportManuscript({ projectId, onImportComplete }: ImportManuscriptProps) {
   const [isOpen, setIsOpen] = useState(false)
