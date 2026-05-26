@@ -31,6 +31,8 @@ import { uploadImportImage } from './images'
 const PAGE_BREAK_MARKER = '☃___bbnr_pb_marker___☃'
 const FIRST_LINE_LIMIT = 140
 const TITLE_FALLBACK_LIMIT = 80
+const CHAPTER_PARAGRAPH_RE = /^(chapter|prologue|epilogue|part|book)\b/i
+const CHAPTER_PARAGRAPH_MAX_LEN = 80
 
 interface DocxParaNode {
   type: string
@@ -131,6 +133,39 @@ function splitByMarker(html: string): string[] {
 
   if (current.length > 0) segmentHtmls.push(current.join(''))
   return segmentHtmls
+}
+
+/** Split on paragraphs whose text content matches a chapter-keyword pattern.
+ *
+ * This is the last-resort fallback for documents that paginate via
+ * `<w:pageBreakBefore/>` (which mammoth strips silently) and use no
+ * heading styles — many manuscripts ship that way, with chapter starts
+ * labeled in plain bold text like `<p><strong>Chapter One</strong></p>`.
+ */
+function splitByChapterParagraphs(html: string): string[] {
+  const $ = cheerio.load(`<div id="root">${html}</div>`, null, false)
+  const root = $('#root')
+
+  const segmentHtmls: string[] = []
+  let current: string[] = []
+  let sawMarker = false
+
+  root.children().each((_idx, elem) => {
+    const tagName = $(elem).prop('tagName')?.toLowerCase()
+    if (tagName === 'p') {
+      const text = $(elem).text().trim()
+      if (text.length > 0 && text.length <= CHAPTER_PARAGRAPH_MAX_LEN && CHAPTER_PARAGRAPH_RE.test(text)) {
+        if (current.length > 0) segmentHtmls.push(current.join(''))
+        current = [$.html(elem)]
+        sawMarker = true
+        return
+      }
+    }
+    current.push($.html(elem))
+  })
+
+  if (current.length > 0) segmentHtmls.push(current.join(''))
+  return sawMarker ? segmentHtmls : [html]
 }
 
 /** Split a single HTML chunk on top-level <h1> elements. */
@@ -243,15 +278,28 @@ export async function parseDocx(
     }
   }
 
-  // First split by explicit page breaks. If exactly one chunk results, try H1.
+  // Cascade: explicit page breaks → top-level <h1> → chapter-keyword
+  // paragraphs. Each stage is only tried if the previous one produced no
+  // splits, because the earlier signals are more reliable.
   let rawSegments = stripEmpty(splitByMarker(html))
   if (rawSegments.length <= 1) {
     rawSegments = stripEmpty(splitByH1(rawSegments[0] ?? html))
-    if (rawSegments.length === 1) {
+  }
+  if (rawSegments.length <= 1) {
+    rawSegments = stripEmpty(splitByChapterParagraphs(rawSegments[0] ?? html))
+    if (rawSegments.length > 1) {
+      // Tell the user we fell back to text-pattern detection so they know
+      // to double-check the boundaries.
       warnings.push({
         code: 'STRUCTURE_GUESSED',
         message:
-          'No page breaks or top-level headings found — imported as a single chapter. Split it manually in the preview.',
+          'Chapters detected by text pattern (no page breaks or heading styles found). Review the boundaries before committing.',
+      })
+    } else {
+      warnings.push({
+        code: 'STRUCTURE_GUESSED',
+        message:
+          'No page breaks, heading styles, or chapter markers found — imported as a single chapter. Split it manually in the preview.',
       })
     }
   }
