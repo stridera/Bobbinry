@@ -56,6 +56,9 @@ const TITLE_FALLBACK_LIMIT = 80
 const CHAPTER_PARAGRAPH_RE = /^(chapter|prologue|epilogue|part|book)\b/i
 const CHAPTER_PARAGRAPH_MAX_LEN = 80
 const MATCH_PREFIX_LEN = 80
+const SUBTITLE_MAX_LEN = 120
+const TITLE_SEPARATOR = ' — '
+const INLINE_WRAPPER_TAGS = new Set(['strong', 'em', 'u', 's', 'b', 'i'])
 
 const ooxmlParser = new XMLParser({
   ignoreAttributes: false,
@@ -260,32 +263,140 @@ function firstSnippet(text: string, limit = FIRST_LINE_LIMIT): string {
   return trimmed.length > limit ? trimmed.slice(0, limit) + '…' : trimmed
 }
 
-function extractTitle(html: string, fallback: string): string {
+function clampTitle(text: string): string {
+  return text.length > TITLE_FALLBACK_LIMIT
+    ? text.slice(0, TITLE_FALLBACK_LIMIT) + '…'
+    : text
+}
+
+/** Extract `style="text-align:X"` from a paragraph, or null if unset. */
+function paragraphAlignment($p: ReturnType<cheerio.CheerioAPI>): string | null {
+  const style = $p.attr('style') ?? ''
+  const m = style.match(/text-align:\s*([a-z]+)/i)
+  return m ? m[1]!.toLowerCase() : null
+}
+
+/** Returns the lowercased inline-formatting tag name if the paragraph's
+ *  meaningful content is wrapped entirely in exactly one such tag (e.g.
+ *  `<p><strong>...</strong></p>`). Mixed content returns null. */
+function paragraphInlineWrapper(
+  $p: ReturnType<cheerio.CheerioAPI>,
+  $: cheerio.CheerioAPI,
+): string | null {
+  const meaningful = $p.contents().filter((_idx, n) => {
+    if (n.type === 'text') return ($(n).text() ?? '').trim().length > 0
+    return n.type === 'tag'
+  })
+  if (meaningful.length !== 1) return null
+  const child = meaningful[0]
+  if (!child || child.type !== 'tag') return null
+  const tag = (child as unknown as { tagName?: string }).tagName?.toLowerCase()
+  if (!tag || !INLINE_WRAPPER_TAGS.has(tag)) return null
+  return tag
+}
+
+interface TitleDetection {
+  /** Default display title with em-dash separator. The wizard can re-derive
+   *  using `structure` if the user picks a different separator. */
+  title: string
+  /** Structured detection metadata. Present whenever the title came from a
+   *  heading or a recognizable chapter-marker paragraph. Absent when we
+   *  fell back to "first <p>" because the paragraph is real body content
+   *  the user shouldn't be able to strip. */
+  structure?: {
+    label: string
+    subtitle?: string
+  }
+  /** Body HTML with the title source paragraphs (heading, chapter marker,
+   *  combined subtitle) removed. Surrounding empty paragraphs are kept so
+   *  vertical spacing survives. Only present when `structure` is set. */
+  htmlWithoutTitle?: string
+}
+
+function extractTitleAndBody(html: string, fallback: string): TitleDetection {
   const $ = cheerio.load(`<div id="root">${html}</div>`, null, false)
   const root = $('#root')
 
+  // Heading → most reliable signal. Strip the heading element from the body
+  // since the title field will hold it; users who want it as part of the
+  // body too can toggle that off in the wizard.
   for (const tag of ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']) {
-    const el = root.find(tag).first()
-    if (el.length > 0) {
-      const text = el.text().trim()
-      if (text) return text.length > TITLE_FALLBACK_LIMIT
-        ? text.slice(0, TITLE_FALLBACK_LIMIT) + '…'
-        : text
+    const $h = root.find(tag).first()
+    if ($h.length > 0) {
+      const text = $h.text().trim()
+      if (text) {
+        const clamped = clampTitle(text)
+        $h.remove()
+        return {
+          title: clamped,
+          structure: { label: text },
+          htmlWithoutTitle: root.html() ?? html,
+        }
+      }
     }
   }
 
-  // Now that empty paragraphs are preserved as vertical spacing, the first
-  // <p> in a segment is often blank. Skip those and grab the first <p>
-  // whose text content is non-empty.
-  const firstP = root.find('p').filter((_idx, el) => $(el).text().trim().length > 0).first()
-  if (firstP.length > 0) {
-    const text = firstP.text().trim()
-    if (text) return text.length > TITLE_FALLBACK_LIMIT
-      ? text.slice(0, TITLE_FALLBACK_LIMIT) + '…'
-      : text
+  // Empty paragraphs are now preserved as vertical spacing, so the first
+  // <p> in a segment is often blank. Walk forward until we find one with text.
+  const paragraphs = root.find('p')
+  let titleIdx = -1
+  for (let i = 0; i < paragraphs.length; i++) {
+    if (paragraphs.eq(i).text().trim().length > 0) {
+      titleIdx = i
+      break
+    }
+  }
+  if (titleIdx === -1) return { title: fallback }
+
+  const $title = paragraphs.eq(titleIdx)
+  const titleText = $title.text().trim()
+
+  // Chapter-marker paragraph: maybe combine with the next paragraph as a
+  // subtitle. Strict match — both alignment and inline wrapper must align,
+  // and the subtitle must be short and not itself another chapter marker.
+  if (titleText.length <= CHAPTER_PARAGRAPH_MAX_LEN && CHAPTER_PARAGRAPH_RE.test(titleText)) {
+    let subText: string | null = null
+    let subIdx = -1
+    for (let i = titleIdx + 1; i < paragraphs.length; i++) {
+      const $sub = paragraphs.eq(i)
+      const candidate = $sub.text().trim()
+      if (candidate.length === 0) continue
+      // First non-empty after the title decides — don't peek further.
+      if (candidate.length > SUBTITLE_MAX_LEN) break
+      if (CHAPTER_PARAGRAPH_RE.test(candidate)) break
+      if (paragraphAlignment($title) !== paragraphAlignment($sub)) break
+      const wrap = paragraphInlineWrapper($title, $)
+      if (wrap === null || wrap !== paragraphInlineWrapper($sub, $)) break
+      subText = candidate
+      subIdx = i
+      break
+    }
+
+    if (subText !== null && subIdx >= 0) {
+      const combined = clampTitle(`${titleText}${TITLE_SEPARATOR}${subText}`)
+      paragraphs.eq(subIdx).remove()
+      $title.remove()
+      return {
+        title: combined,
+        structure: { label: titleText, subtitle: subText },
+        htmlWithoutTitle: root.html() ?? html,
+      }
+    }
+
+    // Chapter marker alone, no subtitle.
+    $title.remove()
+    return {
+      title: clampTitle(titleText),
+      structure: { label: titleText },
+      htmlWithoutTitle: root.html() ?? html,
+    }
   }
 
-  return fallback
+  // First non-empty <p> doesn't look like a chapter marker — treat its text
+  // as the title but DON'T strip it from the body. It's real content the
+  // user probably wants kept; the wizard hides the strip toggle when
+  // structure is absent.
+  return { title: clampTitle(titleText) }
 }
 
 /** Split rendered HTML on the page-break markers we injected via transformDocument. */
@@ -583,12 +694,15 @@ export async function parseDocx(
       return true
     }).first()
     const firstLineSource = firstP.length > 0 ? firstP.text() : plainAll
+    const detection = extractTitleAndBody(sanitized, `Chapter ${i + 1}`)
     return {
       tempId: randomUUID(),
-      suggestedTitle: extractTitle(sanitized, `Chapter ${i + 1}`),
+      suggestedTitle: detection.title,
       html: sanitized,
       wordCount: countWordsFromText(plainAll),
       firstLine: firstSnippet(firstLineSource),
+      ...(detection.structure ? { titleStructure: detection.structure } : {}),
+      ...(detection.htmlWithoutTitle ? { htmlWithoutTitle: detection.htmlWithoutTitle } : {}),
     }
   })
 
