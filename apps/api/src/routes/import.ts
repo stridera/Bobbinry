@@ -49,7 +49,9 @@ const ParseRequestSchema = z.object({
 
 const CommitRequestSchema = z.object({
   projectId: z.string().uuid('Invalid project ID format'),
-  containerId: z.string().uuid('Invalid container ID format'),
+  // Optional. Omit (or null) to land the chapters at root — i.e. with no
+  // container_id, so they show as top-level items in the manuscript outline.
+  containerId: z.string().uuid('Invalid container ID format').optional().nullable(),
   segments: z.array(z.object({
     title: z.string().min(1).max(500),
     html: z.string().max(2 * 1024 * 1024), // 2 MB per chapter is plenty
@@ -267,7 +269,7 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.post<{
     Body: {
       projectId: string
-      containerId: string
+      containerId?: string | null
       segments: Array<{ title: string; html: string }>
     }
   }>('/import/commit', {
@@ -292,7 +294,8 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
 
     try {
       const body = CommitRequestSchema.parse(request.body)
-      const { projectId, containerId, segments } = body
+      const { projectId, segments } = body
+      const containerId = body.containerId ?? null
       const user = request.user!
       resolvedProjectId = projectId
       resolvedUserId = user.id
@@ -301,25 +304,29 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
       if (!hasAccess) return
 
-      // Verify the container exists, lives in this project, and is a
-      // manuscript-bobbin container.
-      const [container] = await db
-        .select({ id: entities.id })
-        .from(entities)
-        .where(and(
-          eq(entities.id, containerId),
-          eq(entities.projectId, projectId),
-          eq(entities.bobbinId, 'manuscript'),
-          eq(entities.collectionName, 'containers'),
-        ))
-        .limit(1)
+      // Verify the container exists when supplied. A null containerId means
+      // "land the chapters at root with no container_id" — that's a legal
+      // shape in the manuscript bobbin (the outline panel renders such
+      // content as top-level items).
+      if (containerId !== null) {
+        const [container] = await db
+          .select({ id: entities.id })
+          .from(entities)
+          .where(and(
+            eq(entities.id, containerId),
+            eq(entities.projectId, projectId),
+            eq(entities.bobbinId, 'manuscript'),
+            eq(entities.collectionName, 'containers'),
+          ))
+          .limit(1)
 
-      if (!container) {
-        emitCommitFailure('IMPORT_CONTAINER_NOT_FOUND')
-        return reply.status(422).send({
-          error: 'Target container not found in this project',
-          code: 'IMPORT_CONTAINER_NOT_FOUND',
-        })
+        if (!container) {
+          emitCommitFailure('IMPORT_CONTAINER_NOT_FOUND')
+          return reply.status(422).send({
+            error: 'Target container not found in this project',
+            code: 'IMPORT_CONTAINER_NOT_FOUND',
+          })
+        }
       }
 
       // Resolve the content collection to its bobbin once (manuscript).
@@ -333,10 +340,18 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
         })
       }
 
-      // Find the current max order for this container so new chapters land
-      // at the end. Both camelCase and snake_case container keys are checked
-      // because legacy entity rows may use either shape (mirrors the same
-      // pattern in entities.ts deleteContainerCascade).
+      // Find the current max order for siblings so new chapters land at the
+      // end. When committing into a container, "siblings" are content items
+      // with the same container_id (both camelCase and snake_case keys are
+      // checked because legacy entity rows may use either shape — same
+      // pattern as deleteContainerCascade in entities.ts). When committing
+      // at root, siblings are content items with no container_id at all.
+      const siblingsFilter = containerId === null
+        ? sql`(${entities.entityData}->>'container_id' IS NULL
+            AND ${entities.entityData}->>'containerId' IS NULL)`
+        : sql`(${entities.entityData}->>'container_id' = ${containerId}
+            OR ${entities.entityData}->>'containerId' = ${containerId})`
+
       const [maxRow] = await db
         .select({
           maxOrder: sql<string | null>`
@@ -350,8 +365,7 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
         .where(and(
           eq(entities.projectId, projectId),
           eq(entities.collectionName, 'content'),
-          sql`(${entities.entityData}->>'container_id' = ${containerId}
-            OR ${entities.entityData}->>'containerId' = ${containerId})`,
+          siblingsFilter,
         ))
 
       const startingOrder = Number(maxRow?.maxOrder ?? 0)
@@ -367,7 +381,6 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
 
           const data: Record<string, any> = {
             title: seg.title,
-            container_id: containerId,
             type: 'scene',
             body: seg.html,
             order,
@@ -375,6 +388,9 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
             status: 'draft',
             created_at: now,
             updated_at: now,
+          }
+          if (containerId !== null) {
+            data.container_id = containerId
           }
 
           const insertValues: Record<string, any> = {

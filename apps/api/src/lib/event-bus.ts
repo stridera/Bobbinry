@@ -167,7 +167,7 @@ export function importParseFailed(
 export function importCommitCompleted(
   projectId: string,
   userId: string,
-  containerId: string,
+  containerId: string | null,
   segmentCount: number,
   durationMs: number,
 ): DomainEvent {

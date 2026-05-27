@@ -31,6 +31,9 @@ const SEPARATOR_OPTIONS: Array<{ value: TitleSeparator; label: string; example: 
   { value: '', label: 'Label only', example: 'Chapter One' },
 ]
 
+const CONTAINER_NEW = '__new__'
+const CONTAINER_ROOT = '__root__'
+
 interface Warning {
   code: string
   message: string
@@ -110,7 +113,11 @@ export function ImportWizard({ projectId, onClose, onComplete }: ImportWizardPro
   const [phase, setPhase] = useState<Phase>({ kind: 'pick' })
   const [editedSegments, setEditedSegments] = useState<Segment[]>([])
   const [containers, setContainers] = useState<ContainerOption[]>([])
+  // `containerId` holds either an existing container's UUID or one of the
+  // sentinel values below. Sentinels are translated to real API arguments
+  // at commit time.
   const [containerId, setContainerId] = useState<string>('')
+  const [newContainerName, setNewContainerName] = useState<string>('Imported chapters')
   const [containersLoading, setContainersLoading] = useState(false)
   // Title-format controls (visible only when at least one segment carries
   // structured title detection). Default to em-dash to match what the
@@ -144,7 +151,13 @@ export function ImportWizard({ projectId, onClose, onComplete }: ImportWizardPro
         type: e.type || 'folder',
       }))
       setContainers(list)
-      if (list.length > 0) setContainerId(prev => prev || list[0]!.id)
+      if (list.length > 0) {
+        setContainerId(prev => prev || list[0]!.id)
+      } else {
+        // No existing containers — default to "Create new" so the user can
+        // proceed without bouncing out to the manuscript outline first.
+        setContainerId(prev => prev || CONTAINER_NEW)
+      }
     } catch {
       setContainers([])
     } finally {
@@ -303,8 +316,55 @@ export function ImportWizard({ projectId, onClose, onComplete }: ImportWizardPro
       setPhase({ kind: 'error', message: 'No segments left to commit', retryTo: 'preview' })
       return
     }
+    if (containerId === CONTAINER_NEW && newContainerName.trim().length === 0) {
+      setPhase({ kind: 'error', message: 'Give the new container a name', retryTo: 'preview' })
+      return
+    }
 
     setPhase({ kind: 'committing' })
+
+    // Resolve the container choice into the value the API expects:
+    //   - CONTAINER_ROOT → null  (chapters land at top level)
+    //   - CONTAINER_NEW  → create the container first, use its id
+    //   - any UUID       → use as-is
+    let effectiveContainerId: string | null
+    if (containerId === CONTAINER_ROOT) {
+      effectiveContainerId = null
+    } else if (containerId === CONTAINER_NEW) {
+      try {
+        const createRes = await apiFetch('/api/entities', apiToken, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            collection: 'containers',
+            projectId,
+            data: {
+              title: newContainerName.trim(),
+              type: 'chapter',
+              order: (containers.length + 1) * 100,
+            },
+          }),
+        })
+        if (!createRes.ok) {
+          const err = await createRes.json().catch(() => ({ error: 'Container create failed' }))
+          throw new Error(err.error || `Failed to create container (${createRes.status})`)
+        }
+        const created = await createRes.json()
+        if (typeof created?.id !== 'string') {
+          throw new Error('Container creation returned no id')
+        }
+        effectiveContainerId = created.id
+      } catch (err) {
+        setPhase({
+          kind: 'error',
+          message: err instanceof Error ? err.message : 'Could not create container',
+          retryTo: 'preview',
+        })
+        return
+      }
+    } else {
+      effectiveContainerId = containerId
+    }
 
     try {
       const res = await apiFetch('/api/import/commit', apiToken, {
@@ -312,7 +372,7 @@ export function ImportWizard({ projectId, onClose, onComplete }: ImportWizardPro
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projectId,
-          containerId,
+          containerId: effectiveContainerId,
           segments: editedSegments.map(s => ({
             title: displayTitleFor(s).trim() || 'Untitled chapter',
             html: stripTitleFromBody && s.htmlWithoutTitle ? s.htmlWithoutTitle : s.html,
@@ -399,6 +459,8 @@ export function ImportWizard({ projectId, onClose, onComplete }: ImportWizardPro
               containersLoading={containersLoading}
               containerId={containerId}
               setContainerId={setContainerId}
+              newContainerName={newContainerName}
+              setNewContainerName={setNewContainerName}
               titleSeparator={titleSeparator}
               setTitleSeparator={setTitleSeparator}
               stripTitleFromBody={stripTitleFromBody}
@@ -447,7 +509,11 @@ export function ImportWizard({ projectId, onClose, onComplete }: ImportWizardPro
                 </button>
                 <button
                   onClick={commit}
-                  disabled={editedSegments.length === 0 || !containerId}
+                  disabled={
+                    editedSegments.length === 0
+                    || !containerId
+                    || (containerId === CONTAINER_NEW && newContainerName.trim().length === 0)
+                  }
                   className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                   Import {editedSegments.length} chapter{editedSegments.length === 1 ? '' : 's'}
@@ -538,6 +604,8 @@ interface PreviewStepProps {
   containersLoading: boolean
   containerId: string
   setContainerId: (id: string) => void
+  newContainerName: string
+  setNewContainerName: (name: string) => void
   titleSeparator: TitleSeparator
   setTitleSeparator: (sep: TitleSeparator) => void
   stripTitleFromBody: boolean
@@ -552,6 +620,7 @@ interface PreviewStepProps {
 function PreviewStep({
   segments, warnings, sourceFormat,
   containers, containersLoading, containerId, setContainerId,
+  newContainerName, setNewContainerName,
   titleSeparator, setTitleSeparator,
   stripTitleFromBody, setStripTitleFromBody,
   displayTitleFor,
@@ -576,24 +645,49 @@ function PreviewStep({
       )}
 
       {/* Container picker */}
-      <div className="flex items-center gap-3">
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">
-          Add to container:
-        </label>
-        <select
-          value={containerId}
-          onChange={(e) => setContainerId(e.target.value)}
-          disabled={containersLoading || containers.length === 0}
-          className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 disabled:opacity-50 cursor-pointer"
-        >
-          {containersLoading && <option>Loading containers…</option>}
-          {!containersLoading && containers.length === 0 && (
-            <option value="">No containers — create one in the manuscript outline first</option>
-          )}
-          {containers.map(c => (
-            <option key={c.id} value={c.id}>{c.title} ({c.type})</option>
-          ))}
-        </select>
+      <div className="space-y-2">
+        <div className="flex items-center gap-3">
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">
+            Add to container:
+          </label>
+          <select
+            value={containerId}
+            onChange={(e) => setContainerId(e.target.value)}
+            disabled={containersLoading}
+            className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 disabled:opacity-50 cursor-pointer"
+          >
+            {containersLoading && <option>Loading containers…</option>}
+            {!containersLoading && (
+              <>
+                {containers.length > 0 && (
+                  <optgroup label="Existing containers">
+                    {containers.map(c => (
+                      <option key={c.id} value={c.id}>{c.title} ({c.type})</option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label={containers.length > 0 ? 'Or…' : 'Choose where the chapters land'}>
+                  <option value={CONTAINER_NEW}>+ Create new container…</option>
+                  <option value={CONTAINER_ROOT}>↑ Root (no container)</option>
+                </optgroup>
+              </>
+            )}
+          </select>
+        </div>
+        {containerId === CONTAINER_NEW && (
+          <div className="flex items-center gap-3 pl-[125px]">
+            <label className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+              New container name:
+            </label>
+            <input
+              value={newContainerName}
+              onChange={(e) => setNewContainerName(e.target.value)}
+              placeholder="e.g. Book One"
+              className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+              autoFocus
+            />
+          </div>
+        )}
       </div>
 
       {/* Title-format options — only meaningful when the parser surfaced
