@@ -6,6 +6,7 @@ import type { Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import CharacterCount from '@tiptap/extension-character-count'
+import TextAlign from '@tiptap/extension-text-align'
 import { ImageUpload } from '../extensions/image-upload'
 import { EntityHighlight } from '../extensions/entity-highlight'
 import type { EntityEntry } from '../extensions/entity-highlight'
@@ -494,6 +495,14 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
         placeholder: 'Start writing...'
       }),
       CharacterCount,
+      // Preserves `text-align` on imported paragraphs/headings (centered
+      // chapter titles, etc.). Stored as inline style on the node so the
+      // round-trip through the editor is lossless.
+      TextAlign.configure({
+        types: ['heading', 'paragraph'],
+        alignments: ['left', 'center', 'right', 'justify'],
+        defaultAlignment: 'left',
+      }),
       ImageUpload.configure({
         sdk,
         projectId,

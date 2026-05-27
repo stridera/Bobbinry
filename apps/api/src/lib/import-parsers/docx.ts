@@ -45,6 +45,12 @@ import { sanitizeImportedHtml } from './sanitize'
 import { uploadImportImage } from './images'
 
 const PAGE_BREAK_MARKER = '☃___bbnr_pb_marker___☃'
+// Alignment markers carry the value inline (`center`, `right`, `justify`).
+// transformDocument prepends one of these as a text run into each non-left
+// paragraph; a cheerio post-pass strips it and writes a `text-align` inline
+// style on the rendered <p> / <h*>. Left-aligned paragraphs are untouched
+// because that's the editor default.
+const ALIGN_MARKER_RE = /☃___bbnr_align___([a-z]+)___☃/
 const FIRST_LINE_LIMIT = 140
 const TITLE_FALLBACK_LIMIT = 80
 const CHAPTER_PARAGRAPH_RE = /^(chapter|prologue|epilogue|part|book)\b/i
@@ -268,7 +274,10 @@ function extractTitle(html: string, fallback: string): string {
     }
   }
 
-  const firstP = root.find('p').first()
+  // Now that empty paragraphs are preserved as vertical spacing, the first
+  // <p> in a segment is often blank. Skip those and grab the first <p>
+  // whose text content is non-empty.
+  const firstP = root.find('p').filter((_idx, el) => $(el).text().trim().length > 0).first()
   if (firstP.length > 0) {
     const text = firstP.text().trim()
     if (text) return text.length > TITLE_FALLBACK_LIMIT
@@ -372,6 +381,29 @@ function stripEmpty(htmls: string[]): string[] {
   return htmls.filter(h => h.replace(/<[^>]*>/g, '').replace(/\s+/g, '').length > 0)
 }
 
+/** Strip alignment markers injected via transformDocument and translate them
+ *  into a `text-align` inline style on the enclosing block element. */
+function applyAlignmentMarkers(html: string): string {
+  if (!html.includes('___bbnr_align___')) return html
+  const $ = cheerio.load(`<div id="root">${html}</div>`, null, false)
+  $('p, h1, h2, h3, h4, h5, h6').each((_idx, elem) => {
+    const $el = $(elem)
+    const inner = $el.html() ?? ''
+    const match = inner.match(ALIGN_MARKER_RE)
+    if (!match) return
+    const alignment = match[1]!
+    const cleaned = inner.replace(ALIGN_MARKER_RE, '').replace(/^\s+/, '')
+    $el.html(cleaned)
+    const existing = ($el.attr('style') ?? '')
+      .split(';')
+      .map(s => s.trim())
+      .filter(s => s.length > 0 && !s.toLowerCase().startsWith('text-align'))
+    existing.push(`text-align: ${alignment}`)
+    $el.attr('style', existing.join('; '))
+  })
+  return $('#root').html() ?? html
+}
+
 export async function parseDocx(
   buffer: Buffer,
   ctx: ParserContext,
@@ -385,15 +417,38 @@ export async function parseDocx(
   // marker into the rendered HTML after mammoth runs.
   const breakTexts = await findPageBreakParagraphTexts(buffer)
 
-  // Mammoth's TS types don't expose `images.imgElement`'s shape cleanly.
+  // Mammoth's TS types don't expose `images.imgElement` or `transforms`
+  // cleanly. The cast surfaces both for the alignment + image-rewrite work.
   interface MammothImage {
     contentType: string
     altText?: string
     read: (encoding: 'base64') => Promise<string>
   }
+  interface MammothParaForAlign {
+    alignment?: string
+    children?: Array<{ type: string; children?: Array<{ type: string; value?: string }> }>
+  }
   const mammothAny = mammoth as unknown as {
     images: { imgElement: (fn: (image: MammothImage) => Promise<{ src: string; alt?: string }>) => unknown }
+    transforms: { paragraph: (fn: (p: MammothParaForAlign) => MammothParaForAlign) => unknown }
   }
+
+  // transformDocument: prepend an alignment-marker text run to every non-left
+  // paragraph. The cheerio post-pass later converts these to inline
+  // text-align styles. Left alignment is the editor default — no marker.
+  const transformDocument = mammothAny.transforms.paragraph((para) => {
+    const a = para.alignment
+    if (a && a !== 'left' && (a === 'center' || a === 'right' || a === 'justify')) {
+      return {
+        ...para,
+        children: [
+          { type: 'run', children: [{ type: 'text', value: `☃___bbnr_align___${a}___☃` }] },
+          ...(para.children ?? []),
+        ],
+      }
+    }
+    return para
+  })
 
   const convertImage = mammothAny.images.imgElement(async (image: MammothImage) => {
     try {
@@ -415,12 +470,23 @@ export async function parseDocx(
   try {
     const result = await mammoth.convertToHtml(
       { buffer },
-      { convertImage: convertImage as never },
+      {
+        // Keep empty paragraphs so the vertical whitespace authors place
+        // around system-text blocks, between the chapter title and the
+        // first body paragraph, etc. survives into the editor.
+        ignoreEmptyParagraphs: false,
+        transformDocument: transformDocument as never,
+        convertImage: convertImage as never,
+      },
     )
     html = result.value
   } catch (err) {
     throw new Error(`Word document could not be read: ${err instanceof Error ? err.message : 'unknown error'}`)
   }
+
+  // Translate alignment markers (injected via transformDocument) into
+  // text-align inline styles on the enclosing <p> / <h*>.
+  html = applyAlignmentMarkers(html)
 
   // Post-pass: inject the page-break marker before each paragraph whose
   // OOXML counterpart had a break. Matches by text content so paragraph
@@ -507,9 +573,15 @@ export async function parseDocx(
     const root = $('#root')
     // Word count: full text content.
     const plainAll = root.text()
-    // First line: first non-heading paragraph, so the snippet isn't a
-    // concatenation of "Chapter 1: TitleFirst paragraph text..."
-    const firstP = root.find('p').filter((_idx, el) => $(el).text().trim().length > 0).first()
+    // First-line snippet: skip empty paragraphs (vertical spacing) and the
+    // chapter-title paragraph itself so the preview reads as body prose,
+    // not "Chapter One" / "Chapter One" duplicated.
+    const firstP = root.find('p').filter((_idx, el) => {
+      const text = $(el).text().trim()
+      if (text.length === 0) return false
+      if (text.length <= CHAPTER_PARAGRAPH_MAX_LEN && CHAPTER_PARAGRAPH_RE.test(text)) return false
+      return true
+    }).first()
     const firstLineSource = firstP.length > 0 ? firstP.text() : plainAll
     return {
       tempId: randomUUID(),

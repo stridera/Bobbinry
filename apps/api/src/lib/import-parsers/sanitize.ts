@@ -23,12 +23,31 @@ const ALLOWED_ATTRIBUTES: sanitizeHtml.IOptions['allowedAttributes'] = {
   a: ['href', 'title', 'target', 'rel'],
   img: ['src', 'alt', 'title', 'width', 'height', 'data-external-src', 'data-import-error'],
   hr: ['class'],
+  p: ['style'],
+  h1: ['style'], h2: ['style'], h3: ['style'],
+  h4: ['style'], h5: ['style'], h6: ['style'],
+}
+
+// `style` is allowed on block-level text containers but locked to a single
+// property — text-align — with a fixed value set. This lets us carry
+// centered chapter titles and other Word-side alignment through to the
+// Tiptap text-align extension. Anything outside this allowlist (background,
+// font-size, expression(), …) is stripped.
+const ALLOWED_STYLES: sanitizeHtml.IOptions['allowedStyles'] = {
+  p: { 'text-align': [/^(left|center|right|justify)$/] },
+  h1: { 'text-align': [/^(left|center|right|justify)$/] },
+  h2: { 'text-align': [/^(left|center|right|justify)$/] },
+  h3: { 'text-align': [/^(left|center|right|justify)$/] },
+  h4: { 'text-align': [/^(left|center|right|justify)$/] },
+  h5: { 'text-align': [/^(left|center|right|justify)$/] },
+  h6: { 'text-align': [/^(left|center|right|justify)$/] },
 }
 
 export function sanitizeImportedHtml(html: string): string {
   return sanitizeHtml(html, {
     allowedTags: ALLOWED_TAGS,
     allowedAttributes: ALLOWED_ATTRIBUTES,
+    allowedStyles: ALLOWED_STYLES,
     allowedSchemes: ['http', 'https', 'mailto'],
     allowedSchemesByTag: {
       img: ['http', 'https', 'data'],
