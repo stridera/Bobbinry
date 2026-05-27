@@ -872,6 +872,17 @@ export interface ImportSegment {
   html: string
   wordCount: number
   firstLine: string
+  /** Structured title-detection metadata. Currently emitted by the docx
+   *  parser when a chapter-marker paragraph is recognized; absent for
+   *  plain text / markdown / formats without an explicit title element. */
+  titleStructure?: {
+    label: string
+    subtitle?: string
+  }
+  /** Body HTML with the title source paragraph(s) removed. Only present
+   *  when `titleStructure` is set. Use this when the user wants the
+   *  chapter title kept only as metadata and not duplicated in the body. */
+  htmlWithoutTitle?: string
 }
 
 export interface ImportWarning {

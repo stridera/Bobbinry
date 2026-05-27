@@ -16,7 +16,20 @@ interface Segment {
   html: string
   wordCount: number
   firstLine: string
+  titleStructure?: {
+    label: string
+    subtitle?: string
+  }
+  htmlWithoutTitle?: string
 }
+
+type TitleSeparator = ' — ' | ' - ' | ': ' | ''
+const SEPARATOR_OPTIONS: Array<{ value: TitleSeparator; label: string; example: string }> = [
+  { value: ' — ', label: 'Em-dash', example: 'Chapter One — Subtitle' },
+  { value: ' - ', label: 'Hyphen', example: 'Chapter One - Subtitle' },
+  { value: ': ', label: 'Colon', example: 'Chapter One: Subtitle' },
+  { value: '', label: 'Label only', example: 'Chapter One' },
+]
 
 interface Warning {
   code: string
@@ -99,6 +112,25 @@ export function ImportWizard({ projectId, onClose, onComplete }: ImportWizardPro
   const [containers, setContainers] = useState<ContainerOption[]>([])
   const [containerId, setContainerId] = useState<string>('')
   const [containersLoading, setContainersLoading] = useState(false)
+  // Title-format controls (visible only when at least one segment carries
+  // structured title detection). Default to em-dash to match what the
+  // server emits as suggestedTitle.
+  const [titleSeparator, setTitleSeparator] = useState<TitleSeparator>(' — ')
+  const [stripTitleFromBody, setStripTitleFromBody] = useState(false)
+  // Track which segments the user has typed into. Manually-edited titles
+  // are pinned and don't get overwritten when the title-format dropdown
+  // changes.
+  const [manuallyRenamed, setManuallyRenamed] = useState<Set<string>>(new Set())
+
+  /** Title displayed and committed for a segment, derived from the
+   *  current separator unless the user has typed into that row. */
+  const displayTitleFor = useCallback((s: Segment): string => {
+    if (manuallyRenamed.has(s.tempId)) return s.suggestedTitle
+    if (!s.titleStructure) return s.suggestedTitle
+    const { label, subtitle } = s.titleStructure
+    if (!subtitle || titleSeparator === '') return label
+    return `${label}${titleSeparator}${subtitle}`
+  }, [manuallyRenamed, titleSeparator])
 
   const loadContainers = useCallback(async () => {
     if (!apiToken) return
@@ -221,6 +253,12 @@ export function ImportWizard({ projectId, onClose, onComplete }: ImportWizardPro
 
   const renameSegment = (tempId: string, title: string) => {
     setEditedSegments(prev => prev.map(s => s.tempId === tempId ? { ...s, suggestedTitle: title } : s))
+    setManuallyRenamed(prev => {
+      if (prev.has(tempId)) return prev
+      const next = new Set(prev)
+      next.add(tempId)
+      return next
+    })
   }
 
   const discardSegment = (tempId: string) => {
@@ -276,8 +314,8 @@ export function ImportWizard({ projectId, onClose, onComplete }: ImportWizardPro
           projectId,
           containerId,
           segments: editedSegments.map(s => ({
-            title: s.suggestedTitle.trim() || 'Untitled chapter',
-            html: s.html,
+            title: displayTitleFor(s).trim() || 'Untitled chapter',
+            html: stripTitleFromBody && s.htmlWithoutTitle ? s.htmlWithoutTitle : s.html,
           })),
         }),
       })
@@ -361,6 +399,11 @@ export function ImportWizard({ projectId, onClose, onComplete }: ImportWizardPro
               containersLoading={containersLoading}
               containerId={containerId}
               setContainerId={setContainerId}
+              titleSeparator={titleSeparator}
+              setTitleSeparator={setTitleSeparator}
+              stripTitleFromBody={stripTitleFromBody}
+              setStripTitleFromBody={setStripTitleFromBody}
+              displayTitleFor={displayTitleFor}
               onRename={renameSegment}
               onDiscard={discardSegment}
               onMergeNext={mergeWithNext}
@@ -495,6 +538,11 @@ interface PreviewStepProps {
   containersLoading: boolean
   containerId: string
   setContainerId: (id: string) => void
+  titleSeparator: TitleSeparator
+  setTitleSeparator: (sep: TitleSeparator) => void
+  stripTitleFromBody: boolean
+  setStripTitleFromBody: (b: boolean) => void
+  displayTitleFor: (s: Segment) => string
   onRename: (tempId: string, title: string) => void
   onDiscard: (tempId: string) => void
   onMergeNext: (tempId: string) => void
@@ -504,8 +552,16 @@ interface PreviewStepProps {
 function PreviewStep({
   segments, warnings, sourceFormat,
   containers, containersLoading, containerId, setContainerId,
+  titleSeparator, setTitleSeparator,
+  stripTitleFromBody, setStripTitleFromBody,
+  displayTitleFor,
   onRename, onDiscard, onMergeNext, onMove,
 }: PreviewStepProps) {
+  // Title-format options are only meaningful when at least one segment
+  // carries structured title detection — otherwise the dropdown has no
+  // visible effect.
+  const hasStructuredTitles = segments.some(s => s.titleStructure)
+  const hasStripableSegments = segments.some(s => s.htmlWithoutTitle)
   return (
     <div className="space-y-4">
       {/* Warnings */}
@@ -539,6 +595,41 @@ function PreviewStep({
           ))}
         </select>
       </div>
+
+      {/* Title-format options — only meaningful when the parser surfaced
+          structured title detection (e.g. docx with chapter-marker /
+          subtitle combine). Hidden for plain text / markdown imports. */}
+      {hasStructuredTitles && (
+        <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white/40 dark:bg-gray-800/40 p-3 space-y-2">
+          <div className="flex items-center gap-3 flex-wrap">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">
+              Title format:
+            </label>
+            <select
+              value={titleSeparator}
+              onChange={(e) => setTitleSeparator(e.target.value as TitleSeparator)}
+              className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 cursor-pointer"
+            >
+              {SEPARATOR_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label} ({opt.example})
+                </option>
+              ))}
+            </select>
+          </div>
+          {hasStripableSegments && (
+            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={stripTitleFromBody}
+                onChange={(e) => setStripTitleFromBody(e.target.checked)}
+                className="rounded border-gray-300 dark:border-gray-600 cursor-pointer"
+              />
+              <span>Remove title from chapter body (keep only as metadata)</span>
+            </label>
+          )}
+        </div>
+      )}
 
       <p className="text-xs text-gray-500 dark:text-gray-400">
         Detected format: <code className="font-mono">{sourceFormat}</code>. Rename, reorder,
@@ -578,7 +669,7 @@ function PreviewStep({
 
               <div className="flex-1 min-w-0">
                 <input
-                  value={s.suggestedTitle}
+                  value={displayTitleFor(s)}
                   onChange={(e) => onRename(s.tempId, e.target.value)}
                   className="w-full px-2 py-1 text-sm font-medium bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-900 dark:text-gray-100"
                 />

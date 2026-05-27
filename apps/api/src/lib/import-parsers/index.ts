@@ -23,6 +23,20 @@ export interface ImportSegment {
   html: string
   wordCount: number
   firstLine: string
+  /** Structured title-detection metadata for parsers that can identify a
+   *  distinct title element (heading, chapter-marker paragraph, optionally
+   *  with a matching subtitle paragraph). Used by the wizard to recompute
+   *  the displayed title when the user picks a different separator and to
+   *  decide whether the "strip title from body" toggle should be available. */
+  titleStructure?: {
+    label: string
+    subtitle?: string
+  }
+  /** Body HTML with the title source paragraph(s) removed. Only set when
+   *  `titleStructure` is set. Surrounding empty paragraphs are kept so
+   *  vertical spacing stays intact. Used when the wizard's strip-from-body
+   *  option is enabled. */
+  htmlWithoutTitle?: string
 }
 
 export interface ImportWarning {
