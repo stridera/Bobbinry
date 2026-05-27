@@ -151,13 +151,12 @@ export function ImportWizard({ projectId, onClose, onComplete }: ImportWizardPro
         type: e.type || 'folder',
       }))
       setContainers(list)
-      if (list.length > 0) {
-        setContainerId(prev => prev || list[0]!.id)
-      } else {
-        // No existing containers — default to "Create new" so the user can
-        // proceed without bouncing out to the manuscript outline first.
-        setContainerId(prev => prev || CONTAINER_NEW)
-      }
+      // Default to Root regardless of how many containers exist. The most
+      // common import flow is "new project → first import" where the only
+      // pre-existing container is the auto-seeded "Chapter 1", which the
+      // user almost certainly didn't intend as the import target. Users
+      // who do want a specific container can pick from the dropdown.
+      setContainerId(prev => prev || CONTAINER_ROOT)
     } catch {
       setContainers([])
     } finally {
