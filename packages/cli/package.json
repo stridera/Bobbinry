@@ -40,11 +40,11 @@
   },
   "devDependencies": {
     "@bobbinry/types": "workspace:*",
-    "@jest/globals": "^30.3.0",
+    "@jest/globals": "^30.4.1",
     "@types/jest": "^30.0.0",
-    "@types/node": "^25",
-    "jest": "^30.3.0",
-    "ts-jest": "^29.4.6",
+    "@types/node": "^25.9.2",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.11",
     "typescript": "6.0.3"
   }
 }
