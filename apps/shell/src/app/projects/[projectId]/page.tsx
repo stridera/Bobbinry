@@ -11,6 +11,7 @@ import { TagsEditor } from './components/dashboard/TagsEditor'
 import { ProjectTools } from './components/dashboard/ProjectTools'
 import { ChapterOverview } from './components/dashboard/ChapterOverview'
 import { ProjectManagement } from './components/dashboard/ProjectManagement'
+import { ManuscriptDisplaySettings } from './components/dashboard/ManuscriptDisplaySettings'
 import { ExportProject } from './components/dashboard/ExportProject'
 import { ImportManuscript } from './components/dashboard/ImportManuscript'
 import { countsTowardWordCount, type ContentType } from '@bobbinry/types'
@@ -374,6 +375,8 @@ export default function ProjectDashboardPage() {
             </div>
           </div>
         </div>
+
+        <ManuscriptDisplaySettings projectId={projectId} />
 
         <ImportManuscript
           projectId={projectId}

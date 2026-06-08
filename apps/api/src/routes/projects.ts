@@ -1,7 +1,7 @@
 import { FastifyPluginAsync } from 'fastify'
 import { parse as parseYAML } from 'yaml'
 import { db } from '../db/connection'
-import { projects, bobbinsInstalled, entities } from '../db/schema'
+import { projects, bobbinsInstalled, entities, projectManuscriptDisplaySettings } from '../db/schema'
 import { eq, and, count, inArray, isNull } from 'drizzle-orm'
 import { ManifestCompiler } from '@bobbinry/compiler'
 import { requireAuth, requireProjectOwnership, requireVerified, requireScope } from '../middleware/auth'
@@ -577,6 +577,89 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
     } catch (error) {
       fastify.log.error(error)
       return reply.status(500).send({ error: 'Failed to update project' })
+    }
+  })
+
+  // ============================================================================
+  // PROJECT MANUSCRIPT DISPLAY SETTINGS (cascade middle layer)
+  // ============================================================================
+
+  fastify.get<{
+    Params: { projectId: string }
+  }>('/projects/:projectId/manuscript-display-settings', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    try {
+      const { projectId } = request.params
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
+
+      const rows = await db
+        .select()
+        .from(projectManuscriptDisplaySettings)
+        .where(eq(projectManuscriptDisplaySettings.projectId, projectId))
+        .limit(1)
+
+      if (rows.length === 0) {
+        return reply.status(200).send({
+          settings: {
+            projectId,
+            paragraphSpacing: null,
+            paragraphIndent: null,
+            codeBlockWrap: null,
+            sceneBreakStyle: null,
+            dropCaps: null
+          }
+        })
+      }
+      return reply.status(200).send({ settings: rows[0] })
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.status(500).send({ error: 'Failed to fetch project manuscript display settings' })
+    }
+  })
+
+  fastify.put<{
+    Params: { projectId: string }
+    Body: {
+      paragraphSpacing?: 'standard' | 'manuscript' | null
+      paragraphIndent?: 'none' | 'first-line' | 'every' | null
+      codeBlockWrap?: boolean | null
+      sceneBreakStyle?: 'asterism' | 'rule' | 'blank-line' | null
+      dropCaps?: boolean | null
+    }
+  }>('/projects/:projectId/manuscript-display-settings', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    try {
+      const { projectId } = request.params
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
+      const body = request.body ?? {}
+
+      const existing = await db
+        .select()
+        .from(projectManuscriptDisplaySettings)
+        .where(eq(projectManuscriptDisplaySettings.projectId, projectId))
+        .limit(1)
+
+      if (existing.length > 0) {
+        const [updated] = await db
+          .update(projectManuscriptDisplaySettings)
+          .set({ ...body, updatedAt: new Date() })
+          .where(eq(projectManuscriptDisplaySettings.projectId, projectId))
+          .returning()
+        return reply.status(200).send({ settings: updated })
+      } else {
+        const [created] = await db
+          .insert(projectManuscriptDisplaySettings)
+          .values({ projectId, ...body })
+          .returning()
+        return reply.status(201).send({ settings: created })
+      }
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.status(500).send({ error: 'Failed to update project manuscript display settings' })
     }
   })
 }

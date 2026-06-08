@@ -225,6 +225,13 @@
       "when": 1780943783984,
       "tag": "0032_content_types_and_archive",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1780960318553,
+      "tag": "0033_manuscript_display_settings",
+      "breakpoints": true
     }
   ]
 }

@@ -188,6 +188,34 @@ export const userReadingPreferences = pgTable('user_reading_preferences', {
   updatedAt: timestamp('updated_at').defaultNow().notNull()
 })
 
+// Author-controlled manuscript display settings — base level of the
+// user → project → content cascade. Applies to the author's editor view and
+// to readers of their published work (reader font/theme/width prefs still
+// apply on top via the reader page).
+export const userManuscriptDisplaySettings = pgTable('user_manuscript_display_settings', {
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).primaryKey(),
+  paragraphSpacing: varchar('paragraph_spacing', { length: 20 }).default('standard').notNull(), // standard, manuscript
+  paragraphIndent: varchar('paragraph_indent', { length: 20 }).default('none').notNull(), // none, first-line, every
+  codeBlockWrap: boolean('code_block_wrap').default(false).notNull(),
+  sceneBreakStyle: varchar('scene_break_style', { length: 20 }).default('asterism').notNull(), // asterism, rule, blank-line
+  dropCaps: boolean('drop_caps').default(false).notNull(),
+  // Editor-only personal pref (not cascaded). Lives here so a single GET hydrates the editor UI.
+  showFormattingMarks: boolean('show_formatting_marks').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull()
+})
+
+// Project-level overrides — sparse; null means "inherit from user".
+export const projectManuscriptDisplaySettings = pgTable('project_manuscript_display_settings', {
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }).primaryKey(),
+  paragraphSpacing: varchar('paragraph_spacing', { length: 20 }),
+  paragraphIndent: varchar('paragraph_indent', { length: 20 }),
+  codeBlockWrap: boolean('code_block_wrap'),
+  sceneBreakStyle: varchar('scene_break_style', { length: 20 }),
+  dropCaps: boolean('drop_caps'),
+  updatedAt: timestamp('updated_at').defaultNow().notNull()
+})
+
 // User-installed bobbins (reader-side, account-level)
 export const userBobbinsInstalled = pgTable('user_bobbins_installed', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -1007,6 +1035,20 @@ export const userReadingPreferencesRelations = relations(userReadingPreferences,
   user: one(users, {
     fields: [userReadingPreferences.userId],
     references: [users.id]
+  })
+}))
+
+export const userManuscriptDisplaySettingsRelations = relations(userManuscriptDisplaySettings, ({ one }) => ({
+  user: one(users, {
+    fields: [userManuscriptDisplaySettings.userId],
+    references: [users.id]
+  })
+}))
+
+export const projectManuscriptDisplaySettingsRelations = relations(projectManuscriptDisplaySettings, ({ one }) => ({
+  project: one(projects, {
+    fields: [projectManuscriptDisplaySettings.projectId],
+    references: [projects.id]
   })
 }))
 

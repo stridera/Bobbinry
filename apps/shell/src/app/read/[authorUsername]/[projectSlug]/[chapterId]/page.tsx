@@ -5,6 +5,13 @@ import { useParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { getSanitizedHtmlProps } from '@bobbinry/sdk'
+import {
+  MANUSCRIPT_DISPLAY_DEFAULTS,
+  displaySettingsToClass,
+  sanitizeDisplaySettings,
+  resolveDisplaySettings,
+  type ManuscriptDisplaySettings
+} from '@bobbinry/types'
 import { config } from '@/lib/config'
 import { ReaderNav } from '@/components/ReaderNav'
 import { ExtensionSlot } from '@/components/ExtensionSlot'
@@ -212,6 +219,7 @@ export default function ChapterReaderPage() {
   const basePath = `/read/${authorUsername}/${projectSlug}`
 
   const [chapter, setChapter] = useState<ChapterData | null>(null)
+  const [displaySettings, setDisplaySettings] = useState<ManuscriptDisplaySettings>(MANUSCRIPT_DISPLAY_DEFAULTS)
   const [nav, setNav] = useState<Navigation>({ previous: null, next: null })
   const [reactions, setReactions] = useState<ReactionCount[]>([])
   const [commentsList, setCommentsList] = useState<Comment[]>([])
@@ -333,6 +341,11 @@ export default function ChapterReaderPage() {
       const data = await res.json()
       setChapter(data.chapter)
       setNav(data.navigation)
+      // Author-driven manuscript layout cascade resolved server-side.
+      // Reader's own font/theme/width prefs apply on top of this.
+      setDisplaySettings(
+        resolveDisplaySettings(null, null, sanitizeDisplaySettings(data.resolvedDisplay))
+      )
 
       // Load reactions and comments in parallel
       const [reactionsRes, commentsRes] = await Promise.all([
@@ -1117,7 +1130,7 @@ export default function ChapterReaderPage() {
 
           <div
             ref={chapterContentRef}
-            className={`${FONT_SIZES[fontSize]} prose ${proseClass} max-w-none`}
+            className={`${FONT_SIZES[fontSize]} prose ${proseClass} max-w-none ${displaySettingsToClass(displaySettings)}`}
             dangerouslySetInnerHTML={getSanitizedHtmlProps(chapter.content)}
           />
 

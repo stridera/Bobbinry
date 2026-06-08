@@ -17,6 +17,12 @@ import TextAlign from '@tiptap/extension-text-align'
 import { ImageUpload } from '../extensions/image-upload'
 import { EntityHighlight } from '../extensions/entity-highlight'
 import type { EntityEntry } from '../extensions/entity-highlight'
+import {
+  displaySettingsToClass,
+  sanitizeDisplaySettings,
+  type PartialManuscriptDisplaySettings,
+} from '@bobbinry/types'
+import { DisplayDropdown, useDisplaySettings } from './display-settings'
 
 interface EditorViewProps {
   projectId: string
@@ -126,7 +132,17 @@ function ToolbarDivider() {
   return <div className="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-1" />
 }
 
-function EditorToolbar({ editor, onFocusMode, onInsertImage }: { editor: Editor | null; onFocusMode: () => void; onInsertImage: () => void }) {
+function EditorToolbar({
+  editor,
+  onFocusMode,
+  onInsertImage,
+  displayState,
+}: {
+  editor: Editor | null
+  onFocusMode: () => void
+  onInsertImage: () => void
+  displayState: ReturnType<typeof useDisplaySettings>
+}) {
   const [, setForceUpdate] = useState(0)
   const rafRef = useRef(0)
 
@@ -278,6 +294,18 @@ function EditorToolbar({ editor, onFocusMode, onInsertImage }: { editor: Editor 
       <div className="flex-1" />
 
       <ToolbarButton
+        onClick={() => displayState.toggleFormattingMarks()}
+        isActive={displayState.showFormattingMarks}
+        title={displayState.showFormattingMarks ? 'Hide formatting marks' : 'Show formatting marks (¶, ↵)'}
+      >
+        <span className="text-sm leading-none">¶</span>
+      </ToolbarButton>
+
+      <DisplayDropdown state={displayState} />
+
+      <ToolbarDivider />
+
+      <ToolbarButton
         onClick={onFocusMode}
         title="Focus mode (Ctrl+Shift+F)"
       >
@@ -362,6 +390,13 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
   const [conflictInfo, setConflictInfo] = useState<ConflictInfo | null>(null)
 
   const [focusMode, setFocusMode] = useState(false)
+
+  // Content-level manuscript display overrides — fed from the loaded entity's
+  // `entityData.displaySettings`. Combined with user + project levels via
+  // useDisplaySettings to produce the resolved cascade that's applied to the
+  // editor's prose surface.
+  const [contentDisplay, setContentDisplay] = useState<PartialManuscriptDisplaySettings>({})
+  const displayState = useDisplaySettings(sdk, projectId, entityId, contentDisplay)
 
   // Debounce timer for selection events
   const selectionTimeoutRef = useRef<number | null>(null)
@@ -1066,6 +1101,7 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
 
       applyContent(body, titleVal, count)
       setContentType(ct)
+      setContentDisplay(sanitizeDisplaySettings(serverContent.displaySettings))
       versionRef.current = version
 
       // Cache for instant loading next time
@@ -1375,6 +1411,7 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
             window.dispatchEvent(new CustomEvent('bobbinry:request-focus-mode', { detail: { active: true } }))
           }}
           onInsertImage={() => imageUploadFileRef.current?.click()}
+          displayState={displayState}
         />
       </div>
 
@@ -1435,7 +1472,7 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
         className="flex-1 overflow-y-auto cursor-text"
         onClick={handleEditorClick}
       >
-        <div className="max-w-2xl mx-auto px-8 pt-12 pb-[40vh]">
+        <div className={`max-w-2xl mx-auto px-8 pt-12 pb-[40vh] ${displaySettingsToClass(displayState.resolved)} ${displayState.showFormattingMarks ? 'ms-show-marks' : ''}`}>
           {/* Title - integrated into writing surface */}
           <input
             ref={titleInputRef}

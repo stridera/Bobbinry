@@ -348,3 +348,72 @@
   70%  { opacity: 0.9; transform: scale(1.0) rotate(-6deg); }
   100% { opacity: 0; transform: scale(0.1) rotate(-15deg); }
 }
+
+/* =============================================================================
+ * Manuscript display cascade (ms-* classes)
+ * Applied to both the TipTap editor root and the public reader prose container.
+ * Class set is produced by displaySettingsToClass() in @bobbinry/types.
+ * ============================================================================= */
+
+.ms-spacing-manuscript :where(p) {
+  margin-block: 0;
+}
+.ms-spacing-manuscript :where(p + p) {
+  margin-top: 0;
+}
+
+.ms-indent-first :where(p + p) {
+  text-indent: 2em;
+}
+.ms-indent-every :where(p) {
+  text-indent: 2em;
+}
+
+.ms-codewrap :where(pre) {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.ms-break-asterism :where(hr) {
+  border: none;
+  text-align: center;
+  margin-block: 2em;
+  height: auto;
+}
+.ms-break-asterism :where(hr)::after {
+  content: "* * *";
+  letter-spacing: 0.5em;
+  font-size: 1.1em;
+  opacity: 0.6;
+}
+.ms-break-blank-line :where(hr) {
+  border: none;
+  margin-block: 2em;
+  height: 1em;
+}
+/* ms-break-rule: rely on default <hr> rendering — no overrides needed. */
+
+.ms-dropcap :where(h1 + p, h2 + p)::first-letter {
+  float: left;
+  font-size: 3.2em;
+  line-height: 0.85;
+  padding-right: 0.08em;
+  padding-top: 0.1em;
+  font-weight: 600;
+}
+
+/* Editor-only: pilcrow marks at end of paragraphs, scoped to the editor root.
+ * The reader page never sets ms-show-marks. */
+.ms-show-marks :where(p)::after {
+  content: "¶";
+  margin-left: 0.4em;
+  opacity: 0.3;
+  font-weight: normal;
+}
+.ms-show-marks :where(br)::after {
+  content: "↵";
+  opacity: 0.3;
+  margin-left: 0.2em;
+}
+

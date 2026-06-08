@@ -17,6 +17,8 @@ import {
   projectCollections,
   projectCollectionMemberships,
   projectPublishConfig,
+  projectManuscriptDisplaySettings,
+  userManuscriptDisplaySettings,
   subscriptions,
   subscriptionTiers,
   userProfiles,
@@ -26,6 +28,11 @@ import {
   chapterAnnotations,
   rssFeedTokens
 } from '../db/schema'
+import {
+  resolveDisplaySettings,
+  sanitizeDisplaySettings,
+  type PartialManuscriptDisplaySettings
+} from '@bobbinry/types'
 import { eq, and, desc, asc, sql, isNull, or, count, inArray } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { env } from '../lib/env'
@@ -604,13 +611,16 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           content: sql<string>`(${entities.entityData}->>'body')`,
           publishedAt: chapterPublications.publishedAt,
           viewCount: chapterPublications.viewCount,
-          order: sql<number>`COALESCE((${entities.entityData}->>'order')::bigint, 0)`
+          order: sql<number>`COALESCE((${entities.entityData}->>'order')::bigint, 0)`,
+          contentDisplaySettings: sql<unknown>`(${entities.entityData}->'displaySettings')`,
+          projectOwnerId: projects.ownerId
         })
         .from(entities)
         .innerJoin(chapterPublications, and(
           eq(chapterPublications.chapterId, entities.id),
           eq(chapterPublications.isPublished, true)
         ))
+        .innerJoin(projects, eq(projects.id, entities.projectId))
         .where(and(
           eq(entities.id, chapterId),
           eq(entities.projectId, projectId)
@@ -620,6 +630,30 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       if (!chapter) {
         return reply.status(404).send({ error: 'Chapter not found', correlationId })
       }
+
+      // Resolve the manuscript display cascade: author user → project → content.
+      let userDisplay: PartialManuscriptDisplaySettings | null = null
+      let projectDisplay: PartialManuscriptDisplaySettings | null = null
+      try {
+        if (chapter.projectOwnerId) {
+          const userRows = await db
+            .select()
+            .from(userManuscriptDisplaySettings)
+            .where(eq(userManuscriptDisplaySettings.userId, chapter.projectOwnerId))
+            .limit(1)
+          if (userRows[0]) userDisplay = sanitizeDisplaySettings(userRows[0])
+        }
+        const projectRows = await db
+          .select()
+          .from(projectManuscriptDisplaySettings)
+          .where(eq(projectManuscriptDisplaySettings.projectId, projectId))
+          .limit(1)
+        if (projectRows[0]) projectDisplay = sanitizeDisplaySettings(projectRows[0])
+      } catch (err) {
+        fastify.log.warn({ err, correlationId }, 'Failed to load manuscript display cascade — using defaults')
+      }
+      const contentDisplay = sanitizeDisplaySettings(chapter.contentDisplaySettings)
+      const resolvedDisplay = resolveDisplaySettings(userDisplay, projectDisplay, contentDisplay)
 
       // Get navigation (previous/next chapters)
       const allChapters = await db
@@ -651,6 +685,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           previous: previousChapter?.id || null,
           next: nextChapter?.id || null
         },
+        resolvedDisplay,
         correlationId
       })
     } catch (error) {

@@ -7,6 +7,7 @@ import {
   projectFollows,
   userNotificationPreferences,
   userReadingPreferences,
+  userManuscriptDisplaySettings,
   betaReaders,
   projects,
   projectCollections,
@@ -894,6 +895,84 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
     } catch (error) {
       fastify.log.error(error)
       return reply.status(500).send({ error: 'Failed to update reading preferences' })
+    }
+  })
+
+  // ============================================================================
+  // MANUSCRIPT DISPLAY SETTINGS ROUTES (user defaults — cascade base)
+  // ============================================================================
+
+  fastify.get('/users/me/manuscript-display-settings', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    try {
+      const userId = request.user!.id
+
+      const rows = await db
+        .select()
+        .from(userManuscriptDisplaySettings)
+        .where(eq(userManuscriptDisplaySettings.userId, userId))
+        .limit(1)
+
+      if (rows.length === 0) {
+        return reply.status(200).send({
+          settings: {
+            userId,
+            paragraphSpacing: 'standard',
+            paragraphIndent: 'none',
+            codeBlockWrap: false,
+            sceneBreakStyle: 'asterism',
+            dropCaps: false,
+            showFormattingMarks: false
+          }
+        })
+      }
+      return reply.status(200).send({ settings: rows[0] })
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.status(500).send({ error: 'Failed to fetch manuscript display settings' })
+    }
+  })
+
+  fastify.put<{
+    Body: {
+      paragraphSpacing?: 'standard' | 'manuscript'
+      paragraphIndent?: 'none' | 'first-line' | 'every'
+      codeBlockWrap?: boolean
+      sceneBreakStyle?: 'asterism' | 'rule' | 'blank-line'
+      dropCaps?: boolean
+      showFormattingMarks?: boolean
+    }
+  }>('/users/me/manuscript-display-settings', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    try {
+      const userId = request.user!.id
+      const body = request.body ?? {}
+
+      const existing = await db
+        .select()
+        .from(userManuscriptDisplaySettings)
+        .where(eq(userManuscriptDisplaySettings.userId, userId))
+        .limit(1)
+
+      if (existing.length > 0) {
+        const [updated] = await db
+          .update(userManuscriptDisplaySettings)
+          .set({ ...body, updatedAt: new Date() })
+          .where(eq(userManuscriptDisplaySettings.userId, userId))
+          .returning()
+        return reply.status(200).send({ settings: updated })
+      } else {
+        const [created] = await db
+          .insert(userManuscriptDisplaySettings)
+          .values({ userId, ...body })
+          .returning()
+        return reply.status(201).send({ settings: created })
+      }
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.status(500).send({ error: 'Failed to update manuscript display settings' })
     }
   })
 
