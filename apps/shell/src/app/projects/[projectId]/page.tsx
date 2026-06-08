@@ -96,6 +96,7 @@ interface DashboardData {
       description: string
       icon?: string
       hasLeftPanel: boolean
+      core?: boolean
     }
   }>
   bobbinStats: Record<string, number>

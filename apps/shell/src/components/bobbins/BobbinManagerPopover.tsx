@@ -15,6 +15,7 @@ interface InstalledBobbin {
   manifest: {
     name: string
     description?: string
+    core?: boolean
   }
   installedAt: string
 }
@@ -188,6 +189,7 @@ export function BobbinManagerPopover({ projectId, installedBobbins, onOpenFullMa
                   {installedBobbins.map(bobbin => {
                     const scope = bobbin.scope || 'project'
                     const isShared = scope !== 'project'
+                    const isCore = bobbin.manifest?.core === true
                     return (
                       <div key={bobbin.id} className="flex items-center justify-between px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                         <div className="min-w-0">
@@ -195,6 +197,11 @@ export function BobbinManagerPopover({ projectId, installedBobbins, onOpenFullMa
                             <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                               {bobbin.manifest.name}
                             </p>
+                            {isCore && (
+                              <span className="text-[10px] px-1 py-0.5 rounded font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 uppercase tracking-wide">
+                                Core
+                              </span>
+                            )}
                             {isShared && (
                               <span className={`text-[10px] px-1 py-0.5 rounded font-medium ${
                                 scope === 'collection'
@@ -207,7 +214,14 @@ export function BobbinManagerPopover({ projectId, installedBobbins, onOpenFullMa
                           </div>
                           <p className="text-xs text-gray-400 dark:text-gray-500">v{bobbin.version}</p>
                         </div>
-                        {isShared ? (
+                        {isCore ? (
+                          <span
+                            className="text-xs text-gray-400 dark:text-gray-500 shrink-0 px-2 py-1"
+                            title="Core bobbins are built in and cannot be uninstalled"
+                          >
+                            Built in
+                          </span>
+                        ) : isShared ? (
                           <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0 px-2 py-1">
                             Shared
                           </span>
@@ -254,7 +268,14 @@ export function BobbinManagerPopover({ projectId, installedBobbins, onOpenFullMa
                             {bobbin.description}
                           </p>
                         </div>
-                        {bobbin.isInstalled ? (
+                        {bobbin.core ? (
+                          <span
+                            className="text-xs text-gray-500 dark:text-gray-400 shrink-0 px-2 py-1"
+                            title="Core bobbins are built in and cannot be uninstalled"
+                          >
+                            Built in
+                          </span>
+                        ) : bobbin.isInstalled ? (
                           <span className="text-xs text-green-600 dark:text-green-400 shrink-0 px-2 py-1">
                             Installed
                           </span>

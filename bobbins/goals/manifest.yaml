@@ -1,10 +1,11 @@
 id: goals
 name: Goals & Progress
-version: 1.0.0
+version: 1.0.1
 author: "Bobbins Core"
 description: "Word count goals, writing sessions, streaks, and progress visualization"
 tags: [goals, progress, writing, tracking]
 license: MIT
+category: write
 
 capabilities:
   publishable: false

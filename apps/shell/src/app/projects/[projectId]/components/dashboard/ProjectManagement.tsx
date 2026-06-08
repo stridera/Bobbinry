@@ -12,6 +12,7 @@ interface Bobbin {
   manifest: {
     name: string
     description: string
+    core?: boolean
   }
 }
 
@@ -175,18 +176,34 @@ export function ProjectManagement({ projectId, isArchived, bobbins, onArchiveCha
                   {bobbins.map((bobbin) => (
                     <div key={bobbin.id} className="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-medium text-sm text-gray-900 dark:text-gray-100">{bobbin.manifest.name}</h4>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-medium text-sm text-gray-900 dark:text-gray-100">{bobbin.manifest.name}</h4>
+                          {bobbin.manifest.core && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                              Core
+                            </span>
+                          )}
+                        </div>
                         {bobbin.manifest.description && (
                           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">{bobbin.manifest.description}</p>
                         )}
                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">v{bobbin.version}</p>
                       </div>
-                      <button
-                        onClick={() => setConfirmAction({ type: 'uninstall', bobbinId: bobbin.id, bobbinName: bobbin.manifest.name })}
-                        className="ml-3 px-3 py-1.5 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 border border-red-200 dark:border-red-800 rounded-lg hover:border-red-300 dark:hover:border-red-700 transition-colors text-xs cursor-pointer"
-                      >
-                        Uninstall
-                      </button>
+                      {bobbin.manifest.core ? (
+                        <span
+                          className="ml-3 px-3 py-1.5 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded-lg text-xs select-none"
+                          title="Core bobbins are built in and cannot be uninstalled"
+                        >
+                          Built in
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmAction({ type: 'uninstall', bobbinId: bobbin.id, bobbinName: bobbin.manifest.name })}
+                          className="ml-3 px-3 py-1.5 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 border border-red-200 dark:border-red-800 rounded-lg hover:border-red-300 dark:hover:border-red-700 transition-colors text-xs cursor-pointer"
+                        >
+                          Uninstall
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>

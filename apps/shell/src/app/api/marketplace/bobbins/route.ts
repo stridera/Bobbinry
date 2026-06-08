@@ -89,6 +89,8 @@ export async function GET() {
             description: manifest.description || '',
             tags: manifest.tags || [],
             license: manifest.license,
+            category: manifest.category,
+            core: manifest.core === true,
             visibility,
             install: manifest.install || undefined,
             capabilities: manifest.capabilities || {},

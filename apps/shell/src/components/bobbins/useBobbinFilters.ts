@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { BobbinMetadata, getBobbinCategory } from './types'
+import { BobbinMetadata } from './types'
 
 interface FilterOptions {
   searchQuery: string
@@ -30,9 +30,7 @@ export function useBobbinFilters(bobbins: BobbinMetadata[], options: FilterOptio
     }
 
     if (selectedCategory !== 'all') {
-      filtered = filtered.filter(bobbin =>
-        getBobbinCategory(bobbin.tags).includes(selectedCategory)
-      )
+      filtered = filtered.filter(bobbin => bobbin.category === selectedCategory)
     }
 
     if (filterMode === 'installed') {

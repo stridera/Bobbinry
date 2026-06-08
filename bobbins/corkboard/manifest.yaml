@@ -1,6 +1,6 @@
 id: corkboard
 name: Corkboard
-version: 1.0.1
+version: 1.0.2
 author: Bobbinry Team
 description: Visual board interface for organizing and reordering content cards
 tags:
@@ -9,6 +9,7 @@ tags:
   - kanban
   - ui-only
 license: Apache-2.0
+category: organize
 
 capabilities:
   publishable: false

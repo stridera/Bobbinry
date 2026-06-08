@@ -1,10 +1,11 @@
 id: dictionary-panel
 name: Dictionary Panel
-version: 1.2.1
+version: 1.2.2
 author: "Bobbins Samples"
 description: "Right-side panel with dictionary definitions and thesaurus. Looks up selected words via Free Dictionary API and Datamuse."
 tags: [panel, dictionary, thesaurus, pubsub]
 license: MIT
+category: augment
 capabilities: { publishable: false, external: true, ai: false, customViews: false }
 compatibility:
   minShellVersion: "0.1.0"

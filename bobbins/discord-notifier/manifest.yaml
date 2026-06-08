@@ -1,10 +1,11 @@
 id: discord-notifier
 name: Discord Notifier
-version: 1.0.3
+version: 1.0.4
 author: Bobbins Core
 description: Announce chapter publishes to Discord channels via webhooks. Map tiers to channels for targeted notifications.
 tags: [discord, notifications, integration, webhooks]
 license: MIT
+category: integration
 
 capabilities:
   external: true

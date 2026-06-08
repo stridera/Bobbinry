@@ -309,7 +309,14 @@ function BobbinsContent() {
                 bobbin={bobbin}
                 onViewDetails={() => setSelectedBobbin(bobbin)}
                 actionSlot={
-                  bobbin.isInstalled ? (
+                  bobbin.core ? (
+                    <span
+                      className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded-md select-none"
+                      title="Core bobbins are built in to every project and cannot be uninstalled"
+                    >
+                      Built in
+                    </span>
+                  ) : bobbin.isInstalled ? (
                     <div className="flex items-center gap-2">
                       {(bobbin as any).installedScope && (bobbin as any).installedScope !== 'project' && (
                         <span className={`text-xs px-2 py-1 rounded font-medium ${
@@ -350,7 +357,14 @@ function BobbinsContent() {
           bobbin={selectedBobbin}
           onClose={() => setSelectedBobbin(null)}
           actionSlot={
-            selectedBobbin.isInstalled ? (
+            selectedBobbin.core ? (
+              <span
+                className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded-md select-none"
+                title="Core bobbins are built in to every project and cannot be uninstalled"
+              >
+                Built in
+              </span>
+            ) : selectedBobbin.isInstalled ? (
               <button
                 onClick={() => { uninstallBobbin(selectedBobbin.id); setSelectedBobbin(null) }}
                 className="px-4 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700"

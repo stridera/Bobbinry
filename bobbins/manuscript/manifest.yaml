@@ -1,6 +1,6 @@
 id: manuscript
 name: Manuscript
-version: 1.0.0
+version: 1.0.1
 author: Bobbinry Team
 description: Complete manuscript management with books, chapters, and scenes
 tags:
@@ -8,6 +8,8 @@ tags:
   - manuscript
   - storytelling
 license: Apache-2.0
+category: write
+core: true
 
 capabilities:
   publishable: true

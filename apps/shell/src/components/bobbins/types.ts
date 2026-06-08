@@ -1,5 +1,16 @@
 export type BobbinScope = 'project' | 'collection' | 'global'
 
+export type BobbinCategory =
+  | 'write'
+  | 'organize'
+  | 'publish'
+  | 'import'
+  | 'export'
+  | 'augment'
+  | 'integration'
+  | 'backup'
+  | 'fun'
+
 export interface BobbinMetadata {
   id: string
   name: string
@@ -8,6 +19,9 @@ export interface BobbinMetadata {
   description: string
   tags: string[]
   license?: string
+  category?: BobbinCategory
+  visibility?: 'public' | 'none' | 'moderator'
+  core?: boolean
   scopes?: BobbinScope[]
   capabilities: {
     publishable?: boolean
@@ -41,38 +55,13 @@ export interface InstalledBobbin {
 
 export const CATEGORIES = [
   { id: 'all', label: 'All' },
-  { id: 'writing', label: 'Writing' },
-  { id: 'publishing', label: 'Publishing' },
-  { id: 'organization', label: 'Organization' },
-  { id: 'augmentation', label: 'Augmentation' },
+  { id: 'write', label: 'Write' },
+  { id: 'organize', label: 'Organize' },
+  { id: 'publish', label: 'Publish' },
+  { id: 'import', label: 'Import' },
+  { id: 'export', label: 'Export' },
+  { id: 'augment', label: 'Augment' },
+  { id: 'integration', label: 'Integration' },
+  { id: 'backup', label: 'Backup' },
+  { id: 'fun', label: 'Fun' },
 ] as const
-
-export const TAG_CATEGORY_MAP: Record<string, string> = {
-  writing: 'writing',
-  manuscript: 'writing',
-  editor: 'writing',
-  chapters: 'writing',
-  scenes: 'writing',
-  publishing: 'publishing',
-  publish: 'publishing',
-  export: 'publishing',
-  organization: 'organization',
-  corkboard: 'organization',
-  planning: 'organization',
-  worldbuilding: 'organization',
-  dictionary: 'organization',
-  glossary: 'organization',
-  ai: 'augmentation',
-  automation: 'augmentation',
-  enhancement: 'augmentation',
-  tools: 'augmentation',
-}
-
-export function getBobbinCategory(tags: string[]): string[] {
-  const categories = new Set<string>()
-  for (const tag of tags) {
-    const cat = TAG_CATEGORY_MAP[tag.toLowerCase()]
-    if (cat) categories.add(cat)
-  }
-  return categories.size > 0 ? Array.from(categories) : ['writing']
-}

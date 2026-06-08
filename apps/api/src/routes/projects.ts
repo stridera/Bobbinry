@@ -10,6 +10,11 @@ import { checkAndUpgradeBobbin, type UpgradeResult } from '../lib/bobbin-upgrade
 import { loadDiskManifests, loadManifestFromBobbinsPath } from '../lib/disk-manifests'
 import { getEffectiveBobbins } from '../lib/effective-bobbins'
 
+// Bobbins auto-installed on every new project and protected from uninstall.
+// Source of truth is each bobbin's manifest `core: true` flag; this list keeps
+// the create path from having to scan every manifest on disk to find them.
+const CORE_BOBBIN_IDS = ['manuscript', 'import', 'export'] as const
+
 const projectsPlugin: FastifyPluginAsync = async (fastify) => {
   // Create a new project (requires authentication)
   fastify.post<{
@@ -54,19 +59,42 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
         }
       }
 
-      // Create project with authenticated user as owner
-      const [project] = await db
-        .insert(projects)
-        .values({
-          name: name.trim(),
-          description: description?.trim(),
-          ownerId: user.id
-        })
-        .returning()
+      // Create the project and auto-install core bobbins in a single
+      // transaction so a partial setup can't ship — either the project lands
+      // with manuscript/import/export pre-installed, or nothing lands.
+      const coreManifests = await loadDiskManifests([...CORE_BOBBIN_IDS])
 
-      if (!project) {
-        return reply.status(500).send({ error: 'Failed to create project' })
-      }
+      const project = await db.transaction(async (tx) => {
+        const [created] = await tx
+          .insert(projects)
+          .values({
+            name: name.trim(),
+            description: description?.trim(),
+            ownerId: user.id
+          })
+          .returning()
+
+        if (!created) {
+          throw new Error('Project insert returned no row')
+        }
+
+        for (const bobbinId of CORE_BOBBIN_IDS) {
+          const manifest = coreManifests.get(bobbinId)
+          if (!manifest) {
+            fastify.log.warn({ bobbinId }, 'core bobbin manifest missing on disk; skipping auto-install')
+            continue
+          }
+          await tx.insert(bobbinsInstalled).values({
+            projectId: created.id,
+            bobbinId,
+            version: manifest.version,
+            manifestJson: manifest,
+            enabled: true
+          })
+        }
+
+        return created
+      })
 
       return reply.status(201).send(project)
     } catch (error) {
@@ -473,6 +501,17 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
       }
 
       const installedBobbin = installation[0]!
+
+      // Block uninstall of core infrastructure bobbins (manuscript/import/export).
+      // The UI hides the affordance; this is the server-side guard.
+      const diskManifests = await loadDiskManifests([bobbinId])
+      const diskManifest = diskManifests.get(bobbinId)
+      if (diskManifest?.core === true) {
+        return reply.status(400).send({
+          error: 'Core bobbin cannot be uninstalled',
+          bobbinId
+        })
+      }
 
       // Delete the installation
       await db

@@ -1,10 +1,11 @@
 id: timeline
 name: Timeline
-version: 1.0.0
+version: 1.0.1
 author: "Bobbins Core"
 description: "Chronological event tracking for plot and world history"
 tags: [timeline, chronology, worldbuilding, planning]
 license: MIT
+category: organize
 
 capabilities:
   publishable: false

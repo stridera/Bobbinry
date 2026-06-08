@@ -417,7 +417,8 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
             name: manifest?.name || b.bobbinId,
             description: manifest?.description || '',
             icon: typeof manifest?.icon === 'string' ? manifest.icon : undefined,
-            hasLeftPanel
+            hasLeftPanel,
+            core: manifest?.core === true
           }
         }
       })

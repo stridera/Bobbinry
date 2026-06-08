@@ -1,10 +1,11 @@
 id: relationships
 name: Relationships
-version: 1.0.0
+version: 1.0.1
 author: "Bobbins Core"
 description: "Graph and matrix views for entity connections across any bobbin"
 tags: [relationships, graph, connections, worldbuilding]
 license: MIT
+category: organize
 
 capabilities:
   publishable: false

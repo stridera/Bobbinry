@@ -1,10 +1,11 @@
 id: ai-tools
 name: AI Tools
-version: 0.2.0
+version: 0.2.1
 author: Bobbins Core
 description: Context-adaptive AI tools for your writing. Provides feedback, name generation, brainstorming, and more — never writes or rewrites your content.
 tags: [ai, analysis, feedback, synopsis]
 license: MIT
+category: augment
 visibility: none  # Hidden from all users; owners bypass visibility restrictions
 
 capabilities:

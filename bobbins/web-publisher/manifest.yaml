@@ -1,10 +1,11 @@
 id: web-publisher
 name: Web Publisher
-version: 1.1.1
+version: 1.1.2
 author: Bobbins Core
 description: Native publishing suite with reader delivery, analytics, and release automation
 tags: [publishing, reader, automation, scheduling, analytics, community]
 license: MIT
+category: publish
 
 capabilities:
   publishable: true

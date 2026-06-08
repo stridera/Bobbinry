@@ -1,3 +1,16 @@
+export type BobbinCategory =
+  | 'write'
+  | 'organize'
+  | 'publish'
+  | 'import'
+  | 'export'
+  | 'augment'
+  | 'integration'
+  | 'backup'
+  | 'fun'
+
+export type BobbinVisibility = 'public' | 'none' | 'moderator'
+
 export interface Manifest {
   // Basic metadata
   id: string
@@ -7,6 +20,18 @@ export interface Manifest {
   description: string
   tags?: string[]
   license?: string
+
+  // Marketplace category — drives the filter pills on /bobbins.
+  // Bobbins without a category appear only under "All".
+  category?: BobbinCategory
+
+  // Marketplace visibility. 'none' hides from non-owner users entirely;
+  // 'moderator' is reserved for future role-gated visibility.
+  visibility?: BobbinVisibility
+
+  // Core infrastructure bobbins are auto-installed on project creation
+  // and cannot be uninstalled. Reserved for manuscript / import / export.
+  core?: boolean
 
   // Installation scope configuration
   install?: {
