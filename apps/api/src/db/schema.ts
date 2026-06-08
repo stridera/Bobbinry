@@ -783,6 +783,8 @@ export const uploads = pgTable('uploads', {
 export const apiKeys = pgTable('api_keys', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  // When set, the key is restricted to a single project; null means access to all the user's projects.
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'set null' }),
   name: varchar('name', { length: 100 }).notNull(),
   keyPrefix: varchar('key_prefix', { length: 12 }).notNull(),
   keyHash: varchar('key_hash', { length: 64 }).unique().notNull(),
@@ -794,6 +796,7 @@ export const apiKeys = pgTable('api_keys', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => ({
   userIdx: index('api_keys_user_idx').on(table.userId),
+  projectIdx: index('api_keys_project_idx').on(table.projectId),
 }))
 
 // RSS feed tokens - per-user secrets embedded in feed URLs for subscriber access.

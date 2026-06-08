@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { SiteNav } from '@/components/SiteNav'
 import { apiFetch } from '@/lib/api'
 
-type ResourceId = 'projects' | 'entities' | 'stats'
+type ResourceId = 'projects' | 'manuscript' | 'entities' | 'stats'
 type Level = 'none' | 'read' | 'write'
 
 interface Resource {
@@ -20,14 +20,20 @@ interface Resource {
 const RESOURCES: Resource[] = [
   {
     id: 'projects',
-    label: 'Projects',
-    description: 'Your project list, settings, and metadata.',
+    label: 'Project info',
+    description: 'Project list, settings, and metadata — not the manuscript or entities.',
+    maxLevel: 'write',
+  },
+  {
+    id: 'manuscript',
+    label: 'Manuscript',
+    description: 'Chapters, scenes, and draft text — the manuscript itself.',
     maxLevel: 'write',
   },
   {
     id: 'entities',
     label: 'Entities',
-    description: 'Characters, places, lore, and other collection items — plus type definitions.',
+    description: 'Characters, places, lore, and custom entity types — the entities panel.',
     maxLevel: 'write',
   },
   {
@@ -46,18 +52,21 @@ const LEVEL_LABEL: Record<Level, string> = {
 
 const EMPTY_PERMISSIONS: Record<ResourceId, Level> = {
   projects: 'none',
+  manuscript: 'none',
   entities: 'none',
   stats: 'none',
 }
 
 const READ_ONLY_PRESET: Record<ResourceId, Level> = {
   projects: 'read',
+  manuscript: 'read',
   entities: 'read',
   stats: 'read',
 }
 
 const FULL_ACCESS_PRESET: Record<ResourceId, Level> = {
   projects: 'write',
+  manuscript: 'write',
   entities: 'write',
   stats: 'read',
 }
@@ -103,9 +112,16 @@ interface ApiKey {
   name: string
   keyPrefix: string
   scopes: string[]
+  projectId: string | null
+  projectName: string | null
   lastUsedAt: string | null
   expiresAt: string | null
   createdAt: string
+}
+
+interface ProjectOption {
+  id: string
+  name: string
 }
 
 export default function ApiKeysPage() {
@@ -122,6 +138,11 @@ export default function ApiKeysPage() {
     useState<Record<ResourceId, Level>>(EMPTY_PERMISSIONS)
   const [expiresInDays, setExpiresInDays] = useState<string>('')
   const [creating, setCreating] = useState(false)
+
+  // Project access state
+  const [projectScope, setProjectScope] = useState<'all' | 'single'>('all')
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('')
+  const [projects, setProjects] = useState<ProjectOption[]>([])
 
   const selectedScopes = permissionsToScopes(permissions)
   const isReadOnlyPreset = samePermissions(permissions, READ_ONLY_PRESET)
@@ -151,6 +172,22 @@ export default function ApiKeysPage() {
     }
   }, [apiToken])
 
+  const loadProjects = useCallback(async () => {
+    if (!apiToken) return
+    try {
+      const res = await apiFetch('/api/projects', apiToken)
+      if (res.ok) {
+        const data = await res.json()
+        const list: ProjectOption[] = Array.isArray(data)
+          ? data.map((p: { id: string; name: string }) => ({ id: p.id, name: p.name }))
+          : []
+        setProjects(list)
+      }
+    } catch (err) {
+      console.error('Failed to load projects:', err)
+    }
+  }, [apiToken])
+
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.replace('/login')
@@ -159,11 +196,13 @@ export default function ApiKeysPage() {
     if (status === 'authenticated') {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
       loadKeys()
+      loadProjects()
     }
-  }, [status, loadKeys, router])
+  }, [status, loadKeys, loadProjects, router])
 
   const createKey = async () => {
     if (!apiToken || !name.trim() || selectedScopes.length === 0) return
+    if (projectScope === 'single' && !selectedProjectId) return
     setCreating(true)
     setError(null)
     try {
@@ -173,6 +212,9 @@ export default function ApiKeysPage() {
       }
       if (expiresInDays && parseInt(expiresInDays) > 0) {
         body.expiresInDays = parseInt(expiresInDays)
+      }
+      if (projectScope === 'single' && selectedProjectId) {
+        body.projectId = selectedProjectId
       }
 
       const res = await apiFetch('/api/api-keys', apiToken, {
@@ -188,6 +230,8 @@ export default function ApiKeysPage() {
         setName('')
         setPermissions(EMPTY_PERMISSIONS)
         setExpiresInDays('')
+        setProjectScope('all')
+        setSelectedProjectId('')
         setShowCreate(false)
         await loadKeys()
       } else {
@@ -450,6 +494,48 @@ export default function ApiKeysPage() {
                 </div>
               </div>
 
+              {/* Project access */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Project access
+                </label>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                  Limit this key to a single project, or let it touch all your projects.
+                </p>
+                <div className="inline-flex items-center rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-0.5 mb-2">
+                  {(['all', 'single'] as const).map(scope => {
+                    const active = projectScope === scope
+                    return (
+                      <button
+                        key={scope}
+                        type="button"
+                        onClick={() => setProjectScope(scope)}
+                        className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+                          active
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+                        }`}
+                        aria-pressed={active}
+                      >
+                        {scope === 'all' ? 'All projects' : 'Single project'}
+                      </button>
+                    )
+                  })}
+                </div>
+                {projectScope === 'single' && (
+                  <select
+                    value={selectedProjectId}
+                    onChange={e => setSelectedProjectId(e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900/50 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm text-gray-900 dark:text-gray-100"
+                  >
+                    <option value="">Select a project…</option>
+                    {projects.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
               {/* Expiry */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
@@ -472,7 +558,12 @@ export default function ApiKeysPage() {
               <div className="flex items-center gap-3 pt-2">
                 <button
                   onClick={createKey}
-                  disabled={creating || !name.trim() || selectedScopes.length === 0}
+                  disabled={
+                    creating ||
+                    !name.trim() ||
+                    selectedScopes.length === 0 ||
+                    (projectScope === 'single' && !selectedProjectId)
+                  }
                   className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
                 >
                   {creating ? 'Creating...' : 'Create key'}
@@ -517,6 +608,15 @@ export default function ApiKeysPage() {
                         </code>
                       </div>
                       <div className="flex flex-wrap gap-1.5 mt-2">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium ${
+                            key.projectId
+                              ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400'
+                              : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+                          }`}
+                        >
+                          {key.projectId ? `Project: ${key.projectName ?? 'unknown'}` : 'All projects'}
+                        </span>
                         {groupScopesForDisplay(key.scopes).map(g => (
                           <span
                             key={g.id}
@@ -581,7 +681,9 @@ export default function ApiKeysPage() {
             <summary className="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer list-none hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
               <div>
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Endpoint reference</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Every endpoint reachable with an API key, grouped by required scope.</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Every endpoint reachable with an API key, grouped by required scope. Entity endpoints route by collection — manuscript content (collection <code className="text-[10px] bg-gray-100 dark:bg-gray-800 px-1 rounded">content</code>) needs <code className="text-[10px] bg-gray-100 dark:bg-gray-800 px-1 rounded">manuscript:*</code>; everything else needs <code className="text-[10px] bg-gray-100 dark:bg-gray-800 px-1 rounded">entities:*</code>.
+                </p>
               </div>
               <svg
                 className="w-4 h-4 text-gray-400 transition-transform group-open:rotate-180 flex-shrink-0"
@@ -608,14 +710,21 @@ export default function ApiKeysPage() {
                       ['GET /api/projects', 'projects:read', 'List your projects'],
                       ['GET /api/projects/:projectId', 'projects:read', 'Get a single project'],
                       ['POST /api/projects', 'projects:write', 'Create a new project'],
-                      ['GET /api/collections/:collection/entities', 'entities:read', 'Query entities in a collection'],
-                      ['GET /api/entities/:entityId', 'entities:read', 'Get a single entity'],
+                      ['GET /api/collections/content/entities', 'manuscript:read', 'Query manuscript chapters/scenes'],
+                      ['GET /api/collections/:collection/entities', 'entities:read', 'Query entities in any other collection'],
+                      ['GET /api/entities/:entityId  (content)', 'manuscript:read', 'Get a single manuscript chapter/scene'],
+                      ['GET /api/entities/:entityId  (other)', 'entities:read', 'Get a single non-manuscript entity'],
+                      ['POST /api/entities  (content)', 'manuscript:write', 'Create a manuscript chapter/scene'],
+                      ['POST /api/entities  (other)', 'entities:write', 'Create a non-manuscript entity'],
+                      ['PUT /api/entities/:entityId  (content)', 'manuscript:write', 'Update a manuscript chapter/scene'],
+                      ['PUT /api/entities/:entityId  (other)', 'entities:write', 'Update a non-manuscript entity'],
+                      ['DELETE /api/entities/:entityId  (content)', 'manuscript:write', 'Delete a manuscript chapter/scene'],
+                      ['DELETE /api/entities/:entityId  (other)', 'entities:write', 'Delete a non-manuscript entity'],
+                      ['POST /api/entities/batch/atomic', 'manuscript:write + entities:write', 'Atomic batch — needs scopes for every collection it touches'],
+                      ['POST /api/import/parse', 'manuscript:write', 'Parse an uploaded manuscript source file'],
+                      ['POST /api/import/commit', 'manuscript:write', 'Commit imported manuscript chapters'],
                       ['GET /api/projects/:projectId/entity-types', 'entities:read', 'List entity type definitions'],
                       ['GET /api/projects/:projectId/entity-types/:typeId', 'entities:read', 'Get a single entity type definition'],
-                      ['POST /api/entities', 'entities:write', 'Create an entity'],
-                      ['PUT /api/entities/:entityId', 'entities:write', 'Update an entity'],
-                      ['DELETE /api/entities/:entityId', 'entities:write', 'Delete an entity'],
-                      ['POST /api/entities/batch/atomic', 'entities:write', 'Atomic batch create / update / delete'],
                       ['POST /api/projects/:projectId/entity-types', 'entities:write', 'Create an entity type definition'],
                       ['PUT /api/projects/:projectId/entity-types/:typeId', 'entities:write', 'Update an entity type definition'],
                       ['DELETE /api/projects/:projectId/entity-types/:typeId', 'entities:write', 'Delete an entity type definition'],
@@ -625,7 +734,7 @@ export default function ApiKeysPage() {
                       ['GET /api/users/me/recent-activity', 'stats:read', 'Recent entity edits across projects'],
                     ] as const
                   ).map(([endpoint, scope, desc]) => {
-                    const isWrite = scope.endsWith(':write')
+                    const isWrite = scope.includes(':write')
                     return (
                       <tr key={endpoint}>
                         <td className="px-4 py-2 font-mono text-[11px] text-gray-700 dark:text-gray-300 whitespace-nowrap">

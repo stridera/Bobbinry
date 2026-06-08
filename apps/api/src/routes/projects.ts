@@ -82,11 +82,15 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
     try {
       const user = request.user!
 
-      // Only return projects owned by the authenticated user (exclude trashed)
+      // Project-scoped API keys see only their one project.
+      const restriction = request.apiKeyAuth && request.apiKeyProjectId
+        ? eq(projects.id, request.apiKeyProjectId)
+        : undefined
+
       const projectList = await db
         .select()
         .from(projects)
-        .where(and(eq(projects.ownerId, user.id), isNull(projects.deletedAt)))
+        .where(and(eq(projects.ownerId, user.id), isNull(projects.deletedAt), restriction))
 
       return reply.status(200).send(projectList)
     } catch (error) {

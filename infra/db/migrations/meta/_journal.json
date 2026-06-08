@@ -211,6 +211,13 @@
       "when": 1779586383621,
       "tag": "0030_admin_report_improvements",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1780934662491,
+      "tag": "0031_api_key_project_scope",
+      "breakpoints": true
     }
   ]
 }

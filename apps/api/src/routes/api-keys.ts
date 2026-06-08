@@ -8,13 +8,22 @@
 import { FastifyInstance } from 'fastify'
 import { randomBytes } from 'crypto'
 import { db } from '../db/connection'
-import { apiKeys } from '../db/schema'
+import { apiKeys, projects } from '../db/schema'
 import { eq, and, isNull } from 'drizzle-orm'
 import { sql } from 'drizzle-orm'
-import { requireAuth, requireVerified, denyApiKeyAuth, hashApiKey, clearApiKeyCache } from '../middleware/auth'
+import { requireAuth, requireVerified, denyApiKeyAuth, requireProjectOwnership, hashApiKey, clearApiKeyCache } from '../middleware/auth'
 import { getUserMembershipTier } from '../lib/membership'
 
-const VALID_SCOPES = ['projects:read', 'projects:write', 'entities:read', 'entities:write', 'stats:read', 'profile:read'] as const
+const VALID_SCOPES = [
+  'projects:read',
+  'projects:write',
+  'manuscript:read',
+  'manuscript:write',
+  'entities:read',
+  'entities:write',
+  'stats:read',
+  'profile:read',
+] as const
 const FREE_KEY_LIMIT = 5
 const SUPPORTER_KEY_LIMIT = 10
 
@@ -39,12 +48,13 @@ export default async function apiKeysPlugin(fastify: FastifyInstance) {
       name: string
       scopes: string[]
       expiresInDays?: number
+      projectId?: string | null
     }
   }>('/api-keys', {
     preHandler: [requireAuth, requireVerified, denyApiKeyAuth]
   }, async (request, reply) => {
     try {
-      const { name, scopes, expiresInDays } = request.body
+      const { name, scopes, expiresInDays, projectId } = request.body
       const userId = request.user!.id
 
       // Validate name
@@ -68,6 +78,18 @@ export default async function apiKeysPlugin(fastify: FastifyInstance) {
       }
       // Deduplicate
       const uniqueScopes = [...new Set(scopes)]
+
+      // Validate per-project restriction: caller must own the named project.
+      // null/undefined leaves the key unscoped (access to all owned projects).
+      let restrictedProjectId: string | null = null
+      if (projectId !== undefined && projectId !== null) {
+        if (typeof projectId !== 'string') {
+          return reply.status(400).send({ error: 'projectId must be a string or null' })
+        }
+        const ok = await requireProjectOwnership(request, reply, projectId)
+        if (!ok) return // requireProjectOwnership already wrote the response
+        restrictedProjectId = projectId
+      }
 
       // Check key limit by membership tier
       const tier = await getUserMembershipTier(userId)
@@ -104,6 +126,7 @@ export default async function apiKeysPlugin(fastify: FastifyInstance) {
         .insert(apiKeys)
         .values({
           userId,
+          projectId: restrictedProjectId,
           name: name.trim(),
           keyPrefix,
           keyHash,
@@ -115,6 +138,7 @@ export default async function apiKeysPlugin(fastify: FastifyInstance) {
           name: apiKeys.name,
           keyPrefix: apiKeys.keyPrefix,
           scopes: apiKeys.scopes,
+          projectId: apiKeys.projectId,
           expiresAt: apiKeys.expiresAt,
           createdAt: apiKeys.createdAt,
         })
@@ -125,6 +149,7 @@ export default async function apiKeysPlugin(fastify: FastifyInstance) {
         name: created!.name,
         keyPrefix: created!.keyPrefix,
         scopes: created!.scopes,
+        projectId: created!.projectId,
         expiresAt: created!.expiresAt,
         createdAt: created!.createdAt,
       })
@@ -150,11 +175,14 @@ export default async function apiKeysPlugin(fastify: FastifyInstance) {
           name: apiKeys.name,
           keyPrefix: apiKeys.keyPrefix,
           scopes: apiKeys.scopes,
+          projectId: apiKeys.projectId,
+          projectName: projects.name,
           lastUsedAt: apiKeys.lastUsedAt,
           expiresAt: apiKeys.expiresAt,
           createdAt: apiKeys.createdAt,
         })
         .from(apiKeys)
+        .leftJoin(projects, eq(apiKeys.projectId, projects.id))
         .where(and(
           eq(apiKeys.userId, userId),
           isNull(apiKeys.revokedAt)

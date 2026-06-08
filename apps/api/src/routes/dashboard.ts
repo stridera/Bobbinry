@@ -37,6 +37,9 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
       if (includeArchived === 'false') {
         conditions.push(eq(projects.isArchived, false))
       }
+      if (request.apiKeyAuth && request.apiKeyProjectId) {
+        conditions.push(eq(projects.id, request.apiKeyProjectId))
+      }
 
       const projectsQuery = db
         .select({
@@ -97,7 +100,10 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
           .where(and(
             eq(projects.ownerId, userId),
             eq(projects.isArchived, false),
-            isNull(projects.deletedAt)
+            isNull(projects.deletedAt),
+            request.apiKeyAuth && request.apiKeyProjectId
+              ? eq(projects.id, request.apiKeyProjectId)
+              : undefined
           ))
       ])
 
@@ -137,11 +143,18 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
       const userId = request.user!.id
       const { limit = '50' } = request.query
 
-      // Get user's project IDs (exclude trashed)
+      // Get user's project IDs (exclude trashed). Project-scoped API keys
+      // see activity from their one project only.
       const userProjects = await db
         .select({ id: projects.id })
         .from(projects)
-        .where(and(eq(projects.ownerId, userId), isNull(projects.deletedAt)))
+        .where(and(
+          eq(projects.ownerId, userId),
+          isNull(projects.deletedAt),
+          request.apiKeyAuth && request.apiKeyProjectId
+            ? eq(projects.id, request.apiKeyProjectId)
+            : undefined
+        ))
 
       const projectIds = userProjects.map(p => p.id)
 
@@ -183,6 +196,10 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     try {
       const userId = request.user!.id
+      // Project-scoped API keys narrow every aggregation below to their project.
+      const keyProjectFilter = request.apiKeyAuth && request.apiKeyProjectId
+        ? eq(projects.id, request.apiKeyProjectId)
+        : undefined
 
       // Get project count (exclude trashed)
       const [projectStats] = await db
@@ -191,7 +208,7 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
           archived: sql<string>`COUNT(CASE WHEN ${projects.isArchived} THEN 1 END)::text`
         })
         .from(projects)
-        .where(and(eq(projects.ownerId, userId), isNull(projects.deletedAt)))
+        .where(and(eq(projects.ownerId, userId), isNull(projects.deletedAt), keyProjectFilter))
 
       // Get collection count (exclude trashed)
       const [collectionStats] = await db
@@ -218,7 +235,7 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
       const userProjects = await db
         .select({ id: projects.id })
         .from(projects)
-        .where(and(eq(projects.ownerId, userId), isNull(projects.deletedAt)))
+        .where(and(eq(projects.ownerId, userId), isNull(projects.deletedAt), keyProjectFilter))
 
       const projectIds = userProjects.map(p => p.id)
 

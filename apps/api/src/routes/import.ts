@@ -17,7 +17,7 @@ import { z } from 'zod'
 import { and, eq, sql } from 'drizzle-orm'
 import { db } from '../db/connection'
 import { entities, uploads } from '../db/schema'
-import { requireAuth, requireProjectOwnership, requireScope } from '../middleware/auth'
+import { requireAuth, requireProjectOwnership, assertEntityScope } from '../middleware/auth'
 import { getObject, deleteObject } from '../lib/s3'
 import {
   findBobbinForCollectionAcrossScopes,
@@ -87,7 +87,7 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.post<{
     Body: { fileKey: string; projectId: string }
   }>('/import/parse', {
-    preHandler: [requireAuth, requireScope('entities:write')],
+    preHandler: [requireAuth],
   }, async (request, reply) => {
     const startedAt = Date.now()
     let resolvedFormat: string | null = null
@@ -112,6 +112,10 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
       const user = request.user!
       resolvedProjectId = projectId
       resolvedUserId = user.id
+
+      // Import always produces manuscript content (chapters/scenes) — gate on the
+      // manuscript scope so a key without it can't seed the manuscript indirectly.
+      if (!assertEntityScope(request, reply, 'content', 'write')) return
 
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
       if (!hasAccess) return
@@ -273,7 +277,7 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
       segments: Array<{ title: string; html: string }>
     }
   }>('/import/commit', {
-    preHandler: [requireAuth, requireScope('entities:write')],
+    preHandler: [requireAuth],
   }, async (request, reply) => {
     const startedAt = Date.now()
     let resolvedProjectId: string | null = null
@@ -300,6 +304,9 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
       resolvedProjectId = projectId
       resolvedUserId = user.id
       resolvedContainerId = containerId
+
+      // Commit writes manuscript chapters — gate on the manuscript scope.
+      if (!assertEntityScope(request, reply, 'content', 'write')) return
 
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
       if (!hasAccess) return

@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { db } from '../db/connection'
 import { entities } from '../db/schema'
 import { eq, and, sql, or } from 'drizzle-orm'
-import { requireAuth, requireProjectOwnership, requireScope } from '../middleware/auth'
+import { requireAuth, requireProjectOwnership, assertEntityScope } from '../middleware/auth'
 import { serverEventBus, contentEdited } from '../lib/event-bus'
 import { findBobbinForCollectionAcrossScopes } from '../lib/disk-manifests'
 import { getEffectiveBobbins, getCollectionIdsForProject, buildScopeCondition } from '../lib/effective-bobbins'
@@ -174,7 +174,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       fields?: string
     }
   }>('/collections/:collection/entities', {
-    preHandler: [requireAuth, requireScope('entities:read')]
+    preHandler: [requireAuth]
   }, async (request, reply) => {
     try {
       // Validate input
@@ -184,6 +184,8 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       const { collection } = params
       const { projectId, limit, offset, search, filters, fields } = query
       const fieldSet = parseFieldsParam(fields)
+
+      if (!assertEntityScope(request, reply, collection, 'read')) return
 
       // Check project ownership
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
@@ -295,12 +297,14 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       data: Record<string, any>
     }
   }>('/entities', {
-    preHandler: [requireAuth, requireScope('entities:write')]
+    preHandler: [requireAuth]
   }, async (request, reply) => {
     try {
       // Validate input
       const body = EntityCreateSchema.parse(request.body)
       const { collection, projectId, data } = body
+
+      if (!assertEntityScope(request, reply, collection, 'write')) return
 
       // Check project ownership
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
@@ -402,7 +406,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       expectedVersion?: number
     }
   }>('/entities/:entityId', {
-    preHandler: [requireAuth, requireScope('entities:write')]
+    preHandler: [requireAuth]
   }, async (request, reply) => {
     try {
       const { entityId } = request.params
@@ -410,6 +414,8 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       // Validate input with Zod
       const body = EntityUpdateSchema.parse(request.body)
       const { collection, projectId, data, expectedVersion } = body
+
+      if (!assertEntityScope(request, reply, collection, 'write')) return
 
       // Check project ownership
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
@@ -581,11 +587,13 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       collection: string
     }
   }>('/entities/:entityId', {
-    preHandler: [requireAuth, requireScope('entities:write')]
+    preHandler: [requireAuth]
   }, async (request, reply) => {
     try {
       const { entityId } = request.params
       const { projectId, collection } = request.query
+
+      if (!assertEntityScope(request, reply, collection, 'write')) return
 
       // Check project ownership
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
@@ -642,11 +650,13 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       items: Array<Record<string, any>>
     }
   }>('/entities/batch', {
-    preHandler: [requireAuth, requireScope('entities:write')]
+    preHandler: [requireAuth]
   }, async (request, reply) => {
     try {
       const body = EntityBatchCreateSchema.parse(request.body)
       const { collection, projectId, items } = body
+
+      if (!assertEntityScope(request, reply, collection, 'write')) return
 
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
       if (!hasAccess) return
@@ -755,13 +765,21 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       }>
     }
   }>('/entities/batch/atomic', {
-    preHandler: [requireAuth, requireScope('entities:write')]
+    preHandler: [requireAuth]
   }, async (request, reply) => {
     try {
       const { projectId, operations } = request.body
 
       if (!operations || operations.length === 0) {
         return reply.status(400).send({ error: 'No operations provided' })
+      }
+
+      // Scope check per distinct collection — a mixed batch needs scopes for
+      // every collection it touches (a manuscript-only key can't update
+      // characters in the same call).
+      const distinctCollections = new Set(operations.map(o => o.collection))
+      for (const collection of distinctCollections) {
+        if (!assertEntityScope(request, reply, collection, 'write')) return
       }
 
       // Check project ownership
@@ -930,11 +948,13 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       collection: string
     }
   }>('/entities/:entityId', {
-    preHandler: [requireAuth, requireScope('entities:read')]
+    preHandler: [requireAuth]
   }, async (request, reply) => {
     try {
       const { entityId } = request.params
       const { projectId, collection } = request.query
+
+      if (!assertEntityScope(request, reply, collection, 'read')) return
 
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
       if (!hasAccess) return
@@ -976,11 +996,13 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       variant?: string
     }
   }>('/entities/:entityId', {
-    preHandler: [requireAuth, requireScope('entities:read')]
+    preHandler: [requireAuth]
   }, async (request, reply) => {
     try {
       const { entityId } = request.params
       const { projectId, collection, variant } = request.query
+
+      if (!assertEntityScope(request, reply, collection, 'read')) return
 
       // Check project ownership
       const hasAccess = await requireProjectOwnership(request, reply, projectId)

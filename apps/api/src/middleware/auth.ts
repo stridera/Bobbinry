@@ -50,20 +50,20 @@ export function clearUserCache(userId: string): void {
 // propagates to peer instances within a few seconds (clearApiKeyCache only
 // clears the local Map).
 const API_KEY_CACHE_TTL_MS = 5_000
-const apiKeyCache = new Map<string, { userId: string; scopes: string[]; tier: MembershipTier; expiresAt: number }>()
+const apiKeyCache = new Map<string, { userId: string; scopes: string[]; projectId: string | null; tier: MembershipTier; expiresAt: number }>()
 
-function getCachedApiKey(keyHash: string): { userId: string; scopes: string[]; tier: MembershipTier } | null {
+function getCachedApiKey(keyHash: string): { userId: string; scopes: string[]; projectId: string | null; tier: MembershipTier } | null {
   const entry = apiKeyCache.get(keyHash)
   if (!entry) return null
   if (Date.now() > entry.expiresAt) {
     apiKeyCache.delete(keyHash)
     return null
   }
-  return { userId: entry.userId, scopes: entry.scopes, tier: entry.tier }
+  return { userId: entry.userId, scopes: entry.scopes, projectId: entry.projectId, tier: entry.tier }
 }
 
-function cacheApiKey(keyHash: string, userId: string, scopes: string[], tier: MembershipTier): void {
-  apiKeyCache.set(keyHash, { userId, scopes, tier, expiresAt: Date.now() + API_KEY_CACHE_TTL_MS })
+function cacheApiKey(keyHash: string, userId: string, scopes: string[], projectId: string | null, tier: MembershipTier): void {
+  apiKeyCache.set(keyHash, { userId, scopes, projectId, tier, expiresAt: Date.now() + API_KEY_CACHE_TTL_MS })
 }
 
 /** Clear cached API key entry (e.g. on revocation) */
@@ -88,6 +88,8 @@ declare module 'fastify' {
     user?: AuthenticatedUser
     apiKeyAuth?: boolean
     apiKeyScopes?: string[]
+    // When set, the API key is restricted to a single project.
+    apiKeyProjectId?: string | null
   }
 }
 
@@ -165,7 +167,7 @@ async function verifyToken(token: string): Promise<{ id: string; email?: string;
  * Resolve an API key token to a user and scopes.
  * Returns null if the token is not a valid API key.
  */
-async function resolveApiKey(token: string): Promise<{ user: AuthenticatedUser; scopes: string[] } | null> {
+async function resolveApiKey(token: string): Promise<{ user: AuthenticatedUser; scopes: string[]; projectId: string | null } | null> {
   if (!token.startsWith('bby_')) return null
 
   const keyHash = hashApiKey(token)
@@ -177,7 +179,7 @@ async function resolveApiKey(token: string): Promise<{ user: AuthenticatedUser; 
     if (user) {
       // Fire-and-forget lastUsedAt update
       db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.keyHash, keyHash)).catch(() => {})
-      return { user, scopes: cached.scopes }
+      return { user, scopes: cached.scopes, projectId: cached.projectId }
     }
   }
 
@@ -187,6 +189,7 @@ async function resolveApiKey(token: string): Promise<{ user: AuthenticatedUser; 
       id: apiKeys.id,
       userId: apiKeys.userId,
       scopes: apiKeys.scopes,
+      projectId: apiKeys.projectId,
     })
     .from(apiKeys)
     .where(and(
@@ -217,12 +220,12 @@ async function resolveApiKey(token: string): Promise<{ user: AuthenticatedUser; 
 
   // Cache both the key and user
   cacheUser(user)
-  cacheApiKey(keyHash, user.id, key.scopes, tier)
+  cacheApiKey(keyHash, user.id, key.scopes, key.projectId, tier)
 
   // Fire-and-forget lastUsedAt update
   db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.keyHash, keyHash)).catch(() => {})
 
-  return { user, scopes: key.scopes }
+  return { user, scopes: key.scopes, projectId: key.projectId }
 }
 
 /**
@@ -239,6 +242,7 @@ async function authenticateRequest(request: FastifyRequest): Promise<{ user: Aut
     if (!result) return null
     request.apiKeyAuth = true
     request.apiKeyScopes = result.scopes
+    request.apiKeyProjectId = result.projectId
     return { user: result.user }
   }
 
@@ -382,6 +386,31 @@ export function requireScope(scope: string) {
 }
 
 /**
+ * Pick the right scope for an entity operation based on its collection.
+ * Manuscript content (collection 'content') is gated by manuscript:*; everything
+ * else (characters, places, lore, type definitions, custom types) is gated by
+ * entities:*. JWT auth always passes through (all scopes implicit).
+ *
+ * Returns true when the caller may proceed. On rejection, writes a 403 to
+ * `reply` and returns false — caller should `return` immediately.
+ */
+export function assertEntityScope(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  collection: string,
+  action: 'read' | 'write'
+): boolean {
+  if (!request.apiKeyAuth) return true
+  const required = collection === 'content' ? `manuscript:${action}` : `entities:${action}`
+  if (request.apiKeyScopes && request.apiKeyScopes.includes(required)) return true
+  reply.status(403).send({
+    error: 'Insufficient scope',
+    message: `This API key does not have the '${required}' scope`
+  })
+  return false
+}
+
+/**
  * Deny API key authentication middleware.
  * Use on sensitive endpoints that require session (JWT) auth only.
  */
@@ -436,6 +465,16 @@ async function checkProjectOwnership(
     reply.status(403).send({
       error: 'Forbidden',
       message: 'You do not have permission to access this project'
+    })
+    return false
+  }
+
+  // Per-project API key restriction: if the key is locked to a project, it can
+  // only operate on that project — even if the user owns the requested one.
+  if (request.apiKeyAuth && request.apiKeyProjectId && request.apiKeyProjectId !== projectId) {
+    reply.status(403).send({
+      error: 'Forbidden',
+      message: 'This API key is restricted to a different project'
     })
     return false
   }
