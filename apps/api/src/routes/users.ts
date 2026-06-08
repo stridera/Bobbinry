@@ -1535,7 +1535,43 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
         ))
         .orderBy(desc(projects.updatedAt))
 
-      return reply.status(200).send({ projects: publishedProjects })
+      // Per-project aggregates over published chapters: word total + count.
+      // One scan covers every project in the response, then we merge into the
+      // per-project shape below.
+      const projectIds = publishedProjects.map(p => p.id)
+      const statsByProject = new Map<string, { wordCount: number; chapterCount: number }>()
+      if (projectIds.length > 0) {
+        const stats = await db
+          .select({
+            projectId: chapterPublications.projectId,
+            wordCount: sql<number>`COALESCE(SUM(COALESCE((${entities.entityData}->>'word_count')::int, 0)), 0)::int`,
+            chapterCount: sql<number>`COUNT(*)::int`,
+          })
+          .from(chapterPublications)
+          .innerJoin(entities, eq(entities.id, chapterPublications.chapterId))
+          .where(and(
+            inArray(chapterPublications.projectId, projectIds),
+            eq(chapterPublications.isPublished, true),
+          ))
+          .groupBy(chapterPublications.projectId)
+        for (const row of stats) {
+          statsByProject.set(row.projectId, {
+            wordCount: row.wordCount ?? 0,
+            chapterCount: row.chapterCount ?? 0,
+          })
+        }
+      }
+
+      const projectsWithStats = publishedProjects.map(p => {
+        const s = statsByProject.get(p.id)
+        return {
+          ...p,
+          wordCount: s?.wordCount ?? 0,
+          chapterCount: s?.chapterCount ?? 0,
+        }
+      })
+
+      return reply.status(200).send({ projects: projectsWithStats })
     } catch (error) {
       fastify.log.error(error)
       return reply.status(500).send({ error: 'Failed to fetch published projects' })

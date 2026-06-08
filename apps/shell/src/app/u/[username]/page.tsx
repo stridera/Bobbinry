@@ -32,6 +32,8 @@ interface PublishedProject {
   description: string | null
   coverImage: string | null
   shortUrl: string | null
+  wordCount?: number
+  chapterCount?: number
 }
 
 interface SubscriptionTier {
@@ -612,6 +614,17 @@ function PublicProfileContent() {
                       <h3 className="font-medium text-gray-900 dark:text-gray-100 truncate group-hover:text-blue-700 dark:group-hover:text-blue-400 transition-colors">
                         {project.name}
                       </h3>
+                      {(project.chapterCount ?? 0) > 0 && (
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 tabular-nums">
+                          {project.chapterCount} chapter{project.chapterCount === 1 ? '' : 's'}
+                          {(project.wordCount ?? 0) > 0 && (
+                            <>
+                              <span className="mx-1.5 text-gray-300 dark:text-gray-600" aria-hidden="true">·</span>
+                              {project.wordCount!.toLocaleString()} words
+                            </>
+                          )}
+                        </p>
+                      )}
                       {project.description && (
                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2 leading-relaxed">
                           {project.description}
