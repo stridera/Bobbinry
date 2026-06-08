@@ -13,7 +13,7 @@ import { ChapterOverview } from './components/dashboard/ChapterOverview'
 import { ProjectManagement } from './components/dashboard/ProjectManagement'
 import { ExportProject } from './components/dashboard/ExportProject'
 import { ImportManuscript } from './components/dashboard/ImportManuscript'
-import type { ContentType } from '@bobbinry/types'
+import { countsTowardWordCount, type ContentType } from '@bobbinry/types'
 
 interface Tag {
   id: string
@@ -252,6 +252,9 @@ export default function ProjectDashboardPage() {
           name={data.project.name}
           description={data.project.description}
           coverImage={data.project.coverImage}
+          wordCount={data.analytics.narrativeWordCount}
+          chapterCount={data.chapters.filter(c => !c.archivedAt && countsTowardWordCount(c.contentType)).length}
+          publishedCount={data.analytics.publishedChapters}
           onUpdate={(updates) => {
             setData(prev => prev ? {
               ...prev,

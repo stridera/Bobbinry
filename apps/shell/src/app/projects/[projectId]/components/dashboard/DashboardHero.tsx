@@ -10,10 +10,25 @@ interface DashboardHeroProps {
   name: string
   description: string | null
   coverImage: string | null
+  /** Sum of word_count across active narrative-type entities. */
+  wordCount?: number
+  /** Active narrative-type entities (chapter/scene/prologue/epilogue/interlude). */
+  chapterCount?: number
+  /** Count of chapters whose publication is currently `published`. */
+  publishedCount?: number
   onUpdate: (updates: { name?: string; description?: string | null; coverImage?: string | null }) => void
 }
 
-export function DashboardHero({ projectId, name, description, coverImage, onUpdate }: DashboardHeroProps) {
+export function DashboardHero({
+  projectId,
+  name,
+  description,
+  coverImage,
+  wordCount = 0,
+  chapterCount = 0,
+  publishedCount = 0,
+  onUpdate,
+}: DashboardHeroProps) {
   const { data: session } = useSession()
   const apiToken = session?.apiToken
   const [editing, setEditing] = useState(false)
@@ -239,6 +254,37 @@ export function DashboardHero({ projectId, name, description, coverImage, onUpda
           >
             {description || 'Click to add a description...'}
           </p>
+        )}
+
+        {/* Project-at-a-glance stats. Word count is narrative-only (chapters,
+            scenes, prologues, epilogues, interludes) — outlines and supporting
+            docs are tracked separately and excluded here. */}
+        {!editing && (
+          <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+            <span className="inline-flex items-baseline gap-1">
+              <span
+                className="font-display text-base font-semibold tabular-nums text-gray-800 dark:text-gray-200"
+                title="Words across all active chapters, scenes, prologues, epilogues, and interludes. Outlines and supporting docs are excluded."
+              >
+                {wordCount.toLocaleString()}
+              </span>
+              <span>words</span>
+            </span>
+            <span className="text-gray-300 dark:text-gray-600" aria-hidden="true">·</span>
+            <span className="inline-flex items-baseline gap-1">
+              <span className="font-display text-base font-semibold tabular-nums text-gray-800 dark:text-gray-200">
+                {chapterCount.toLocaleString()}
+              </span>
+              <span>{chapterCount === 1 ? 'chapter' : 'chapters'}</span>
+            </span>
+            <span className="text-gray-300 dark:text-gray-600" aria-hidden="true">·</span>
+            <span className="inline-flex items-baseline gap-1">
+              <span className="font-display text-base font-semibold tabular-nums text-gray-800 dark:text-gray-200">
+                {publishedCount.toLocaleString()}
+              </span>
+              <span>published</span>
+            </span>
+          </div>
         )}
       </div>
 
