@@ -13,7 +13,7 @@ import {
   reactions,
   chapterAnnotations
 } from '../db/schema'
-import { eq, and, sql } from 'drizzle-orm'
+import { eq, and, ne, sql } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { requireAuth, requireProjectOwnership } from '../middleware/auth'
 import { loadDiskManifests } from '../lib/disk-manifests'
@@ -179,7 +179,8 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
         commentCountsResult,
         reactionCountsResult,
         annotationStatsResult,
-        annotationCountsResult
+        annotationCountsResult,
+        bobbinStatsResult
       ] = await Promise.all([
         // 1. Project details
         db
@@ -320,7 +321,22 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
             eq(chapterAnnotations.projectId, projectId),
             sql`${chapterAnnotations.status} IN ('open', 'acknowledged')`
           ))
-          .groupBy(chapterAnnotations.chapterId)
+          .groupBy(chapterAnnotations.chapterId),
+
+        // 13. Per-bobbin item counts. Drives the Project Tools tile counts.
+        // Excludes entity_type_definitions so type-schema rows don't get
+        // counted as content (matches the precedent in dashboard.ts).
+        db
+          .select({
+            bobbinId: entities.bobbinId,
+            count: sql<number>`count(*)::int`.as('count')
+          })
+          .from(entities)
+          .where(and(
+            eq(entities.projectId, projectId),
+            ne(entities.collectionName, 'entity_type_definitions')
+          ))
+          .groupBy(entities.bobbinId)
       ])
 
       const project = projectResult[0]
@@ -381,20 +397,36 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
         moderationMode: 'open'
       }
 
-      // Format bobbins using disk manifests as source of truth
+      // Format bobbins using disk manifests as source of truth. The
+      // hasLeftPanel flag tells the Project Tools UI which bobbins are
+      // project-wide workspaces (owning a `shell.leftPanel` contribution) and
+      // therefore deserve a launcher tile.
       const diskManifests = await loadDiskManifests(bobbinsResult.map(b => b.bobbinId))
       const bobbins = bobbinsResult.map(b => {
         const manifest = diskManifests.get(b.bobbinId) as Record<string, any> | undefined
+        const rawContributions = manifest?.extensions?.contributions
+        const contributions = Array.isArray(rawContributions)
+          ? rawContributions as Array<{ slot?: string }>
+          : []
+        const hasLeftPanel = contributions.some(c => c?.slot === 'shell.leftPanel')
         return {
           id: b.id,
           bobbinId: b.bobbinId,
           version: b.version,
           manifest: {
             name: manifest?.name || b.bobbinId,
-            description: manifest?.description || ''
+            description: manifest?.description || '',
+            icon: typeof manifest?.icon === 'string' ? manifest.icon : undefined,
+            hasLeftPanel
           }
         }
       })
+
+      // bobbinId → entity count, used by Project Tools tiles.
+      const bobbinStats: Record<string, number> = {}
+      for (const row of bobbinStatsResult) {
+        bobbinStats[row.bobbinId] = row.count
+      }
 
       const authorUsername = authorProfileResult[0]?.username || null
 
@@ -436,6 +468,7 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
         scheduledReleases,
         publishConfig: config,
         bobbins,
+        bobbinStats,
         annotationStats,
         correlationId
       })

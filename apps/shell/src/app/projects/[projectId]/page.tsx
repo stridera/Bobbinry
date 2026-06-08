@@ -8,6 +8,7 @@ import { SiteNav } from '@/components/SiteNav'
 import { apiFetch } from '@/lib/api'
 import { DashboardHero } from './components/dashboard/DashboardHero'
 import { TagsEditor } from './components/dashboard/TagsEditor'
+import { ProjectTools } from './components/dashboard/ProjectTools'
 import { ChapterOverview } from './components/dashboard/ChapterOverview'
 import { ProjectManagement } from './components/dashboard/ProjectManagement'
 import { ExportProject } from './components/dashboard/ExportProject'
@@ -90,8 +91,14 @@ interface DashboardData {
     id: string
     bobbinId: string
     version: string
-    manifest: { name: string; description: string }
+    manifest: {
+      name: string
+      description: string
+      icon?: string
+      hasLeftPanel: boolean
+    }
   }>
+  bobbinStats: Record<string, number>
 }
 
 export default function ProjectDashboardPage() {
@@ -250,6 +257,12 @@ export default function ProjectDashboardPage() {
           onTagsChange={(tags) => {
             setData(prev => prev ? { ...prev, tags } : prev)
           }}
+        />
+
+        <ProjectTools
+          projectId={projectId}
+          bobbins={data.bobbins}
+          bobbinStats={data.bobbinStats}
         />
 
         <ChapterOverview
