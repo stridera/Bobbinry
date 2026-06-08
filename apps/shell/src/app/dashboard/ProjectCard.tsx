@@ -41,9 +41,19 @@ interface ProjectCardProps {
 
 export function ProjectCard({ project, collections, currentCollectionId, searchQuery, onAddToCollection, onRemoveFromCollection }: ProjectCardProps) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })
+
+  const copyProjectId = async () => {
+    await navigator.clipboard.writeText(project.id)
+    setCopied(true)
+    setTimeout(() => {
+      setCopied(false)
+      setMenuOpen(false)
+    }, 1000)
+  }
 
   const updateMenuPosition = useCallback(() => {
     if (!buttonRef.current) return
@@ -74,7 +84,7 @@ export function ProjectCard({ project, collections, currentCollectionId, searchQ
     }
   }, [menuOpen, updateMenuPosition])
 
-  const hasMenuItems = collections && collections.length > 0 || currentCollectionId
+  const hasCollectionItems = (collections && collections.length > 0) || currentCollectionId
 
   return (
     <div className="group border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg overflow-hidden hover:shadow-md hover:border-blue-300/50 dark:hover:border-blue-700/50 hover:-translate-y-0.5 transition-all duration-200">
@@ -143,20 +153,18 @@ export function ProjectCard({ project, collections, currentCollectionId, searchQ
               </Link>
 
               {/* Context menu trigger */}
-              {hasMenuItems && (
-                <button
-                  ref={buttonRef}
-                  onClick={() => setMenuOpen(!menuOpen)}
-                  className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                  aria-label="Project actions"
-                >
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                    <circle cx="12" cy="5" r="1.5" />
-                    <circle cx="12" cy="12" r="1.5" />
-                    <circle cx="12" cy="19" r="1.5" />
-                  </svg>
-                </button>
-              )}
+              <button
+                ref={buttonRef}
+                onClick={() => setMenuOpen(!menuOpen)}
+                className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                aria-label="Project actions"
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <circle cx="12" cy="5" r="1.5" />
+                  <circle cx="12" cy="12" r="1.5" />
+                  <circle cx="12" cy="19" r="1.5" />
+                </svg>
+              </button>
             </div>
           </div>
         </div>
@@ -169,6 +177,20 @@ export function ProjectCard({ project, collections, currentCollectionId, searchQ
           className="fixed w-52 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg z-[9999] py-1"
           style={{ top: menuPos.top, left: menuPos.left - 208 }}
         >
+          {/* Copy Project ID */}
+          <button
+            onClick={copyProjectId}
+            className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center justify-between gap-2"
+            title={project.id}
+          >
+            <span>{copied ? 'Copied!' : 'Copy Project ID'}</span>
+            <code className="text-xs text-gray-400 dark:text-gray-500 truncate max-w-[10rem]">{project.id.slice(0, 8)}…</code>
+          </button>
+
+          {hasCollectionItems && (
+            <div className="border-t border-gray-100 dark:border-gray-700 my-1" />
+          )}
+
           {/* Add to Collection — inline list */}
           {collections && collections.length > 0 && (
             <>

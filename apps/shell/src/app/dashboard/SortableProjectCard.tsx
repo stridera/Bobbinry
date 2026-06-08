@@ -35,9 +35,19 @@ interface SortableProjectCardProps {
 
 export function SortableProjectCard({ project, searchQuery, onRemoveFromCollection }: SortableProjectCardProps) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })
+
+  const copyProjectId = async () => {
+    await navigator.clipboard.writeText(project.id)
+    setCopied(true)
+    setTimeout(() => {
+      setCopied(false)
+      setMenuOpen(false)
+    }, 1000)
+  }
 
   const {
     attributes,
@@ -181,40 +191,52 @@ export function SortableProjectCard({ project, searchQuery, onRemoveFromCollecti
               </Link>
 
               {/* Context menu trigger */}
-              {onRemoveFromCollection && (
-                <button
-                  ref={buttonRef}
-                  onClick={() => setMenuOpen(!menuOpen)}
-                  className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                  aria-label="Project actions"
-                >
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                    <circle cx="12" cy="5" r="1.5" />
-                    <circle cx="12" cy="12" r="1.5" />
-                    <circle cx="12" cy="19" r="1.5" />
-                  </svg>
-                </button>
-              )}
+              <button
+                ref={buttonRef}
+                onClick={() => setMenuOpen(!menuOpen)}
+                className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                aria-label="Project actions"
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <circle cx="12" cy="5" r="1.5" />
+                  <circle cx="12" cy="12" r="1.5" />
+                  <circle cx="12" cy="19" r="1.5" />
+                </svg>
+              </button>
             </div>
           </div>
         </div>
       </div>
 
-      {menuOpen && onRemoveFromCollection && createPortal(
+      {menuOpen && createPortal(
         <div
           ref={menuRef}
           className="fixed w-52 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg z-[9999] py-1"
           style={{ top: menuPos.top, left: menuPos.left - 208 }}
         >
           <button
-            onClick={() => {
-              onRemoveFromCollection(project.id)
-              setMenuOpen(false)
-            }}
-            className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+            onClick={copyProjectId}
+            className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center justify-between gap-2"
+            title={project.id}
           >
-            Remove from Collection
+            <span>{copied ? 'Copied!' : 'Copy Project ID'}</span>
+            <code className="text-xs text-gray-400 dark:text-gray-500 truncate max-w-[10rem]">{project.id.slice(0, 8)}…</code>
           </button>
+
+          {onRemoveFromCollection && (
+            <>
+              <div className="border-t border-gray-100 dark:border-gray-700 my-1" />
+              <button
+                onClick={() => {
+                  onRemoveFromCollection(project.id)
+                  setMenuOpen(false)
+                }}
+                className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+              >
+                Remove from Collection
+              </button>
+            </>
+          )}
         </div>,
         document.body
       )}
