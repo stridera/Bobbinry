@@ -420,6 +420,25 @@ export class EntityAPI {
     }
   }
 
+  /**
+   * Update the manuscript content type of a `content`-collection entity (chapter,
+   * scene, prologue, epilogue, interlude, outline, supporting_doc). Returns the
+   * normalised value the server stored.
+   */
+  async setContentType(id: string, contentType: string): Promise<{ id: string; contentType: string }> {
+    const params = new URLSearchParams({ projectId: this.projectId })
+    const response = await fetch(`${this.api.apiBaseUrl}/entities/${id}/content-type?${params}`, {
+      method: 'PATCH',
+      headers: this.api.getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ contentType }),
+    })
+    if (!response.ok) {
+      const body = await response.text().catch(() => '')
+      throw new Error(`Failed to update content type (${response.status}): ${body || response.statusText}`)
+    }
+    return response.json()
+  }
+
   async delete(collection: string, id: string): Promise<void> {
     const params = new URLSearchParams({
       projectId: this.projectId,

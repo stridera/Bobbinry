@@ -17,6 +17,7 @@ import { eq, and, ne, sql } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { requireAuth, requireProjectOwnership } from '../middleware/auth'
 import { loadDiskManifests } from '../lib/disk-manifests'
+import { countsTowardWordCount, type ContentType } from '@bobbinry/types'
 
 const VALID_TAG_CATEGORIES = ['genre', 'theme', 'trope', 'setting', 'custom'] as const
 
@@ -157,15 +158,22 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
 
   fastify.get<{
     Params: { projectId: string }
+    Querystring: { includeArchived?: 'archived-only' | 'all' }
   }>('/projects/:projectId/dashboard', {
     preHandler: [requireAuth]
   }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId } = request.params
+      const includeArchived = request.query.includeArchived
 
       const isOwner = await requireProjectOwnership(request, reply, projectId)
       if (!isOwner) return
+
+      // We always fetch every chapter (active + archived) and partition in JS
+      // before returning. Project chapter counts are small enough that this is
+      // simpler than two queries and lets us return an accurate `archivedCount`
+      // alongside any filter view (`active` / `archived-only` / `all`).
 
       const [
         projectResult,
@@ -211,6 +219,8 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
             id: entities.id,
             entityData: entities.entityData,
             collectionName: entities.collectionName,
+            contentType: entities.contentType,
+            archivedAt: entities.archivedAt,
             pubId: chapterPublications.id,
             publishStatus: chapterPublications.publishStatus,
             publishedAt: chapterPublications.publishedAt,
@@ -354,14 +364,20 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
       const reactionCountMap = new Map(reactionCountsResult.map(r => [r.chapterId, r.count]))
       const annotationCountMap = new Map(annotationCountsResult.map(a => [a.chapterId, a.count]))
 
-      // Format chapters
-      const chapters = chaptersResult.map(ch => {
+      // Format chapters. `contentType` defaults to 'chapter' for legacy rows
+      // that haven't been backfilled (the migration handles this on deploy).
+      const allChapters = chaptersResult.map(ch => {
         const data = ch.entityData as Record<string, any>
+        const contentType = (ch.contentType ?? 'chapter') as ContentType
+        const wordCount = typeof data?.word_count === 'number' ? data.word_count : 0
         return {
           id: ch.id,
           title: data?.title || 'Untitled',
           order: data?.order ?? data?.sortOrder ?? 0,
           collectionName: ch.collectionName,
+          contentType,
+          archivedAt: ch.archivedAt ? ch.archivedAt.toISOString() : null,
+          wordCount,
           commentCount: commentCountMap.get(ch.id) ?? 0,
           reactionCount: reactionCountMap.get(ch.id) ?? 0,
           annotationCount: annotationCountMap.get(ch.id) ?? 0,
@@ -375,6 +391,26 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
           } : null
         }
       }).sort((a, b) => a.order - b.order)
+
+      // Project-wide word count from narrative types only. Always excludes
+      // archived rows so the total reflects active narrative content.
+      const narrativeWordCount = allChapters.reduce((sum, ch) => {
+        if (ch.archivedAt) return sum
+        return sum + (countsTowardWordCount(ch.contentType) ? ch.wordCount : 0)
+      }, 0)
+
+      const archivedCount = allChapters.reduce(
+        (n, ch) => (ch.archivedAt ? n + 1 : n),
+        0,
+      )
+
+      // Apply the includeArchived view filter for what we ship back as `chapters`.
+      const chapters =
+        includeArchived === 'archived-only'
+          ? allChapters.filter(ch => ch.archivedAt !== null)
+          : includeArchived === 'all'
+            ? allChapters
+            : allChapters.filter(ch => ch.archivedAt === null)
 
       // Format scheduled releases - get titles from chapters
       const chapterTitleMap = new Map(chapters.map(ch => [ch.id, ch.title]))
@@ -463,7 +499,9 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
           publishedChapters: publishedCount,
           totalViews,
           totalCompletions,
-          avgViewsPerChapter: publicationsResult.length > 0 ? Math.round(totalViews / publicationsResult.length) : 0
+          avgViewsPerChapter: publicationsResult.length > 0 ? Math.round(totalViews / publicationsResult.length) : 0,
+          narrativeWordCount,
+          archivedCount
         },
         chapters,
         scheduledReleases,

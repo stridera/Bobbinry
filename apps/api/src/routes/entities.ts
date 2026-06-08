@@ -2,7 +2,8 @@ import { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/connection'
 import { entities } from '../db/schema'
-import { eq, and, sql, or } from 'drizzle-orm'
+import { eq, and, sql, or, inArray, isNull } from 'drizzle-orm'
+import { CONTENT_TYPES, isContentType, type ContentType } from '@bobbinry/types'
 import { requireAuth, requireProjectOwnership, assertEntityScope } from '../middleware/auth'
 import { serverEventBus, contentEdited } from '../lib/event-bus'
 import { findBobbinForCollectionAcrossScopes } from '../lib/disk-manifests'
@@ -14,6 +15,16 @@ function countWordsFromHtml(html: string): number {
   const text = html.replace(/<[^>]*>/g, ' ').replace(/&[a-z]+;/gi, ' ')
   const words = text.split(/\s+/).filter(w => w.length > 0)
   return words.length
+}
+
+/** Resolve the contentType column value for a row in the `content` collection.
+ * Pulls from `data.content_type` if the caller supplied it; otherwise defaults
+ * to 'chapter'. Returns null for non-content collections (the column is only
+ * meaningful for manuscript content). */
+function resolveContentTypeColumn(collection: string, data: Record<string, any>): ContentType | null {
+  if (collection !== 'content') return null
+  const raw = data['content_type'] ?? data['contentType']
+  return isContentType(raw) ? raw : 'chapter'
 }
 
 /**
@@ -71,17 +82,26 @@ function formatEntityResponse(row: typeof entities.$inferSelect, fields?: Set<st
     variantAccessLevels: (row.variantAccessLevels ?? {}) as Record<string, number>,
   }
 
+  // Column-stored fields that aren't in entityData. These ride on the response
+  // so clients can read them without a join — and column values take precedence
+  // over any same-named JSONB key when the response object is built.
+  const columnFields = {
+    contentType: row.contentType,
+    archivedAt: row.archivedAt,
+  }
+
   if (!fields) {
     return {
       id: row.id,
       ...(row.entityData as object),
       ...publishFields,
+      ...columnFields,
       _meta: meta
     }
   }
 
   const data = row.entityData as Record<string, unknown>
-  const projected: Record<string, unknown> = { id: row.id, ...publishFields }
+  const projected: Record<string, unknown> = { id: row.id, ...publishFields, ...columnFields }
   for (const key of fields) {
     if (key in data) projected[key] = data[key]
   }
@@ -353,6 +373,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
         collectionName: collection,
         entityData: data,
         scope: match.scope,
+        contentType: resolveContentTypeColumn(collection, data),
       }
 
       if (match.scope === 'project') {
@@ -707,6 +728,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
             collectionName: collection,
             entityData: data,
             scope: resolved.scope,
+            contentType: resolveContentTypeColumn(collection, data),
           }
 
           if (resolved.scope === 'project') {
@@ -827,6 +849,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
                   collectionName: collection,
                   entityData: data,
                   scope: match.scope,
+                  contentType: resolveContentTypeColumn(collection, data),
                 }
 
                 if (match.scope === 'project') {
@@ -1044,6 +1067,271 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       return reply.status(500).send({
         error: 'Failed to get entity',
         details: error instanceof Error ? error.message : 'Unknown error'
+      })
+    }
+  })
+
+  // ---- Bulk archive / restore / delete and reorder ---------------------------
+  //
+  // These endpoints power the dashboard's mass actions and drag-to-reorder.
+  // Soft archive (archived_at) is reversible; bulk delete is a hard delete
+  // (with container-cascade where applicable). Reorder rewrites entity_data
+  // 'order' for a homogeneous set of rows.
+
+  const BulkIdsSchema = z.object({
+    projectId: z.string().uuid(),
+    ids: z.array(z.string().uuid()).min(1).max(500),
+  })
+
+  /** Mark entities as archived (soft). Only touches rows that belong to the
+   * caller's project, so cross-project ids in the array are silently ignored. */
+  fastify.post<{ Body: { projectId: string; ids: string[] } }>(
+    '/entities/bulk-archive',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      try {
+        const { projectId, ids } = BulkIdsSchema.parse(request.body)
+
+        const hasAccess = await requireProjectOwnership(request, reply, projectId)
+        if (!hasAccess) return
+
+        const updated = await db
+          .update(entities)
+          .set({ archivedAt: new Date(), updatedAt: new Date() })
+          .where(and(
+            eq(entities.projectId, projectId),
+            inArray(entities.id, ids),
+            isNull(entities.archivedAt),
+          ))
+          .returning({ id: entities.id })
+
+        return { archived: updated.length, ids: updated.map(r => r.id) }
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return reply.status(400).send({ error: 'Validation failed', issues: error.issues })
+        }
+        fastify.log.error(error)
+        return reply.status(500).send({
+          error: 'Failed to archive entities',
+          details: error instanceof Error ? error.message : 'Unknown error',
+        })
+      }
+    }
+  )
+
+  /** Clear archived_at on the listed entities. */
+  fastify.post<{ Body: { projectId: string; ids: string[] } }>(
+    '/entities/bulk-restore',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      try {
+        const { projectId, ids } = BulkIdsSchema.parse(request.body)
+
+        const hasAccess = await requireProjectOwnership(request, reply, projectId)
+        if (!hasAccess) return
+
+        const updated = await db
+          .update(entities)
+          .set({ archivedAt: null, updatedAt: new Date() })
+          .where(and(
+            eq(entities.projectId, projectId),
+            inArray(entities.id, ids),
+          ))
+          .returning({ id: entities.id })
+
+        return { restored: updated.length, ids: updated.map(r => r.id) }
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return reply.status(400).send({ error: 'Validation failed', issues: error.issues })
+        }
+        fastify.log.error(error)
+        return reply.status(500).send({
+          error: 'Failed to restore entities',
+          details: error instanceof Error ? error.message : 'Unknown error',
+        })
+      }
+    }
+  )
+
+  /** Hard-delete entities, cascading container children where applicable. */
+  fastify.post<{ Body: { projectId: string; ids: string[] } }>(
+    '/entities/bulk-delete',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      try {
+        const { projectId, ids } = BulkIdsSchema.parse(request.body)
+
+        const hasAccess = await requireProjectOwnership(request, reply, projectId)
+        if (!hasAccess) return
+
+        const deleted = await db.transaction(async (tx) => {
+          // Need each row's collectionName so we can cascade containers.
+          const rows = await tx
+            .select({ id: entities.id, collectionName: entities.collectionName })
+            .from(entities)
+            .where(and(
+              eq(entities.projectId, projectId),
+              inArray(entities.id, ids),
+            ))
+
+          const removed: string[] = []
+          for (const row of rows) {
+            if (row.collectionName === 'containers') {
+              await deleteContainerCascade(projectId, row.id, tx)
+            } else {
+              await tx
+                .delete(entities)
+                .where(and(
+                  eq(entities.id, row.id),
+                  eq(entities.projectId, projectId),
+                ))
+            }
+            removed.push(row.id)
+          }
+          return removed
+        })
+
+        return { deleted: deleted.length, ids: deleted }
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return reply.status(400).send({ error: 'Validation failed', issues: error.issues })
+        }
+        fastify.log.error(error)
+        return reply.status(500).send({
+          error: 'Failed to delete entities',
+          details: error instanceof Error ? error.message : 'Unknown error',
+        })
+      }
+    }
+  )
+
+  const ReorderSchema = z.object({
+    projectId: z.string().uuid(),
+    collection: z.string().min(1),
+    contentType: z.string().nullable().optional(),
+    orderedIds: z.array(z.string().uuid()).min(1).max(1000),
+  })
+
+  /** Rewrite entity_data->'order' to match `orderedIds`'s index. All listed
+   * ids must share the same (project, collection, contentType) so the operation
+   * never silently interleaves unrelated rows. */
+  fastify.post<{
+    Body: {
+      projectId: string
+      collection: string
+      contentType?: string | null
+      orderedIds: string[]
+    }
+  }>('/entities/reorder', { preHandler: [requireAuth] }, async (request, reply) => {
+    try {
+      const body = ReorderSchema.parse(request.body)
+      const { projectId, collection, contentType, orderedIds } = body
+
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
+
+      // Validate every id belongs to this (project, collection, contentType).
+      const matchConds = [
+        eq(entities.projectId, projectId),
+        eq(entities.collectionName, collection),
+        inArray(entities.id, orderedIds),
+      ]
+      if (contentType === null || contentType === undefined) {
+        matchConds.push(isNull(entities.contentType))
+      } else {
+        matchConds.push(eq(entities.contentType, contentType))
+      }
+
+      const matched = await db
+        .select({ id: entities.id })
+        .from(entities)
+        .where(and(...matchConds))
+
+      if (matched.length !== orderedIds.length) {
+        return reply.status(400).send({
+          error: 'Reorder rejected: some ids do not belong to the given project/collection/contentType',
+          expected: orderedIds.length,
+          matched: matched.length,
+        })
+      }
+
+      const reordered = await db.transaction(async (tx) => {
+        let count = 0
+        for (let idx = 0; idx < orderedIds.length; idx++) {
+          const id = orderedIds[idx]!
+          const result = await tx
+            .update(entities)
+            .set({
+              entityData: sql`jsonb_set(${entities.entityData}, '{order}', to_jsonb(${idx}::int))`,
+              updatedAt: new Date(),
+            })
+            .where(and(eq(entities.id, id), eq(entities.projectId, projectId)))
+            .returning({ id: entities.id })
+          if (result.length > 0) count++
+        }
+        return count
+      })
+
+      return { reordered }
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Validation failed', issues: error.issues })
+      }
+      fastify.log.error(error)
+      return reply.status(500).send({
+        error: 'Failed to reorder entities',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      })
+    }
+  })
+
+  const ContentTypePatchSchema = z.object({
+    contentType: z.enum(CONTENT_TYPES as readonly [ContentType, ...ContentType[]]),
+  })
+
+  /** Update a single entity's content_type. Only meaningful for content-collection rows. */
+  fastify.patch<{
+    Params: { entityId: string }
+    Querystring: { projectId: string }
+    Body: { contentType: ContentType }
+  }>('/entities/:entityId/content-type', {
+    preHandler: [requireAuth],
+  }, async (request, reply) => {
+    try {
+      const { entityId } = request.params
+      const { projectId } = request.query
+      const { contentType } = ContentTypePatchSchema.parse(request.body)
+
+      if (!isContentType(contentType)) {
+        return reply.status(400).send({ error: 'Invalid contentType' })
+      }
+
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
+
+      const updated = await db
+        .update(entities)
+        .set({ contentType, updatedAt: new Date() })
+        .where(and(
+          eq(entities.id, entityId),
+          eq(entities.projectId, projectId),
+          eq(entities.collectionName, 'content'),
+        ))
+        .returning({ id: entities.id, contentType: entities.contentType })
+
+      if (updated.length === 0) {
+        return reply.status(404).send({ error: 'Entity not found in content collection' })
+      }
+
+      return { id: updated[0]!.id, contentType: updated[0]!.contentType }
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: 'Validation failed', issues: error.issues })
+      }
+      fastify.log.error(error)
+      return reply.status(500).send({
+        error: 'Failed to update content type',
+        details: error instanceof Error ? error.message : 'Unknown error',
       })
     }
   })

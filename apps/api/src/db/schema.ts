@@ -745,6 +745,13 @@ export const entities = pgTable('entities', {
   // tier for a variant is max(minimumTierLevel, variantAccessLevels[id] ?? 0)
   // so the whole-entity gate acts as a floor.
   variantAccessLevels: jsonb('variant_access_levels').default(sql`'{}'::jsonb`).notNull().$type<Record<string, number>>(),
+  // Narrative subtype for `content`-collection rows (chapter, scene, prologue,
+  // epilogue, interlude, outline, supporting_doc). Null for non-content rows.
+  // Narrative types count toward project word count; outline/supporting_doc do not.
+  contentType: varchar('content_type', { length: 32 }),
+  // Soft archive: null = active, set = hidden from default dashboard list but
+  // recoverable. Hard delete is a separate operation.
+  archivedAt: timestamp('archived_at'),
   lastEditedAt: timestamp('last_edited_at').defaultNow(),
   lastEditedBy: uuid('last_edited_by').references(() => users.id),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -757,7 +764,8 @@ export const entities = pgTable('entities', {
   orderIdx: index('entities_order_idx').using('btree', table.projectId, table.collectionName, sql`(entity_data->>'order')`),
   publicIdx: index('entities_public_idx').on(table.projectId, table.collectionName, table.isPublished, table.publishOrder),
   lastEditedIdx: index('entities_last_edited_idx').on(table.lastEditedAt),
-  projectEditedIdx: index('entities_project_edited_idx').on(table.projectId, table.lastEditedAt)
+  projectEditedIdx: index('entities_project_edited_idx').on(table.projectId, table.lastEditedAt),
+  projectArchivedIdx: index('entities_project_archived_idx').on(table.projectId, table.collectionName, table.archivedAt)
 }))
 
 // Uploads - audit trail for file uploads

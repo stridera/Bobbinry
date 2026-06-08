@@ -13,6 +13,7 @@ import { ChapterOverview } from './components/dashboard/ChapterOverview'
 import { ProjectManagement } from './components/dashboard/ProjectManagement'
 import { ExportProject } from './components/dashboard/ExportProject'
 import { ImportManuscript } from './components/dashboard/ImportManuscript'
+import type { ContentType } from '@bobbinry/types'
 
 interface Tag {
   id: string
@@ -39,12 +40,17 @@ interface DashboardData {
     totalViews: number
     totalCompletions: number
     avgViewsPerChapter: number
+    narrativeWordCount: number
+    archivedCount: number
   }
   chapters: Array<{
     id: string
     title: string
     order: number
     collectionName: string
+    contentType: ContentType
+    archivedAt: string | null
+    wordCount: number
     commentCount: number
     reactionCount: number
     annotationCount: number
@@ -116,7 +122,9 @@ export default function ProjectDashboardPage() {
   const loadDashboard = useCallback(async () => {
     if (!apiToken) return
     try {
-      const response = await apiFetch(`/api/projects/${projectId}/dashboard`, apiToken)
+      // Fetch with includeArchived=all so ChapterOverview can render both the
+      // active list and the archived filter view without a refetch.
+      const response = await apiFetch(`/api/projects/${projectId}/dashboard?includeArchived=all`, apiToken)
       if (response.ok) {
         const result = await response.json()
         setData(result)
@@ -288,10 +296,10 @@ export default function ProjectDashboardPage() {
                 </span>
               </div>
               <div className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">
-                {data.chapters.reduce((sum, ch) => sum + ch.commentCount, 0)}
+                {data.chapters.reduce((sum, ch) => ch.archivedAt ? sum : sum + ch.commentCount, 0)}
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                across {data.chapters.filter(ch => ch.commentCount > 0).length} chapters
+                across {data.chapters.filter(ch => !ch.archivedAt && ch.commentCount > 0).length} chapters
               </p>
               {data.authorUsername && data.project.shortUrl && (
                 <Link
@@ -372,7 +380,7 @@ export default function ProjectDashboardPage() {
         <ExportProject
           projectId={projectId}
           projectName={data.project.name}
-          totalChapters={data.chapters.length}
+          totalChapters={data.chapters.filter(ch => !ch.archivedAt).length}
         />
 
         <ProjectManagement

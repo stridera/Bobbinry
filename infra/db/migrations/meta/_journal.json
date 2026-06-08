@@ -218,6 +218,13 @@
       "when": 1780934662491,
       "tag": "0031_api_key_project_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1780943783984,
+      "tag": "0032_content_types_and_archive",
+      "breakpoints": true
     }
   ]
 }

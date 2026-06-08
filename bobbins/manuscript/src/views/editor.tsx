@@ -1,6 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { ConflictError } from '@bobbinry/sdk'
 import type { BobbinrySDK } from '@bobbinry/sdk'
+import {
+  CONTENT_TYPES,
+  CONTENT_TYPE_LABELS,
+  countsTowardWordCount,
+  isContentType,
+  type ContentType,
+} from '@bobbinry/types'
 import { useEditor, EditorContent } from '@tiptap/react'
 import type { Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
@@ -329,6 +336,9 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
   const [loading, setLoading] = useState(true)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('clean')
   const [wordCount, setWordCount] = useState(0)
+  const [contentType, setContentType] = useState<ContentType>('chapter')
+  const [contentTypeMenuOpen, setContentTypeMenuOpen] = useState(false)
+  const [savingContentType, setSavingContentType] = useState(false)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Unified dirty-fields accumulator. All saves (title, body, wordCount) flow
@@ -396,6 +406,29 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
     window.addEventListener('bobbinry:focus-mode-change', handleFocusMode)
     return () => window.removeEventListener('bobbinry:focus-mode-change', handleFocusMode)
   }, [])
+
+  async function handleContentTypeChange(next: ContentType) {
+    if (!entityId || next === contentType) {
+      setContentTypeMenuOpen(false)
+      return
+    }
+    const previous = contentType
+    setSavingContentType(true)
+    // Optimistic: update locally so the badge reflects the choice instantly.
+    setContentType(next)
+    setContentTypeMenuOpen(false)
+    try {
+      const result = await sdk.entities.setContentType(entityId, next)
+      if (isContentType(result.contentType)) setContentType(result.contentType)
+    } catch (err) {
+      console.error('[EditorView] Failed to change content type:', err)
+      setContentType(previous)
+    } finally {
+      setSavingContentType(false)
+    }
+  }
+
+  const countsForWords = countsTowardWordCount(contentType)
 
   // Listen for version changes from other panels (e.g. chapter notes saving to the same entity)
   useEffect(() => {
@@ -966,6 +999,7 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
           const serverBody = serverContent?.body ?? ''
           const serverWordCount = serverContent?.word_count ?? 0
           const newVersion = serverContent?._meta?.version ?? serverVersion
+          if (isContentType(serverContent?.contentType)) setContentType(serverContent.contentType)
 
           applyContent(serverBody, serverTitle || draft.title, serverWordCount)
           versionRef.current = newVersion
@@ -987,6 +1021,7 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
           const serverBody = serverContent?.body ?? ''
           const serverWordCount = serverContent?.word_count ?? 0
           const newVersion = serverContent?._meta?.version ?? null
+          if (isContentType(serverContent?.contentType)) setContentType(serverContent.contentType)
 
           versionRef.current = newVersion
 
@@ -1027,8 +1062,10 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
       const count = serverContent.word_count || 0
       const version = serverContent._meta?.version ?? null
       const containerId = serverContent.container_id ?? null
+      const ct = isContentType(serverContent.contentType) ? serverContent.contentType : 'chapter'
 
       applyContent(body, titleVal, count)
+      setContentType(ct)
       versionRef.current = version
 
       // Cache for instant loading next time
@@ -1406,8 +1443,64 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
             value={title}
             onChange={(e) => handleTitleChange(e.target.value)}
             placeholder="Untitled"
-            className="w-full font-display text-3xl font-semibold bg-transparent border-none outline-none text-gray-800 dark:text-gray-100 placeholder:text-gray-300 dark:placeholder:text-gray-700 mb-6 leading-tight"
+            className="w-full font-display text-3xl font-semibold bg-transparent border-none outline-none text-gray-800 dark:text-gray-100 placeholder:text-gray-300 dark:placeholder:text-gray-700 mb-2 leading-tight"
           />
+
+          {/* Content type — author intent for this piece. Switching to a
+              non-narrative type (outline / supporting doc) excludes the piece
+              from project word totals. The visual treatment here is intentionally
+              minimal; richer iconography belongs to a follow-up design pass. */}
+          <div className="relative inline-block mb-6">
+            <button
+              type="button"
+              onClick={() => setContentTypeMenuOpen(o => !o)}
+              disabled={savingContentType}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ring-1 ring-inset transition-colors disabled:opacity-50 ${
+                countsForWords
+                  ? 'bg-blue-50 text-blue-700 ring-blue-200 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:ring-blue-800 dark:hover:bg-blue-900/50'
+                  : 'bg-amber-50 text-amber-700 ring-amber-200 hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300 dark:ring-amber-800 dark:hover:bg-amber-900/50'
+              }`}
+              title="Change content type"
+            >
+              <span>{CONTENT_TYPE_LABELS[contentType]}</span>
+              {!countsForWords && (
+                <span className="opacity-70">· not counted</span>
+              )}
+              <svg className="w-3 h-3 opacity-60" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+                <path d="M2 4l4 4 4-4z" />
+              </svg>
+            </button>
+            {contentTypeMenuOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-10"
+                  onClick={() => setContentTypeMenuOpen(false)}
+                  aria-hidden="true"
+                />
+                <div className="absolute left-0 top-full mt-1 z-20 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg py-1">
+                  {CONTENT_TYPES.map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => handleContentTypeChange(t)}
+                      disabled={t === contentType || savingContentType}
+                      className={`flex w-full items-center justify-between px-3 py-1.5 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 disabled:cursor-default ${
+                        t === contentType
+                          ? 'font-semibold text-gray-900 dark:text-gray-100'
+                          : 'text-gray-700 dark:text-gray-300'
+                      }`}
+                    >
+                      <span>{CONTENT_TYPE_LABELS[t]}</span>
+                      {t === contentType && <span className="text-blue-500">✓</span>}
+                      {!countsTowardWordCount(t) && t !== contentType && (
+                        <span className="text-[10px] text-gray-400">not counted</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
 
           {/* Prose content */}
           <EditorContent editor={editor} />
@@ -1468,7 +1561,13 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
       {/* Floating status - word count + save indicator */}
       <div className={`absolute bottom-3 right-4 flex items-center gap-3 text-xs transition-opacity duration-300 ${focusMode ? 'opacity-20 hover:opacity-50' : 'opacity-60 hover:opacity-100'}`}>
         <SaveIndicator status={saveStatus} focusMode={false} />
-        <span className="text-gray-400 dark:text-gray-500">{wordCount.toLocaleString()} words</span>
+        <span
+          className={countsForWords ? 'text-gray-400 dark:text-gray-500' : 'text-gray-300 dark:text-gray-600 italic'}
+          title={countsForWords ? undefined : 'Not in manuscript total'}
+        >
+          {wordCount.toLocaleString()} words
+          {!countsForWords && <span className="ml-1">· not in manuscript total</span>}
+        </span>
       </div>
     </div>
   )

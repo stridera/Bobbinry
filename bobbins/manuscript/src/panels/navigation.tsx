@@ -493,6 +493,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
       const newContent = await sdk.entities.create('content', {
         title: 'New Content',
         type: 'scene',
+        content_type: 'chapter',
         ...(containerId ? { container_id: containerId } : {}),
         order: Date.now(),
         word_count: 0,
