@@ -1,7 +1,6 @@
 import PDFDocument from 'pdfkit'
 import { convert as htmlToText } from 'html-to-text'
 import TurndownService from 'turndown'
-// @ts-expect-error — archiver 8 ships named class exports but @types/archiver still v7
 import { ZipArchive } from 'archiver'
 import EPub from 'epub-gen-memory'
 
