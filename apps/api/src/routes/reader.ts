@@ -500,6 +500,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           publishedAt: chapterPublications.publishedAt,
           publicReleaseDate: chapterPublications.publicReleaseDate,
           viewCount: chapterPublications.viewCount,
+          wordCount: sql<number>`COALESCE((${entities.entityData}->>'word_count')::int, 0)`,
           order: sql<number>`COALESCE((${entities.entityData}->>'order')::bigint, 0)`
         })
         .from(chapterPublications)
@@ -509,6 +510,12 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           eq(chapterPublications.isPublished, true)
         ))
         .orderBy(sql`COALESCE((${entities.entityData}->>'order')::bigint, 0)`)
+
+      // Total words across all published chapters — counted regardless of
+      // whether the caller can read each chapter, so the project's overall
+      // scope is honestly represented (helps with subscribe-conversion intent:
+      // "this serial is X words, you've got access to Y").
+      const totalWords = publishedChapters.reduce((sum, ch) => sum + (ch.wordCount || 0), 0)
 
       // Batch access check: 3-4 queries total instead of 3-5 per chapter
       const accessMap = await checkMultipleChaptersAccess(
@@ -547,6 +554,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       return reply.send({
         toc: accessibleChapters,
         totalChapters: accessibleChapters.length,
+        totalWords,
         subscriberOnly: defaultVisibility === 'subscribers_only',
         correlationId
       })

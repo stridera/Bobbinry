@@ -89,6 +89,7 @@ function ProjectReadingContent() {
   const [project, setProject] = useState<ProjectInfo | null>(null)
   const [author, setAuthor] = useState<AuthorInfo | null>(null)
   const [toc, setToc] = useState<TocChapter[]>([])
+  const [totalWords, setTotalWords] = useState(0)
   const [tiers, setTiers] = useState<SubscriptionTier[]>([])
   const [acceptsPayments, setAcceptsPayments] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -323,6 +324,7 @@ function ProjectReadingContent() {
       if (tocRes.ok) {
         const tocData = await tocRes.json()
         setToc(tocData.toc || [])
+        setTotalWords(typeof tocData.totalWords === 'number' ? tocData.totalWords : 0)
       }
 
       if (tiersRes?.ok) {
@@ -697,6 +699,20 @@ function ProjectReadingContent() {
             {followerCount > 0 && (
               <span className="text-xs text-gray-400 dark:text-gray-500">
                 {followerCount} follower{followerCount !== 1 ? 's' : ''}
+              </span>
+            )}
+            {toc.length > 0 && (
+              <span
+                className="text-xs text-gray-400 dark:text-gray-500 tabular-nums"
+                title={totalWords > 0 ? `${totalWords.toLocaleString()} words across ${toc.length} published chapter${toc.length === 1 ? '' : 's'}` : undefined}
+              >
+                {toc.length} chapter{toc.length !== 1 ? 's' : ''}
+                {totalWords > 0 && (
+                  <>
+                    <span className="mx-1.5 text-gray-300 dark:text-gray-600" aria-hidden="true">·</span>
+                    {totalWords.toLocaleString()} words
+                  </>
+                )}
               </span>
             )}
           </div>
