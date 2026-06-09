@@ -1,6 +1,6 @@
 id: manuscript
 name: Manuscript
-version: 1.0.1
+version: 1.0.2
 author: Bobbinry Team
 description: Complete manuscript management with books, chapters, and scenes
 tags:
@@ -165,6 +165,18 @@ ui:
         - create_container
         - create_content
         - reorder
+
+    - id: table
+      type: table
+      name: Table
+      source: views/table
+      handlers:
+        - container
+      priority: 9
+      layout:
+        sort:
+          - field: order
+            direction: asc
 
     - id: editor
       type: editor

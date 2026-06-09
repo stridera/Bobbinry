@@ -12,6 +12,7 @@ export const NATIVE_VIEW_MAP: Record<string, () => Promise<any>> = {
   'dictionary-panel.panels/dictionary-panel': () => import('@bobbinry/dictionary-panel/panels/dictionary-panel'),
   'discord-roles.panels/settings': () => import('@bobbinry/discord-roles/panels/settings'),
   'manuscript.outline': () => import('@bobbinry/manuscript/views/outline'),
+  'manuscript.table': () => import('@bobbinry/manuscript/views/table'),
   'manuscript.editor': () => import('@bobbinry/manuscript/views/editor'),
   'manuscript.panels/navigation': () => import('@bobbinry/manuscript/panels/navigation'),
   'manuscript.views/session-stats': () => import('@bobbinry/manuscript/views/session-stats'),

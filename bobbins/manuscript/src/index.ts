@@ -1,6 +1,7 @@
 // Main exports for Manuscript bobbin
 // Views are exported individually for dynamic imports
 export { default as OutlineView } from './views/outline'
+export { default as TableView } from './views/table'
 export { default as EditorView } from './views/editor'
 
 // Panels

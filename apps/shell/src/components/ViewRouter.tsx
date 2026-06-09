@@ -41,6 +41,14 @@ function ViewIcon({ type }: { type: string }) {
           <path d="M9.5 1.5L12.5 4.5L4.5 12.5H1.5V9.5L9.5 1.5Z" />
         </svg>
       )
+    case 'table':
+      return (
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="1.5" y="1.5" width="11" height="11" rx="1" />
+          <line x1="1.5" y1="5" x2="12.5" y2="5" />
+          <line x1="5" y1="5" x2="5" y2="12.5" />
+        </svg>
+      )
     default:
       return (
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
