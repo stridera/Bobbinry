@@ -10,6 +10,18 @@ import { ViewRouter } from '@/components/ViewRouter'
 import { useManifestExtensions } from '@/components/ExtensionProvider'
 import { apiFetch } from '@/lib/api'
 
+// Default landing nav per bobbin when the URL is just /projects/{id}/{bobbinId}
+// (e.g. from the dashboard "Project Tools" tile). Without this, ViewRouter
+// falls back to localStorage lastNav — usually the last manuscript chapter —
+// so opening "Entities" from the dashboard would dump you back in the editor.
+const DEFAULT_BOBBIN_NAVS: Record<string, { entityType: string; entityId: string; metadata?: Record<string, any> }> = {
+  entities: {
+    entityType: 'entity_type_definitions',
+    entityId: 'publishing',
+    metadata: { view: 'publishing', typeLabel: 'Types', typeIcon: '📚' },
+  },
+}
+
 interface InstalledBobbin {
   id: string
   version: string
@@ -128,8 +140,27 @@ export default function ProjectDeepLinkPage() {
   const navigatedSlugRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (loading || !slug || slug.length < 3) return
+    if (loading || !slug || slug.length === 0) return
     if (navigatedSlugRef.current === slugKey) return
+
+    // Bobbin-only slug (e.g. /projects/{id}/entities from the dashboard tile):
+    // dispatch a sensible default for the bobbin instead of leaving ViewRouter
+    // to restore the last-visited entity (which is usually a manuscript chapter).
+    if (slug.length === 1) {
+      const [bobbinId] = slug
+      const defaultNav = bobbinId ? DEFAULT_BOBBIN_NAVS[bobbinId] : undefined
+      if (!defaultNav || typeof window === 'undefined') return
+      navigatedSlugRef.current = slugKey
+      // Rewrite the URL in place first so back goes to wherever they came
+      // from (dashboard), not to the bobbin-only alias.
+      const targetUrl = `/projects/${projectId}/${bobbinId}/${defaultNav.entityType}/${defaultNav.entityId}`
+      const navDetail = { ...defaultNav, bobbinId }
+      window.history.replaceState(navDetail, '', targetUrl)
+      window.dispatchEvent(new CustomEvent('bobbinry:navigate', { detail: navDetail }))
+      return
+    }
+
+    if (slug.length < 3) return
     navigatedSlugRef.current = slugKey
 
     // Expected format: [bobbinId, entityType, entityId]

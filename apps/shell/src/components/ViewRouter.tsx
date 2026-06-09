@@ -301,6 +301,16 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
       return
     }
 
+    // If we're switching to a *different* view component, unmount the
+    // current one immediately. Otherwise the old component keeps rendering
+    // with the new currentNav's entityType/entityId until the async load
+    // resolves — which can fire requests like
+    // sdk.entities.get('entity_type_definitions', 'publishing') from a
+    // stale EntityEditorView and 500 on a non-UUID id.
+    if (selected.viewId !== activeViewIdRef.current) {
+      setViewComponent(null)
+    }
+
     setActiveViewId(selected.viewId)
     loadView(selected, currentNav)
   }, [currentNav, loadView])

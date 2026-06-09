@@ -472,6 +472,26 @@ export default function PublishingView({ projectId, sdk }: PublishingViewProps) 
               />
               Show drafts
             </label>
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof window === 'undefined') return
+                window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
+                  detail: {
+                    entityType: 'entity_type_definitions',
+                    entityId: 'config',
+                    bobbinId: 'entities',
+                    metadata: { view: 'config' },
+                  },
+                }))
+              }}
+              className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14M5 12h14" />
+              </svg>
+              New type
+            </button>
           </div>
         </div>
 

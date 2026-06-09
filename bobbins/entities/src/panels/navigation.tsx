@@ -275,6 +275,14 @@ export default function NavigationView({ context }: NavigationViewProps) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </PanelIconButton>
+        <PanelIconButton
+          onClick={handleConfigClick}
+          title="New entity type"
+        >
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14M5 12h14" />
+          </svg>
+        </PanelIconButton>
       </PanelActions>
 
       <PanelBody className="space-y-2">
@@ -324,7 +332,7 @@ export default function NavigationView({ context }: NavigationViewProps) {
                   <PanelIconButton
                     onClick={(e) => { e.stopPropagation(); handleNewEntity(type) }}
                     title={`New ${type.label}`}
-                    className="h-5 w-5 !p-0 opacity-0 group-hover/type:opacity-100 transition-opacity"
+                    className="h-5 w-5 !p-0 opacity-40 group-hover/type:opacity-100 transition-opacity"
                   >
                     <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14M5 12h14" />
