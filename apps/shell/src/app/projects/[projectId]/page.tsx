@@ -14,6 +14,7 @@ import { ProjectManagement } from './components/dashboard/ProjectManagement'
 import { ManuscriptDisplaySettings } from './components/dashboard/ManuscriptDisplaySettings'
 import { ExportProject } from './components/dashboard/ExportProject'
 import { ImportManuscript } from './components/dashboard/ImportManuscript'
+import { SearchReplaceLauncher } from '@/components/SearchReplaceLauncher'
 import { countsTowardWordCount, type ContentType } from '@bobbinry/types'
 
 interface Tag {
@@ -225,6 +226,12 @@ export default function ProjectDashboardPage() {
                     </svg>
                   </Link>
                 )}
+                <SearchReplaceLauncher
+                  projectId={projectId}
+                  apiToken={apiToken}
+                  buttonVariant="inline"
+                  defaultScope="project"
+                />
                 <Link
                   href={`/publish/${projectId}`}
                   className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg font-medium text-sm transition-colors"

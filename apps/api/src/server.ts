@@ -43,6 +43,7 @@ import templatesPlugin from './routes/templates'
 import entityTypesPlugin from './routes/entity-types'
 import entityPublishPlugin from './routes/entity-publish'
 import promoCodesPlugin from './routes/promo-codes'
+import searchReplacePlugin from './routes/search-replace'
 import { hashApiKey, getApiKeyTier } from './middleware/auth'
 
 export function build(opts = {}): FastifyInstance {
@@ -274,6 +275,7 @@ export function build(opts = {}): FastifyInstance {
   server.register(exportPlugin, { prefix: '/api' })
   server.register(importPlugin, { prefix: '/api' })
   server.register(promoCodesPlugin, { prefix: '/api' })
+  server.register(searchReplacePlugin, { prefix: '/api' })
 
 
   // Warm disk manifest cache, then start the trigger scheduler

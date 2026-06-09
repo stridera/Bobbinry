@@ -442,6 +442,39 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
     return () => window.removeEventListener('bobbinry:focus-mode-change', handleFocusMode)
   }, [])
 
+  // Broadcast the active chapter so the shell's Search & Replace launcher can
+  // offer a "This chapter" scope. Cleared on unmount/entity change.
+  useEffect(() => {
+    if (entityType !== 'content' || !entityId) return
+    window.dispatchEvent(new CustomEvent('bobbinry:active-chapter', {
+      detail: { id: entityId, title },
+    }))
+    return () => {
+      window.dispatchEvent(new CustomEvent('bobbinry:active-chapter', { detail: null }))
+    }
+  }, [entityId, entityType, title])
+
+  // Refresh the editor when Search & Replace applies a bulk change that
+  // includes this chapter. Drop the cached draft first so the local copy
+  // can't clobber the new server content on the next save.
+  useEffect(() => {
+    function handleBulkUpdated(e: Event) {
+      const ids = (e as CustomEvent<{ entityIds: string[] }>).detail?.entityIds
+      const active = activeEntityRef.current
+      if (!active || !Array.isArray(ids) || !ids.includes(active)) return
+      try {
+        localStorage.removeItem(getDraftKey(active))
+      } catch {
+        // ignore quota/security errors — the reload below still works.
+      }
+      if (entityType === 'content') {
+        loadContent(active)
+      }
+    }
+    window.addEventListener('bobbinry:entities-bulk-updated', handleBulkUpdated)
+    return () => window.removeEventListener('bobbinry:entities-bulk-updated', handleBulkUpdated)
+  }, [entityType]) // eslint-disable-line react-hooks/exhaustive-deps
+
   async function handleContentTypeChange(next: ContentType) {
     if (!entityId || next === contentType) {
       setContentTypeMenuOpen(false)

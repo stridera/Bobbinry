@@ -8,6 +8,7 @@ import { BobbinrySDK } from '@bobbinry/sdk'
 import { ShellLayout } from '@/components/ShellLayout'
 import { ViewRouter } from '@/components/ViewRouter'
 import { useManifestExtensions } from '@/components/ExtensionProvider'
+import { SearchReplaceLauncher } from '@/components/SearchReplaceLauncher'
 import { apiFetch } from '@/lib/api'
 
 // Default landing nav per bobbin when the URL is just /projects/{id}/{bobbinId}
@@ -225,6 +226,12 @@ export default function ProjectDeepLinkPage() {
       installedBobbins={installedBobbins}
     >
       <ViewRouter projectId={projectId} sdk={sdk} />
+      <SearchReplaceLauncher
+        projectId={projectId}
+        apiToken={session?.apiToken}
+        buttonVariant="floating"
+        defaultScope="chapter"
+      />
     </ShellLayout>
   )
 }

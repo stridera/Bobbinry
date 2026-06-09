@@ -10,6 +10,7 @@ import { ViewRouter } from '@/components/ViewRouter'
 import { UserMenu } from '@/components/UserMenu'
 import { useManifestExtensions } from '@/components/ExtensionProvider'
 import { ProjectWelcome } from '../components/ProjectWelcome'
+import { SearchReplaceLauncher } from '@/components/SearchReplaceLauncher'
 import { apiFetch } from '@/lib/api'
 
 interface InstalledBobbin {
@@ -191,6 +192,12 @@ export default function ProjectWritePage() {
           installedBobbins={installedBobbins}
         >
           <ViewRouter projectId={projectId} sdk={sdk} />
+          <SearchReplaceLauncher
+            projectId={projectId}
+            apiToken={session?.apiToken}
+            buttonVariant="floating"
+            defaultScope="chapter"
+          />
         </ShellLayout>
       )}
     </>
