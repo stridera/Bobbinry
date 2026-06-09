@@ -1,6 +1,15 @@
 import { useState, useEffect, useRef } from 'react'
 import { ConflictError } from '@bobbinry/sdk'
 import type { BobbinrySDK } from '@bobbinry/sdk'
+import { paletteClasses, isPaletteToken, PALETTE_TOKENS } from '@bobbinry/ui-components'
+import {
+  resolveChapterColor,
+  resolveFeaturedCharacters,
+  characterInitial,
+  type ChapterColorFields,
+  type CharactersById,
+  type CharacterColorRef,
+} from '../lib/chapterColors'
 import {
   CONTENT_TYPES,
   CONTENT_TYPE_LABELS,
@@ -390,6 +399,91 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
   const [conflictInfo, setConflictInfo] = useState<ConflictInfo | null>(null)
 
   const [focusMode, setFocusMode] = useState(false)
+
+  // Chapter color fields + character lookup, used to render the top stripe
+  // and the inline POV/featured/color picker.
+  const [chapterColor, setChapterColor] = useState<ChapterColorFields>({})
+  const [editorCharacters, setEditorCharacters] = useState<CharactersById>(() => new Map())
+  const [chapterMetaMenuOpen, setChapterMetaMenuOpen] = useState(false)
+  const [chapterMetaView, setChapterMetaView] = useState<'main' | 'pov' | 'featured' | 'color'>('main')
+
+  // Load characters once per project for the color cascade. Also re-runs when
+  // the entities module reports a change to the characters collection so the
+  // POV cascade stays in sync after a color edit.
+  useEffect(() => {
+    let cancelled = false
+
+    function refresh() {
+      sdk.entities.query({ collection: 'characters', limit: 1000 })
+        .then(res => {
+          if (cancelled) return
+          const map: CharactersById = new Map()
+          for (const c of (res.data as any[]) ?? []) {
+            if (!c?.id) continue
+            map.set(c.id, {
+              id: c.id,
+              name: typeof c.name === 'string' ? c.name : undefined,
+              color: isPaletteToken(c.color) ? c.color : null,
+            })
+          }
+          setEditorCharacters(map)
+        })
+        .catch(() => {
+          if (!cancelled) setEditorCharacters(new Map())
+        })
+    }
+
+    function handleEntitiesChanged(e: Event) {
+      const detail = (e as CustomEvent).detail
+      if (detail?.collection !== 'characters') return
+      refresh()
+    }
+
+    refresh()
+    window.addEventListener('bobbinry:entities-changed', handleEntitiesChanged)
+    return () => {
+      cancelled = true
+      window.removeEventListener('bobbinry:entities-changed', handleEntitiesChanged)
+    }
+  }, [projectId, sdk])
+
+  // Pull color fields off the chapter entity when it loads/changes.
+  useEffect(() => {
+    if (entityType !== 'content' || !entityId) {
+      setChapterColor({})
+      return
+    }
+    let cancelled = false
+    sdk.entities.get('content', entityId)
+      .then((result: any) => {
+        if (cancelled) return
+        setChapterColor({
+          pov_character_id: result?.pov_character_id ?? null,
+          featured_character_ids: Array.isArray(result?.featured_character_ids)
+            ? result.featured_character_ids
+            : [],
+          manual_color: result?.manual_color ?? null,
+        })
+      })
+      .catch(() => {
+        if (!cancelled) setChapterColor({})
+      })
+    return () => { cancelled = true }
+  }, [entityId, entityType, sdk])
+
+  // Sync stripe when the user changes color/POV from the navigation panel.
+  useEffect(() => {
+    function handleChapterColorChanged(e: Event) {
+      const detail = (e as CustomEvent).detail
+      if (!detail?.entityId || detail.entityId !== entityId) return
+      setChapterColor(prev => ({
+        ...prev,
+        ...(detail.patch ?? {}),
+      }))
+    }
+    window.addEventListener('bobbinry:chapter-color-changed', handleChapterColorChanged)
+    return () => window.removeEventListener('bobbinry:chapter-color-changed', handleChapterColorChanged)
+  }, [entityId])
 
   // Content-level manuscript display overrides — fed from the loaded entity's
   // `entityData.displaySettings`. Combined with user + project levels via
@@ -1434,8 +1528,55 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
     )
   }
 
+  const chapterColorToken = entityType === 'content'
+    ? resolveChapterColor(chapterColor, editorCharacters)
+    : null
+  const chapterColorClasses = paletteClasses(chapterColorToken)
+  const povCharacter = chapterColor.pov_character_id
+    ? editorCharacters.get(chapterColor.pov_character_id) ?? null
+    : null
+  const featuredCharacters = resolveFeaturedCharacters(chapterColor, editorCharacters)
+  const characterList: CharacterColorRef[] = Array.from(editorCharacters.values()).sort((a, b) =>
+    (a.name ?? '').localeCompare(b.name ?? ''),
+  )
+
+  async function applyChapterMetaPatch(patch: {
+    pov_character_id?: string | null
+    featured_character_ids?: string[]
+    manual_color?: string | null
+  }) {
+    if (!entityId || entityType !== 'content') return
+    setChapterColor(prev => ({ ...prev, ...patch }))
+    try {
+      await sdk.entities.update('content', entityId, patch)
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('bobbinry:chapter-color-changed', {
+            detail: { entityId, patch },
+          }),
+        )
+      }
+    } catch (err) {
+      console.error('[EditorView] Failed to update chapter color fields:', err)
+    }
+  }
+
+  function closeChapterMetaMenu() {
+    setChapterMetaMenuOpen(false)
+    setChapterMetaView('main')
+  }
+
   return (
     <div className="h-full flex flex-col relative bg-gray-50 dark:bg-gray-900">
+      {/* POV / manual color stripe — subtle visual confirmation of which
+          character drives this chapter. Hidden when no color is set. */}
+      {chapterColorClasses && (
+        <div
+          aria-hidden
+          className={`h-[3px] flex-shrink-0 ${chapterColorClasses.stripe}`}
+        />
+      )}
+
       {/* Toolbar - hidden in focus mode */}
       <div className={`transition-all duration-200 overflow-hidden ${focusMode ? 'h-0 opacity-0' : ''}`}>
         <EditorToolbar
@@ -1524,55 +1665,299 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
               and the fixed dismiss overlay) must not bubble to the writing
               surface's onClick, which would focus('end') and scroll the
               editor to the bottom of the document. */}
-          <div className="relative inline-block mb-6" onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              onClick={() => setContentTypeMenuOpen(o => !o)}
-              disabled={savingContentType}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ring-1 ring-inset transition-colors disabled:opacity-50 ${
-                countsForWords
-                  ? 'bg-blue-50 text-blue-700 ring-blue-200 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:ring-blue-800 dark:hover:bg-blue-900/50'
-                  : 'bg-amber-50 text-amber-700 ring-amber-200 hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300 dark:ring-amber-800 dark:hover:bg-amber-900/50'
-              }`}
-              title="Change content type"
-            >
-              <span>{CONTENT_TYPE_LABELS[contentType]}</span>
-              {!countsForWords && (
-                <span className="opacity-70">· not counted</span>
+          <div className="flex flex-wrap items-center gap-2 mb-6" onClick={(e) => e.stopPropagation()}>
+            <div className="relative inline-block">
+              <button
+                type="button"
+                onClick={() => setContentTypeMenuOpen(o => !o)}
+                disabled={savingContentType}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ring-1 ring-inset transition-colors disabled:opacity-50 ${
+                  countsForWords
+                    ? 'bg-blue-50 text-blue-700 ring-blue-200 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:ring-blue-800 dark:hover:bg-blue-900/50'
+                    : 'bg-amber-50 text-amber-700 ring-amber-200 hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300 dark:ring-amber-800 dark:hover:bg-amber-900/50'
+                }`}
+                title="Change content type"
+              >
+                <span>{CONTENT_TYPE_LABELS[contentType]}</span>
+                {!countsForWords && (
+                  <span className="opacity-70">· not counted</span>
+                )}
+                <svg className="w-3 h-3 opacity-60" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+                  <path d="M2 4l4 4 4-4z" />
+                </svg>
+              </button>
+              {contentTypeMenuOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setContentTypeMenuOpen(false)}
+                    aria-hidden="true"
+                  />
+                  <div className="absolute left-0 top-full mt-1 z-20 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg py-1">
+                    {CONTENT_TYPES.map(t => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => handleContentTypeChange(t)}
+                        disabled={t === contentType || savingContentType}
+                        className={`flex w-full items-center justify-between px-3 py-1.5 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 disabled:cursor-default ${
+                          t === contentType
+                            ? 'font-semibold text-gray-900 dark:text-gray-100'
+                            : 'text-gray-700 dark:text-gray-300'
+                        }`}
+                      >
+                        <span>{CONTENT_TYPE_LABELS[t]}</span>
+                        {t === contentType && <span className="text-blue-500">✓</span>}
+                        {!countsTowardWordCount(t) && t !== contentType && (
+                          <span className="text-[10px] text-gray-400">not counted</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </>
               )}
-              <svg className="w-3 h-3 opacity-60" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
-                <path d="M2 4l4 4 4-4z" />
-              </svg>
-            </button>
-            {contentTypeMenuOpen && (
-              <>
-                <div
-                  className="fixed inset-0 z-10"
-                  onClick={() => setContentTypeMenuOpen(false)}
-                  aria-hidden="true"
-                />
-                <div className="absolute left-0 top-full mt-1 z-20 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg py-1">
-                  {CONTENT_TYPES.map(t => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => handleContentTypeChange(t)}
-                      disabled={t === contentType || savingContentType}
-                      className={`flex w-full items-center justify-between px-3 py-1.5 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 disabled:cursor-default ${
-                        t === contentType
-                          ? 'font-semibold text-gray-900 dark:text-gray-100'
-                          : 'text-gray-700 dark:text-gray-300'
-                      }`}
-                    >
-                      <span>{CONTENT_TYPE_LABELS[t]}</span>
-                      {t === contentType && <span className="text-blue-500">✓</span>}
-                      {!countsTowardWordCount(t) && t !== contentType && (
-                        <span className="text-[10px] text-gray-400">not counted</span>
+            </div>
+
+            {/* POV character + color picker. Combined dropdown: pick POV character,
+                add featured characters, or set a manual color override. Mirrors the
+                right-click menu in the navigation panel; either path works. */}
+            {entityType === 'content' && (
+              <div className="relative inline-block">
+                <button
+                  type="button"
+                  onClick={() => { setChapterMetaMenuOpen(o => !o); setChapterMetaView('main') }}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ring-1 ring-inset bg-white text-gray-700 ring-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200 dark:ring-gray-700 dark:hover:bg-gray-700/60 transition-colors"
+                  title={povCharacter?.name ? `POV: ${povCharacter.name}` : 'Set POV character'}
+                >
+                  <span
+                    aria-hidden
+                    className={`inline-block h-3 w-3 rounded-full ${chapterColorClasses?.swatchBg ?? 'bg-gray-300 dark:bg-gray-600'}`}
+                  />
+                  <span>
+                    {povCharacter?.name
+                      ? `POV: ${povCharacter.name}`
+                      : isPaletteToken(chapterColor.manual_color)
+                        ? 'Custom color'
+                        : 'POV'}
+                  </span>
+                  {featuredCharacters.length > 0 && (
+                    <span className="flex items-center gap-0.5 ml-1">
+                      {featuredCharacters.slice(0, 3).map(c => {
+                        const cls = paletteClasses(c.color)
+                        return (
+                          <span
+                            key={c.id}
+                            title={c.name ?? 'Unnamed'}
+                            className={`inline-flex items-center justify-center h-3 w-3 rounded-full text-[7px] font-semibold text-white ring-1 ring-white dark:ring-gray-800 ${cls?.chipBg ?? 'bg-gray-300 dark:bg-gray-600'}`}
+                          >
+                            {characterInitial(c.name)}
+                          </span>
+                        )
+                      })}
+                      {featuredCharacters.length > 3 && (
+                        <span className="text-[10px] text-gray-500 dark:text-gray-400">+{featuredCharacters.length - 3}</span>
                       )}
-                    </button>
-                  ))}
-                </div>
-              </>
+                    </span>
+                  )}
+                  <svg className="w-3 h-3 opacity-60" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+                    <path d="M2 4l4 4 4-4z" />
+                  </svg>
+                </button>
+                {chapterMetaMenuOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={closeChapterMetaMenu}
+                      aria-hidden="true"
+                    />
+                    <div className="absolute left-0 top-full mt-1 z-20 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg overflow-hidden">
+                      {chapterMetaView === 'main' && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setChapterMetaView('pov')}
+                            className="flex w-full items-center justify-between px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
+                          >
+                            <span className="flex items-center gap-2">
+                              <span>🎭</span>
+                              <span>POV character</span>
+                            </span>
+                            <span className="flex items-center gap-1 text-gray-400">
+                              {povCharacter ? (
+                                <>
+                                  <span className={`h-2.5 w-2.5 rounded-full ${paletteClasses(povCharacter.color)?.swatchBg ?? 'bg-gray-300 dark:bg-gray-600'}`} />
+                                  <span className="truncate max-w-[100px]">{povCharacter.name}</span>
+                                </>
+                              ) : (
+                                <span className="italic">none</span>
+                              )}
+                              <span className="ml-1">▸</span>
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setChapterMetaView('featured')}
+                            className="flex w-full items-center justify-between px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 border-t border-gray-200 dark:border-gray-700"
+                          >
+                            <span className="flex items-center gap-2">
+                              <span>👥</span>
+                              <span>Featured characters</span>
+                            </span>
+                            <span className="flex items-center gap-0.5 text-gray-400">
+                              <span>{featuredCharacters.length || '—'}</span>
+                              <span className="ml-1">▸</span>
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setChapterMetaView('color')}
+                            className="flex w-full items-center justify-between px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 border-t border-gray-200 dark:border-gray-700"
+                          >
+                            <span className="flex items-center gap-2">
+                              <span>🎨</span>
+                              <span>Custom color</span>
+                            </span>
+                            <span className="flex items-center gap-1 text-gray-400">
+                              {isPaletteToken(chapterColor.manual_color) ? (
+                                <>
+                                  <span className={`h-2.5 w-2.5 rounded-full ${paletteClasses(chapterColor.manual_color)?.swatchBg}`} />
+                                  <span>{paletteClasses(chapterColor.manual_color)?.label}</span>
+                                </>
+                              ) : (
+                                <span className="italic">none</span>
+                              )}
+                              <span className="ml-1">▸</span>
+                            </span>
+                          </button>
+                        </>
+                      )}
+
+                      {chapterMetaView === 'pov' && (
+                        <div className="max-h-72 overflow-y-auto">
+                          <button
+                            type="button"
+                            onClick={() => setChapterMetaView('main')}
+                            className="w-full text-left px-3 py-2 text-[11px] text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-200 dark:border-gray-700"
+                          >
+                            ← POV character
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { void applyChapterMetaPatch({ pov_character_id: null }); closeChapterMetaMenu() }}
+                            className={`flex w-full items-center gap-2 px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 ${chapterColor.pov_character_id == null ? 'font-semibold' : ''}`}
+                          >
+                            <span className="h-3 w-3 rounded-full border border-gray-300 dark:border-gray-600" />
+                            <span className="italic text-gray-500 dark:text-gray-400">(none)</span>
+                          </button>
+                          {characterList.length === 0 && (
+                            <div className="px-3 py-2 text-[11px] text-gray-500 dark:text-gray-400 italic">No characters yet</div>
+                          )}
+                          {characterList.map(char => {
+                            const cls = paletteClasses(char.color)
+                            const isCurrent = char.id === chapterColor.pov_character_id
+                            return (
+                              <button
+                                key={char.id}
+                                type="button"
+                                onClick={() => { void applyChapterMetaPatch({ pov_character_id: char.id, manual_color: null }); closeChapterMetaMenu() }}
+                                className={`flex w-full items-center gap-2 px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 ${isCurrent ? 'font-semibold' : ''}`}
+                              >
+                                <span className={`h-3 w-3 rounded-full ${cls?.swatchBg ?? 'bg-gray-300 dark:bg-gray-600'}`} />
+                                <span className="truncate flex-1 text-left">{char.name ?? 'Unnamed'}</span>
+                                {isCurrent && <span className="text-blue-500">✓</span>}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+
+                      {chapterMetaView === 'featured' && (
+                        <div className="max-h-72 overflow-y-auto">
+                          <button
+                            type="button"
+                            onClick={() => setChapterMetaView('main')}
+                            className="w-full text-left px-3 py-2 text-[11px] text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-200 dark:border-gray-700"
+                          >
+                            ← Featured characters
+                          </button>
+                          {characterList.length === 0 && (
+                            <div className="px-3 py-2 text-[11px] text-gray-500 dark:text-gray-400 italic">No characters yet</div>
+                          )}
+                          {characterList.map(char => {
+                            const cls = paletteClasses(char.color)
+                            const current = new Set(chapterColor.featured_character_ids ?? [])
+                            const isOn = current.has(char.id)
+                            return (
+                              <button
+                                key={char.id}
+                                type="button"
+                                onClick={() => {
+                                  const next = new Set(current)
+                                  if (isOn) next.delete(char.id)
+                                  else next.add(char.id)
+                                  void applyChapterMetaPatch({ featured_character_ids: Array.from(next) })
+                                }}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
+                              >
+                                <span className={`inline-flex items-center justify-center h-3.5 w-3.5 rounded border ${isOn ? 'bg-gray-900 dark:bg-gray-100 border-gray-900 dark:border-gray-100 text-white dark:text-gray-900' : 'border-gray-400 dark:border-gray-500'}`}>
+                                  {isOn && <span className="text-[10px] leading-none">✓</span>}
+                                </span>
+                                <span className={`h-3 w-3 rounded-full ${cls?.swatchBg ?? 'bg-gray-300 dark:bg-gray-600'}`} />
+                                <span className="truncate flex-1 text-left">{char.name ?? 'Unnamed'}</span>
+                              </button>
+                            )
+                          })}
+                          <button
+                            type="button"
+                            onClick={closeChapterMetaMenu}
+                            className="w-full text-left px-3 py-2 text-[11px] text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 border-t border-gray-200 dark:border-gray-700"
+                          >
+                            Done
+                          </button>
+                        </div>
+                      )}
+
+                      {chapterMetaView === 'color' && (
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => setChapterMetaView('main')}
+                            className="w-full text-left px-3 py-2 text-[11px] text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-200 dark:border-gray-700"
+                          >
+                            ← Custom color
+                          </button>
+                          <div className="px-3 py-2 text-[11px] text-gray-500 dark:text-gray-400">
+                            Overrides POV character color.
+                          </div>
+                          <div className="px-3 pb-3 grid grid-cols-6 gap-2">
+                            {PALETTE_TOKENS.map(token => {
+                              const cls = paletteClasses(token)
+                              if (!cls) return null
+                              const isCurrent = token === chapterColor.manual_color
+                              return (
+                                <button
+                                  key={token}
+                                  type="button"
+                                  title={cls.label}
+                                  onClick={() => { void applyChapterMetaPatch({ manual_color: token }); closeChapterMetaMenu() }}
+                                  className={`h-6 w-6 rounded-full ${cls.swatchBg} ring-offset-2 ring-offset-white dark:ring-offset-gray-800 transition ${isCurrent ? 'ring-2 ring-gray-900 dark:ring-gray-100' : 'hover:ring-2 hover:ring-gray-300 dark:hover:ring-gray-500'}`}
+                                />
+                              )
+                            })}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => { void applyChapterMetaPatch({ manual_color: null }); closeChapterMetaMenu() }}
+                            className="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 border-t border-gray-200 dark:border-gray-700"
+                          >
+                            Clear custom color
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
             )}
           </div>
 

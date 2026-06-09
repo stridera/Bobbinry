@@ -34,3 +34,10 @@ export type { ModalFrameProps } from './ModalFrame'
 
 export { Dialog } from './Dialog'
 export type { DialogProps, DialogVariant } from './Dialog'
+
+export {
+  PALETTE_TOKENS,
+  isPaletteToken,
+  paletteClasses,
+} from './palette'
+export type { PaletteToken, PaletteClasses } from './palette'

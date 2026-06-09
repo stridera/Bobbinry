@@ -9,7 +9,7 @@ import type { EntityTemplate } from '../types'
 export const charactersTemplate: EntityTemplate = {
   id: 'template-characters',
   shareId: 'official-characters',
-  version: 6,
+  version: 7,
   label: 'Characters',
   icon: '🧙',
   description: 'People, creatures, or NPCs in your world',
@@ -18,6 +18,11 @@ export const charactersTemplate: EntityTemplate = {
   versionableBaseFields: ['description', 'image_url'],
   variantAxis: { id: 'era', label: 'Version', kind: 'ordered' },
   customFields: [
+    {
+      name: 'color',
+      type: 'color',
+      label: 'Color'
+    },
     {
       name: 'age',
       type: 'number',
@@ -110,7 +115,7 @@ export const charactersTemplate: EntityTemplate = {
     sections: [
       {
         title: 'Basic Info',
-        fields: ['race', 'alignment', 'level'],
+        fields: ['race', 'alignment', 'level', 'color'],
         display: 'inline'
       },
       {

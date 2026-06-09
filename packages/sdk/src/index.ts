@@ -82,7 +82,9 @@ export class BobbinryAPI {
       headers: this.getAuthHeaders()
     })
     if (!response.ok) {
-      throw new Error(`Failed to fetch bobbins: ${response.statusText}`)
+      const err = new Error(`Failed to fetch bobbins: ${response.statusText}`) as Error & { status?: number }
+      err.status = response.status
+      throw err
     }
     return response.json()
   }

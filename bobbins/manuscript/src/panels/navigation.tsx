@@ -1,6 +1,20 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { BobbinrySDK, PanelActions } from '@bobbinry/sdk'
-import { Toast, ToastContainer, Dialog } from '@bobbinry/ui-components'
+import {
+  Toast,
+  ToastContainer,
+  Dialog,
+  PALETTE_TOKENS,
+  paletteClasses,
+  isPaletteToken,
+} from '@bobbinry/ui-components'
+import {
+  resolveChapterColor,
+  resolveFeaturedCharacters,
+  characterInitial,
+  type CharactersById,
+  type CharacterColorRef,
+} from '../lib/chapterColors'
 
 interface NavigationPanelProps {
   context?: {
@@ -20,6 +34,12 @@ interface TreeNode {
   order: number
   children?: TreeNode[]
   parentId?: string | null
+  /** Chapter-specific color fields. Only populated for content nodes. */
+  pov_character_id?: string | null
+  featured_character_ids?: string[]
+  manual_color?: string | null
+  /** Optimistic-locking version for chapter PUTs. */
+  version?: number
 }
 
 interface DropTarget {
@@ -45,10 +65,12 @@ function findNodeInTree(nodes: TreeNode[], nodeId: string): TreeNode | null {
 export default function NavigationPanel({ context }: NavigationPanelProps) {
   const [tree, setTree] = useState<TreeNode[]>([])
   const [loading, setLoading] = useState(true)
+  const [charactersById, setCharactersById] = useState<CharactersById>(() => new Map())
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [showDropdown, setShowDropdown] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string; nodeType: 'container' | 'content' } | null>(null)
+  const [contextMenuView, setContextMenuView] = useState<'main' | 'pov' | 'featured' | 'color'>('main')
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null)
   const [editingValue, setEditingValue] = useState('')
   const [draggedNode, setDraggedNode] = useState<{ id: string; nodeType: 'container' | 'content' } | null>(null)
@@ -141,6 +163,38 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  // Listen for chapter color/POV/featured changes coming from the editor's
+  // inline pill. Mirrors the local patch we do inside `patchChapter` so the
+  // nav stripe and chips stay in sync without a reload.
+  useEffect(() => {
+    function handleChapterColorChanged(e: Event) {
+      const detail = (e as CustomEvent).detail
+      if (!detail?.entityId || !detail?.patch) return
+      const patch = detail.patch as {
+        pov_character_id?: string | null
+        featured_character_ids?: string[]
+        manual_color?: string | null
+      }
+      setTree(prev => {
+        const apply = (nodes: TreeNode[]): TreeNode[] =>
+          nodes.map(n => {
+            if (n.id === detail.entityId) {
+              const next: TreeNode = { ...n }
+              if (patch.pov_character_id !== undefined) next.pov_character_id = patch.pov_character_id
+              if (patch.featured_character_ids !== undefined) next.featured_character_ids = patch.featured_character_ids
+              if (patch.manual_color !== undefined) next.manual_color = patch.manual_color
+              return next
+            }
+            if (n.children) return { ...n, children: apply(n.children) }
+            return n
+          })
+        return apply(prev)
+      })
+    }
+    window.addEventListener('bobbinry:chapter-color-changed', handleChapterColorChanged)
+    return () => window.removeEventListener('bobbinry:chapter-color-changed', handleChapterColorChanged)
+  }, [])
+
   // Listen for entity updates (e.g. title changes from the editor)
   useEffect(() => {
     function handleEntityUpdated(e: Event) {
@@ -230,16 +284,64 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown)
   }, [tree])
 
+  async function loadCharacters() {
+    if (!sdk) return
+    try {
+      const res = await sdk.entities.query({ collection: 'characters', limit: 1000 })
+      const charsMap: CharactersById = new Map()
+      for (const c of (res.data as any[]) ?? []) {
+        if (!c?.id) continue
+        charsMap.set(c.id, {
+          id: c.id,
+          name: typeof c.name === 'string' ? c.name : undefined,
+          color: isPaletteToken(c.color) ? c.color : null,
+        })
+      }
+      setCharactersById(charsMap)
+    } catch {
+      // Characters collection may not exist for this project — leave the map empty.
+    }
+  }
+
+  // Refresh the characters lookup whenever the entities module reports a change
+  // to the characters collection (e.g. the author sets a color in the character
+  // editor). This keeps the chapter stripes and chips in sync without a reload.
+  useEffect(() => {
+    function handleEntitiesChanged(e: Event) {
+      const detail = (e as CustomEvent).detail
+      if (detail?.collection !== 'characters') return
+      void loadCharacters()
+    }
+    window.addEventListener('bobbinry:entities-changed', handleEntitiesChanged)
+    return () => window.removeEventListener('bobbinry:entities-changed', handleEntitiesChanged)
+  }, [sdk])
+
   async function loadTree() {
     if (!sdk) return
 
     try {
       setLoading(true)
 
-      const [allContainers, allContent] = await Promise.all([
+      const [allContainers, allContent, allCharacters] = await Promise.all([
         sdk.entities.query({ collection: 'containers', limit: 1000 }),
-        sdk.entities.query({ collection: 'content', limit: 1000 })
+        sdk.entities.query({ collection: 'content', limit: 1000 }),
+        // Characters power the POV cascade — silently treat a missing
+        // characters collection as "no characters available."
+        sdk.entities.query({ collection: 'characters', limit: 1000 }).catch(() => ({ data: [] }))
       ])
+
+      // Build characters lookup. Tolerant of older entities lacking a `color` field.
+      const charsMap: CharactersById = new Map()
+      for (const c of (allCharacters.data as any[]) ?? []) {
+        if (!c?.id) continue
+        const color = isPaletteToken(c.color) ? c.color : null
+        charsMap.set(c.id, {
+          id: c.id,
+          name: typeof c.name === 'string' ? c.name : undefined,
+          color,
+        })
+      }
+      setCharactersById(charsMap)
 
       const containerMap = new Map<string, any>()
       const childrenMap = new Map<string, any[]>()
@@ -300,7 +402,13 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
             nodeType: 'content',
             type: content.type || 'scene',
             order: content.order || 0,
-            parentId: container.id
+            parentId: container.id,
+            pov_character_id: content.pov_character_id ?? null,
+            featured_character_ids: Array.isArray(content.featured_character_ids)
+              ? content.featured_character_ids
+              : [],
+            manual_color: content.manual_color ?? null,
+            version: typeof content.version === 'number' ? content.version : undefined,
           })
         }
 
@@ -326,7 +434,13 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
           nodeType: 'content',
           type: content.type || 'scene',
           order: content.order || 0,
-          parentId: null
+          parentId: null,
+          pov_character_id: content.pov_character_id ?? null,
+          featured_character_ids: Array.isArray(content.featured_character_ids)
+            ? content.featured_character_ids
+            : [],
+          manual_color: content.manual_color ?? null,
+          version: typeof content.version === 'number' ? content.version : undefined,
         })
       }
 
@@ -824,6 +938,57 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     e.preventDefault()
     e.stopPropagation()
     setContextMenu({ x: e.clientX, y: e.clientY, nodeId, nodeType })
+    setContextMenuView('main')
+  }
+
+  function closeContextMenu() {
+    setContextMenu(null)
+    setContextMenuView('main')
+  }
+
+  /**
+   * Patch a chapter's color/POV/featured fields on the server, then mirror the
+   * change into local tree state so the UI updates without a full reload.
+   * Tolerates a missing version (server applies the update without optimistic locking).
+   */
+  async function patchChapter(
+    nodeId: string,
+    patch: { pov_character_id?: string | null; featured_character_ids?: string[]; manual_color?: string | null }
+  ) {
+    const node = findNodeInTree(tree, nodeId)
+    if (!node) return
+    try {
+      const updated = await sdk.entities.update('content', nodeId, patch, node.version)
+      const nextVersion =
+        typeof (updated as any)?.version === 'number' ? (updated as any).version : (node.version ?? 0) + 1
+      setTree(prev => {
+        const apply = (nodes: TreeNode[]): TreeNode[] =>
+          nodes.map(n => {
+            if (n.id === nodeId) {
+              const next: TreeNode = { ...n, version: nextVersion }
+              if (patch.pov_character_id !== undefined) next.pov_character_id = patch.pov_character_id
+              if (patch.featured_character_ids !== undefined) next.featured_character_ids = patch.featured_character_ids
+              if (patch.manual_color !== undefined) next.manual_color = patch.manual_color
+              return next
+            }
+            if (n.children) return { ...n, children: apply(n.children) }
+            return n
+          })
+        return apply(prev)
+      })
+      // Notify the editor view (and any other listeners) so its stripe updates
+      // without requiring a chapter reload.
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('bobbinry:chapter-color-changed', {
+            detail: { entityId: nodeId, patch },
+          }),
+        )
+      }
+    } catch (err) {
+      console.error('[NavigationPanel] Failed to update chapter color fields:', err)
+      setToast({ message: 'Could not save chapter color', variant: 'danger' })
+    }
   }
 
   function renderNode(node: TreeNode, depth: number = 0): React.JSX.Element {
@@ -839,6 +1004,11 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     const isDropInside = dropTarget?.nodeId === node.id && dropTarget.position === 'inside'
 
     const icon = node.icon || (isContainer ? '📁' : '📝')
+
+    // Chapter color cascade: manual_color → POV character color → none.
+    const colorToken = isContainer ? null : resolveChapterColor(node, charactersById)
+    const colorClasses = paletteClasses(colorToken)
+    const featuredCharacters = isContainer ? [] : resolveFeaturedCharacters(node, charactersById)
 
     return (
       <div key={node.id}>
@@ -858,10 +1028,18 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
           onDragLeave={handleDragLeaveNode}
           onDrop={(e) => handleDropOnNode(e, node.id, isContainer)}
           onDragEnd={handleDragEnd}
-          className={`pr-2 py-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 text-sm flex items-center gap-1.5 ${isSelected ? 'bg-gray-100 dark:bg-gray-700' : ''} ${isDropInside ? 'bg-blue-600' : ''} ${isDragging ? 'opacity-40' : ''}`}
+          className={`relative pr-2 py-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 text-sm flex items-center gap-1.5 ${isSelected ? 'bg-gray-100 dark:bg-gray-700' : ''} ${isDropInside ? 'bg-blue-600' : ''} ${isDragging ? 'opacity-40' : ''}`}
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
           onContextMenu={(e) => handleContextMenu(e, node.id, node.nodeType)}
         >
+          {colorClasses && (
+            <span
+              aria-hidden
+              className={`absolute top-1 bottom-1 w-[3px] rounded-r-sm pointer-events-none ${colorClasses.stripe}`}
+              style={{ left: `${depth * 16}px` }}
+            />
+          )}
+
           {hasChildren && (
             <span
               className="text-gray-400 text-xs w-3 flex-shrink-0 hover:text-gray-600 dark:hover:text-gray-200"
@@ -876,7 +1054,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
           {!hasChildren && <span className="w-3 flex-shrink-0"></span>}
 
           <span
-            className="flex-shrink-0"
+            className={`flex-shrink-0 ${colorClasses?.iconText ?? ''}`}
             onClick={(e) => {
               e.stopPropagation()
               if (!isEditing) handleNodeClick(node)
@@ -913,6 +1091,10 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
             >
               {node.title}
             </span>
+          )}
+
+          {!isEditing && featuredCharacters.length > 0 && (
+            <FeaturedChips characters={featuredCharacters} />
           )}
         </div>
 
@@ -1048,10 +1230,152 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
         const menuNodeId = contextMenu.nodeId
         const menuNodeType = contextMenu.nodeType
         const isContainer = menuNodeType === 'container'
+        const node = findNodeInTree(tree, menuNodeId)
+        const characterList: CharacterColorRef[] = Array.from(charactersById.values()).sort((a, b) =>
+          (a.name ?? '').localeCompare(b.name ?? ''),
+        )
 
+        const baseMenuClass =
+          'fixed bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-lg z-50 context-menu'
+        const rowClass = 'w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-gray-100 flex items-center gap-2'
+
+        // ------------------------------- POV submenu -------------------------------
+        if (!isContainer && contextMenuView === 'pov' && node) {
+          const currentPov = node.pov_character_id ?? null
+          return (
+            <div
+              className={`${baseMenuClass} min-w-[200px] max-h-80 overflow-y-auto`}
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+            >
+              <button
+                onClick={() => setContextMenuView('main')}
+                className="w-full text-left px-3 py-2 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 border-b border-gray-200 dark:border-gray-700"
+              >
+                ← Set POV character
+              </button>
+              <button
+                onClick={() => { void patchChapter(menuNodeId, { pov_character_id: null }); closeContextMenu() }}
+                className={`${rowClass} ${currentPov === null ? 'font-semibold' : ''}`}
+              >
+                <span className="h-3 w-3 rounded-full border border-gray-300 dark:border-gray-600" />
+                <span className="italic text-gray-500 dark:text-gray-400">(none)</span>
+              </button>
+              {characterList.length === 0 && (
+                <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400 italic">No characters yet</div>
+              )}
+              {characterList.map(char => {
+                const cls = paletteClasses(char.color)
+                const isCurrent = char.id === currentPov
+                return (
+                  <button
+                    key={char.id}
+                    onClick={() => { void patchChapter(menuNodeId, { pov_character_id: char.id, manual_color: null }); closeContextMenu() }}
+                    className={`${rowClass} ${isCurrent ? 'font-semibold' : ''}`}
+                  >
+                    <span className={`h-3 w-3 rounded-full ${cls?.swatchBg ?? 'bg-gray-300 dark:bg-gray-600'}`} />
+                    <span className="truncate">{char.name ?? 'Unnamed'}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )
+        }
+
+        // ---------------------------- Featured submenu ----------------------------
+        if (!isContainer && contextMenuView === 'featured' && node) {
+          const featured = new Set(node.featured_character_ids ?? [])
+          return (
+            <div
+              className={`${baseMenuClass} min-w-[220px] max-h-80 overflow-y-auto`}
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+            >
+              <button
+                onClick={() => setContextMenuView('main')}
+                className="w-full text-left px-3 py-2 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 border-b border-gray-200 dark:border-gray-700"
+              >
+                ← Featured characters
+              </button>
+              {characterList.length === 0 && (
+                <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400 italic">No characters yet</div>
+              )}
+              {characterList.map(char => {
+                const cls = paletteClasses(char.color)
+                const isOn = featured.has(char.id)
+                return (
+                  <button
+                    key={char.id}
+                    onClick={() => {
+                      const next = new Set(featured)
+                      if (isOn) next.delete(char.id)
+                      else next.add(char.id)
+                      void patchChapter(menuNodeId, { featured_character_ids: Array.from(next) })
+                    }}
+                    className={rowClass}
+                  >
+                    <span className={`inline-flex items-center justify-center h-3.5 w-3.5 rounded border ${isOn ? 'bg-gray-900 dark:bg-gray-100 border-gray-900 dark:border-gray-100 text-white dark:text-gray-900' : 'border-gray-400 dark:border-gray-500'}`}>
+                      {isOn && <span className="text-[10px] leading-none">✓</span>}
+                    </span>
+                    <span className={`h-3 w-3 rounded-full ${cls?.swatchBg ?? 'bg-gray-300 dark:bg-gray-600'}`} />
+                    <span className="truncate flex-1">{char.name ?? 'Unnamed'}</span>
+                  </button>
+                )
+              })}
+              <button
+                onClick={closeContextMenu}
+                className="w-full text-left px-3 py-2 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 border-t border-gray-200 dark:border-gray-700"
+              >
+                Done
+              </button>
+            </div>
+          )
+        }
+
+        // ----------------------------- Color submenu -----------------------------
+        if (!isContainer && contextMenuView === 'color' && node) {
+          const current = isPaletteToken(node.manual_color) ? node.manual_color : null
+          return (
+            <div
+              className={`${baseMenuClass} min-w-[220px]`}
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+            >
+              <button
+                onClick={() => setContextMenuView('main')}
+                className="w-full text-left px-3 py-2 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 border-b border-gray-200 dark:border-gray-700"
+              >
+                ← Custom color
+              </button>
+              <div className="px-3 py-2 text-[11px] text-gray-500 dark:text-gray-400">
+                Overrides POV character color.
+              </div>
+              <div className="px-3 pb-3 grid grid-cols-6 gap-2">
+                {PALETTE_TOKENS.map(token => {
+                  const cls = paletteClasses(token)
+                  if (!cls) return null
+                  const isCurrent = token === current
+                  return (
+                    <button
+                      key={token}
+                      title={cls.label}
+                      onClick={() => { void patchChapter(menuNodeId, { manual_color: token }); closeContextMenu() }}
+                      className={`h-6 w-6 rounded-full ${cls.swatchBg} ring-offset-2 ring-offset-white dark:ring-offset-gray-800 transition ${isCurrent ? 'ring-2 ring-gray-900 dark:ring-gray-100' : 'hover:ring-2 hover:ring-gray-300 dark:hover:ring-gray-500'}`}
+                    />
+                  )
+                })}
+              </div>
+              <button
+                onClick={() => { void patchChapter(menuNodeId, { manual_color: null }); closeContextMenu() }}
+                className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 border-t border-gray-200 dark:border-gray-700"
+              >
+                Clear custom color
+              </button>
+            </div>
+          )
+        }
+
+        // ------------------------------- Main menu -------------------------------
         return (
           <div
-            className="fixed bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-lg z-50 min-w-[150px] context-menu"
+            className={`${baseMenuClass} min-w-[170px]`}
             style={{ left: contextMenu.x, top: contextMenu.y }}
           >
             {isContainer && (
@@ -1059,7 +1383,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
                 <button
                   onClick={() => {
                     createContainer(menuNodeId)
-                    setContextMenu(null)
+                    closeContextMenu()
                   }}
                   className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-gray-100"
                 >
@@ -1068,7 +1392,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
                 <button
                   onClick={() => {
                     createContent(menuNodeId)
-                    setContextMenu(null)
+                    closeContextMenu()
                   }}
                   className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-gray-100 border-t border-gray-200 dark:border-gray-700"
                 >
@@ -1077,24 +1401,40 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
                 <div className="border-t border-gray-200 dark:border-gray-700"></div>
               </>
             )}
+            {!isContainer && (
+              <>
+                <button
+                  onClick={() => setContextMenuView('pov')}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-gray-100 flex items-center justify-between gap-2"
+                >
+                  <span>🎭 Set POV character</span>
+                  <span className="text-gray-400">▸</span>
+                </button>
+                <button
+                  onClick={() => setContextMenuView('featured')}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-gray-100 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between gap-2"
+                >
+                  <span>👥 Featured characters</span>
+                  <span className="text-gray-400">▸</span>
+                </button>
+                <button
+                  onClick={() => setContextMenuView('color')}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-gray-100 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between gap-2"
+                >
+                  <span>🎨 Custom color</span>
+                  <span className="text-gray-400">▸</span>
+                </button>
+                <div className="border-t border-gray-200 dark:border-gray-700"></div>
+              </>
+            )}
             <button
               onClick={() => {
                 setEditingNodeId(menuNodeId)
-                const findNode = (nodes: TreeNode[]): TreeNode | null => {
-                  for (const node of nodes) {
-                    if (node.id === menuNodeId) return node
-                    if (node.children) {
-                      const found = findNode(node.children)
-                      if (found) return found
-                    }
-                  }
-                  return null
+                const target = findNodeInTree(tree, menuNodeId)
+                if (target) {
+                  setEditingValue(target.title)
                 }
-                const node = findNode(tree)
-                if (node) {
-                  setEditingValue(node.title)
-                }
-                setContextMenu(null)
+                closeContextMenu()
               }}
               className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-gray-100"
             >
@@ -1128,5 +1468,38 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
         onCancel={() => setPendingDelete(null)}
       />
     </div>
+  )
+}
+
+const MAX_VISIBLE_CHIPS = 4
+
+function FeaturedChips({ characters }: { characters: CharacterColorRef[] }) {
+  const visible = characters.slice(0, MAX_VISIBLE_CHIPS)
+  const overflow = characters.length - visible.length
+
+  return (
+    <span className="flex-shrink-0 flex items-center gap-0.5" aria-label="Featured characters">
+      {visible.map(char => {
+        const classes = paletteClasses(char.color)
+        const bg = classes?.chipBg ?? 'bg-gray-300 dark:bg-gray-600'
+        return (
+          <span
+            key={char.id}
+            title={char.name ?? 'Unnamed character'}
+            className={`inline-flex items-center justify-center h-3.5 w-3.5 rounded-full text-[8px] font-semibold text-white ring-1 ring-white dark:ring-gray-800 ${bg}`}
+          >
+            {characterInitial(char.name)}
+          </span>
+        )
+      })}
+      {overflow > 0 && (
+        <span
+          title={`${overflow} more`}
+          className="inline-flex items-center justify-center h-3.5 px-1 rounded-full text-[8px] font-semibold text-gray-600 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 ring-1 ring-white dark:ring-gray-800"
+        >
+          +{overflow}
+        </span>
+      )}
+    </span>
   )
 }

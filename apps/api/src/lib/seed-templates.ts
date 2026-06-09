@@ -34,7 +34,7 @@ const OFFICIAL_TEMPLATES: Array<{
   description: string
   tags: string[]
 }> = [
-  { shareId: 'official-characters', version: 6, label: 'Characters', icon: '🧙', description: 'People, creatures, or NPCs in your world', tags: ['rpg', 'worldbuilding', 'characters'] },
+  { shareId: 'official-characters', version: 7, label: 'Characters', icon: '🧙', description: 'People, creatures, or NPCs in your world', tags: ['rpg', 'worldbuilding', 'characters'] },
   { shareId: 'official-spells', version: 1, label: 'Spells', icon: '✨', description: 'Magical abilities and incantations', tags: ['rpg', 'magic', 'spells'] },
   { shareId: 'official-locations', version: 5, label: 'Locations', icon: '🗺️', description: 'Places, regions, and landmarks', tags: ['worldbuilding', 'locations', 'geography'] },
   { shareId: 'official-items', version: 4, label: 'Items', icon: '⚔️', description: 'Weapons, armor, magical items, and equipment', tags: ['rpg', 'items', 'equipment'] },

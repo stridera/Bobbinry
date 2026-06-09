@@ -24,7 +24,8 @@ const FIELD_TYPES: { value: FieldType; label: string }[] = [
   { value: 'json', label: 'Structured Data' },
   { value: 'rich-text', label: 'Rich Text' },
   { value: 'image', label: 'Image Upload' },
-  { value: 'relation', label: 'Relation (link to entity type)' }
+  { value: 'relation', label: 'Relation (link to entity type)' },
+  { value: 'color', label: 'Color' }
 ]
 
 export function FieldBuilder({ fields, onChange, entityTypes = [] }: FieldBuilderProps) {

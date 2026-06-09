@@ -1,5 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
+import { paletteClasses, isPaletteToken } from '@bobbinry/ui-components'
+import {
+  resolveChapterColor,
+  resolveFeaturedCharacters,
+  characterInitial,
+  type CharactersById,
+  type CharacterColorRef,
+} from '../lib/chapterColors'
 
 interface OutlineViewProps {
   projectId: string
@@ -16,6 +24,7 @@ interface OutlineViewProps {
 export default function OutlineView({ projectId, sdk, entityId }: OutlineViewProps) {
   const [container, setContainer] = useState<any>(null)
   const [children, setChildren] = useState<any[]>([])
+  const [charactersById, setCharactersById] = useState<CharactersById>(() => new Map())
   const [loading, setLoading] = useState(true)
 
   // Drag state
@@ -54,11 +63,43 @@ export default function OutlineView({ projectId, sdk, entityId }: OutlineViewPro
     }
   }, [editingId])
 
+  async function loadCharacters() {
+    try {
+      const res = await sdk.entities.query({ collection: 'characters', limit: 1000 })
+      const map: CharactersById = new Map()
+      for (const c of (res.data as any[]) ?? []) {
+        if (!c?.id) continue
+        map.set(c.id, {
+          id: c.id,
+          name: typeof c.name === 'string' ? c.name : undefined,
+          color: isPaletteToken(c.color) ? c.color : null,
+        })
+      }
+      setCharactersById(map)
+    } catch {
+      // Characters collection may not exist in older projects — silently treat as none.
+      setCharactersById(new Map())
+    }
+  }
+
+  // Re-fetch characters when their collection changes (e.g. color edit) so the
+  // outline cards refresh without a reload.
+  useEffect(() => {
+    function handleEntitiesChanged(e: Event) {
+      const detail = (e as CustomEvent).detail
+      if (detail?.collection !== 'characters') return
+      void loadCharacters()
+    }
+    window.addEventListener('bobbinry:entities-changed', handleEntitiesChanged)
+    return () => window.removeEventListener('bobbinry:entities-changed', handleEntitiesChanged)
+  }, [sdk])
+
   async function loadContainerData() {
     if (!sdk || !entityId) return
 
     try {
       setLoading(true)
+      void loadCharacters()
 
       // Load the container details
       const containerData = await sdk.entities.get('containers', entityId)
@@ -123,6 +164,7 @@ export default function OutlineView({ projectId, sdk, entityId }: OutlineViewPro
 
     try {
       setLoading(true)
+      void loadCharacters()
       setContainer({ title: 'Manuscript', icon: '📝', synopsis: null, _isRoot: true })
 
       // Load ALL containers and content, then filter to root level
@@ -428,6 +470,11 @@ export default function OutlineView({ projectId, sdk, entityId }: OutlineViewPro
               const isDragged = draggedIndex === index
               const isOver = dragOverIndex === index
               const isEditingThis = editingId === item.id
+              const colorToken = item._type === 'content' ? resolveChapterColor(item, charactersById) : null
+              const colorClasses = paletteClasses(colorToken)
+              const featured = item._type === 'content'
+                ? resolveFeaturedCharacters(item, charactersById)
+                : []
 
               return (
                 <div
@@ -441,14 +488,14 @@ export default function OutlineView({ projectId, sdk, entityId }: OutlineViewPro
                   onDragEnd={handleDragEnd}
                   onClick={() => handleItemClick(item)}
                   className={`
-                    group p-4 border rounded-lg transition-all select-none
+                    group p-4 border border-t-2 rounded-lg transition-all select-none
                     ${isEditingThis
                       ? 'border-blue-300 dark:border-blue-600 bg-blue-50/30 dark:bg-blue-900/10 cursor-default'
                       : isDragged
                         ? 'opacity-40 border-dashed border-gray-300 dark:border-gray-600 cursor-grabbing'
                         : isOver
                           ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-sm cursor-pointer'
-                          : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer'
+                          : `${colorClasses?.cardBorder ?? 'border-t-gray-200 dark:border-t-gray-700'} border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer`
                     }
                   `}
                 >
@@ -467,15 +514,18 @@ export default function OutlineView({ projectId, sdk, entityId }: OutlineViewPro
                         <circle cx="11" cy="13" r="1.5" />
                       </svg>
                     </span>
-                    <span className="text-xl shrink-0 mt-0.5">
+                    <span className={`text-xl shrink-0 mt-0.5 ${colorClasses?.iconText ?? ''}`}>
                       {item._type === 'container'
                         ? (item.icon || '📁')
                         : '📝'}
                     </span>
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-gray-900 dark:text-gray-100 truncate">
-                        {item.title}
-                      </h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-medium text-gray-900 dark:text-gray-100 truncate flex-1">
+                          {item.title}
+                        </h3>
+                        {featured.length > 0 && <OutlineFeaturedChips characters={featured} />}
+                      </div>
 
                       {/* Synopsis - inline editable */}
                       {isEditingThis ? (
@@ -543,5 +593,36 @@ export default function OutlineView({ projectId, sdk, entityId }: OutlineViewPro
         )}
       </div>
     </div>
+  )
+}
+
+function OutlineFeaturedChips({ characters }: { characters: CharacterColorRef[] }) {
+  const MAX = 4
+  const visible = characters.slice(0, MAX)
+  const overflow = characters.length - visible.length
+  return (
+    <span className="shrink-0 flex items-center gap-0.5" aria-label="Featured characters">
+      {visible.map(char => {
+        const cls = paletteClasses(char.color)
+        const bg = cls?.chipBg ?? 'bg-gray-300 dark:bg-gray-600'
+        return (
+          <span
+            key={char.id}
+            title={char.name ?? 'Unnamed character'}
+            className={`inline-flex items-center justify-center h-4 w-4 rounded-full text-[9px] font-semibold text-white ring-1 ring-white dark:ring-gray-900 ${bg}`}
+          >
+            {characterInitial(char.name)}
+          </span>
+        )
+      })}
+      {overflow > 0 && (
+        <span
+          title={`${overflow} more`}
+          className="inline-flex items-center justify-center h-4 px-1 rounded-full text-[9px] font-semibold text-gray-600 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 ring-1 ring-white dark:ring-gray-900"
+        >
+          +{overflow}
+        </span>
+      )}
+    </span>
   )
 }

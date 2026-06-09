@@ -6,6 +6,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { getSanitizedHtmlProps, useClickOutside } from '@bobbinry/sdk'
+import { PALETTE_TOKENS, isPaletteToken, paletteClasses } from '@bobbinry/ui-components'
 import type { FieldDefinition, FieldType } from '../types'
 import { normalizeJsonSchema } from '../types'
 import { useUpload, useEntityContext, useResolvedEntityNamesContext, useEntityNavContext } from './UploadContext'
@@ -92,6 +93,15 @@ export function checkTypeCompatibility(
     case 'image':
       if (typeof value === 'string') return { compatible: true }
       return { compatible: false, reason: `expected URL string, got ${typeof value}` }
+
+    case 'color':
+      if (typeof value !== 'string') {
+        return { compatible: false, reason: `expected palette token string, got ${typeof value}` }
+      }
+      if (!isPaletteToken(value)) {
+        return { compatible: false, reason: `"${value}" is not a valid palette token` }
+      }
+      return { compatible: true }
 
     default:
       return { compatible: true }
@@ -190,9 +200,50 @@ export function FieldRenderer({ field, value, onChange, display }: FieldRenderer
       return <ImageFieldRenderer field={field} value={value} onChange={onChange} />
     case 'relation':
       return <RelationFieldRenderer field={field} value={value} onChange={onChange} />
+    case 'color':
+      return <ColorFieldRenderer field={field} value={value} onChange={onChange} />
     default:
       return <div>Unknown field type: {field.type}</div>
   }
+}
+
+export function ColorFieldRenderer({ field, value, onChange }: Omit<FieldRendererProps, 'display'>) {
+  const selected = isPaletteToken(value) ? value : null
+  return (
+    <div className="mb-4">
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        {field.label}
+        {field.required && <span className="text-red-500 ml-1">*</span>}
+      </label>
+      <div className="flex flex-wrap items-center gap-2">
+        {PALETTE_TOKENS.map(token => {
+          const classes = paletteClasses(token)
+          if (!classes) return null
+          const isSelected = token === selected
+          return (
+            <button
+              key={token}
+              type="button"
+              onClick={() => onChange(token)}
+              title={classes.label}
+              aria-label={classes.label}
+              aria-pressed={isSelected}
+              className={`h-6 w-6 rounded-full ${classes.swatchBg} ring-offset-2 ring-offset-white dark:ring-offset-gray-900 transition ${isSelected ? 'ring-2 ring-gray-900 dark:ring-gray-100' : 'hover:ring-2 hover:ring-gray-300 dark:hover:ring-gray-600'}`}
+            />
+          )
+        })}
+        {selected && (
+          <button
+            type="button"
+            onClick={() => onChange(null)}
+            className="ml-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 underline"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+    </div>
+  )
 }
 
 export function TextFieldRenderer({ field, value, onChange }: Omit<FieldRendererProps, 'display'>) {
@@ -946,6 +997,19 @@ function ReadonlyFieldDisplay({ field, value }: { field: FieldDefinition, value:
 
     case 'relation':
       return <RelationReadonlyDisplay field={field} value={value} />
+
+    case 'color': {
+      const classes = paletteClasses(value)
+      if (!classes) {
+        return <span className="text-gray-400 dark:text-gray-500 italic">Not set</span>
+      }
+      return (
+        <span className="inline-flex items-center gap-2">
+          <span className={`h-4 w-4 rounded-full ${classes.swatchBg}`} aria-hidden />
+          <span className="text-gray-900 dark:text-gray-100">{classes.label}</span>
+        </span>
+      )
+    }
 
     default:
       return <span className="text-gray-900 dark:text-gray-100">{value.toString()}</span>

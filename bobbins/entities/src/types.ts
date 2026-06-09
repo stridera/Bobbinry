@@ -13,6 +13,7 @@ export type FieldType =
   | 'rich-text'
   | 'image'
   | 'relation'
+  | 'color'
 
 export type LayoutTemplate = 'compact-card' | 'hero-image' | 'list-details' | 'custom'
 
