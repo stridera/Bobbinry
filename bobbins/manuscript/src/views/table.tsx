@@ -10,6 +10,8 @@ interface TableViewProps {
   entityId?: string
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 interface Row {
   id: string
   title: string
@@ -38,10 +40,14 @@ export default function TableView({ sdk, entityId }: TableViewProps) {
   const [saving, setSaving] = useState<Set<string>>(new Set())
   const [toast, setToast] = useState<ToastState>(null)
 
-  const isRoot = entityId === 'ROOT'
+  // Treat a missing or invalid entityId as ROOT so the user lands on the
+  // full manuscript when they switch into this view without a real container
+  // selected (e.g., returning from Goals or another bobbin).
+  const effectiveEntityId = (entityId === 'ROOT' || (entityId && UUID_RE.test(entityId))) ? entityId : 'ROOT'
+  const isRoot = effectiveEntityId === 'ROOT'
 
   const loadData = useCallback(async () => {
-    if (!sdk || !entityId) return
+    if (!sdk) return
     setLoading(true)
     try {
       const [containersRes, contentRes] = await Promise.all([
@@ -58,14 +64,14 @@ export default function TableView({ sdk, entityId }: TableViewProps) {
         setContainerTitle('Manuscript')
       } else {
         try {
-          const container = await sdk.entities.get('containers', entityId) as any
+          const container = await sdk.entities.get('containers', effectiveEntityId) as any
           setContainerTitle(container?.title || 'Container')
         } catch {
           setContainerTitle('Container')
         }
 
         // Resolve every descendant container transitively.
-        const descendants = new Set<string>([entityId])
+        const descendants = new Set<string>([effectiveEntityId])
         let changed = true
         while (changed) {
           changed = false
@@ -104,15 +110,11 @@ export default function TableView({ sdk, entityId }: TableViewProps) {
     } finally {
       setLoading(false)
     }
-  }, [sdk, entityId, isRoot])
+  }, [sdk, effectiveEntityId, isRoot])
 
   useEffect(() => {
-    if (!entityId) {
-      setLoading(false)
-      return
-    }
     void loadData()
-  }, [entityId, loadData])
+  }, [effectiveEntityId, loadData])
 
   // Reflect external title/synopsis changes (rename from the navigation tree,
   // edits from the editor, etc.) without a full reload.
@@ -213,14 +215,6 @@ export default function TableView({ sdk, entityId }: TableViewProps) {
     return (
       <div className="p-8 text-center">
         <div className="text-gray-500 dark:text-gray-400">Loading...</div>
-      </div>
-    )
-  }
-
-  if (!entityId) {
-    return (
-      <div className="p-8 text-center text-gray-500 dark:text-gray-400">
-        Select a folder from the navigation panel to view its contents.
       </div>
     )
   }

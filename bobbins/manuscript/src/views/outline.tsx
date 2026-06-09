@@ -17,6 +17,8 @@ interface OutlineViewProps {
   entityId?: string
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 /**
  * Outline View for Manuscript bobbin
  * Displays container hierarchy with drag-to-reorder and inline synopsis editing
@@ -39,20 +41,19 @@ export default function OutlineView({ projectId, sdk, entityId }: OutlineViewPro
   const [saving, setSaving] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const isRoot = entityId === 'ROOT'
+  // Treat a missing or invalid entityId as ROOT so the user lands on the
+  // full manuscript when they switch into this view without a real container
+  // selected (e.g., returning from Goals or another bobbin).
+  const effectiveEntityId = (entityId === 'ROOT' || (entityId && UUID_RE.test(entityId))) ? entityId : 'ROOT'
+  const isRoot = effectiveEntityId === 'ROOT'
 
   useEffect(() => {
-    if (!entityId) {
-      setLoading(false)
-      return
-    }
-
     if (isRoot) {
       loadRootData()
     } else {
       loadContainerData()
     }
-  }, [entityId, projectId])
+  }, [effectiveEntityId, projectId])
 
   // Auto-focus textarea when editing starts
   useEffect(() => {
@@ -95,27 +96,27 @@ export default function OutlineView({ projectId, sdk, entityId }: OutlineViewPro
   }, [sdk])
 
   async function loadContainerData() {
-    if (!sdk || !entityId) return
+    if (!sdk) return
 
     try {
       setLoading(true)
       void loadCharacters()
 
       // Load the container details
-      const containerData = await sdk.entities.get('containers', entityId)
+      const containerData = await sdk.entities.get('containers', effectiveEntityId)
       setContainer(containerData)
 
       // Load all child containers (try both naming conventions)
       const [childBySnake, childByCamel] = await Promise.all([
         sdk.entities.query({
           collection: 'containers',
-          filters: { parent_id: entityId },
+          filters: { parent_id: effectiveEntityId },
           sort: [{ field: 'order', direction: 'asc' }],
           limit: 1000
         }),
         sdk.entities.query({
           collection: 'containers',
-          filters: { parentId: entityId },
+          filters: { parentId: effectiveEntityId },
           sort: [{ field: 'order', direction: 'asc' }],
           limit: 1000
         })
@@ -125,13 +126,13 @@ export default function OutlineView({ projectId, sdk, entityId }: OutlineViewPro
       const [contentBySnake, contentByCamel] = await Promise.all([
         sdk.entities.query({
           collection: 'content',
-          filters: { container_id: entityId },
+          filters: { container_id: effectiveEntityId },
           sort: [{ field: 'order', direction: 'asc' }],
           limit: 1000
         }),
         sdk.entities.query({
           collection: 'content',
-          filters: { containerId: entityId },
+          filters: { containerId: effectiveEntityId },
           sort: [{ field: 'order', direction: 'asc' }],
           limit: 1000
         })
@@ -237,7 +238,7 @@ export default function OutlineView({ projectId, sdk, entityId }: OutlineViewPro
       }
       setSaving(targetId)
       try {
-        await sdk.entities.update('containers', entityId!, {
+        await sdk.entities.update('containers', effectiveEntityId, {
           synopsis: trimmed,
           updated_at: new Date().toISOString()
         })
@@ -378,11 +379,11 @@ export default function OutlineView({ projectId, sdk, entityId }: OutlineViewPro
     )
   }
 
-  if (!entityId || !container) {
+  if (!container) {
     return (
       <div className="p-8 text-center">
         <div className="text-gray-500 dark:text-gray-400">
-          <p className="mb-4">Select a folder from the navigation panel to view its contents.</p>
+          <p className="mb-4">Loading manuscript...</p>
         </div>
       </div>
     )

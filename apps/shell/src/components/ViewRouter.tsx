@@ -357,13 +357,28 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
     const entry = viewRegistry.get(viewId)
     if (!entry) return
 
-    // Editor (requiresEntity) tabs keep the current entityId so you don't
-    // lose your place. List tabs (dashboard/graph/matrix/timeline) replace
-    // entityId with the view's short id — that way the URL reflects "I'm
-    // looking at the matrix, not at relationship X", and refresh stays put
-    // (instead of bouncing back to the entity editor).
+    // Pick the entityId for the destination view:
+    //  - requiresEntity (editor) or sibling view that shares the current
+    //    entityType (outline/table/board all declare handlers:[container])
+    //    → keep the current entityId so switching tabs at /container/{id}
+    //    (or the ROOT sentinel) keeps showing the same scope.
+    //  - wildcard list views (matrix/graph/dashboard, handlers:[*])
+    //    → use the view's short id so the URL reflects "I'm looking at the
+    //    matrix, not at relationship X".
+    //  - typed view that doesn't share the current entityType (e.g. coming
+    //    back to outline from Goals dashboard) → use 'ROOT' so the view
+    //    lands on its full-project default instead of a meaningless shortId.
     const shortId = viewId.includes('.') ? viewId.slice(viewId.indexOf('.') + 1) : viewId
-    const newEntityId = entry.requiresEntity ? currentNav.entityId : shortId
+    const handlesEntityType = entry.handlers?.includes(currentNav.entityType) ?? false
+    const isWildcardView = entry.handlers?.includes('*') ?? false
+    let newEntityId: string
+    if (entry.requiresEntity || handlesEntityType) {
+      newEntityId = currentNav.entityId
+    } else if (isWildcardView) {
+      newEntityId = shortId
+    } else {
+      newEntityId = 'ROOT'
+    }
 
     window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
       detail: {
