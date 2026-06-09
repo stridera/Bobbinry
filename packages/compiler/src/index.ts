@@ -1,4 +1,4 @@
-import { Manifest } from '@bobbinry/types'
+import { Manifest, BUILTIN_SLOT_IDS } from '@bobbinry/types'
 import Ajv from 'ajv'
 import { parse as parseYAML } from 'yaml'
 import * as fs from 'fs'
@@ -297,16 +297,9 @@ export class ManifestCompiler {
       return
     }
 
-    // Validate slot availability
-    const validSlots = new Set([
-      'sidebar.top',
-      'sidebar.bottom',
-      'toolbar.left',
-      'toolbar.right',
-      'context-menu',
-      'entity-panel',
-      'settings-panel'
-    ])
+    // Validate slot availability against the shared canonical slot registry
+    // (@bobbinry/types BUILTIN_SLOTS) so the compiler, shell, and linter agree.
+    const validSlots = new Set(BUILTIN_SLOT_IDS)
 
     for (const contribution of manifest.extensions.contributions) {
       console.log(`Registering extension contribution: ${contribution.id} in slot ${contribution.slot}`)

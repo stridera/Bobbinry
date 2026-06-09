@@ -1,7 +1,7 @@
 // Extensions and Slots system for Bobbinry Shell
 // Manages bobbin contributions to shell UI slots
 
-import { ExtensionContribution, ExtensionCondition } from '@bobbinry/types'
+import { ExtensionContribution, ExtensionCondition, ExtensionSlotDefinition, BUILTIN_SLOTS as SHARED_BUILTIN_SLOTS } from '@bobbinry/types'
 
 export interface RegisteredExtension {
   id: string
@@ -16,108 +16,16 @@ export interface RegisteredExtension {
   }
 }
 
-export interface SlotDefinition {
-  id: string
-  name: string
-  description: string
-  supportedTypes: string[]
-  maxContributions?: number
+// Slot definitions are the shared canonical registry from @bobbinry/types,
+// extended with an optional runtime-only default component. The slot list
+// itself lives in one place so the shell, compiler, and bobbin linter never
+// drift apart — see BUILTIN_SLOTS in packages/types/src/manifest.ts.
+export interface SlotDefinition extends ExtensionSlotDefinition {
   defaultComponent?: React.ComponentType<any>
 }
 
-// Built-in slot definitions
-export const BUILTIN_SLOTS: Record<string, SlotDefinition> = {
-  'shell.leftPanel': {
-    id: 'shell.leftPanel',
-    name: 'Left Panel',
-    description: 'Left sidebar panel for navigation and tools',
-    supportedTypes: ['panel', 'menu'],
-    maxContributions: 5
-  },
-  'shell.rightPanel': {
-    id: 'shell.rightPanel',
-    name: 'Right Panel',
-    description: 'Right sidebar panel for contextual information and tools',
-    supportedTypes: ['panel'],
-    maxContributions: 3
-  },
-  'shell.topBar': {
-    id: 'shell.topBar',
-    name: 'Top Bar',
-    description: 'Top navigation bar',
-    supportedTypes: ['menu', 'action'],
-    maxContributions: 10
-  },
-  'shell.statusBar': {
-    id: 'shell.statusBar',
-    name: 'Status Bar',
-    description: 'Bottom status bar',
-    supportedTypes: ['action', 'view'],
-    maxContributions: 8
-  },
-  'shell.contextMenu': {
-    id: 'shell.contextMenu',
-    name: 'Context Menu',
-    description: 'Right-click context menu',
-    supportedTypes: ['action', 'menu']
-  },
-  'shell.publishDashboard': {
-    id: 'shell.publishDashboard',
-    name: 'Publish Dashboard',
-    description: 'Project-scoped publishing panels contributed by publisher bobbins',
-    supportedTypes: ['panel'],
-    maxContributions: 10
-  },
-  'shell.projectBackup': {
-    id: 'shell.projectBackup',
-    name: 'Project Backup',
-    description: 'Backup status and controls on the project dashboard',
-    supportedTypes: ['panel'],
-    maxContributions: 5
-  },
-  'shell.editorFooter': {
-    id: 'shell.editorFooter',
-    name: 'Editor Footer',
-    description: 'Word count goals, session stats, writing sprints',
-    supportedTypes: ['view', 'action'],
-    maxContributions: 5
-  },
-  'shell.editorOverlay': {
-    id: 'shell.editorOverlay',
-    name: 'Editor Overlay',
-    description: 'Focus tools, ambient sound, distraction-free overlays',
-    supportedTypes: ['panel'],
-    maxContributions: 3
-  },
-  'shell.publishWorkflow': {
-    id: 'shell.publishWorkflow',
-    name: 'Publish Workflow',
-    description: 'Pre-publish checklists, approval steps',
-    supportedTypes: ['panel', 'action'],
-    maxContributions: 5
-  },
-  'reader.toolbar': {
-    id: 'reader.toolbar',
-    name: 'Reader Toolbar',
-    description: 'Translation toggle, TTS, bookmark actions',
-    supportedTypes: ['action'],
-    maxContributions: 8
-  },
-  'reader.afterChapter': {
-    id: 'reader.afterChapter',
-    name: 'After Chapter',
-    description: 'Post-chapter panels like Kindle send, recommendations',
-    supportedTypes: ['panel', 'action'],
-    maxContributions: 5
-  },
-  'reader.sidebar': {
-    id: 'reader.sidebar',
-    name: 'Reader Sidebar',
-    description: 'Annotations, highlights, notes panel',
-    supportedTypes: ['panel'],
-    maxContributions: 3
-  },
-}
+// Built-in slot definitions (re-exported from the shared registry)
+export const BUILTIN_SLOTS: Record<string, SlotDefinition> = SHARED_BUILTIN_SLOTS
 
 class ExtensionRegistry {
   private extensions = new Map<string, RegisteredExtension>()

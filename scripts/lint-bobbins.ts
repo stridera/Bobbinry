@@ -13,6 +13,12 @@ import fs from "fs";
 import path from "path";
 // yaml is available in apps/api/node_modules — import from there for this dev script
 import YAML from "../apps/api/node_modules/yaml/dist/index.js";
+// Compile manifests through the real compiler and validate slots against the
+// shared registry, so this linter catches the exact drift that lets a bobbin
+// pass these checks yet fail to install (e.g. a manifest field the AJV schema
+// doesn't allow, or a contribution to a slot the shell can't render).
+import { ManifestCompiler } from "../packages/compiler/dist/index.js";
+import { BUILTIN_SLOT_IDS } from "../packages/types/dist/index.js";
 
 const BOBBINS_DIR = path.join(import.meta.dirname!, "..", "bobbins");
 
@@ -657,6 +663,24 @@ function checkViewFileExists(ctx: BobbinContext): Diagnostic[] {
   return diags;
 }
 
+function checkSlotKnown(ctx: BobbinContext): Diagnostic[] {
+  if (!ctx.manifest?.extensions?.contributions) return [];
+  const known = new Set(BUILTIN_SLOT_IDS);
+  const diags: Diagnostic[] = [];
+  for (const contrib of ctx.manifest.extensions.contributions) {
+    if (!contrib.slot) continue;
+    const slot = String(contrib.slot);
+    if (!known.has(slot)) {
+      diags.push({
+        rule: "slot-known",
+        message: `contribution '${contrib.id}' targets unknown slot '${slot}' — the shell cannot render it. Valid slots: ${BUILTIN_SLOT_IDS.join(", ")}`,
+        severity: "error",
+      });
+    }
+  }
+  return diags;
+}
+
 function checkPanelIdNamespaced(ctx: BobbinContext): Diagnostic[] {
   if (!ctx.manifest?.extensions?.contributions) return [];
   const diags: Diagnostic[] = [];
@@ -790,6 +814,40 @@ function checkPanelIdUnique(contexts: BobbinContext[]): Map<string, Diagnostic[]
   return result;
 }
 
+// Run each manifest through the real ManifestCompiler — the same code path the
+// install endpoint uses. This is the guard that catches AJV schema drift: if a
+// manifest uses a field the compiler's schema doesn't allow (as `category` and
+// `core` once did), compilation fails here instead of at install time.
+async function checkManifestCompiles(ctx: BobbinContext): Promise<Diagnostic[]> {
+  if (!ctx.manifest) return [];
+  // The compiler is chatty (console.log per contribution); silence it so lint
+  // output stays clean, then restore.
+  const origLog = console.log;
+  const origWarn = console.warn;
+  console.log = () => {};
+  console.warn = () => {};
+  try {
+    const compiler = new ManifestCompiler({ projectId: "lint-check" });
+    const result = await compiler.compile(ctx.manifest);
+    if (result.success) return [];
+    const errors: string[] = Array.isArray(result.errors) ? result.errors : [];
+    return errors.map((message) => ({
+      rule: "manifest-compiles",
+      message: `manifest fails compilation (would fail to install): ${message}`,
+      severity: "error" as Severity,
+    }));
+  } catch (err) {
+    return [{
+      rule: "manifest-compiles",
+      message: `manifest compilation threw: ${err instanceof Error ? err.message : String(err)}`,
+      severity: "error",
+    }];
+  } finally {
+    console.log = origLog;
+    console.warn = origWarn;
+  }
+}
+
 // --- Main ---
 
 function loadContext(dirName: string): BobbinContext {
@@ -844,6 +902,7 @@ const perBobbinRules = [
   checkViewsInViews,
   checkEntryExists,
   checkViewFileExists,
+  checkSlotKnown,
   checkPanelIdNamespaced,
   checkTsconfigExists,
   checkTsconfigNoIncremental,
@@ -851,7 +910,7 @@ const perBobbinRules = [
   checkManifestVersionBumped,
 ];
 
-function main() {
+async function main() {
   // Find all bobbin directories (not standalone files)
   const entries = fs.readdirSync(BOBBINS_DIR, { withFileTypes: true });
   const bobbinDirs = entries
@@ -875,6 +934,15 @@ function main() {
       diags.push(...rule(ctx));
     }
     allDiags.set(ctx.dirName, diags);
+  }
+
+  // Run the async manifest-compilation guard (mirrors the install code path)
+  for (const ctx of contexts) {
+    const diags = await checkManifestCompiles(ctx);
+    if (diags.length === 0) continue;
+    const existing = allDiags.get(ctx.dirName) || [];
+    existing.push(...diags);
+    allDiags.set(ctx.dirName, existing);
   }
 
   // Run cross-bobbin rules

@@ -381,6 +381,107 @@ export interface ExtensionSlotDefinition {
   maxContributions?: number
 }
 
+// Canonical registry of shell/reader UI slots that bobbins may contribute to.
+// This is the single source of truth: the shell renders these slots, the
+// compiler validates contributions against them, and the bobbin linter rejects
+// contributions to unknown slots. Adding a slot here is the only step needed to
+// make it available everywhere — do not maintain a parallel list elsewhere.
+export const BUILTIN_SLOTS: Record<string, ExtensionSlotDefinition> = {
+  'shell.leftPanel': {
+    id: 'shell.leftPanel',
+    name: 'Left Panel',
+    description: 'Left sidebar panel for navigation and tools',
+    supportedTypes: ['panel', 'menu'],
+    maxContributions: 5,
+  },
+  'shell.rightPanel': {
+    id: 'shell.rightPanel',
+    name: 'Right Panel',
+    description: 'Right sidebar panel for contextual information and tools',
+    supportedTypes: ['panel'],
+    maxContributions: 3,
+  },
+  'shell.topBar': {
+    id: 'shell.topBar',
+    name: 'Top Bar',
+    description: 'Top navigation bar',
+    supportedTypes: ['menu', 'action'],
+    maxContributions: 10,
+  },
+  'shell.statusBar': {
+    id: 'shell.statusBar',
+    name: 'Status Bar',
+    description: 'Bottom status bar',
+    supportedTypes: ['action', 'view'],
+    maxContributions: 8,
+  },
+  'shell.contextMenu': {
+    id: 'shell.contextMenu',
+    name: 'Context Menu',
+    description: 'Right-click context menu',
+    supportedTypes: ['action', 'menu'],
+  },
+  'shell.publishDashboard': {
+    id: 'shell.publishDashboard',
+    name: 'Publish Dashboard',
+    description: 'Project-scoped publishing panels contributed by publisher bobbins',
+    supportedTypes: ['panel'],
+    maxContributions: 10,
+  },
+  'shell.projectBackup': {
+    id: 'shell.projectBackup',
+    name: 'Project Backup',
+    description: 'Backup status and controls on the project dashboard',
+    supportedTypes: ['panel'],
+    maxContributions: 5,
+  },
+  'shell.editorFooter': {
+    id: 'shell.editorFooter',
+    name: 'Editor Footer',
+    description: 'Word count goals, session stats, writing sprints',
+    supportedTypes: ['view', 'action'],
+    maxContributions: 5,
+  },
+  'shell.editorOverlay': {
+    id: 'shell.editorOverlay',
+    name: 'Editor Overlay',
+    description: 'Focus tools, ambient sound, distraction-free overlays',
+    supportedTypes: ['panel'],
+    maxContributions: 3,
+  },
+  'shell.publishWorkflow': {
+    id: 'shell.publishWorkflow',
+    name: 'Publish Workflow',
+    description: 'Pre-publish checklists, approval steps',
+    supportedTypes: ['panel', 'action'],
+    maxContributions: 5,
+  },
+  'reader.toolbar': {
+    id: 'reader.toolbar',
+    name: 'Reader Toolbar',
+    description: 'Translation toggle, TTS, bookmark actions',
+    supportedTypes: ['action'],
+    maxContributions: 8,
+  },
+  'reader.afterChapter': {
+    id: 'reader.afterChapter',
+    name: 'After Chapter',
+    description: 'Post-chapter panels like Kindle send, recommendations',
+    supportedTypes: ['panel', 'action'],
+    maxContributions: 5,
+  },
+  'reader.sidebar': {
+    id: 'reader.sidebar',
+    name: 'Reader Sidebar',
+    description: 'Annotations, highlights, notes panel',
+    supportedTypes: ['panel'],
+    maxContributions: 3,
+  },
+}
+
+// Slot IDs available for contributions, derived from BUILTIN_SLOTS.
+export const BUILTIN_SLOT_IDS: string[] = Object.keys(BUILTIN_SLOTS)
+
 export interface ExtensionContribution {
   slot: string
   type: 'panel' | 'view' | 'action' | 'menu'

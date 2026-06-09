@@ -42,6 +42,21 @@ export const manifestSchema = {
     "license": {
       "type": "string"
     },
+    "category": {
+      "type": "string",
+      "enum": [
+        "write",
+        "organize",
+        "publish",
+        "import",
+        "export",
+        "augment",
+        "integration",
+        "backup",
+        "fun"
+      ],
+      "description": "Marketplace category that drives the filter pills on /bobbins"
+    },
     "install": {
       "type": "object",
       "properties": {
@@ -61,6 +76,10 @@ export const manifestSchema = {
       "type": "string",
       "enum": ["public", "none", "moderator"],
       "description": "Controls who can see this bobbin in the marketplace. Owners bypass all restrictions."
+    },
+    "core": {
+      "type": "boolean",
+      "description": "Core infrastructure bobbins are auto-installed on project creation and cannot be uninstalled."
     },
     "capabilities": {
       "type": "object",
