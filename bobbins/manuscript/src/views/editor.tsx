@@ -1487,7 +1487,11 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
               non-narrative type (outline / supporting doc) excludes the piece
               from project word totals. The visual treatment here is intentionally
               minimal; richer iconography belongs to a follow-up design pass. */}
-          <div className="relative inline-block mb-6">
+          {/* stopPropagation: clicks inside this dropdown (button, menu items,
+              and the fixed dismiss overlay) must not bubble to the writing
+              surface's onClick, which would focus('end') and scroll the
+              editor to the bottom of the document. */}
+          <div className="relative inline-block mb-6" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               onClick={() => setContentTypeMenuOpen(o => !o)}
