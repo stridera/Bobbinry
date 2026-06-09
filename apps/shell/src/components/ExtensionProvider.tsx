@@ -178,7 +178,8 @@ export function useManifestExtensions() {
               source: view.source
             },
             handlers: view.handlers,
-            priority: view.priority
+            priority: view.priority,
+            requiresEntity: view.requiresEntity
           })
         }
       }

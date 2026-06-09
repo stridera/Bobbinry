@@ -59,6 +59,19 @@ export default function GoalEditorView({
       setLoading(true)
       setError(null)
       const res = await sdk.entities.get('goals', entityId!)
+      if (!res) {
+        // Stale link, deleted goal, or sentinel id from another view —
+        // bounce to the dashboard so the user lands somewhere useful.
+        window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
+          detail: {
+            entityType: 'goals',
+            entityId: 'dashboard',
+            bobbinId: 'goals',
+            metadata: { view: 'dashboard' }
+          }
+        }))
+        return
+      }
       setGoal(res as any)
     } catch (err: any) {
       console.error('[GoalEditor] Failed to load:', err)

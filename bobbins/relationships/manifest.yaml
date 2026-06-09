@@ -1,6 +1,6 @@
 id: relationships
 name: Relationships
-version: 1.0.1
+version: 1.0.4
 author: "Bobbins Core"
 description: "Graph and matrix views for entity connections across any bobbin"
 tags: [relationships, graph, connections, worldbuilding]
@@ -30,13 +30,13 @@ data:
 ui:
   views:
     - id: graph
-      name: Graph
+      name: Relationships Graph
       type: custom
       source: "*"
       handlers:
         - "*"
     - id: matrix
-      name: Matrix
+      name: Relationships Matrix
       type: custom
       source: "*"
       handlers:
@@ -46,7 +46,8 @@ ui:
       type: custom
       source: "*"
       handlers:
-        - "*"
+        - "relationships"
+      requiresEntity: true
 
 interactions:
   actions:

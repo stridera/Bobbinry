@@ -187,13 +187,14 @@ export default function DashboardView({
         <div>
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Active Goals</h2>
           {activeGoals.length === 0 ? (
-            <div className="text-center text-gray-500 dark:text-gray-400 py-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
-              <p>No active goals</p>
+            <div className="text-center text-gray-500 dark:text-gray-400 py-8 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
+              <p className="mb-1">No active goals</p>
+              <p className="text-sm mb-4">Set a target — daily words, a session sprint, or a full-project goal.</p>
               <button
                 onClick={() => openGoalEditor()}
-                className="mt-2 text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                className="px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 font-medium text-sm"
               >
-                Create your first goal
+                + Create First Goal
               </button>
             </div>
           ) : (

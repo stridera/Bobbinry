@@ -230,6 +230,7 @@ export interface View {
   permissions?: ViewPermission[]
   handlers?: string[]  // Entity types this view can handle (e.g., ['container', 'content'])
   priority?: number    // Higher = preferred default when multiple views match
+  requiresEntity?: boolean // Only show as a tab when navigating to a real entity (UUID), not a sentinel/list-view id
 }
 
 export type ViewType =

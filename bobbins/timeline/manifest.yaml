@@ -1,6 +1,6 @@
 id: timeline
 name: Timeline
-version: 1.0.1
+version: 1.0.5
 author: "Bobbins Core"
 description: "Chronological event tracking for plot and world history"
 tags: [timeline, chronology, worldbuilding, planning]
@@ -46,7 +46,8 @@ ui:
       type: custom
       source: "*"
       handlers:
-        - "*"
+        - "timeline_events"
+      requiresEntity: true
 
 interactions:
   actions:

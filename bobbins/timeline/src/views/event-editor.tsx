@@ -33,6 +33,28 @@ export default function EventEditorView({
       setLoading(true)
       setError(null)
       const res = await sdk.entities.get('timeline_events', entityId!)
+      if (!res) {
+        // Stale link or deleted event — send the user back to the timeline
+        // view (which has its own empty/create state) instead of a dead end.
+        // Prefer the parent timeline if we know it; otherwise pick the first
+        // existing timeline; otherwise fall through to the picker.
+        let target = metadata?.timelineId as string | undefined
+        if (!target) {
+          try {
+            const list = await sdk.entities.query({ collection: 'timelines', limit: 1 })
+            target = (list.data as any[])?.[0]?.id
+          } catch {}
+        }
+        window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
+          detail: {
+            entityType: 'timelines',
+            entityId: target ?? 'home',
+            bobbinId: 'timeline',
+            metadata: { view: 'timeline', timelineId: target }
+          }
+        }))
+        return
+      }
       setEvent(res as any)
     } catch (err: any) {
       console.error('[EventEditor] Failed to load:', err)

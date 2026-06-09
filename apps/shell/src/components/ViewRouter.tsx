@@ -16,6 +16,8 @@ interface NavigationState {
   metadata?: Record<string, any>
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 function ViewIcon({ type }: { type: string }) {
   switch (type) {
     case 'tree':
@@ -103,7 +105,9 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
   }
 
   function buildNavUrl(nav: NavigationState): string {
-    return `/projects/${projectId}/${nav.bobbinId}/${nav.entityType}/${nav.entityId}`
+    const base = `/projects/${projectId}/${nav.bobbinId}/${nav.entityType}/${nav.entityId}`
+    const view = nav.metadata?.view
+    return view ? `${base}?view=${encodeURIComponent(String(view))}` : base
   }
 
   const lastNavKey = `bobbinry:lastNav:${projectId}`
@@ -275,6 +279,16 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
         .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
     }
 
+    // Hide entity-required views (editors) from the tab bar when the current
+    // entityId isn't a real UUID — i.e. when the user is on a list/dashboard
+    // route using a sentinel like 'dashboard', 'graph', 'matrix', or 'new'.
+    // Explicit navigation via metadata.view still resolves through the
+    // direct viewRegistry.get() lookup below.
+    const entityIdIsUUID = currentNav.entityId ? UUID_RE.test(currentNav.entityId) : false
+    if (!entityIdIsUUID) {
+      views = views.filter(v => !v.requiresEntity)
+    }
+
     // Only update compatibleViews if the set of view IDs actually changed
     setCompatibleViews(prev => {
       const prevIds = prev.map(v => v.viewId).join(',')
@@ -339,7 +353,27 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
 
   const handleViewSwitch = useCallback((viewId: string) => {
     if (!currentNav) return
-    setActiveViewId(viewId)
+    if (viewId === activeViewIdRef.current) return
+    const entry = viewRegistry.get(viewId)
+    if (!entry) return
+
+    // Editor (requiresEntity) tabs keep the current entityId so you don't
+    // lose your place. List tabs (dashboard/graph/matrix/timeline) replace
+    // entityId with the view's short id — that way the URL reflects "I'm
+    // looking at the matrix, not at relationship X", and refresh stays put
+    // (instead of bouncing back to the entity editor).
+    const shortId = viewId.includes('.') ? viewId.slice(viewId.indexOf('.') + 1) : viewId
+    const newEntityId = entry.requiresEntity ? currentNav.entityId : shortId
+
+    window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
+      detail: {
+        entityType: currentNav.entityType,
+        entityId: newEntityId,
+        bobbinId: entry.bobbinId,
+        metadata: { ...currentNav.metadata, view: shortId }
+      }
+    }))
+
     setViewPreference(currentNav.entityType, viewId)
   }, [currentNav])
 

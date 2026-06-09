@@ -167,7 +167,14 @@ export default function ProjectDeepLinkPage() {
     // Expected format: [bobbinId, entityType, entityId]
     const [bobbinId, entityType, entityId] = slug
 
-    console.log('[DEEP LINK PAGE] Restoring navigation from URL:', { bobbinId, entityType, entityId })
+    // Preserve the active view across refreshes by reading ?view= from the
+    // URL. Without this, refreshing a deep-link with a tab-switched view
+    // would silently bounce back to the entity's default editor.
+    const view = typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('view') || undefined
+      : undefined
+
+    console.log('[DEEP LINK PAGE] Restoring navigation from URL:', { bobbinId, entityType, entityId, view })
 
     // Dispatch navigation event to restore the view
     if (typeof window !== 'undefined') {
@@ -176,7 +183,8 @@ export default function ProjectDeepLinkPage() {
           detail: {
             entityType,
             entityId,
-            bobbinId
+            bobbinId,
+            metadata: view ? { view } : undefined
           }
         })
       )

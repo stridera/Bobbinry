@@ -1,6 +1,6 @@
 id: goals
 name: Goals & Progress
-version: 1.0.1
+version: 1.0.4
 author: "Bobbins Core"
 description: "Word count goals, writing sessions, streaks, and progress visualization"
 tags: [goals, progress, writing, tracking]
@@ -39,7 +39,7 @@ data:
 ui:
   views:
     - id: dashboard
-      name: Dashboard
+      name: Goals Dashboard
       type: custom
       source: "*"
       handlers:
@@ -49,7 +49,8 @@ ui:
       type: custom
       source: "*"
       handlers:
-        - "*"
+        - "goals"
+      requiresEntity: true
 
 interactions:
   actions:

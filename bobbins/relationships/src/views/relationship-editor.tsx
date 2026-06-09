@@ -16,6 +16,9 @@ const STRENGTH_OPTIONS = [
   { value: 'strong', label: 'Strong' },
 ]
 
+interface EntityType { type_id: string; label: string; icon?: string }
+interface PickEntity { id: string; name: string }
+
 export default function RelationshipEditorView({
   sdk,
   projectId,
@@ -27,34 +30,119 @@ export default function RelationshipEditorView({
   const [saveStatus, setSaveStatus] = useState<'saved' | 'unsaved' | 'saving'>('saved')
   const [error, setError] = useState<string | null>(null)
 
+  // Entity types defined by the user (via the entities bobbin). Drives both
+  // picker dropdowns. Empty means the user hasn't defined any types yet.
+  const [entityTypes, setEntityTypes] = useState<EntityType[]>([])
+  // Cache of entities loaded per type, keyed by type_id. Populated lazily
+  // when the user picks a type, plus eagerly for source/target on edit.
+  const [entitiesByType, setEntitiesByType] = useState<Record<string, PickEntity[]>>({})
+  // Distinct relationship_type values already in use — fed into the combobox.
+  const [knownRelTypes, setKnownRelTypes] = useState<string[]>([])
+
   const isNew = entityId === 'new' || metadata?.isNew
 
   useEffect(() => {
+    loadEntityTypes()
+    loadKnownRelTypes()
+  }, [])
+
+  useEffect(() => {
     if (isNew) {
+      // metadata.prefill comes from the matrix view's click-to-create on an
+      // empty cell — gives us source/target pairs without forcing the user to
+      // re-pick from the dropdowns.
+      const prefill = metadata?.prefill as
+        | { sourceId?: string; sourceCollection?: string; targetId?: string; targetCollection?: string }
+        | undefined
       setRel({
-        source_entity_id: '',
-        target_entity_id: '',
-        source_collection: '',
-        target_collection: '',
+        source_entity_id: prefill?.sourceId || '',
+        target_entity_id: prefill?.targetId || '',
+        source_collection: prefill?.sourceCollection || '',
+        target_collection: prefill?.targetCollection || '',
         relationship_type: '',
         label: '',
         description: '',
-        bidirectional: false,
+        bidirectional: true, // Most user-level relationships read as mutual (friend, located_in, ally). Easier to uncheck than remember to check.
         strength: 'moderate',
         color: null
       })
+      // Warm the entity dropdowns so the prefilled source/target render with names.
+      if (prefill?.sourceCollection) ensureEntitiesLoaded(prefill.sourceCollection)
+      if (prefill?.targetCollection) ensureEntitiesLoaded(prefill.targetCollection)
       setLoading(false)
     } else if (entityId) {
       loadRelationship()
     }
   }, [entityId])
 
+  async function loadEntityTypes() {
+    try {
+      const res = await sdk.entities.query({ collection: 'entity_type_definitions', limit: 1000 })
+      const types = ((res.data as any[]) || [])
+        .map(t => ({
+          type_id: t.type_id || t.typeId,
+          label: t.label || t.type_id || t.typeId,
+          icon: t.icon
+        }))
+        .filter(t => t.type_id)
+        .sort((a, b) => a.label.localeCompare(b.label))
+      setEntityTypes(types)
+    } catch (err) {
+      console.error('[RelEditor] Failed to load entity types:', err)
+    }
+  }
+
+  async function loadKnownRelTypes() {
+    try {
+      const res = await sdk.entities.query({ collection: 'relationships', limit: 1000 })
+      const seen = new Set<string>()
+      for (const r of (res.data as any[]) || []) {
+        if (r.relationship_type) seen.add(r.relationship_type)
+      }
+      setKnownRelTypes([...seen].sort())
+    } catch (err) {
+      console.error('[RelEditor] Failed to load known relationship types:', err)
+    }
+  }
+
+  async function ensureEntitiesLoaded(typeId: string) {
+    if (!typeId || entitiesByType[typeId]) return
+    try {
+      const res = await sdk.entities.query({ collection: typeId, limit: 1000 })
+      const list: PickEntity[] = ((res.data as any[]) || [])
+        .map(e => ({ id: e.id, name: e.name || e.title || e.id }))
+        .sort((a, b) => a.name.localeCompare(b.name))
+      setEntitiesByType(prev => ({ ...prev, [typeId]: list }))
+    } catch (err) {
+      console.error(`[RelEditor] Failed to load entities for type ${typeId}:`, err)
+      setEntitiesByType(prev => ({ ...prev, [typeId]: [] }))
+    }
+  }
+
   async function loadRelationship() {
     try {
       setLoading(true)
       setError(null)
-      const res = await sdk.entities.get('relationships', entityId!)
-      setRel(res as any)
+      const res = await sdk.entities.get('relationships', entityId!) as any
+      if (!res) {
+        // Stale link, deleted relationship, or sentinel id (e.g. 'graph',
+        // 'matrix') from the relationships panel — send the user to the
+        // graph view which has a proper empty state + create CTA.
+        window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
+          detail: {
+            entityType: 'relationships',
+            entityId: 'graph',
+            bobbinId: 'relationships',
+            metadata: { view: 'graph' }
+          }
+        }))
+        return
+      }
+      setRel(res)
+      // Warm the pickers so the saved entities resolve to their names instead
+      // of just bare ids on first render.
+      if (res.source_collection) ensureEntitiesLoaded(res.source_collection)
+      if (res.target_collection) ensureEntitiesLoaded(res.target_collection)
     } catch (err: any) {
       console.error('[RelEditor] Failed to load:', err)
       setError(err.message || 'Failed to load relationship')
@@ -102,6 +190,25 @@ export default function RelationshipEditorView({
   function updateField(field: string, value: any) {
     setRel(prev => prev ? { ...prev, [field]: value } : prev)
     setSaveStatus('unsaved')
+  }
+
+  // Picking a new type wipes the previously-chosen entity on that side —
+  // the old id no longer belongs to the new collection.
+  function pickType(side: 'source' | 'target', typeId: string) {
+    ensureEntitiesLoaded(typeId)
+    const updates = {
+      [`${side}_collection`]: typeId,
+      [`${side}_entity_id`]: ''
+    }
+    setRel(prev => prev ? { ...prev, ...updates } : prev)
+    setSaveStatus('unsaved')
+    if (!isNew) saveRelationship(updates)
+  }
+
+  function pickEntity(side: 'source' | 'target', id: string) {
+    const field = `${side}_entity_id`
+    updateField(field, id)
+    if (!isNew) saveRelationship({ [field]: id })
   }
 
   function goBack() {
@@ -170,57 +277,71 @@ export default function RelationshipEditorView({
 
       {/* Form */}
       <div className="flex-1 overflow-auto p-6 max-w-2xl mx-auto w-full space-y-6">
-        {/* Source */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Source Entity ID</label>
-            <input
-              type="text"
-              value={rel.source_entity_id || ''}
-              onChange={(e) => updateField('source_entity_id', e.target.value)}
-              onBlur={() => !isNew && saveRelationship({ source_entity_id: rel.source_entity_id })}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-              placeholder="Entity ID..."
-            />
+        {/* No entity types? Direct the user where to create them. */}
+        {entityTypes.length === 0 && (
+          <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-lg text-sm text-amber-800 dark:text-amber-200">
+            No entity types defined yet. Create entity types (e.g. Characters, Places) in the Entities workspace before adding relationships.
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Source Collection</label>
-            <input
-              type="text"
-              value={rel.source_collection || ''}
-              onChange={(e) => updateField('source_collection', e.target.value)}
-              onBlur={() => !isNew && saveRelationship({ source_collection: rel.source_collection })}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-              placeholder="e.g., characters"
-            />
-          </div>
-        </div>
+        )}
 
-        {/* Target */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Target Entity ID</label>
-            <input
-              type="text"
-              value={rel.target_entity_id || ''}
-              onChange={(e) => updateField('target_entity_id', e.target.value)}
-              onBlur={() => !isNew && saveRelationship({ target_entity_id: rel.target_entity_id })}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-              placeholder="Entity ID..."
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Target Collection</label>
-            <input
-              type="text"
-              value={rel.target_collection || ''}
-              onChange={(e) => updateField('target_collection', e.target.value)}
-              onBlur={() => !isNew && saveRelationship({ target_collection: rel.target_collection })}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-              placeholder="e.g., locations"
-            />
-          </div>
-        </div>
+        {/* Source / Target pickers — one row per side, type then entity */}
+        {(['source', 'target'] as const).map(side => {
+          const collection = rel[`${side}_collection`] || ''
+          const entityIdValue = rel[`${side}_entity_id`] || ''
+          const entityList = collection ? entitiesByType[collection] : undefined
+          const entityKnown = !entityIdValue || entityList?.some(e => e.id === entityIdValue)
+          const sideLabel = side === 'source' ? 'Source' : 'Target'
+
+          return (
+            <div key={side} className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{sideLabel} Type</label>
+                <select
+                  value={collection}
+                  onChange={(e) => pickType(side, e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  disabled={entityTypes.length === 0}
+                >
+                  <option value="">Choose type…</option>
+                  {entityTypes.map(t => (
+                    <option key={t.type_id} value={t.type_id}>
+                      {t.icon ? `${t.icon} ${t.label}` : t.label}
+                    </option>
+                  ))}
+                  {/* Preserve unknown legacy values so editing old data doesn't silently drop the field */}
+                  {collection && !entityTypes.some(t => t.type_id === collection) && (
+                    <option value={collection}>{collection} (unknown type)</option>
+                  )}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{sideLabel} Entity</label>
+                <select
+                  value={entityIdValue}
+                  onChange={(e) => pickEntity(side, e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  disabled={!collection || entityList === undefined}
+                >
+                  <option value="">
+                    {!collection
+                      ? 'Pick a type first'
+                      : entityList === undefined
+                        ? 'Loading…'
+                        : entityList.length === 0
+                          ? `No entities of this type yet`
+                          : 'Choose entity…'}
+                  </option>
+                  {entityList?.map(e => (
+                    <option key={e.id} value={e.id}>{e.name}</option>
+                  ))}
+                  {entityIdValue && !entityKnown && (
+                    <option value={entityIdValue}>Unknown ({entityIdValue.slice(0, 8)}…)</option>
+                  )}
+                </select>
+              </div>
+            </div>
+          )
+        })}
 
         {/* Relationship Type & Label */}
         <div className="grid grid-cols-2 gap-4">
@@ -228,12 +349,21 @@ export default function RelationshipEditorView({
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Relationship Type</label>
             <input
               type="text"
+              list="rel-type-suggestions"
               value={rel.relationship_type || ''}
               onChange={(e) => updateField('relationship_type', e.target.value)}
               onBlur={() => !isNew && saveRelationship({ relationship_type: rel.relationship_type })}
               className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-              placeholder="e.g., ally, enemy, located_in..."
+              placeholder="e.g., ally, enemy, located_in…"
             />
+            <datalist id="rel-type-suggestions">
+              {knownRelTypes.map(t => (
+                <option key={t} value={t} />
+              ))}
+            </datalist>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Used to group/filter the graph and matrix. Reuse existing names for consistency.
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Label</label>
@@ -243,7 +373,7 @@ export default function RelationshipEditorView({
               onChange={(e) => updateField('label', e.target.value)}
               onBlur={() => !isNew && saveRelationship({ label: rel.label })}
               className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-              placeholder="Display label..."
+              placeholder="Display label…"
             />
           </div>
         </div>

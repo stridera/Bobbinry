@@ -133,6 +133,8 @@ function resolveVariantOnData(
 }
 
 const FIELD_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 function parseFieldsParam(raw: string | undefined): Set<string> | undefined {
   if (!raw) return undefined
   const names = raw.split(',').map(s => s.trim()).filter(Boolean)
@@ -432,6 +434,10 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
     try {
       const { entityId } = request.params
 
+      if (!UUID_RE.test(entityId)) {
+        return reply.status(404).send({ error: 'Entity not found' })
+      }
+
       // Validate input with Zod
       const body = EntityUpdateSchema.parse(request.body)
       const { collection, projectId, data, expectedVersion } = body
@@ -613,6 +619,10 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
     try {
       const { entityId } = request.params
       const { projectId, collection } = request.query
+
+      if (!UUID_RE.test(entityId)) {
+        return reply.status(404).send({ error: 'Entity not found' })
+      }
 
       if (!assertEntityScope(request, reply, collection, 'write')) return
 
@@ -1024,6 +1034,13 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
     try {
       const { entityId } = request.params
       const { projectId, collection, variant } = request.query
+
+      // Stale views sometimes navigate with sentinel ids like 'dashboard' or
+      // 'publishing'. Treat anything that isn't a UUID as missing so the DB
+      // never sees a bad cast.
+      if (!UUID_RE.test(entityId)) {
+        return reply.status(404).send({ error: 'Entity not found' })
+      }
 
       if (!assertEntityScope(request, reply, collection, 'read')) return
 

@@ -483,7 +483,13 @@ export const manifestSchema = {
         "permissions": {
           "type": "array",
           "items": { "$ref": "#/definitions/ViewPermission" }
-        }
+        },
+        "handlers": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "priority": { "type": "number" },
+        "requiresEntity": { "type": "boolean" }
       }
     },
     "ViewLayout": {

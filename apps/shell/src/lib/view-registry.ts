@@ -25,6 +25,7 @@ export interface ViewRegistryEntry {
   // View routing
   handlers?: string[]  // Entity types this view can handle (e.g., ['scene', 'chapter'])
   priority?: number    // Higher = preferred default (optional)
+  requiresEntity?: boolean // Hide from the tab bar unless current entityId is a UUID
 }
 
 export interface ViewRegistryStats {
