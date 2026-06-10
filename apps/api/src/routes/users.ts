@@ -761,6 +761,18 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
       // Verify user is updating their own preferences
       if (!requireSelf(request, reply, userId)) return
 
+      // Allow-list updatable fields so a malicious body can't include `userId`
+      // (the table's primary key) or any other column and rewrite this row to
+      // point at another user's id.
+      const safe: Partial<typeof userNotificationPreferences.$inferInsert> = {}
+      if (prefsData.emailNewChapter !== undefined) safe.emailNewChapter = prefsData.emailNewChapter
+      if (prefsData.emailNewFollower !== undefined) safe.emailNewFollower = prefsData.emailNewFollower
+      if (prefsData.emailNewSubscriber !== undefined) safe.emailNewSubscriber = prefsData.emailNewSubscriber
+      if (prefsData.emailNewComment !== undefined) safe.emailNewComment = prefsData.emailNewComment
+      if (prefsData.emailDigestFrequency !== undefined) safe.emailDigestFrequency = prefsData.emailDigestFrequency
+      if (prefsData.pushNewChapter !== undefined) safe.pushNewChapter = prefsData.pushNewChapter
+      if (prefsData.pushNewComment !== undefined) safe.pushNewComment = prefsData.pushNewComment
+
       // Check if preferences exist
       const existing = await db
         .select()
@@ -772,10 +784,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
         // Update
         const [updated] = await db
           .update(userNotificationPreferences)
-          .set({
-            ...prefsData,
-            updatedAt: new Date()
-          })
+          .set({ ...safe, updatedAt: new Date() })
           .where(eq(userNotificationPreferences.userId, userId))
           .returning()
 
@@ -784,10 +793,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
         // Create
         const [created] = await db
           .insert(userNotificationPreferences)
-          .values({
-            userId,
-            ...prefsData
-          })
+          .values({ userId, ...safe })
           .returning()
 
         return reply.status(201).send({ preferences: created })
@@ -861,6 +867,15 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
       // Verify user is updating their own preferences
       if (!requireSelf(request, reply, userId)) return
 
+      // Allow-list updatable fields — see notification-preferences handler
+      // above for the rationale.
+      const safe: Partial<typeof userReadingPreferences.$inferInsert> = {}
+      if (prefsData.fontSize !== undefined) safe.fontSize = prefsData.fontSize
+      if (prefsData.fontFamily !== undefined) safe.fontFamily = prefsData.fontFamily
+      if (prefsData.lineHeight !== undefined) safe.lineHeight = prefsData.lineHeight
+      if (prefsData.theme !== undefined) safe.theme = prefsData.theme
+      if (prefsData.readerWidth !== undefined) safe.readerWidth = prefsData.readerWidth
+
       // Check if preferences exist
       const existing = await db
         .select()
@@ -872,10 +887,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
         // Update
         const [updated] = await db
           .update(userReadingPreferences)
-          .set({
-            ...prefsData,
-            updatedAt: new Date()
-          })
+          .set({ ...safe, updatedAt: new Date() })
           .where(eq(userReadingPreferences.userId, userId))
           .returning()
 
@@ -884,10 +896,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
         // Create
         const [created] = await db
           .insert(userReadingPreferences)
-          .values({
-            userId,
-            ...prefsData
-          })
+          .values({ userId, ...safe })
           .returning()
 
         return reply.status(201).send({ preferences: created })
@@ -954,6 +963,18 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
       const userId = request.user!.id
       const body = request.body ?? {}
 
+      // Allow-list updatable fields — prevents the body from including a
+      // `userId` key that would rewrite this row's PK.
+      const safe: Partial<typeof userManuscriptDisplaySettings.$inferInsert> = {}
+      if (body.paragraphSpacing !== undefined) safe.paragraphSpacing = body.paragraphSpacing
+      if (body.paragraphIndent !== undefined) safe.paragraphIndent = body.paragraphIndent
+      if (body.codeBlockWrap !== undefined) safe.codeBlockWrap = body.codeBlockWrap
+      if (body.sceneBreakStyle !== undefined) safe.sceneBreakStyle = body.sceneBreakStyle
+      if (body.dropCaps !== undefined) safe.dropCaps = body.dropCaps
+      if (body.smartDashes !== undefined) safe.smartDashes = body.smartDashes
+      if (body.smartEllipsis !== undefined) safe.smartEllipsis = body.smartEllipsis
+      if (body.showFormattingMarks !== undefined) safe.showFormattingMarks = body.showFormattingMarks
+
       const existing = await db
         .select()
         .from(userManuscriptDisplaySettings)
@@ -963,14 +984,14 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
       if (existing.length > 0) {
         const [updated] = await db
           .update(userManuscriptDisplaySettings)
-          .set({ ...body, updatedAt: new Date() })
+          .set({ ...safe, updatedAt: new Date() })
           .where(eq(userManuscriptDisplaySettings.userId, userId))
           .returning()
         return reply.status(200).send({ settings: updated })
       } else {
         const [created] = await db
           .insert(userManuscriptDisplaySettings)
-          .values({ userId, ...body })
+          .values({ userId, ...safe })
           .returning()
         return reply.status(201).send({ settings: created })
       }
@@ -1116,12 +1137,19 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Invalid beta reader ID format' })
       }
 
+      // Allow-list updatable fields. Without this, spreading `request.body`
+      // straight into `set(...)` lets an attacker pass arbitrary keys
+      // (authorId, readerId, projectId) and rewrite their own beta-reader row
+      // to point at another author's project — gaining beta-reader access to
+      // that project's paid chapters via checkPublicChapterAccess.
+      const safeUpdate: Partial<typeof betaReaders.$inferInsert> = { updatedAt: new Date() }
+      if (updateData.accessLevel !== undefined) safeUpdate.accessLevel = updateData.accessLevel
+      if (updateData.notes !== undefined) safeUpdate.notes = updateData.notes
+      if (updateData.isActive !== undefined) safeUpdate.isActive = updateData.isActive
+
       const [updated] = await db
         .update(betaReaders)
-        .set({
-          ...updateData,
-          updatedAt: new Date()
-        })
+        .set(safeUpdate)
         .where(and(
           eq(betaReaders.id, betaReaderId),
           eq(betaReaders.authorId, userId)
@@ -1267,12 +1295,16 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Invalid bobbin install ID format' })
       }
 
+      // Allow-list updatable fields — prevents the body from clobbering
+      // `userId` or `bobbinId` to point this install row at another user or
+      // another bobbin.
+      const safe: Partial<typeof userBobbinsInstalled.$inferInsert> = { updatedAt: new Date() }
+      if (updateData.config !== undefined) safe.config = updateData.config
+      if (updateData.isEnabled !== undefined) safe.isEnabled = updateData.isEnabled
+
       const [updated] = await db
         .update(userBobbinsInstalled)
-        .set({
-          ...updateData,
-          updatedAt: new Date()
-        })
+        .set(safe)
         .where(and(
           eq(userBobbinsInstalled.id, bobbinInstallId),
           eq(userBobbinsInstalled.userId, userId)
@@ -1551,7 +1583,9 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
           otherSocials: userProfiles.otherSocials,
           createdAt: userProfiles.createdAt,
           userName: users.name,
-          userEmail: users.email
+          // users.email is intentionally omitted — this endpoint is unauth and
+          // would otherwise let anyone harvest authors' email addresses by
+          // enumerating usernames.
         })
         .from(userProfiles)
         .innerJoin(users, eq(users.id, userProfiles.userId))

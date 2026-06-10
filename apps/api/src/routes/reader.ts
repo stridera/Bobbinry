@@ -482,14 +482,18 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{
     Params: { projectId: string }
-    Querystring: {
-      userId?: string
-    }
-  }>('/public/projects/:projectId/toc', async (request, reply) => {
+  }>('/public/projects/:projectId/toc', {
+    preHandler: optionalAuth
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId } = request.params
-      const { userId } = request.query
+      // Identity is sourced from the authenticated session — never the query
+      // string. Without this, anyone who knew the project owner's UUID could
+      // append ?userId=<owner_uuid> and unlock embargoed / subscriber-only
+      // chapters because checkPublicChapterAccess grants access when
+      // project.ownerId === userId.
+      const userId = request.user?.id
 
       // Get project visibility setting
       const [publishConfig] = await db
@@ -577,14 +581,15 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{
     Params: { projectId: string; chapterId: string }
-    Querystring: {
-      userId?: string
-    }
-  }>('/public/projects/:projectId/chapters/:chapterId', async (request, reply) => {
+  }>('/public/projects/:projectId/chapters/:chapterId', {
+    preHandler: optionalAuth
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId, chapterId } = request.params
-      const { userId } = request.query
+      // Identity sourced from authenticated session only — see /toc handler above
+      // for why query-string userId would have been an embargo-bypass.
+      const userId = request.user?.id
 
       // Get project visibility setting
       const [chapterPublishConfig] = await db
@@ -701,18 +706,23 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.post<{
     Params: { projectId: string; chapterId: string }
     Body: {
-      userId?: string
       sessionId?: string
       deviceType?: string
       referrer?: string
       readTime?: number
       position?: number
     }
-  }>('/public/projects/:projectId/chapters/:chapterId/view', async (request, reply) => {
+  }>('/public/projects/:projectId/chapters/:chapterId/view', {
+    preHandler: optionalAuth
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { chapterId } = request.params
-      const { userId, sessionId, deviceType, referrer, readTime, position } = request.body
+      const { sessionId, deviceType, referrer, readTime, position } = request.body
+      // readerId is sourced from the authenticated session only — never the
+      // request body — so anonymous attackers can't fabricate reads attributed
+      // to other accounts.
+      const userId = request.user?.id
 
       let viewId: string
       let isNewView = false

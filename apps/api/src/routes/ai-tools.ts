@@ -12,6 +12,7 @@ import { db } from '../db/connection'
 import { entities, userBobbinsInstalled, provenanceEvents } from '../db/schema'
 import { requireAuth, requireProjectOwnership } from '../middleware/auth'
 import { ApiError } from '../lib/errors'
+import { encryptSecret, decryptSecret } from '../lib/secret-storage'
 
 // --- AI Provider types and constants (inlined to stay within rootDir) ---
 
@@ -265,7 +266,26 @@ function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
-/** Look up user's AI tools bobbin installation */
+/**
+ * In-memory config holds the plaintext API key; the DB stores an encrypted
+ * envelope so a database compromise doesn't expose users' Anthropic/OpenAI
+ * keys. decryptAIConfig tolerates legacy plaintext values for backwards
+ * compatibility — they re-encrypt on the next write via encryptAIConfig.
+ */
+function decryptAIConfig<T extends Record<string, any> | null | undefined>(config: T): T {
+  if (!config) return config
+  const copy: any = { ...config }
+  if (typeof copy.apiKey === 'string' && copy.apiKey) copy.apiKey = decryptSecret(copy.apiKey)
+  return copy
+}
+
+function encryptAIConfig<T extends Record<string, any>>(config: T): T {
+  const copy: any = { ...config }
+  if (typeof copy.apiKey === 'string' && copy.apiKey) copy.apiKey = encryptSecret(copy.apiKey)
+  return copy
+}
+
+/** Look up user's AI tools bobbin installation with API key decrypted for in-memory use. */
 async function getUserAIBobbin(userId: string) {
   const [bobbin] = await db
     .select()
@@ -278,7 +298,8 @@ async function getUserAIBobbin(userId: string) {
       )
     )
     .limit(1)
-  return bobbin
+  if (!bobbin) return bobbin
+  return { ...bobbin, config: decryptAIConfig(bobbin.config as any) }
 }
 
 // --- Plugin ---
@@ -337,7 +358,7 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
       const effectiveModel = model || getDefaultModel(provider)
 
       const existing = await getUserAIBobbin(userId)
-      const bobbinConfig = { provider, apiKey, model: effectiveModel }
+      const bobbinConfig = encryptAIConfig({ provider, apiKey, model: effectiveModel })
 
       if (existing) {
         await db

@@ -14,6 +14,7 @@ import {
   notifications,
 } from '../db/schema'
 import { eq, and, sql, lt } from 'drizzle-orm'
+import { jwtVerify as joseJwtVerify } from 'jose'
 import { requireAuth, requireSelf, requireVerified, denyApiKeyAuth } from '../middleware/auth'
 import { serverEventBus, subscriptionChanged } from '../lib/event-bus'
 import { getStripe, getSubscriptionPeriod, createExpressAccount, createOnboardingLink } from '../lib/stripe'
@@ -213,7 +214,15 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
 
   /**
    * Handle Stripe Connect OAuth/onboarding callback.
-   * Checks account status and marks onboarding complete.
+   *
+   * Stripe Connect Express accounts use Account Links (createOnboardingLink in
+   * the POST /users/:userId/stripe/connect handler above) and never come back
+   * here — this endpoint exists for the legacy OAuth flow. To prevent a
+   * payout-redirect attack where someone calls this URL with their own `code`
+   * plus a victim's userId as `state`, we now require `state` to be an HMAC-
+   * signed JWT (matching the pattern in routes/google-drive.ts). Since no init
+   * path signs such a token today, the callback is effectively closed off
+   * until/unless we wire up a signed OAuth init.
    */
   fastify.get<{
     Querystring: { code?: string; state?: string; error?: string }
@@ -229,8 +238,22 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Missing state parameter' })
       }
 
-      const userId = state
-      if (!isValidUUID(userId)) return reply.status(400).send({ error: 'Invalid user ID in state' })
+      let statePayload: { userId: string }
+      try {
+        const secret = new TextEncoder().encode(
+          process.env.NEXTAUTH_SECRET || process.env.API_JWT_SECRET || ''
+        )
+        if (secret.byteLength === 0) {
+          return reply.status(500).send({ error: 'Server signing secret not configured' })
+        }
+        const { payload } = await joseJwtVerify(state, secret, { algorithms: ['HS256'] })
+        statePayload = payload as { userId: string }
+      } catch {
+        return reply.status(400).send({ error: 'Invalid or expired state parameter' })
+      }
+
+      const userId = statePayload.userId
+      if (!userId || !isValidUUID(userId)) return reply.status(400).send({ error: 'Invalid user ID in state' })
 
       const stripe = getStripe()
       if (!stripe) return reply.status(503).send({ error: 'Stripe not configured' })

@@ -98,7 +98,27 @@ async function discordFetch(
 // Webhook (used by discord-notifier)
 // ---------------------------------------------------------------------------
 
+// Discord ships webhook URLs on these two hostnames only. Allow-listing here
+// prevents SSRF — without this check, anyone who can create a destination row
+// (including legitimate users) could point the webhook at internal addresses
+// like http://169.254.169.254/latest/meta-data/ and the API VM would happily
+// POST our payload there when the notifier handler fires.
+const DISCORD_WEBHOOK_HOSTS = new Set(['discord.com', 'discordapp.com', 'ptb.discord.com', 'canary.discord.com'])
+
+function isAllowedDiscordWebhookUrl(rawUrl: string): boolean {
+  try {
+    const u = new URL(rawUrl)
+    if (u.protocol !== 'https:') return false
+    return DISCORD_WEBHOOK_HOSTS.has(u.hostname.toLowerCase())
+  } catch {
+    return false
+  }
+}
+
 export async function sendWebhook(webhookUrl: string, payload: WebhookPayload): Promise<{ success: boolean; error?: string }> {
+  if (!isAllowedDiscordWebhookUrl(webhookUrl)) {
+    return { success: false, error: 'Webhook URL must be an https Discord URL' }
+  }
   try {
     const resp = await fetch(webhookUrl, {
       method: 'POST',

@@ -209,6 +209,34 @@ async function uploadsPlugin(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Missing required fields: fileKey, contentType, size, context' })
     }
 
+    // Cross-check that the fileKey was minted for THIS user / context / project
+    // — without this, an attacker can presign a key as a no-project `avatar`
+    // (which bypasses the email-verify gate) and then `confirm` it with
+    // arbitrary `context: 'cover'` / `projectId: <victim>` to forge audit rows
+    // attributing their upload to another project.
+    const expectedPrefix = (() => {
+      switch (context) {
+        case 'avatar': return `users/${user.id}/avatars/`
+        case 'cover': return projectId ? `projects/${projectId}/covers/` : null
+        case 'entity':
+        case 'map':   return projectId ? `projects/${projectId}/entities/` : null
+        case 'editor': return projectId ? `projects/${projectId}/editor/` : null
+        case 'import': return projectId ? `projects/${projectId}/imports/` : null
+        default: return null
+      }
+    })()
+    if (!expectedPrefix || !fileKey.startsWith(expectedPrefix)) {
+      return reply.status(400).send({ error: 'fileKey does not match the declared context/project' })
+    }
+
+    // For project-scoped uploads, re-verify ownership at confirm time too —
+    // presign already did, but the project could have changed hands between
+    // presign and confirm.
+    if (context !== 'avatar' && projectId) {
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
+    }
+
     // Verify the object actually exists in S3
     const objectInfo = await headObject(fileKey)
     if (!objectInfo) {

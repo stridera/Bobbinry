@@ -21,7 +21,10 @@ const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file'
 
 function getStateSecret(): Uint8Array {
-  const secret = process.env.NEXTAUTH_SECRET || env.API_JWT_SECRET || 'development-secret-only-for-local-dev'
+  const secret = process.env.NEXTAUTH_SECRET || env.API_JWT_SECRET
+  if (!secret) {
+    throw new Error('OAuth state signing requires NEXTAUTH_SECRET or API_JWT_SECRET')
+  }
   return new TextEncoder().encode(secret)
 }
 

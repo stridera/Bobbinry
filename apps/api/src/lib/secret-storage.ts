@@ -21,11 +21,9 @@ const TAG_LEN = 16
 function deriveKey(): Buffer {
   const material = process.env.NEXTAUTH_SECRET || process.env.API_JWT_SECRET
   if (!material) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('Cannot encrypt secrets: NEXTAUTH_SECRET/API_JWT_SECRET not set')
-    }
-    // Dev-only — mirrors middleware/auth.ts fallback so dev workflows don't crash.
-    return createHash('sha256').update('development-secret-only-for-local-dev').digest()
+    // No silent fallback: if the secret is unset we can't safely encrypt or
+    // decrypt anyone's data — failing loud matches middleware/auth.ts.
+    throw new Error('Cannot encrypt secrets: NEXTAUTH_SECRET/API_JWT_SECRET not set')
   }
   return createHash('sha256').update(material).digest()
 }

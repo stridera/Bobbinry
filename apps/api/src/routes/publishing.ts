@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { requireAuth, requireProjectOwnership, requireVerified } from '../middleware/auth'
+import { requireAuth, requireProjectOwnership, requireVerified, optionalAuth } from '../middleware/auth'
 import { db } from '../db/connection'
 import {
   chapterPublications,
@@ -216,6 +216,8 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
     const correlationId = randomUUID()
     try {
       const { projectId, chapterId } = request.params
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
       const { publishStatus, publishedVersion, firstPublishedAt, scheduledFor, publishEarly } = request.body
 
       // Check if chapter exists
@@ -334,10 +336,14 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   // Unpublish a chapter
   fastify.post<{
     Params: { projectId: string; chapterId: string }
-  }>('/projects/:projectId/chapters/:chapterId/unpublish', async (request, reply) => {
+  }>('/projects/:projectId/chapters/:chapterId/unpublish', {
+    preHandler: [requireAuth, requireVerified]
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId, chapterId } = request.params
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       const [updated] = await db
         .update(chapterPublications)
@@ -368,10 +374,14 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   // Mark a chapter as complete (writing -> complete, gates audience publishing)
   fastify.post<{
     Params: { projectId: string; chapterId: string }
-  }>('/projects/:projectId/chapters/:chapterId/complete', async (request, reply) => {
+  }>('/projects/:projectId/chapters/:chapterId/complete', {
+    preHandler: [requireAuth, requireVerified]
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId, chapterId } = request.params
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       // Check if chapter exists
       const [chapter] = await db
@@ -470,10 +480,14 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   // Revert a chapter to draft status (complete -> draft)
   fastify.post<{
     Params: { projectId: string; chapterId: string }
-  }>('/projects/:projectId/chapters/:chapterId/revert-to-draft', async (request, reply) => {
+  }>('/projects/:projectId/chapters/:chapterId/revert-to-draft', {
+    preHandler: [requireAuth, requireVerified]
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId, chapterId } = request.params
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       const [updated] = await db
         .update(chapterPublications)
@@ -496,10 +510,14 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   // Get chapter publication status
   fastify.get<{
     Params: { projectId: string; chapterId: string }
-  }>('/projects/:projectId/chapters/:chapterId/publication', async (request, reply) => {
+  }>('/projects/:projectId/chapters/:chapterId/publication', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId, chapterId } = request.params
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       const [publication] = await db
         .select()
@@ -545,11 +563,15 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string }
     Querystring: { status?: string }
-  }>('/projects/:projectId/publications', async (request, reply) => {
+  }>('/projects/:projectId/publications', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId } = request.params
       const { status } = request.query
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       const whereConditions = (status && status !== 'all')
         ? and(eq(chapterPublications.projectId, projectId), eq(chapterPublications.publishStatus, status))
@@ -710,10 +732,14 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       publicReleaseDate?: string
       tierSchedules?: Array<{ tierId: string; releaseDate: string }>
     }
-  }>('/projects/:projectId/embargoes', async (request, reply) => {
+  }>('/projects/:projectId/embargoes', {
+    preHandler: [requireAuth, requireVerified]
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId } = request.params
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
       const { entityId, publishMode, baseReleaseDate, publicReleaseDate, tierSchedules } = request.body
 
       const [embargo] = await db
@@ -738,10 +764,14 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   // Get embargo schedule for a chapter
   fastify.get<{
     Params: { projectId: string; chapterId: string }
-  }>('/projects/:projectId/chapters/:chapterId/embargo', async (request, reply) => {
+  }>('/projects/:projectId/chapters/:chapterId/embargo', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId, chapterId } = request.params
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       const [embargo] = await db
         .select()
@@ -770,11 +800,26 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       tierSchedules?: Array<{ tierId: string; releaseDate: string }>
       isPublished?: boolean
     }
-  }>('/embargoes/:embargoId', async (request, reply) => {
+  }>('/embargoes/:embargoId', {
+    preHandler: [requireAuth, requireVerified]
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { embargoId } = request.params
       const updates = request.body
+
+      // Look up the embargo's projectId before allowing edits so we can
+      // verify the caller owns the project this embargo belongs to.
+      const [embargoRow] = await db
+        .select({ projectId: embargoSchedules.projectId })
+        .from(embargoSchedules)
+        .where(eq(embargoSchedules.id, embargoId))
+        .limit(1)
+      if (!embargoRow) {
+        return reply.status(404).send({ error: 'Embargo not found', correlationId })
+      }
+      const hasAccess = await requireProjectOwnership(request, reply, embargoRow.projectId)
+      if (!hasAccess) return
 
       const updateData: any = { updatedAt: new Date() }
       if (updates.publishMode) updateData.publishMode = updates.publishMode
@@ -803,10 +848,23 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   // Delete embargo schedule
   fastify.delete<{
     Params: { embargoId: string }
-  }>('/embargoes/:embargoId', async (request, reply) => {
+  }>('/embargoes/:embargoId', {
+    preHandler: [requireAuth, requireVerified]
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { embargoId } = request.params
+
+      const [embargoRow] = await db
+        .select({ projectId: embargoSchedules.projectId })
+        .from(embargoSchedules)
+        .where(eq(embargoSchedules.id, embargoId))
+        .limit(1)
+      if (!embargoRow) {
+        return reply.status(404).send({ error: 'Embargo not found', correlationId })
+      }
+      const hasAccess = await requireProjectOwnership(request, reply, embargoRow.projectId)
+      if (!hasAccess) return
 
       await db.delete(embargoSchedules).where(eq(embargoSchedules.id, embargoId))
 
@@ -824,10 +882,14 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   // List destinations for a project
   fastify.get<{
     Params: { projectId: string }
-  }>('/projects/:projectId/destinations', async (request, reply) => {
+  }>('/projects/:projectId/destinations', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId } = request.params
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       const destinations = await db
         .select()
@@ -851,10 +913,14 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       config: any
       isActive?: boolean
     }
-  }>('/projects/:projectId/destinations', async (request, reply) => {
+  }>('/projects/:projectId/destinations', {
+    preHandler: [requireAuth, requireVerified]
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId } = request.params
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
       const { type, name, config, isActive } = request.body
 
       const [destination] = await db
@@ -885,11 +951,24 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       lastSyncStatus?: string
       lastSyncError?: string
     }
-  }>('/destinations/:destinationId', async (request, reply) => {
+  }>('/destinations/:destinationId', {
+    preHandler: [requireAuth, requireVerified]
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { destinationId } = request.params
       const updates = request.body
+
+      const [destRow] = await db
+        .select({ projectId: projectDestinations.projectId })
+        .from(projectDestinations)
+        .where(eq(projectDestinations.id, destinationId))
+        .limit(1)
+      if (!destRow) {
+        return reply.status(404).send({ error: 'Destination not found', correlationId })
+      }
+      const hasAccess = await requireProjectOwnership(request, reply, destRow.projectId)
+      if (!hasAccess) return
 
       const [updated] = await db
         .update(projectDestinations)
@@ -911,10 +990,23 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   // Delete destination
   fastify.delete<{
     Params: { destinationId: string }
-  }>('/destinations/:destinationId', async (request, reply) => {
+  }>('/destinations/:destinationId', {
+    preHandler: [requireAuth, requireVerified]
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { destinationId } = request.params
+
+      const [destRow] = await db
+        .select({ projectId: projectDestinations.projectId })
+        .from(projectDestinations)
+        .where(eq(projectDestinations.id, destinationId))
+        .limit(1)
+      if (!destRow) {
+        return reply.status(404).send({ error: 'Destination not found', correlationId })
+      }
+      const hasAccess = await requireProjectOwnership(request, reply, destRow.projectId)
+      if (!hasAccess) return
 
       await db.delete(projectDestinations).where(eq(projectDestinations.id, destinationId))
 
@@ -932,11 +1024,24 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       status: 'success' | 'failed'
       error?: string
     }
-  }>('/destinations/:destinationId/sync', async (request, reply) => {
+  }>('/destinations/:destinationId/sync', {
+    preHandler: [requireAuth, requireVerified]
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { destinationId } = request.params
       const { status, error } = request.body
+
+      const [destRow] = await db
+        .select({ projectId: projectDestinations.projectId })
+        .from(projectDestinations)
+        .where(eq(projectDestinations.id, destinationId))
+        .limit(1)
+      if (!destRow) {
+        return reply.status(404).send({ error: 'Destination not found', correlationId })
+      }
+      const hasAccess = await requireProjectOwnership(request, reply, destRow.projectId)
+      if (!hasAccess) return
 
       const [updated] = await db
         .update(projectDestinations)
@@ -968,6 +1073,8 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string }
   }>('/projects/:projectId/content-warnings', async (request, reply) => {
+    // Public read — content warnings are surfaced to readers on the public
+    // project/chapter pages, so anonymous GET is intentional. No PII here.
     const correlationId = randomUUID()
     try {
       const { projectId } = request.params
@@ -994,10 +1101,14 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       displayInSummary?: boolean
       requireAgeGate?: boolean
     }
-  }>('/projects/:projectId/content-warnings', async (request, reply) => {
+  }>('/projects/:projectId/content-warnings', {
+    preHandler: [requireAuth, requireVerified]
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId } = request.params
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
       const { warningType, customLabel, severity, displayInSummary, requireAgeGate } = request.body
 
       const [warning] = await db
@@ -1022,10 +1133,23 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   // Delete content warning
   fastify.delete<{
     Params: { warningId: string }
-  }>('/content-warnings/:warningId', async (request, reply) => {
+  }>('/content-warnings/:warningId', {
+    preHandler: [requireAuth, requireVerified]
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { warningId } = request.params
+
+      const [warningRow] = await db
+        .select({ projectId: contentWarnings.projectId })
+        .from(contentWarnings)
+        .where(eq(contentWarnings.id, warningId))
+        .limit(1)
+      if (!warningRow) {
+        return reply.status(404).send({ error: 'Content warning not found', correlationId })
+      }
+      const hasAccess = await requireProjectOwnership(request, reply, warningRow.projectId)
+      if (!hasAccess) return
 
       await db.delete(contentWarnings).where(eq(contentWarnings.id, warningId))
 
@@ -1044,22 +1168,28 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.post<{
     Params: { chapterId: string }
     Body: {
-      readerId?: string
       sessionId?: string
       deviceType?: string
       referrer?: string
     }
-  }>('/chapters/:chapterId/views', async (request, reply) => {
+  }>('/chapters/:chapterId/views', {
+    preHandler: optionalAuth
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { chapterId } = request.params
-      const { readerId, sessionId, deviceType, referrer } = request.body
+      const { sessionId, deviceType, referrer } = request.body
+
+      // readerId is always sourced from the authenticated session — never from
+      // the body — so anonymous attackers can't fabricate reads attributed to
+      // arbitrary users.
+      const readerId = request.user?.id ?? null
 
       const [view] = await db
         .insert(chapterViews)
         .values({
           chapterId,
-          readerId: readerId || null,
+          readerId,
           sessionId: sessionId || randomUUID(),
           deviceType,
           referrer
@@ -1090,11 +1220,29 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       readTimeSeconds?: string
       completed?: boolean
     }
-  }>('/chapter-views/:viewId/progress', async (request, reply) => {
+  }>('/chapter-views/:viewId/progress', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { viewId } = request.params
       const { lastPositionPercent, readTimeSeconds, completed } = request.body
+
+      // Only the reader who created the view (or a logged-in reader who matches
+      // the row's readerId) can update progress on it. Without this, anyone with
+      // a view UUID could corrupt anyone's reading progress and inflate
+      // completion counts.
+      const [viewRow] = await db
+        .select({ readerId: chapterViews.readerId })
+        .from(chapterViews)
+        .where(eq(chapterViews.id, viewId))
+        .limit(1)
+      if (!viewRow) {
+        return reply.status(404).send({ error: 'View not found', correlationId })
+      }
+      if (viewRow.readerId && viewRow.readerId !== request.user?.id) {
+        return reply.status(403).send({ error: 'Forbidden', correlationId })
+      }
 
       const updateData: any = {}
       if (lastPositionPercent) updateData.lastPositionPercent = lastPositionPercent
@@ -1134,10 +1282,14 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   // Get analytics for a chapter
   fastify.get<{
     Params: { projectId: string; chapterId: string }
-  }>('/projects/:projectId/chapters/:chapterId/analytics', async (request, reply) => {
+  }>('/projects/:projectId/chapters/:chapterId/analytics', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
-      const { chapterId } = request.params
+      const { projectId, chapterId } = request.params
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       const [publication] = await db
         .select()
@@ -1181,10 +1333,14 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   // Get per-chapter analytics breakdown (device, progress, referrers)
   fastify.get<{
     Params: { projectId: string; chapterId: string }
-  }>('/projects/:projectId/chapters/:chapterId/analytics/breakdown', async (request, reply) => {
+  }>('/projects/:projectId/chapters/:chapterId/analytics/breakdown', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
-      const { chapterId } = request.params
+      const { projectId, chapterId } = request.params
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       const progressBucket = sql`CASE
         WHEN ${chapterViews.completedAt} IS NOT NULL THEN 'completed'
@@ -1248,10 +1404,14 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   // Get per-chapter analytics for an entire project
   fastify.get<{
     Params: { projectId: string }
-  }>('/projects/:projectId/analytics/chapters', async (request, reply) => {
+  }>('/projects/:projectId/analytics/chapters', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId } = request.params
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       const rows = await db
         .select({
@@ -1288,10 +1448,14 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   // Get project-level analytics
   fastify.get<{
     Params: { projectId: string }
-  }>('/projects/:projectId/analytics', async (request, reply) => {
+  }>('/projects/:projectId/analytics', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId } = request.params
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       const publications = await db
         .select()
@@ -1326,11 +1490,15 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string; chapterId: string }
     Querystring: { limit?: number; offset?: number }
-  }>('/projects/:projectId/chapters/:chapterId/snapshots', async (request, reply) => {
+  }>('/projects/:projectId/chapters/:chapterId/snapshots', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId, chapterId } = request.params
       const { limit = 20, offset = 0 } = request.query
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       const snapshots = await db
         .select({
@@ -1359,10 +1527,14 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   // Get a specific snapshot's content
   fastify.get<{
     Params: { projectId: string; snapshotId: string }
-  }>('/projects/:projectId/snapshots/:snapshotId', async (request, reply) => {
+  }>('/projects/:projectId/snapshots/:snapshotId', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId, snapshotId } = request.params
+      const hasAccess = await requireProjectOwnership(request, reply, projectId)
+      if (!hasAccess) return
 
       const [snapshot] = await db
         .select()
@@ -1391,12 +1563,16 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   // Check if user can access a chapter
   fastify.get<{
     Params: { projectId: string; chapterId: string }
-    Querystring: { userId?: string }
-  }>('/projects/:projectId/chapters/:chapterId/access', async (request, reply) => {
+  }>('/projects/:projectId/chapters/:chapterId/access', {
+    preHandler: optionalAuth
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId, chapterId } = request.params
-      const { userId } = request.query
+      // Identity for access checks is always sourced from the authenticated
+      // session — never the query string. Without this, anyone who knew the
+      // project owner's UUID could spoof access-grant checks.
+      const userId = request.user?.id ?? null
 
       // Get project visibility setting
       const [accessPublishConfig] = await db
@@ -1405,7 +1581,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
         .where(eq(projectPublishConfig.projectId, projectId))
         .limit(1)
 
-      const result = await checkChapterAccess(userId || null, chapterId, projectId, accessPublishConfig?.defaultVisibility || 'public')
+      const result = await checkChapterAccess(userId, chapterId, projectId, accessPublishConfig?.defaultVisibility || 'public')
 
       return reply.send({ ...result, correlationId })
     } catch (error) {

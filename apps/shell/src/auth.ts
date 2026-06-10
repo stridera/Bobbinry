@@ -80,7 +80,7 @@ interface BobbinryUser {
  * Find or create a user in the API database for OAuth logins.
  * Returns the API user record so we can store the API-side ID in the JWT.
  */
-async function findOrCreateOAuthUser(email: string, name: string | null): Promise<BobbinryUser | null> {
+async function findOrCreateOAuthUser(email: string, name: string | null, emailVerified: boolean): Promise<BobbinryUser | null> {
   try {
     const lookupUrl = `${config.apiUrl}/api/users/by-email?email=${encodeURIComponent(email)}`
     const lookupHeaders = await buildInternalSignedHeaders('GET', lookupUrl)
@@ -94,8 +94,11 @@ async function findOrCreateOAuthUser(email: string, name: string | null): Promis
       return await lookupRes.json()
     }
 
-    // User doesn't exist — create without a password
-    const createBody = { email, name }
+    // User doesn't exist — create without a password.
+    // emailVerified is forwarded so the API only flips that bit when the OAuth
+    // provider actually asserted it (Google sends email_verified=true; some
+    // providers may not).
+    const createBody = { email, name, emailVerified }
     const createUrl = `${config.apiUrl}/api/auth/oauth-provision`
     const signedHeaders = await buildInternalSignedHeaders('POST', createUrl, createBody)
     const createRes = await fetch(`${config.apiUrl}/api/auth/oauth-provision`, {
@@ -216,10 +219,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
   debug: process.env.NODE_ENV === 'development',
   callbacks: {
-    async signIn({ user, account }) {
+    async signIn({ user, account, profile }) {
       // For OAuth logins, find or create the user in the API database
       if (account?.provider !== 'credentials' && user.email) {
-        const apiUser = await findOrCreateOAuthUser(user.email, user.name ?? null)
+        // Trust email_verified only from providers that actually assert it
+        // (Google does; some others do not). Falsy values stay falsy on the API.
+        const providerVerified = (profile as { email_verified?: unknown })?.email_verified === true
+        const apiUser = await findOrCreateOAuthUser(user.email, user.name ?? null, providerVerified)
         if (!apiUser) {
           return false // Deny sign-in if we can't provision
         }

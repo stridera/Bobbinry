@@ -96,18 +96,19 @@ declare module 'fastify' {
 /**
  * Get the JWT secret for token verification.
  * Uses NEXTAUTH_SECRET (same as shell) or API_JWT_SECRET as fallback.
+ *
+ * Requires an explicit secret in every environment (not just production) —
+ * the previous hardcoded fallback meant a misconfigured staging or test
+ * deployment ran with a publicly-known secret, letting anyone forge JWTs.
  */
 export function getJwtSecret(): Uint8Array {
   const secret = process.env.NEXTAUTH_SECRET || process.env.API_JWT_SECRET
 
-  if (!secret && process.env.NODE_ENV === 'production') {
-    throw new Error('JWT secret must be configured in production (NEXTAUTH_SECRET or API_JWT_SECRET)')
+  if (!secret) {
+    throw new Error('JWT secret must be configured (NEXTAUTH_SECRET or API_JWT_SECRET)')
   }
 
-  // Use a development-only secret if not configured (matches shell's auth.ts)
-  const effectiveSecret = secret || 'development-secret-only-for-local-dev'
-
-  return new TextEncoder().encode(effectiveSecret)
+  return new TextEncoder().encode(secret)
 }
 
 /**

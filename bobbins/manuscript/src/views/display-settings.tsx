@@ -134,7 +134,21 @@ export function useDisplaySettings(
       const next = { ...content, ...patch }
       setContent(next)
       try {
-        await sdk.entities.update('content', entityId, { displaySettings: next } as any)
+        const result = await sdk.entities.update(
+          'content',
+          entityId,
+          { displaySettings: next } as any,
+        ) as any
+        // Tell the manuscript editor about the bumped version so its next
+        // autosave doesn't 409 with a stale expectedVersion.
+        const newVersion = result?._meta?.version ?? null
+        if (newVersion != null && typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('bobbinry:entity-version-changed', {
+              detail: { entityId, version: newVersion },
+            }),
+          )
+        }
       } catch (err) {
         console.error('[manuscript] Failed to save content display settings', err)
       }

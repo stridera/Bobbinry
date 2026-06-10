@@ -191,8 +191,19 @@ export default function ChapterNotesPanel({ context }: ChapterNotesPanelProps) {
     return () => {
       const eid = activeEntityRef.current
       if (eid && pendingTextRef.current !== null) {
-        // Fire-and-forget flush on unmount
-        sdk.entities.update('content', eid, { notes: pendingTextRef.current }).catch(() => {})
+        // Fire-and-forget flush on unmount. Still dispatch the version-changed
+        // event so the manuscript editor's versionRef stays in sync — otherwise
+        // its next save 409s with a stale expectedVersion.
+        sdk.entities.update('content', eid, { notes: pendingTextRef.current })
+          .then((result: any) => {
+            const newVersion = result?._meta?.version ?? null
+            if (newVersion != null && typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('bobbinry:entity-version-changed', {
+                detail: { entityId: eid, version: newVersion },
+              }))
+            }
+          })
+          .catch(() => {})
       }
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current)

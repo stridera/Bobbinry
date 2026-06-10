@@ -431,6 +431,7 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
     Body: {
       email: string
       name?: string
+      emailVerified?: boolean
     }
   }>('/auth/oauth-provision', {
     config: {
@@ -443,7 +444,7 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
     try {
       if (!requireInternalRouteAuth(request, reply)) return
 
-      const { email, name } = request.body
+      const { email, name, emailVerified } = request.body
 
       if (!email) {
         return reply.status(400).send({ error: 'Email is required' })
@@ -459,27 +460,31 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
         .limit(1)
 
       if (existing) {
-        // If existing user hasn't been verified yet (e.g. signed up with password, now using OAuth),
-        // mark them as verified since OAuth provider verified the email
-        if (!existing.emailVerified) {
+        // Only auto-verify when the caller explicitly asserts the OAuth provider
+        // returned email_verified=true. Previously this flipped the bit for any
+        // OAuth login matching an existing email, so a leaked
+        // INTERNAL_API_AUTH_TOKEN would let anyone verify any account by
+        // POSTing the victim's email.
+        if (!existing.emailVerified && emailVerified === true) {
           await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, existing.id))
         }
         return reply.send({
           id: existing.id,
           email: existing.email,
           name: existing.name,
-          emailVerified: existing.emailVerified || new Date()
+          emailVerified: existing.emailVerified || (emailVerified === true ? new Date() : null)
         })
       }
 
-      // Create new user without password — OAuth users are auto-verified
+      // Create new user without password. New OAuth users start unverified
+      // unless the caller asserts the provider verified the email.
       const [newUser] = await db
         .insert(users)
         .values({
           email: normalizedEmail,
           name: name || null,
           passwordHash: null,
-          emailVerified: new Date()
+          emailVerified: emailVerified === true ? new Date() : null
         })
         .returning()
 

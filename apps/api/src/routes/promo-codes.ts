@@ -602,100 +602,82 @@ const promoCodesPlugin: FastifyPluginAsync = async (fastify) => {
       return reply.status(400).send({ error: 'This code has expired' })
     }
 
-    // Atomic: claim a redemption slot (prevents exceeding maxRedemptions under concurrency)
-    const [claimed] = await db
-      .update(sitePromoCampaigns)
-      .set({
-        currentRedemptions: sql`${sitePromoCampaigns.currentRedemptions} + 1`,
-        updatedAt: new Date(),
-      })
-      .where(and(
-        eq(sitePromoCampaigns.id, campaign.id),
-        sql`(${sitePromoCampaigns.maxRedemptions} IS NULL OR ${sitePromoCampaigns.currentRedemptions} < ${sitePromoCampaigns.maxRedemptions})`
-      ))
-      .returning({ id: sitePromoCampaigns.id })
+    // Single transaction: prior-redemption + paid-membership guards happen
+    // BEFORE the counter bump, so we never leave a stale counter increment
+    // behind when those guards trip. The unique index on
+    // (sitePromoRedemptions.campaignId, userId) remains the ultimate guard
+    // against simultaneous double-redeems by the same user — the transaction
+    // will roll back atomically if the insert violates it.
+    type RedeemError = { status: number; message: string }
+    let redeemError: RedeemError | null = null
+    const txResult = await db.transaction(async (tx) => {
+      // Guard #1: prior redemption from this campaign
+      const [existingRedemption] = await tx
+        .select({ id: sitePromoRedemptions.id })
+        .from(sitePromoRedemptions)
+        .where(and(
+          eq(sitePromoRedemptions.campaignId, campaign.id),
+          eq(sitePromoRedemptions.userId, userId)
+        ))
+        .limit(1)
+      if (existingRedemption) {
+        redeemError = { status: 409, message: 'You have already redeemed a code from this campaign' }
+        return null
+      }
 
-    if (!claimed) {
-      return reply.status(400).send({ error: 'This code is no longer available' })
-    }
+      // Guard #2: active paid Stripe supporter membership
+      const [currentMembership] = await tx
+        .select()
+        .from(siteMemberships)
+        .where(eq(siteMemberships.userId, userId))
+        .limit(1)
+      if (
+        currentMembership?.tier === 'supporter' &&
+        currentMembership.status === 'active' &&
+        currentMembership.stripeSubscriptionId
+      ) {
+        redeemError = { status: 409, message: 'You already have an active paid supporter membership' }
+        return null
+      }
 
-    // Check if user already redeemed from this campaign (unique index is the ultimate guard)
-    const [existingRedemption] = await db
-      .select({ id: sitePromoRedemptions.id })
-      .from(sitePromoRedemptions)
-      .where(and(
-        eq(sitePromoRedemptions.campaignId, campaign.id),
-        eq(sitePromoRedemptions.userId, userId)
-      ))
-      .limit(1)
-
-    if (existingRedemption) {
-      // Roll back the counter
-      await db
+      // Atomic redemption-slot claim (no rollback path needed any more — guards
+      // above already filtered the cases that used to motivate manual rollback).
+      const [claimed] = await tx
         .update(sitePromoCampaigns)
         .set({
-          currentRedemptions: sql`GREATEST(${sitePromoCampaigns.currentRedemptions} - 1, 0)`,
+          currentRedemptions: sql`${sitePromoCampaigns.currentRedemptions} + 1`,
           updatedAt: new Date(),
         })
-        .where(eq(sitePromoCampaigns.id, campaign.id))
-      return reply.status(409).send({ error: 'You have already redeemed a code from this campaign' })
-    }
+        .where(and(
+          eq(sitePromoCampaigns.id, campaign.id),
+          sql`(${sitePromoCampaigns.maxRedemptions} IS NULL OR ${sitePromoCampaigns.currentRedemptions} < ${sitePromoCampaigns.maxRedemptions})`
+        ))
+        .returning({ id: sitePromoCampaigns.id })
+      if (!claimed) {
+        redeemError = { status: 400, message: 'This code is no longer available' }
+        return null
+      }
 
-    // Check current membership status
-    const [currentMembership] = await db
-      .select()
-      .from(siteMemberships)
-      .where(eq(siteMemberships.userId, userId))
-      .limit(1)
+      // Calculate expiration: extend if existing gift membership has time left
+      const now = new Date()
+      let baseDate = now
+      if (
+        currentMembership?.tier === 'supporter' &&
+        currentMembership.status === 'active' &&
+        !currentMembership.stripeSubscriptionId &&
+        currentMembership.currentPeriodEnd &&
+        new Date(currentMembership.currentPeriodEnd) > now
+      ) {
+        baseDate = new Date(currentMembership.currentPeriodEnd)
+      }
 
-    if (
-      currentMembership?.tier === 'supporter' &&
-      currentMembership.status === 'active' &&
-      currentMembership.stripeSubscriptionId
-    ) {
-      // Roll back the counter
-      await db
-        .update(sitePromoCampaigns)
-        .set({
-          currentRedemptions: sql`GREATEST(${sitePromoCampaigns.currentRedemptions} - 1, 0)`,
-          updatedAt: new Date(),
-        })
-        .where(eq(sitePromoCampaigns.id, campaign.id))
-      return reply.status(409).send({ error: 'You already have an active paid supporter membership' })
-    }
+      const expiresAt = new Date(baseDate)
+      expiresAt.setMonth(expiresAt.getMonth() + campaign.giftDurationMonths)
 
-    // Calculate expiration: extend if existing gift membership has time left
-    const now = new Date()
-    let baseDate = now
-    if (
-      currentMembership?.tier === 'supporter' &&
-      currentMembership.status === 'active' &&
-      !currentMembership.stripeSubscriptionId &&
-      currentMembership.currentPeriodEnd &&
-      new Date(currentMembership.currentPeriodEnd) > now
-    ) {
-      baseDate = new Date(currentMembership.currentPeriodEnd)
-    }
-
-    const expiresAt = new Date(baseDate)
-    expiresAt.setMonth(expiresAt.getMonth() + campaign.giftDurationMonths)
-
-    // Grant membership + badge in parallel, then record audit
-    await Promise.all([
-      db.insert(siteMemberships)
-        .values({
-          userId,
-          tier: 'supporter',
-          status: 'active',
-          stripeSubscriptionId: null,
-          stripePriceId: null,
-          currentPeriodStart: now,
-          currentPeriodEnd: expiresAt,
-          cancelAtPeriodEnd: false,
-        })
-        .onConflictDoUpdate({
-          target: siteMemberships.userId,
-          set: {
+      await Promise.all([
+        tx.insert(siteMemberships)
+          .values({
+            userId,
             tier: 'supporter',
             status: 'active',
             stripeSubscriptionId: null,
@@ -703,36 +685,59 @@ const promoCodesPlugin: FastifyPluginAsync = async (fastify) => {
             currentPeriodStart: now,
             currentPeriodEnd: expiresAt,
             cancelAtPeriodEnd: false,
-            updatedAt: now,
-          },
-        }),
-      db.insert(userBadges)
-        .values({
-          userId,
-          badge: 'supporter',
-          label: 'Supporter',
-          expiresAt,
-          isActive: true,
-        })
-        .onConflictDoUpdate({
-          target: [userBadges.userId, userBadges.badge],
-          set: { isActive: true, expiresAt },
-        }),
-    ])
+          })
+          .onConflictDoUpdate({
+            target: siteMemberships.userId,
+            set: {
+              tier: 'supporter',
+              status: 'active',
+              stripeSubscriptionId: null,
+              stripePriceId: null,
+              currentPeriodStart: now,
+              currentPeriodEnd: expiresAt,
+              cancelAtPeriodEnd: false,
+              updatedAt: now,
+            },
+          }),
+        tx.insert(userBadges)
+          .values({
+            userId,
+            badge: 'supporter',
+            label: 'Supporter',
+            expiresAt,
+            isActive: true,
+          })
+          .onConflictDoUpdate({
+            target: [userBadges.userId, userBadges.badge],
+            set: { isActive: true, expiresAt },
+          }),
+      ])
 
-    // Record redemption (unique index on campaign_id+user_id is the final guard)
-    await db.insert(sitePromoRedemptions).values({
-      userId,
-      campaignId: campaign.id,
-      resultType: 'membership_granted',
-      metadata: { codeUsed: normalizedCode, giftExpiresAt: expiresAt.toISOString() },
+      // Record redemption — the unique index on (campaign_id, user_id) is the
+      // final concurrency guard; a collision here aborts the whole transaction.
+      await tx.insert(sitePromoRedemptions).values({
+        userId,
+        campaignId: campaign.id,
+        resultType: 'membership_granted',
+        metadata: { codeUsed: normalizedCode, giftExpiresAt: expiresAt.toISOString() },
+      })
+
+      return { expiresAt }
     })
+
+    if (redeemError) {
+      const err = redeemError as RedeemError
+      return reply.status(err.status).send({ error: err.message })
+    }
+    if (!txResult) {
+      return reply.status(500).send({ error: 'Redemption failed' })
+    }
 
     return reply.send({
       success: true,
       membership: {
         tier: 'supporter',
-        expiresAt: expiresAt.toISOString(),
+        expiresAt: txResult.expiresAt.toISOString(),
         giftDurationMonths: campaign.giftDurationMonths,
       },
     })

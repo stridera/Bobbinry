@@ -2,6 +2,7 @@ import Fastify, { FastifyInstance, FastifyRequest } from 'fastify'
 import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
 import rateLimit from '@fastify/rate-limit'
+import fastifyRawBody from 'fastify-raw-body'
 import { randomUUID } from 'crypto'
 import { performance } from 'perf_hooks'
 import projectsPlugin from './routes/projects'
@@ -178,6 +179,16 @@ export function build(opts = {}): FastifyInstance {
       message: `Rate limit exceeded, retry in ${Math.round(context.ttl / 1000)}s`,
       correlationId: request.id
     })
+  })
+
+  // Raw body capture for Stripe webhook signature verification. Per-route opt-in
+  // via `config: { rawBody: true }`. Must run before the JSON content-type parser
+  // below so the unparsed payload is preserved for `stripe.webhooks.constructEvent`.
+  server.register(fastifyRawBody, {
+    field: 'rawBody',
+    global: false,
+    encoding: 'utf8',
+    runFirst: true,
   })
 
   // Request size limits — 5MB to accommodate large manuscript chapters

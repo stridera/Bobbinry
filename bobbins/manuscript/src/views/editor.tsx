@@ -1560,13 +1560,35 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
     if (!entityId || entityType !== 'content') return
     setChapterColor(prev => ({ ...prev, ...patch }))
     try {
-      await sdk.entities.update('content', entityId, patch)
+      // Send expectedVersion so the server's optimistic-locking check passes,
+      // then capture the bumped version and keep versionRef/draft in sync. If
+      // we skip this, the next body autosave fires with a stale expectedVersion
+      // and the user sees a phantom "Version Conflict" dialog.
+      const result = await sdk.entities.update(
+        'content',
+        entityId,
+        patch,
+        versionRef.current ?? undefined,
+      ) as any
+      const newVersion = result?._meta?.version ?? null
+      if (newVersion != null) {
+        versionRef.current = newVersion
+        const draft = loadDraft(entityId)
+        if (draft) saveDraft(entityId, { html: draft.html, version: newVersion })
+      }
       if (typeof window !== 'undefined') {
         window.dispatchEvent(
           new CustomEvent('bobbinry:chapter-color-changed', {
             detail: { entityId, patch },
           }),
         )
+        if (newVersion != null) {
+          window.dispatchEvent(
+            new CustomEvent('bobbinry:entity-version-changed', {
+              detail: { entityId, version: newVersion },
+            }),
+          )
+        }
       }
     } catch (err) {
       console.error('[EditorView] Failed to update chapter color fields:', err)
