@@ -1517,8 +1517,21 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
   function handleEditorClick(e: React.MouseEvent) {
     // Don't steal focus from the title input
     if ((e.target as HTMLElement).tagName === 'INPUT') return
-    if (editor && !editor.isFocused) {
-      editor.commands.focus('end')
+    if (!editor) return
+    // Clicks inside the prose are positioned by ProseMirror itself.
+    if (editor.view.dom.contains(e.target as Node)) return
+    // Gutter/padding clicks: clamp the coordinates into the prose and put
+    // the cursor on the nearest line, rather than jumping to the end of
+    // the document (which forces a scroll back up mid-edit).
+    const rect = editor.view.dom.getBoundingClientRect()
+    const hit = editor.view.posAtCoords({
+      left: Math.min(Math.max(e.clientX, rect.left + 1), rect.right - 1),
+      top: Math.min(Math.max(e.clientY, rect.top + 1), rect.bottom - 1),
+    })
+    if (hit) {
+      editor.chain().focus().setTextSelection(hit.pos).run()
+    } else {
+      editor.commands.focus(e.clientY < rect.top ? 'start' : 'end')
     }
   }
 
