@@ -923,6 +923,8 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
             codeBlockWrap: false,
             sceneBreakStyle: 'asterism',
             dropCaps: false,
+            smartDashes: false,
+            smartEllipsis: false,
             showFormattingMarks: false
           }
         })
@@ -941,6 +943,8 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
       codeBlockWrap?: boolean
       sceneBreakStyle?: 'asterism' | 'rule' | 'blank-line'
       dropCaps?: boolean
+      smartDashes?: boolean
+      smartEllipsis?: boolean
       showFormattingMarks?: boolean
     }
   }>('/users/me/manuscript-display-settings', {

@@ -608,7 +608,9 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
             paragraphIndent: null,
             codeBlockWrap: null,
             sceneBreakStyle: null,
-            dropCaps: null
+            dropCaps: null,
+            smartDashes: null,
+            smartEllipsis: null
           }
         })
       }
@@ -627,6 +629,8 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
       codeBlockWrap?: boolean | null
       sceneBreakStyle?: 'asterism' | 'rule' | 'blank-line' | null
       dropCaps?: boolean | null
+      smartDashes?: boolean | null
+      smartEllipsis?: boolean | null
     }
   }>('/projects/:projectId/manuscript-display-settings', {
     preHandler: requireAuth

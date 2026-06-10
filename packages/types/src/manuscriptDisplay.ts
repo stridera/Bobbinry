@@ -8,6 +8,8 @@ export interface ManuscriptDisplaySettings {
   codeBlockWrap: boolean
   sceneBreakStyle: SceneBreakStyle
   dropCaps: boolean
+  smartDashes: boolean
+  smartEllipsis: boolean
 }
 
 export type PartialManuscriptDisplaySettings = {
@@ -20,6 +22,8 @@ export const MANUSCRIPT_DISPLAY_DEFAULTS: ManuscriptDisplaySettings = {
   codeBlockWrap: false,
   sceneBreakStyle: 'asterism',
   dropCaps: false,
+  smartDashes: false,
+  smartEllipsis: false,
 }
 
 export interface DisplayPreset {
@@ -93,6 +97,8 @@ export const DISPLAY_PRESETS: readonly DisplayPreset[] = [
       sceneBreakStyle: null,
       codeBlockWrap: null,
       dropCaps: null,
+      smartDashes: null,
+      smartEllipsis: null,
     },
   },
 ] as const
@@ -133,6 +139,12 @@ export function resolveDisplaySettings(
     dropCaps:
       pick(content?.dropCaps, project?.dropCaps, user?.dropCaps) ??
       MANUSCRIPT_DISPLAY_DEFAULTS.dropCaps,
+    smartDashes:
+      pick(content?.smartDashes, project?.smartDashes, user?.smartDashes) ??
+      MANUSCRIPT_DISPLAY_DEFAULTS.smartDashes,
+    smartEllipsis:
+      pick(content?.smartEllipsis, project?.smartEllipsis, user?.smartEllipsis) ??
+      MANUSCRIPT_DISPLAY_DEFAULTS.smartEllipsis,
   }
 }
 
@@ -161,5 +173,7 @@ export function sanitizeDisplaySettings(input: unknown): PartialManuscriptDispla
     out.sceneBreakStyle = obj.sceneBreakStyle as SceneBreakStyle
   }
   if (typeof obj.dropCaps === 'boolean') out.dropCaps = obj.dropCaps
+  if (typeof obj.smartDashes === 'boolean') out.smartDashes = obj.smartDashes
+  if (typeof obj.smartEllipsis === 'boolean') out.smartEllipsis = obj.smartEllipsis
   return out
 }

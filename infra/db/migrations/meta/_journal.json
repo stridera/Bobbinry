@@ -239,6 +239,13 @@
       "when": 1780967491419,
       "tag": "0034_pg_stat_statements",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1781056800000,
+      "tag": "0035_manuscript_smart_typography",
+      "breakpoints": true
     }
   ]
 }

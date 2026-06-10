@@ -199,6 +199,8 @@ export const userManuscriptDisplaySettings = pgTable('user_manuscript_display_se
   codeBlockWrap: boolean('code_block_wrap').default(false).notNull(),
   sceneBreakStyle: varchar('scene_break_style', { length: 20 }).default('asterism').notNull(), // asterism, rule, blank-line
   dropCaps: boolean('drop_caps').default(false).notNull(),
+  smartDashes: boolean('smart_dashes').default(false).notNull(),
+  smartEllipsis: boolean('smart_ellipsis').default(false).notNull(),
   // Editor-only personal pref (not cascaded). Lives here so a single GET hydrates the editor UI.
   showFormattingMarks: boolean('show_formatting_marks').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -213,6 +215,8 @@ export const projectManuscriptDisplaySettings = pgTable('project_manuscript_disp
   codeBlockWrap: boolean('code_block_wrap'),
   sceneBreakStyle: varchar('scene_break_style', { length: 20 }),
   dropCaps: boolean('drop_caps'),
+  smartDashes: boolean('smart_dashes'),
+  smartEllipsis: boolean('smart_ellipsis'),
   updatedAt: timestamp('updated_at').defaultNow().notNull()
 })
 

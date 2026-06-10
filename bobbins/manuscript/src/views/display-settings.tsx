@@ -202,6 +202,10 @@ const HINTS: Record<keyof ManuscriptDisplaySettings, string> = {
     'How horizontal rules (---) display between scenes. Asterism (* * *) is the publishing standard.',
   dropCaps:
     'Large ornamental first letter on the first paragraph after each heading. Editorial / magazine flourish — best used sparingly.',
+  smartDashes:
+    'Auto-converts two hyphens (--) into an em dash (—) while you type. Skipped inside code blocks and inline code. Ctrl+Z reverts to the hyphens.',
+  smartEllipsis:
+    'Auto-converts three dots (...) into an ellipsis character (…). Skipped inside code blocks and inline code. Ctrl+Z reverts to the dots.',
 }
 
 const popoverInputClass =
@@ -374,6 +378,30 @@ export function DisplayDropdown({ state }: DisplayDropdownProps) {
             onChange={v => setField('dropCaps', v)}
           />
         </FieldRow>
+
+        <FieldRow
+          label="Smart dashes"
+          hint={HINTS.smartDashes}
+          inherited={inheritedFrom('smartDashes')}
+          currentScope={scope}
+        >
+          <TriToggle
+            value={scoped.smartDashes ?? null}
+            onChange={v => setField('smartDashes', v)}
+          />
+        </FieldRow>
+
+        <FieldRow
+          label="Smart ellipsis"
+          hint={HINTS.smartEllipsis}
+          inherited={inheritedFrom('smartEllipsis')}
+          currentScope={scope}
+        >
+          <TriToggle
+            value={scoped.smartEllipsis ?? null}
+            onChange={v => setField('smartEllipsis', v)}
+          />
+        </FieldRow>
       </div>
 
       <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-700 space-y-2">
@@ -528,6 +556,8 @@ function summarize(s: ManuscriptDisplaySettings): string {
   else if (s.paragraphIndent === 'every') parts.push('all ¶ indented')
   if (s.codeBlockWrap) parts.push('code wrap')
   if (s.dropCaps) parts.push('drop caps')
+  if (s.smartDashes) parts.push('smart dashes')
+  if (s.smartEllipsis) parts.push('smart ellipsis')
   if (s.sceneBreakStyle !== MANUSCRIPT_DISPLAY_DEFAULTS.sceneBreakStyle) parts.push(`${s.sceneBreakStyle} breaks`)
   return parts.join(', ')
 }

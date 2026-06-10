@@ -26,6 +26,7 @@ import TextAlign from '@tiptap/extension-text-align'
 import { ImageUpload } from '../extensions/image-upload'
 import { EntityHighlight } from '../extensions/entity-highlight'
 import type { EntityEntry } from '../extensions/entity-highlight'
+import { SmartTypography } from '../extensions/smart-typography'
 import {
   displaySettingsToClass,
   sanitizeDisplaySettings,
@@ -705,6 +706,7 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
         allowBase64: false,
       } as any),
       EntityHighlight,
+      SmartTypography,
     ],
     content: '',
     immediatelyRender: false,
@@ -776,6 +778,16 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
       }, 300) // 300ms debounce
     }
   })
+
+  // Sync resolved smart-typography settings into the extension's storage so
+  // input rules pick up cascade changes without re-creating the editor.
+  useEffect(() => {
+    if (!editor) return
+    const storage = (editor.storage as any).smartTypography
+    if (!storage) return
+    storage.dashes = displayState.resolved.smartDashes
+    storage.ellipsis = displayState.resolved.smartEllipsis
+  }, [editor, displayState.resolved.smartDashes, displayState.resolved.smartEllipsis])
 
   // --- Flush the current entity's content before switching ---
   // This runs whenever entityId changes. The cleanup of the *previous* effect
