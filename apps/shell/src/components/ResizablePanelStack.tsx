@@ -240,6 +240,48 @@ export function ResizablePanelStack({
     localStorage.setItem(storageKey, JSON.stringify(panelState))
   }, [panelState, storageKey])
 
+  // Reveal a specific panel (unhide + uncollapse) on request — e.g. an entity
+  // highlight click needs the Entity Preview panel visible to mean anything.
+  useEffect(() => {
+    const handleReveal = (event: Event) => {
+      const detail = (event as CustomEvent).detail as
+        | { slotId?: string; panelId?: string; replay?: { type: string; detail?: any } }
+        | undefined
+      if (!detail?.panelId || detail.slotId !== slotId) return
+
+      const { panelId, replay } = detail
+      const orderIndex = panelState.order.indexOf(panelId)
+      if (orderIndex === -1) return
+
+      const wasHidden = panelState.hidden.includes(panelId)
+      const wasCollapsed = panelState.collapsed[orderIndex] === true
+      if (!wasHidden && !wasCollapsed) return
+
+      setPanelState(previous => {
+        const index = previous.order.indexOf(panelId)
+        if (index === -1) return previous
+        const collapsed = [...previous.collapsed]
+        collapsed[index] = false
+        return {
+          ...previous,
+          collapsed,
+          hidden: previous.hidden.filter(id => id !== panelId),
+        }
+      })
+
+      if (replay?.type) {
+        // The panel content was unmounted while hidden/collapsed, so it missed
+        // the event that triggered this reveal — re-dispatch after it remounts.
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent(replay.type, { detail: replay.detail }))
+        }, 50)
+      }
+    }
+
+    window.addEventListener('bobbinry:reveal-panel', handleReveal)
+    return () => window.removeEventListener('bobbinry:reveal-panel', handleReveal)
+  }, [slotId, panelState])
+
   useEffect(() => {
     if (!isMenuOpen) return
 

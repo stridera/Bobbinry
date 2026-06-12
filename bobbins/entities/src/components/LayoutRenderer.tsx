@@ -11,20 +11,35 @@ import { HeroImageLayout } from './layouts/HeroImageLayout'
 import { ListDetailsLayout } from './layouts/ListDetailsLayout'
 
 interface LayoutRendererProps {
-  layout: EditorLayout
+  layout?: EditorLayout | null
   fields: FieldDefinition[]
   entity: Record<string, any>
   onFieldChange: (fieldName: string, value: any) => void
   readonly?: boolean
 }
 
+/** Type definitions created without an editor layout still need to render. */
+function defaultLayout(fields: FieldDefinition[]): EditorLayout {
+  return {
+    template: 'compact-card',
+    imagePosition: 'top-right',
+    imageSize: 'small',
+    headerFields: [],
+    sections: fields.length > 0
+      ? [{ title: 'Details', fields: fields.map(f => f.name), display: 'stacked' }]
+      : [],
+  }
+}
+
 export function LayoutRenderer({
-  layout,
+  layout: configuredLayout,
   fields,
   entity,
   onFieldChange,
   readonly = false
 }: LayoutRendererProps) {
+  const layout = configuredLayout ?? defaultLayout(fields)
+
   // Route to appropriate layout template
   switch (layout.template) {
     case 'compact-card':

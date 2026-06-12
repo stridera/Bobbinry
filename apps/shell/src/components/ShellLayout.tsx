@@ -205,6 +205,26 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
     focusModeRef.current = focusMode
   }, [focusMode])
 
+  // Clicking a highlighted entity in an editor should surface the preview,
+  // not load it invisibly behind a collapsed right panel.
+  useEffect(() => {
+    const handleEntityPreview = (event: Event) => {
+      const detail = (event as CustomEvent).detail
+      setRightPanelCollapsed(false)
+      window.dispatchEvent(
+        new CustomEvent('bobbinry:reveal-panel', {
+          detail: {
+            slotId: 'shell.rightPanel',
+            panelId: 'entities.entity-preview',
+            replay: { type: 'bobbinry:entity-preview', detail },
+          },
+        })
+      )
+    }
+    window.addEventListener('bobbinry:entity-preview', handleEntityPreview)
+    return () => window.removeEventListener('bobbinry:entity-preview', handleEntityPreview)
+  }, [])
+
   // Focus mode keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
