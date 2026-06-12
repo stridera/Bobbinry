@@ -549,27 +549,6 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
     }
   }, [entityId, entityType, title])
 
-  // Refresh the editor when Search & Replace applies a bulk change that
-  // includes this chapter. Drop the cached draft first so the local copy
-  // can't clobber the new server content on the next save.
-  useEffect(() => {
-    function handleBulkUpdated(e: Event) {
-      const ids = (e as CustomEvent<{ entityIds: string[] }>).detail?.entityIds
-      const active = activeEntityRef.current
-      if (!active || !Array.isArray(ids) || !ids.includes(active)) return
-      try {
-        localStorage.removeItem(getDraftKey(active))
-      } catch {
-        // ignore quota/security errors — the reload below still works.
-      }
-      if (entityType === 'content') {
-        loadContent(active)
-      }
-    }
-    window.addEventListener('bobbinry:entities-bulk-updated', handleBulkUpdated)
-    return () => window.removeEventListener('bobbinry:entities-bulk-updated', handleBulkUpdated)
-  }, [entityType]) // eslint-disable-line react-hooks/exhaustive-deps
-
   async function handleContentTypeChange(next: ContentType) {
     if (!entityId || next === contentType) {
       setContentTypeMenuOpen(false)
@@ -807,6 +786,31 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
       flushPendingState()
     }
   }, [entityId, entityType, editor])
+
+  // Refresh the editor when Search & Replace applies a bulk change that
+  // includes this chapter. Drop the cached draft first so the local copy
+  // can't clobber the new server content on the next save.
+  // `editor` must be a dep: with immediatelyRender:false it is null on the
+  // first render, and a handler bound then would capture a loadContent whose
+  // applyContent can never write into the editor body.
+  useEffect(() => {
+    if (!editor) return
+    function handleBulkUpdated(e: Event) {
+      const ids = (e as CustomEvent<{ entityIds: string[] }>).detail?.entityIds
+      const active = activeEntityRef.current
+      if (!active || !Array.isArray(ids) || !ids.includes(active)) return
+      try {
+        localStorage.removeItem(getDraftKey(active))
+      } catch {
+        // ignore quota/security errors — the reload below still works.
+      }
+      if (entityType === 'content') {
+        loadContent(active)
+      }
+    }
+    window.addEventListener('bobbinry:entities-bulk-updated', handleBulkUpdated)
+    return () => window.removeEventListener('bobbinry:entities-bulk-updated', handleBulkUpdated)
+  }, [entityType, editor]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Also flush before page unload (tab close, refresh)
   useEffect(() => {
