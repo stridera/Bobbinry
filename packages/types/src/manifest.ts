@@ -503,6 +503,17 @@ export interface ExtensionContribution {
   entry?: string
   priority?: number
   when?: ExtensionCondition
+  /**
+   * Default navigation target for this contribution's bobbin — the "main
+   * view" the shell opens when the user activates the panel (e.g. via the
+   * left icon rail) and has no per-bobbin last-visited location yet.
+   * Dispatched as a bobbinry:navigate detail with bobbinId filled in.
+   */
+  home?: {
+    entityType: string
+    entityId: string
+    metadata?: Record<string, any>
+  }
   pubsub?: {
     produces?: TopicReference[]
     consumes?: TopicReference[]

@@ -1098,6 +1098,8 @@ export {
 export { escapePlainText, getSanitizedHtmlProps, htmlToPlainText, sanitizeHtml } from './html'
 export { ConfirmModal } from './confirm-modal'
 export type { ConfirmModalProps } from './confirm-modal'
+export { fuzzyMatch } from './fuzzy'
+export type { FuzzyMatch } from './fuzzy'
 
 // Convenience exports
 export * from '@bobbinry/types'

@@ -5,10 +5,11 @@
  * Types expand inline to show individual entities
  */
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   BobbinryAPI,
   EntityAPI,
+  fuzzyMatch,
   PanelActions,
   PanelBody,
   PanelCard,
@@ -41,6 +42,10 @@ export default function NavigationView({ context }: NavigationViewProps) {
   const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set())
   const [typeEntities, setTypeEntities] = useState<Record<string, any[]>>({})
   const [loadingEntities, setLoadingEntities] = useState<Set<string>>(new Set())
+
+  // Type-ahead filter across all types (lazily bulk-loads unloaded types)
+  const [filterQuery, setFilterQuery] = useState('')
+  const bulkRequestedRef = useRef<Set<string>>(new Set())
 
   // Get projectId from context
   const projectId = context?.projectId || context?.currentProject
@@ -160,6 +165,39 @@ export default function NavigationView({ context }: NavigationViewProps) {
       loadEntitiesForType(typeId)
     }
   }
+
+  // When a filter is active, make sure every type's entities are loaded so
+  // matches can come from collapsed/unvisited types too.
+  useEffect(() => {
+    if (!filterQuery.trim()) return
+    for (const type of entityTypes) {
+      const typeId = getTypeId(type)
+      if (!(typeId in typeEntities) && !bulkRequestedRef.current.has(typeId)) {
+        bulkRequestedRef.current.add(typeId)
+        loadEntitiesForType(typeId)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterQuery, entityTypes])
+
+  const filterMatches = useMemo(() => {
+    const query = filterQuery.trim()
+    if (!query) return []
+    const matches: { entity: any; type: EntityTypeDefinition }[] = []
+    for (const type of entityTypes) {
+      const typeId = getTypeId(type)
+      for (const entity of typeEntities[typeId] || []) {
+        if (fuzzyMatch(query, entity.name || 'Untitled')) {
+          matches.push({ entity, type })
+        }
+      }
+    }
+    return matches.slice(0, 100)
+  }, [filterQuery, entityTypes, typeEntities])
+
+  const filterStillLoading = filterQuery.trim()
+    ? entityTypes.some(type => !(getTypeId(type) in typeEntities))
+    : false
 
   function handleEntityClick(entity: any, type: EntityTypeDefinition) {
     const typeId = getTypeId(type)
@@ -290,7 +328,65 @@ export default function NavigationView({ context }: NavigationViewProps) {
           <PanelSectionTitle>Entity Types</PanelSectionTitle>
           <PanelPill>{entityTypes.length} types</PanelPill>
         </div>
-        {entityTypes.length === 0 ? (
+        {entityTypes.length > 0 && (
+          <div className="relative">
+            <svg className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400 dark:text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" aria-hidden>
+              <circle cx="11" cy="11" r="7" />
+              <path d="M21 21l-4.4-4.4" />
+            </svg>
+            <input
+              type="text"
+              value={filterQuery}
+              onChange={(e) => setFilterQuery(e.target.value)}
+              placeholder="Filter entities…"
+              aria-label="Filter entities"
+              className="w-full rounded-md border border-gray-200 bg-white py-1 pl-7 pr-7 text-xs text-gray-700 placeholder-gray-400 outline-none focus:border-blue-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-500 dark:focus:border-blue-500"
+            />
+            {filterQuery && (
+              <button
+                onClick={() => setFilterQuery('')}
+                title="Clear filter"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+              >
+                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden>
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+            )}
+          </div>
+        )}
+        {filterQuery.trim() ? (
+          <PanelCard className="px-0 py-0.5">
+            {filterStillLoading && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 dark:text-gray-500">
+                <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Searching all types…
+              </div>
+            )}
+            {filterMatches.length === 0 && !filterStillLoading ? (
+              <div className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">
+                No matches for &ldquo;{filterQuery.trim()}&rdquo;
+              </div>
+            ) : (
+              filterMatches.map(({ entity, type }) => (
+                <div
+                  key={`${getTypeId(type)}:${entity.id}`}
+                  className="flex cursor-pointer items-center gap-2 py-1 px-2 text-[13px] rounded-md mx-1 hover:bg-gray-100 dark:hover:bg-gray-700/60 transition-colors"
+                  onClick={() => handleEntityClick(entity, type)}
+                >
+                  <span className="text-sm flex-shrink-0">{type.icon}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-gray-700 dark:text-gray-300">{entity.name || 'Untitled'}</span>
+                    <span className="block truncate text-[10px] text-gray-400 dark:text-gray-500">{type.label}</span>
+                  </span>
+                </div>
+              ))
+            )}
+          </PanelCard>
+        ) : entityTypes.length === 0 ? (
           <PanelEmptyState
             title="No entity types yet"
             description="Create your first type to start building characters, places, items, or lore."

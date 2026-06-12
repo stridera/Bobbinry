@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { BobbinrySDK, PanelActions } from '@bobbinry/sdk'
+import { BobbinrySDK, PanelActions, fuzzyMatch } from '@bobbinry/sdk'
 import {
   Toast,
   ToastContainer,
@@ -69,6 +69,27 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [showDropdown, setShowDropdown] = useState(false)
+  const [filterQuery, setFilterQuery] = useState('')
+
+  // Flattened match list for the type-ahead filter; tree expansion state is
+  // left untouched so clearing the filter restores the previous view.
+  const filterMatches = useMemo(() => {
+    const query = filterQuery.trim()
+    if (!query) return []
+    const matches: { node: TreeNode; path: string }[] = []
+    const walk = (nodes: TreeNode[], ancestors: string[]) => {
+      for (const node of nodes) {
+        if (fuzzyMatch(query, node.title)) {
+          matches.push({ node, path: ancestors.join(' › ') })
+        }
+        if (node.children && node.children.length > 0) {
+          walk(node.children, [...ancestors, node.title])
+        }
+      }
+    }
+    walk(tree, [])
+    return matches.slice(0, 100)
+  }, [filterQuery, tree])
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string; nodeType: 'container' | 'content' } | null>(null)
   const [contextMenuView, setContextMenuView] = useState<'main' | 'pov' | 'featured' | 'color'>('main')
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null)
@@ -254,6 +275,9 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   useEffect(() => {
     function handleGlobalKeyDown(e: KeyboardEvent) {
       if (e.altKey && !e.ctrlKey && !e.metaKey && e.key === 'n') {
+        // Don't fire while the user is typing in any input/editor
+        const target = e.target as HTMLElement | null
+        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
         e.preventDefault()
 
         // Determine which container to create content in based on selection
@@ -1202,6 +1226,61 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
         </button>
       </PanelActions>
 
+      <div className="px-2 pt-2 pb-1">
+        <div className="relative">
+          <svg className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400 dark:text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" aria-hidden>
+            <circle cx="11" cy="11" r="7" />
+            <path d="M21 21l-4.4-4.4" />
+          </svg>
+          <input
+            type="text"
+            value={filterQuery}
+            onChange={(e) => setFilterQuery(e.target.value)}
+            placeholder="Filter manuscript…"
+            aria-label="Filter manuscript items"
+            className="w-full rounded-md border border-gray-200 bg-white py-1 pl-7 pr-7 text-xs text-gray-700 placeholder-gray-400 outline-none focus:border-blue-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-500 dark:focus:border-blue-500"
+          />
+          {filterQuery && (
+            <button
+              onClick={() => setFilterQuery('')}
+              title="Clear filter"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+            >
+              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden>
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {filterQuery.trim() ? (
+        <div className="flex-1 overflow-y-auto">
+          {filterMatches.length === 0 ? (
+            <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
+              No matches for &ldquo;{filterQuery.trim()}&rdquo;
+            </div>
+          ) : (
+            filterMatches.map(({ node, path }) => (
+              <button
+                key={node.id}
+                onClick={() => handleNodeClick(node)}
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50 ${
+                  selectedNodeId === node.id ? 'bg-gray-100 dark:bg-gray-700' : ''
+                }`}
+              >
+                <span className="shrink-0 text-sm leading-none">{node.nodeType === 'container' ? '📁' : '📝'}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm text-gray-800 dark:text-gray-100">{node.title}</span>
+                  {path && (
+                    <span className="block truncate text-[11px] text-gray-400 dark:text-gray-500">{path}</span>
+                  )}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+      ) : (
       <div
         ref={treeContainerRef}
         className="flex-1 overflow-y-auto"
@@ -1225,6 +1304,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
           tree.map(node => renderNode(node))
         )}
       </div>
+      )}
 
       {contextMenu && (() => {
         const menuNodeId = contextMenu.nodeId

@@ -3,6 +3,8 @@
 import { ReactNode, useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { ExtensionSlot } from './ExtensionSlot'
+import { LeftPanelRail, RAIL_WIDTH } from './LeftPanelRail'
+import { QuickOpenPalette } from './QuickOpenPalette'
 import { UserMenu } from './UserMenu'
 import { BobbinManagerPopover } from './bobbins'
 import { UnifiedSearch } from './search/UnifiedSearch'
@@ -279,7 +281,10 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
         {/* Center: unified search + topBar extensions */}
         <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
           {projectId && shellContext.apiToken && (
-            <UnifiedSearch projectId={projectId} shellContext={shellContext} />
+            <>
+              <UnifiedSearch projectId={projectId} shellContext={shellContext} />
+              <QuickOpenPalette projectId={projectId} apiToken={shellContext.apiToken} />
+            </>
           )}
           <ExtensionSlot
             slotId="shell.topBar"
@@ -313,32 +318,39 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
 
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Panel */}
+        {/* Left Panel — icon rail + single active panel column */}
         <aside
           className={`bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 ${
             resizingPanel === 'left' ? '' : 'transition-all duration-300'
           } overflow-hidden`}
-          style={{ width: focusMode || (isHydrated && leftPanelCollapsed) ? 0 : leftPanelWidth }}
+          style={{
+            width: focusMode
+              ? 0
+              : isHydrated && leftPanelCollapsed
+                ? RAIL_WIDTH
+                : RAIL_WIDTH + leftPanelWidth
+          }}
         >
-          <div className="h-full">
-            <ExtensionSlot
-              slotId="shell.leftPanel"
-              context={shellContext}
-              className="h-full"
-              fallback={
-                <EmptySlotFallback
-                  icon={
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
-                    </svg>
-                  }
-                  title="No navigation yet"
-                  description="Install a bobbin to add project navigation here."
-                  onAction={onOpenMarketplace ? () => onOpenMarketplace('shell.leftPanel') : undefined}
-                />
-              }
-            />
-          </div>
+          <LeftPanelRail
+            context={shellContext}
+            collapsed={isHydrated && leftPanelCollapsed}
+            columnWidth={leftPanelWidth}
+            animate={resizingPanel !== 'left'}
+            onToggleCollapse={() => setLeftPanelCollapsed(prev => !prev)}
+            onOpenMarketplace={onOpenMarketplace ? () => onOpenMarketplace('shell.leftPanel') : undefined}
+            emptyFallback={
+              <EmptySlotFallback
+                icon={
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
+                  </svg>
+                }
+                title="No navigation yet"
+                description="Install a bobbin to add project navigation here."
+                onAction={onOpenMarketplace ? () => onOpenMarketplace('shell.leftPanel') : undefined}
+              />
+            }
+          />
         </aside>
 
         {/* Left resize handle */}

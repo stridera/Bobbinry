@@ -244,7 +244,7 @@ export default function ProjectWritePage() {
           user={session?.user}
           installedBobbins={installedBobbins}
         >
-          <ViewRouter projectId={projectId} sdk={sdk} />
+          <ViewRouter projectId={projectId} sdk={sdk} projectName={projectName || undefined} />
         </ShellLayout>
       )}
     </>

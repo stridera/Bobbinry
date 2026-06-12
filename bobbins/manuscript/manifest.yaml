@@ -1,6 +1,6 @@
 id: manuscript
 name: Manuscript
-version: 1.0.2
+version: 1.0.4
 author: Bobbinry Team
 description: Complete manuscript management with books, chapters, and scenes
 tags:
@@ -21,6 +21,11 @@ extensions:
     - slot: shell.leftPanel
       type: panel
       id: manuscript-navigation
+      icon: book
+      home:
+        entityType: container
+        entityId: ROOT
+        metadata: { type: root }
       title: "Manuscript"
       entry: panels/navigation
       priority: 10

@@ -1,6 +1,6 @@
 id: relationships
 name: Relationships
-version: 1.0.4
+version: 1.0.6
 author: "Bobbins Core"
 description: "Graph and matrix views for entity connections across any bobbin"
 tags: [relationships, graph, connections, worldbuilding]
@@ -61,6 +61,11 @@ extensions:
     - slot: shell.leftPanel
       type: panel
       id: relationships-navigation
+      icon: link
+      home:
+        entityType: relationships
+        entityId: graph
+        metadata: { view: graph }
       title: "Relationships"
       entry: panels/navigation
 

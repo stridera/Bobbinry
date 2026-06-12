@@ -1,6 +1,6 @@
 id: entities
 name: Entities
-version: 1.5.2
+version: 1.5.4
 author: "Bobbins Core"
 description: "Configurable entity system for characters, spells, locations, items, and more"
 tags: [worldbuilding, rpg, entities, configurable]
@@ -69,6 +69,11 @@ extensions:
     - slot: shell.leftPanel
       type: panel
       id: entities-navigation
+      icon: users
+      home:
+        entityType: entity_type_definitions
+        entityId: publishing
+        metadata: { view: publishing, typeLabel: Types, typeIcon: "📚" }
       title: "Entities"
       entry: panels/navigation
     - slot: shell.rightPanel

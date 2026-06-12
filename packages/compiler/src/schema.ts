@@ -203,8 +203,20 @@ export const manifestSchema = {
               "type": { "type": "string" },
               "id": { "type": "string" },
               "title": { "type": "string" },
+              "label": { "type": "string" },
+              "icon": { "type": "string" },
+              "priority": { "type": "number" },
               "entry": { "type": "string" },
               "when": { "type": "object" },
+              "home": {
+                "type": "object",
+                "properties": {
+                  "entityType": { "type": "string" },
+                  "entityId": { "type": "string" },
+                  "metadata": { "type": "object" }
+                },
+                "required": ["entityType", "entityId"]
+              },
               "pubsub": {
                 "type": "object",
                 "properties": {

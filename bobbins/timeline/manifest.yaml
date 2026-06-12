@@ -1,6 +1,6 @@
 id: timeline
 name: Timeline
-version: 1.0.5
+version: 1.0.7
 author: "Bobbins Core"
 description: "Chronological event tracking for plot and world history"
 tags: [timeline, chronology, worldbuilding, planning]
@@ -65,6 +65,11 @@ extensions:
     - slot: shell.leftPanel
       type: panel
       id: timeline-navigation
+      icon: clock
+      home:
+        entityType: timelines
+        entityId: timeline
+        metadata: { view: timeline }
       title: "Timeline"
       entry: panels/navigation
 

@@ -1,12 +1,15 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { BobbinrySDK } from '@bobbinry/sdk'
 import { viewRegistry, ViewRegistryEntry } from '@/lib/view-registry'
+import { ViewHeaderBar } from './ViewHeaderBar'
+import { useBreadcrumb } from '@/hooks/useBreadcrumb'
 
 interface ViewRouterProps {
   projectId: string
   sdk: BobbinrySDK
+  projectName?: string | undefined
 }
 
 interface NavigationState {
@@ -17,48 +20,6 @@ interface NavigationState {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
-function ViewIcon({ type }: { type: string }) {
-  switch (type) {
-    case 'tree':
-      return (
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="2" y1="3" x2="12" y2="3" />
-          <line x1="4" y1="6.5" x2="12" y2="6.5" />
-          <line x1="4" y1="10" x2="12" y2="10" />
-        </svg>
-      )
-    case 'board':
-      return (
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="1" y="1" width="5" height="5" rx="1" />
-          <rect x="8" y="1" width="5" height="5" rx="1" />
-          <rect x="1" y="8" width="5" height="5" rx="1" />
-          <rect x="8" y="8" width="5" height="5" rx="1" />
-        </svg>
-      )
-    case 'editor':
-      return (
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M9.5 1.5L12.5 4.5L4.5 12.5H1.5V9.5L9.5 1.5Z" />
-        </svg>
-      )
-    case 'table':
-      return (
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="1.5" y="1.5" width="11" height="11" rx="1" />
-          <line x1="1.5" y1="5" x2="12.5" y2="5" />
-          <line x1="5" y1="5" x2="5" y2="12.5" />
-        </svg>
-      )
-    default:
-      return (
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="1" y="1" width="12" height="12" rx="2" />
-        </svg>
-      )
-  }
-}
 
 /** Load and return the user's preferred viewId for an entity type, if any */
 function getViewPreference(entityType: string): string | null {
@@ -85,7 +46,7 @@ function setViewPreference(entityType: string, viewId: string) {
  * based on entity type and installed views. Shows a view switcher when
  * multiple views can handle the same entity type.
  */
-export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
+export function ViewRouter({ projectId, sdk, projectName }: ViewRouterProps) {
   const [currentNav, setCurrentNav] = useState<NavigationState | null>(null)
   const [ViewComponent, setViewComponent] = useState<React.ComponentType<any> | null>(null)
   const [compatibleViews, setCompatibleViews] = useState<ViewRegistryEntry[]>([])
@@ -127,9 +88,14 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
     navKeyRef.current = key
     setCurrentNav(nav)
 
-    // Persist last-visited so we can restore on next visit
+    // Persist last-visited so we can restore on next visit — globally and
+    // per-bobbin (the icon rail returns to a bobbin's last location when its
+    // panel is re-activated)
     if (nav) {
       try { localStorage.setItem(lastNavKey, JSON.stringify(nav)) } catch {}
+      if (nav.bobbinId) {
+        try { localStorage.setItem(`${lastNavKey}:${nav.bobbinId}`, JSON.stringify(nav)) } catch {}
+      }
     }
   }
 
@@ -392,6 +358,37 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
     setViewPreference(currentNav.entityType, viewId)
   }, [currentNav])
 
+  const crumbs = useBreadcrumb(currentNav, sdk, projectId, projectName)
+
+  // Only views that explicitly declare the displayed entity's type are
+  // offered as tabs — true sibling renderings (outline/table/board for a
+  // container). Wildcard and bobbin-fallback views still render (resolution
+  // above is unchanged) but don't clutter the switcher; module-level
+  // navigation lives in the icon rail and panels.
+  const currentEntityType = currentNav?.entityType
+  const switcherViews = useMemo(
+    () => currentEntityType
+      ? compatibleViews.filter(v => v.handlers?.includes(currentEntityType))
+      : [],
+    [compatibleViews, currentEntityType]
+  )
+
+  // Ctrl+Digit / Ctrl+Alt+Digit switches view tabs. Chrome reserves plain
+  // Ctrl+1–8 for browser tabs, so the Alt variant is the reliable one there.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || e.metaKey || e.shiftKey || e.repeat) return
+      const match = /^Digit([1-9])$/.exec(e.code)
+      if (!match) return
+      const view = switcherViews[Number(match[1]) - 1]
+      if (!view) return
+      e.preventDefault()
+      handleViewSwitch(view.viewId)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [switcherViews, handleViewSwitch])
+
   // Placeholder when no entity selected
   if (!currentNav || !ViewComponent) {
     if (currentNav && compatibleViews.length === 0) {
@@ -420,34 +417,13 @@ export function ViewRouter({ projectId, sdk }: ViewRouterProps) {
 
   return (
     <div className="h-full flex flex-col">
-      {/* View switcher - only shown when multiple views are available */}
-      {compatibleViews.length > 1 && (
-        <div className="flex items-center gap-1 px-4 py-1.5 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-          <span className="text-xs text-gray-400 dark:text-gray-500 mr-1.5">View:</span>
-          {compatibleViews.map((view) => {
-            const isActive = view.viewId === activeViewId
-            const viewType = view.metadata.type || 'custom'
-            const label = view.metadata.name || view.viewId.split('.').pop() || 'View'
-
-            return (
-              <button
-                key={view.viewId}
-                onClick={() => handleViewSwitch(view.viewId)}
-                className={`
-                  flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors
-                  ${isActive
-                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm border border-gray-200 dark:border-gray-600'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50'
-                  }
-                `}
-              >
-                <ViewIcon type={viewType} />
-                {label}
-              </button>
-            )
-          })}
-        </div>
-      )}
+      {/* Persistent header: breadcrumb + view switcher */}
+      <ViewHeaderBar
+        crumbs={crumbs}
+        compatibleViews={switcherViews}
+        activeViewId={activeViewId}
+        onViewSwitch={handleViewSwitch}
+      />
 
       {/* View content */}
       <div className="flex-1 overflow-hidden">
