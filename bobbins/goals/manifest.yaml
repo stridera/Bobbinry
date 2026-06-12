@@ -1,6 +1,6 @@
 id: goals
 name: Goals & Progress
-version: 1.0.4
+version: 1.0.5
 author: "Bobbins Core"
 description: "Word count goals, writing sessions, streaks, and progress visualization"
 tags: [goals, progress, writing, tracking]
@@ -65,6 +65,18 @@ interactions:
 
 extensions:
   contributions:
+    # Rail launcher: no entry/panel — clicking the icon opens the goals
+    # dashboard in the main view (left bar = project navigation)
+    - slot: shell.leftPanel
+      type: panel
+      id: goals-launcher
+      icon: target
+      home:
+        entityType: goals
+        entityId: dashboard
+        metadata: { view: dashboard }
+      title: "Goals"
+    # Contextual progress while writing (right bar = information)
     - slot: shell.rightPanel
       type: panel
       id: progress

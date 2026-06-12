@@ -74,6 +74,14 @@ export function LeftPanelRail({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [context, isHydrated, registeredCount, slotChangeVersion])
 
+  // Contributions without an `entry` are launchers: a rail icon that opens
+  // the bobbin's main view (its `home`) without owning the panel column —
+  // e.g. Goals, whose contextual panel lives on the right instead.
+  const panelExtensions = useMemo(
+    () => extensions.filter(ext => ext.contribution.entry),
+    [extensions]
+  )
+
   useEffect(() => {
     const unsubscribe = extensionRegistry.onSlotChange(SLOT_ID, () => {
       setSlotChangeVersion(v => v + 1)
@@ -95,20 +103,22 @@ export function LeftPanelRail({
 
   // Saved id may point at an uninstalled bobbin or a panel whose `when`
   // condition is currently false — fall back to the first (priority-sorted)
-  // extension without overwriting the saved preference.
+  // panel extension without overwriting the saved preference.
   const activeExtension = useMemo(() => {
-    return extensions.find(ext => ext.id === activeId) ?? extensions[0] ?? null
-  }, [extensions, activeId])
+    return panelExtensions.find(ext => ext.id === activeId) ?? panelExtensions[0] ?? null
+  }, [panelExtensions, activeId])
 
-  // Follow the content area: navigating into another bobbin's view (quick
-  // open, breadcrumb, recent-activity links) activates that bobbin's panel
-  // so the rail never points at a different module than the main view.
-  // Bobbins without a left panel (e.g. corkboard) leave the rail unchanged.
+  // Track which bobbin owns the main view: launcher icons highlight from it,
+  // and panel icons follow it so the rail never points at a different module
+  // than the content area. Bobbins with no rail presence (e.g. corkboard)
+  // leave the active panel unchanged.
+  const [navBobbinId, setNavBobbinId] = useState<string | null>(null)
   useEffect(() => {
     const handler = (event: Event) => {
       const bobbinId = (event as CustomEvent).detail?.bobbinId
       if (!bobbinId) return
-      const match = extensions.find(ext => ext.bobbinId === bobbinId)
+      setNavBobbinId(bobbinId)
+      const match = panelExtensions.find(ext => ext.bobbinId === bobbinId)
       if (!match || match.id === activeExtension?.id) return
       setActiveId(match.id)
       try {
@@ -119,9 +129,36 @@ export function LeftPanelRail({
     }
     window.addEventListener('bobbinry:view-context-change', handler)
     return () => window.removeEventListener('bobbinry:view-context-change', handler)
-  }, [extensions, activeExtension])
+  }, [panelExtensions, activeExtension])
+
+  // The bobbin's last-visited location if we have one, else its
+  // manifest-declared home.
+  const navigateToBobbinView = (ext: RegisteredExtension) => {
+    const projectId = context?.projectId
+    let detail: Record<string, any> | null = null
+    if (projectId) {
+      try {
+        const saved = localStorage.getItem(`bobbinry:lastNav:${projectId}:${ext.bobbinId}`)
+        if (saved) detail = JSON.parse(saved)
+      } catch {
+        // fall through to home
+      }
+    }
+    if (!detail && ext.contribution.home) {
+      detail = { ...ext.contribution.home, bobbinId: ext.bobbinId }
+    }
+    if (detail) {
+      window.dispatchEvent(new CustomEvent('bobbinry:navigate', { detail }))
+    }
+  }
 
   const handleIconClick = (ext: RegisteredExtension) => {
+    // Launcher (no panel): just open the bobbin's main view
+    if (!ext.contribution.entry) {
+      navigateToBobbinView(ext)
+      return
+    }
+
     if (activeExtension?.id === ext.id && !collapsed) {
       onToggleCollapse()
       return
@@ -135,25 +172,9 @@ export function LeftPanelRail({
     }
     if (collapsed) onToggleCollapse()
 
-    // Activating a module also brings up its main view: the bobbin's
-    // last-visited location if we have one, else the manifest-declared home.
+    // Activating a module also brings up its main view
     if (isPanelSwitch) {
-      const projectId = context?.projectId
-      let detail: Record<string, any> | null = null
-      if (projectId) {
-        try {
-          const saved = localStorage.getItem(`bobbinry:lastNav:${projectId}:${ext.bobbinId}`)
-          if (saved) detail = JSON.parse(saved)
-        } catch {
-          // fall through to home
-        }
-      }
-      if (!detail && ext.contribution.home) {
-        detail = { ...ext.contribution.home, bobbinId: ext.bobbinId }
-      }
-      if (detail) {
-        window.dispatchEvent(new CustomEvent('bobbinry:navigate', { detail }))
-      }
+      navigateToBobbinView(ext)
     }
   }
 
@@ -170,23 +191,26 @@ export function LeftPanelRail({
         aria-label="Sidebar panels"
       >
         {extensions.map(ext => {
-          const isActive = activeExtension?.id === ext.id
+          const isLauncher = !ext.contribution.entry
+          const isHighlighted = isLauncher
+            ? navBobbinId === ext.bobbinId
+            : activeExtension?.id === ext.id && !collapsed
           return (
             <button
               key={ext.id}
               type="button"
               role="tab"
-              aria-selected={isActive && !collapsed}
+              aria-selected={isHighlighted}
               title={ext.contribution.title || ext.id}
               onClick={() => handleIconClick(ext)}
               className="relative flex h-11 w-full items-center justify-center"
             >
-              {isActive && !collapsed && (
+              {isHighlighted && (
                 <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-r bg-blue-600 dark:bg-blue-400" />
               )}
               <span
                 className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
-                  isActive && !collapsed
+                  isHighlighted
                     ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
                     : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-300'
                 }`}

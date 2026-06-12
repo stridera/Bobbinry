@@ -282,7 +282,13 @@ export function ViewRouter({ projectId, sdk, projectName }: ViewRouterProps) {
     } else {
       const pref = getViewPreference(entityType)
       if (pref) {
-        const match = views.find(v => v.viewId === pref)
+        // Only honor a saved preference for views that explicitly declare
+        // this entity type (sibling renderings like outline/table/board).
+        // Wildcard views (goals dashboard, handlers: ['*']) match every
+        // entity type in getViewsByHandler, so a preference recorded for
+        // one of them would otherwise hijack default navigation forever —
+        // e.g. the project crumb landing on Goals instead of the outline.
+        const match = views.find(v => v.viewId === pref && v.handlers?.includes(entityType))
         if (match) selected = match
       }
     }

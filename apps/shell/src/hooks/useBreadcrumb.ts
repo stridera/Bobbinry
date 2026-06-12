@@ -80,7 +80,7 @@ function bobbinHomeDetail(bobbinId: string): NonNullable<Crumb['navDetail']> {
     entityType: 'container',
     entityId: 'ROOT',
     bobbinId: 'manuscript',
-    metadata: { type: 'root' },
+    metadata: { type: 'root', view: 'outline' },
   }
 }
 

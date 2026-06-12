@@ -1,6 +1,6 @@
 id: manuscript
 name: Manuscript
-version: 1.0.4
+version: 1.0.5
 author: Bobbinry Team
 description: Complete manuscript management with books, chapters, and scenes
 tags:
@@ -25,7 +25,7 @@ extensions:
       home:
         entityType: container
         entityId: ROOT
-        metadata: { type: root }
+        metadata: { type: root, view: outline }
       title: "Manuscript"
       entry: panels/navigation
       priority: 10
