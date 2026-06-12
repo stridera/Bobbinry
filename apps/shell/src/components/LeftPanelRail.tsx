@@ -100,6 +100,27 @@ export function LeftPanelRail({
     return extensions.find(ext => ext.id === activeId) ?? extensions[0] ?? null
   }, [extensions, activeId])
 
+  // Follow the content area: navigating into another bobbin's view (quick
+  // open, breadcrumb, recent-activity links) activates that bobbin's panel
+  // so the rail never points at a different module than the main view.
+  // Bobbins without a left panel (e.g. corkboard) leave the rail unchanged.
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const bobbinId = (event as CustomEvent).detail?.bobbinId
+      if (!bobbinId) return
+      const match = extensions.find(ext => ext.bobbinId === bobbinId)
+      if (!match || match.id === activeExtension?.id) return
+      setActiveId(match.id)
+      try {
+        localStorage.setItem(ACTIVE_STORAGE_KEY, match.id)
+      } catch {
+        // best-effort persistence
+      }
+    }
+    window.addEventListener('bobbinry:view-context-change', handler)
+    return () => window.removeEventListener('bobbinry:view-context-change', handler)
+  }, [extensions, activeExtension])
+
   const handleIconClick = (ext: RegisteredExtension) => {
     if (activeExtension?.id === ext.id && !collapsed) {
       onToggleCollapse()

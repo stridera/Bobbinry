@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
+import { extensionRegistry } from '@/lib/extensions'
 
 export interface Crumb {
   id: string
@@ -64,17 +65,31 @@ async function getContainersMap(sdk: BobbinrySDK, projectId: string): Promise<Ma
   return map
 }
 
-function projectCrumb(projectName: string | undefined, isLeaf: boolean): Crumb {
-  const crumb: Crumb = { id: 'ROOT', label: projectName || 'Project' }
-  if (!isLeaf) {
-    crumb.navDetail = {
-      entityType: 'container',
-      entityId: 'ROOT',
-      bobbinId: 'manuscript',
-      metadata: { type: 'root' },
-    }
+// The project crumb always navigates to the current bobbin's home view (the
+// manifest `home` field on its leftPanel contribution), so clicking it stays
+// within the active module instead of jumping to the manuscript. Falls back
+// to manuscript ROOT for bobbins that declare no home.
+function bobbinHomeDetail(bobbinId: string): NonNullable<Crumb['navDetail']> {
+  const ext = extensionRegistry
+    .getAllExtensions()
+    .find(e => e.contribution.slot === 'shell.leftPanel' && e.bobbinId === bobbinId && e.contribution.home)
+  if (ext?.contribution.home) {
+    return { ...ext.contribution.home, bobbinId }
   }
-  return crumb
+  return {
+    entityType: 'container',
+    entityId: 'ROOT',
+    bobbinId: 'manuscript',
+    metadata: { type: 'root' },
+  }
+}
+
+function projectCrumb(projectName: string | undefined, bobbinId: string): Crumb {
+  return {
+    id: 'ROOT',
+    label: projectName || 'Project',
+    navDetail: bobbinHomeDetail(bobbinId),
+  }
 }
 
 function containerChain(map: Map<string, ContainerRecord>, startId: string | null): Crumb[] {
@@ -122,7 +137,7 @@ export function useBreadcrumb(
 
       if (!isUUID) {
         // Sentinel route (ROOT, dashboard, matrix, new, …) — just the project crumb
-        return [projectCrumb(projectName, true)]
+        return [projectCrumb(projectName, bobbinId)]
       }
 
       if (bobbinId === 'manuscript') {
@@ -133,7 +148,7 @@ export function useBreadcrumb(
             const leaf = chain[chain.length - 1]!
             delete leaf.navDetail
           }
-          return [projectCrumb(projectName, false), ...chain]
+          return [projectCrumb(projectName, bobbinId), ...chain]
         }
         // content — leaf title + containerId come from the record itself;
         // metadata.parentId from the nav event is a fallback
@@ -147,7 +162,7 @@ export function useBreadcrumb(
           // record fetch failed — render with what the nav event gave us
         }
         return [
-          projectCrumb(projectName, false),
+          projectCrumb(projectName, bobbinId),
           ...containerChain(map, containerId),
           { id: entityId, label: title },
         ]
@@ -162,7 +177,7 @@ export function useBreadcrumb(
           // tolerate — type label still orients the user
         }
         return [
-          projectCrumb(projectName, false),
+          projectCrumb(projectName, bobbinId),
           { id: entityType, label: metadata?.typeLabel || entityType },
           { id: entityId, label: name },
         ]
@@ -177,14 +192,14 @@ export function useBreadcrumb(
           // tolerate missing note record
         }
         return [
-          projectCrumb(projectName, false),
+          projectCrumb(projectName, bobbinId),
           { id: 'notes', label: 'Notes' },
           { id: entityId, label: title },
         ]
       }
 
       // Unknown bobbin — project crumb only, clickable back to ROOT
-      return [projectCrumb(projectName, false)]
+      return [projectCrumb(projectName, bobbinId)]
     }
 
     build()
@@ -192,7 +207,7 @@ export function useBreadcrumb(
         if (!cancelled) setCrumbs(result)
       })
       .catch(() => {
-        if (!cancelled) setCrumbs(currentNav ? [projectCrumb(projectName, true)] : [])
+        if (!cancelled) setCrumbs(currentNav ? [projectCrumb(projectName, currentNav.bobbinId)] : [])
       })
 
     return () => {
