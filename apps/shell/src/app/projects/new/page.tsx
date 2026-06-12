@@ -14,30 +14,32 @@ interface Template {
   bobbins: string[]
 }
 
+// Manuscript is core: the API auto-installs it on every project create, so
+// templates only list the bobbins they add on top of it.
 const templates: Template[] = [
   {
     id: 'blank',
     name: 'Blank Project',
-    description: 'Start with an empty canvas and add bobbins as needed',
+    description: 'Just the Manuscript editor — add other bobbins as you need them',
     bobbins: [],
   },
   {
     id: 'novel',
     name: 'Novel',
     description: 'Writing template with Manuscript and Corkboard for chapters, scenes, and planning',
-    bobbins: ['manuscript', 'corkboard'],
+    bobbins: ['corkboard'],
   },
   {
     id: 'worldbuilding',
     name: 'Worldbuilding',
     description: 'Full creative suite with Manuscript, Corkboard, and Entities for building your world',
-    bobbins: ['manuscript', 'corkboard', 'entities'],
+    bobbins: ['corkboard', 'entities'],
   },
   {
     id: 'serial-fiction',
     name: 'Serial Fiction',
     description: 'Web publishing toolkit with Manuscript, Corkboard, and publishing bobbins',
-    bobbins: ['manuscript', 'corkboard', 'web-publisher'],
+    bobbins: ['corkboard', 'web-publisher'],
   }
 ]
 
@@ -296,7 +298,7 @@ function NewProjectContent() {
 
                   {template.bobbins.length > 0 && (
                     <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-                      <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Includes:</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Adds to Manuscript:</p>
                       <div className="flex flex-wrap gap-1">
                         {template.bobbins.map((bobbin) => (
                           <span key={bobbin} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
