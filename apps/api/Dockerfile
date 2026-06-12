@@ -33,12 +33,10 @@ COPY bobbins/dictionary-panel/package.json bobbins/dictionary-panel/
 COPY bobbins/discord-notifier/package.json bobbins/discord-notifier/
 COPY bobbins/discord-roles/package.json bobbins/discord-roles/
 COPY bobbins/entities/package.json bobbins/entities/
-COPY bobbins/export/package.json bobbins/export/
 COPY bobbins/feedback/package.json bobbins/feedback/
 COPY bobbins/goals/package.json bobbins/goals/
 COPY bobbins/google-drive-backup/package.json bobbins/google-drive-backup/
 COPY bobbins/hello-world/package.json bobbins/hello-world/
-COPY bobbins/import/package.json bobbins/import/
 COPY bobbins/manuscript/package.json bobbins/manuscript/
 COPY bobbins/notes/package.json bobbins/notes/
 COPY bobbins/relationships/package.json bobbins/relationships/
