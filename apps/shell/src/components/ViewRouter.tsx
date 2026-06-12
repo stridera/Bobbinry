@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { BobbinrySDK } from '@bobbinry/sdk'
 import { viewRegistry, ViewRegistryEntry } from '@/lib/view-registry'
 import { ViewHeaderBar } from './ViewHeaderBar'
-import { useBreadcrumb } from '@/hooks/useBreadcrumb'
+import { useBreadcrumb, type Crumb } from '@/hooks/useBreadcrumb'
 
 interface ViewRouterProps {
   projectId: string
@@ -48,6 +48,10 @@ function setViewPreference(entityType: string, viewId: string) {
  */
 export function ViewRouter({ projectId, sdk, projectName }: ViewRouterProps) {
   const [currentNav, setCurrentNav] = useState<NavigationState | null>(null)
+  // Breadcrumb published by the active view via bobbinry:breadcrumb (SDK
+  // publishBreadcrumb helper); overrides the shell-computed trail until the
+  // next navigation.
+  const [viewCrumbs, setViewCrumbs] = useState<Crumb[] | null>(null)
   const [ViewComponent, setViewComponent] = useState<React.ComponentType<any> | null>(null)
   const [compatibleViews, setCompatibleViews] = useState<ViewRegistryEntry[]>([])
   const [activeViewId, setActiveViewId] = useState<string | null>(null)
@@ -87,6 +91,7 @@ export function ViewRouter({ projectId, sdk, projectName }: ViewRouterProps) {
     }
     navKeyRef.current = key
     setCurrentNav(nav)
+    setViewCrumbs(null)
 
     // Persist last-visited so we can restore on next visit — globally and
     // per-bobbin (the icon rail returns to a bobbin's last location when its
@@ -358,7 +363,28 @@ export function ViewRouter({ projectId, sdk, projectName }: ViewRouterProps) {
     setViewPreference(currentNav.entityType, viewId)
   }, [currentNav])
 
-  const crumbs = useBreadcrumb(currentNav, sdk, projectId, projectName)
+  const computedCrumbs = useBreadcrumb(currentNav, sdk, projectId, projectName)
+  const crumbs = viewCrumbs ?? computedCrumbs
+
+  // Views may publish their own trail (they know their context best);
+  // cleared on every navigation in updateNav.
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent).detail
+      if (Array.isArray(detail?.crumbs)) setViewCrumbs(detail.crumbs)
+    }
+    window.addEventListener('bobbinry:breadcrumb', handler)
+    return () => window.removeEventListener('bobbinry:breadcrumb', handler)
+  }, [])
+
+  // The shell top bar renders the final trail
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('bobbinry:breadcrumb-change', { detail: { crumbs } }))
+  }, [crumbs])
+
+  useEffect(() => () => {
+    window.dispatchEvent(new CustomEvent('bobbinry:breadcrumb-change', { detail: { crumbs: [] } }))
+  }, [])
 
   // Only views that explicitly declare the displayed entity's type are
   // offered as tabs — true sibling renderings (outline/table/board for a
@@ -417,13 +443,14 @@ export function ViewRouter({ projectId, sdk, projectName }: ViewRouterProps) {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Persistent header: breadcrumb + view switcher */}
-      <ViewHeaderBar
-        crumbs={crumbs}
-        compatibleViews={switcherViews}
-        activeViewId={activeViewId}
-        onViewSwitch={handleViewSwitch}
-      />
+      {/* Sibling-view tabs (breadcrumb lives in the shell top bar) */}
+      {switcherViews.length > 1 && (
+        <ViewHeaderBar
+          compatibleViews={switcherViews}
+          activeViewId={activeViewId}
+          onViewSwitch={handleViewSwitch}
+        />
+      )}
 
       {/* View content */}
       <div className="flex-1 overflow-hidden">

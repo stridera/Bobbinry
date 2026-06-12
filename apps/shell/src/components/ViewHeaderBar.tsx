@@ -2,10 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import type { ViewRegistryEntry } from '@/lib/view-registry'
-import type { Crumb } from '@/hooks/useBreadcrumb'
 
 const MAX_INLINE_VIEWS = 4
-const MAX_VISIBLE_CRUMBS = 4
 
 export function ViewIcon({ type }: { type: string }) {
   switch (type) {
@@ -80,13 +78,12 @@ function ViewTab({
 }
 
 interface ViewHeaderBarProps {
-  crumbs: Crumb[]
   compatibleViews: ViewRegistryEntry[]
   activeViewId: string | null
   onViewSwitch: (viewId: string) => void
 }
 
-export function ViewHeaderBar({ crumbs, compatibleViews, activeViewId, onViewSwitch }: ViewHeaderBarProps) {
+export function ViewHeaderBar({ compatibleViews, activeViewId, onViewSwitch }: ViewHeaderBarProps) {
   const [overflowOpen, setOverflowOpen] = useState(false)
   const overflowRef = useRef<HTMLDivElement>(null)
 
@@ -101,17 +98,6 @@ export function ViewHeaderBar({ crumbs, compatibleViews, activeViewId, onViewSwi
     return () => document.removeEventListener('mousedown', handlePointerDown)
   }, [overflowOpen])
 
-  const handleCrumbClick = (crumb: Crumb) => {
-    if (!crumb.navDetail) return
-    window.dispatchEvent(new CustomEvent('bobbinry:navigate', { detail: crumb.navDetail }))
-  }
-
-  // Middle-truncate long chains: first crumb + … + last (MAX-1) crumbs
-  let displayCrumbs: (Crumb | 'ellipsis')[] = crumbs
-  if (crumbs.length > MAX_VISIBLE_CRUMBS) {
-    displayCrumbs = [crumbs[0]!, 'ellipsis', ...crumbs.slice(crumbs.length - (MAX_VISIBLE_CRUMBS - 1))]
-  }
-
   const showOverflow = compatibleViews.length > MAX_INLINE_VIEWS
   const inlineViews = showOverflow ? compatibleViews.slice(0, MAX_INLINE_VIEWS - 1) : compatibleViews
   const overflowViews = showOverflow ? compatibleViews.slice(MAX_INLINE_VIEWS - 1) : []
@@ -119,39 +105,7 @@ export function ViewHeaderBar({ crumbs, compatibleViews, activeViewId, onViewSwi
 
   return (
     <div className="flex items-center gap-2 px-4 py-1.5 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-      {/* Breadcrumb */}
-      <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center gap-1 text-xs">
-        {displayCrumbs.map((crumb, index) => {
-          if (crumb === 'ellipsis') {
-            return (
-              <span key={`ellipsis-${index}`} className="flex items-center gap-1 shrink-0">
-                <span className="text-gray-400 dark:text-gray-500">&hellip;</span>
-                <span className="text-gray-300 dark:text-gray-600">&rsaquo;</span>
-              </span>
-            )
-          }
-          const isLast = index === displayCrumbs.length - 1
-          return (
-            <span key={crumb.id} className={`flex items-center gap-1 ${isLast ? 'min-w-0' : 'shrink-0'}`}>
-              {crumb.navDetail ? (
-                <button
-                  onClick={() => handleCrumbClick(crumb)}
-                  className="truncate max-w-[180px] text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:underline transition-colors"
-                >
-                  {crumb.label}
-                </button>
-              ) : (
-                <span className={`truncate ${isLast ? 'font-medium text-gray-800 dark:text-gray-200' : 'max-w-[180px] text-gray-500 dark:text-gray-400'}`}>
-                  {crumb.label}
-                </span>
-              )}
-              {!isLast && <span className="text-gray-300 dark:text-gray-600">&rsaquo;</span>}
-            </span>
-          )
-        })}
-      </nav>
-
-      {/* View switcher */}
+      {/* View switcher (the breadcrumb lives in the shell top bar) */}
       {compatibleViews.length > 1 && (
         <div className="flex shrink-0 items-center gap-1">
           {inlineViews.map(view => (

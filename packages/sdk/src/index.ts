@@ -1100,6 +1100,8 @@ export { ConfirmModal } from './confirm-modal'
 export type { ConfirmModalProps } from './confirm-modal'
 export { fuzzyMatch } from './fuzzy'
 export type { FuzzyMatch } from './fuzzy'
+export { publishBreadcrumb } from './breadcrumb'
+export type { BreadcrumbCrumb } from './breadcrumb'
 
 // Convenience exports
 export * from '@bobbinry/types'

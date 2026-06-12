@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { ExtensionSlot } from './ExtensionSlot'
 import { LeftPanelRail, RAIL_WIDTH } from './LeftPanelRail'
 import { QuickOpenPalette } from './QuickOpenPalette'
+import { Breadcrumbs } from './Breadcrumbs'
+import type { Crumb } from '@/hooks/useBreadcrumb'
 import { UserMenu } from './UserMenu'
 import { BobbinManagerPopover } from './bobbins'
 import { UnifiedSearch } from './search/UnifiedSearch'
@@ -69,6 +71,7 @@ function EmptySlotFallback({
 export function ShellLayout({ children, currentView = 'default', context = {}, onOpenMarketplace, projectId, projectName, user, installedBobbins = [] }: ShellLayoutProps) {
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false)
+  const [breadcrumb, setBreadcrumb] = useState<Crumb[]>([])
   const [isHydrated, setIsHydrated] = useState(false)
   const [dynamicContext, setDynamicContext] = useState<Record<string, any>>({})
   const [focusMode, setFocusMode] = useState(false)
@@ -170,6 +173,16 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
     else setRightPanelWidth(DEFAULT_RIGHT_WIDTH)
   }, [])
 
+  // Breadcrumb trail published by ViewRouter (computed or view-registered)
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent).detail
+      setBreadcrumb(Array.isArray(detail?.crumbs) ? detail.crumbs : [])
+    }
+    window.addEventListener('bobbinry:breadcrumb-change', handler)
+    return () => window.removeEventListener('bobbinry:breadcrumb-change', handler)
+  }, [])
+
   useEffect(() => {
     const handleViewContextChange = (event: Event) => {
       const customEvent = event as CustomEvent<Record<string, any>>
@@ -262,9 +275,13 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </Link>
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">
-                {projectName || 'Project'}
-              </span>
+              {breadcrumb.length > 0 ? (
+                <Breadcrumbs crumbs={breadcrumb} />
+              ) : (
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">
+                  {projectName || 'Project'}
+                </span>
+              )}
               <Link
                 href={`/projects/${projectId}`}
                 className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400 dark:text-gray-500 transition-colors shrink-0"
