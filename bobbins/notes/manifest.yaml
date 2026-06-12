@@ -1,6 +1,6 @@
 id: notes
 name: Notes & Research
-version: 1.1.3
+version: 1.1.4
 author: "Bobbins Core"
 description: "Rich research tool with folders, tagging, entity linking, and pinboard"
 tags: [notes, research, organization, writing]
@@ -42,12 +42,12 @@ ui:
       source: "*"
       handlers:
         - "notes"
+      requiresEntity: true
     - id: pinboard
       name: Pinboard
       type: custom
       source: "*"
-      handlers:
-        - "notes"
+      handlers: []
 
 interactions:
   actions:
