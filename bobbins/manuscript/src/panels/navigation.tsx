@@ -1293,12 +1293,20 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
         {tree.length === 0 ? (
           <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
             <div className="mb-3">No content yet</div>
-            <button
-              onClick={() => createContainer(null)}
-              className="px-3 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded"
-            >
-              Create Your First Container
-            </button>
+            <div className="flex items-center justify-center gap-2">
+              <button
+                onClick={() => createContainer(null)}
+                className="px-3 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded"
+              >
+                📁 New Container
+              </button>
+              <button
+                onClick={() => createContent(null)}
+                className="px-3 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded"
+              >
+                📝 New Content
+              </button>
+            </div>
           </div>
         ) : (
           tree.map(node => renderNode(node))
