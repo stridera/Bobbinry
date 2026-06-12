@@ -21,6 +21,8 @@ export interface SearchMatch {
 export interface PreviewResponse {
   matches: SearchMatch[]
   entityVersions: Record<string, number>
+  /** Display titles (chapter `title` / entity `name`) keyed by entityId. */
+  entityTitles?: Record<string, string>
   truncated?: boolean
 }
 
@@ -38,6 +40,8 @@ export interface SearchOptions {
   caseSensitive: boolean
   wholeWord: boolean
   scope: SearchScope
+  /** Restrict the search to specific bobbins ('manuscript' | 'entities'). */
+  bobbinIds?: string[]
 }
 
 interface UseSearchReplaceArgs {
@@ -65,6 +69,7 @@ export function useSearchReplace({ projectId, apiToken }: UseSearchReplaceArgs) 
           caseSensitive: opts.caseSensitive,
           wholeWord: opts.wholeWord,
           scope: opts.scope,
+          ...(opts.bobbinIds ? { bobbinIds: opts.bobbinIds } : {}),
         }),
       })
       if (!res.ok) {

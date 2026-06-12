@@ -47,7 +47,7 @@ describe('Entity Templates', () => {
   describe('Custom Fields', () => {
     const validFieldTypes: FieldType[] = [
       'text', 'number', 'select', 'multi-select',
-      'boolean', 'date', 'json', 'rich-text', 'image', 'relation'
+      'boolean', 'date', 'json', 'rich-text', 'image', 'relation', 'color'
     ]
 
     it.each(templates)('$label should have valid custom fields', (template) => {

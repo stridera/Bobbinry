@@ -34,6 +34,8 @@ const PreviewBodySchema = z.object({
   caseSensitive: z.boolean().default(false),
   wholeWord: z.boolean().default(false),
   scope: ScopeSchema,
+  /** Restrict the scan to a subset of the searchable bobbins (e.g. just 'entities'). */
+  bobbinIds: z.array(z.enum(SEARCHABLE_BOBBIN_IDS)).min(1).optional(),
 })
 
 const ApplyBodySchema = z.object({
@@ -77,7 +79,7 @@ const searchReplacePlugin: FastifyPluginAsync = async (fastify) => {
 
       let where = and(
         scopeFilter,
-        inArray(entities.bobbinId, [...SEARCHABLE_BOBBIN_IDS]),
+        inArray(entities.bobbinId, body.bobbinIds ?? [...SEARCHABLE_BOBBIN_IDS]),
         notInArray(entities.collectionName, [...SKIPPED_COLLECTIONS]),
       )
 
@@ -99,6 +101,7 @@ const searchReplacePlugin: FastifyPluginAsync = async (fastify) => {
 
       const matches: EntityMatch[] = []
       const entityVersions: Record<string, number> = {}
+      const entityTitles: Record<string, string> = {}
       let truncated = false
 
       for (const row of rows) {
@@ -106,6 +109,8 @@ const searchReplacePlugin: FastifyPluginAsync = async (fastify) => {
         const found = findInEntity(row.id, row.collectionName, data, opts)
         if (found.length === 0) continue
         entityVersions[row.id] = row.version
+        const title = data.title ?? data.name
+        if (typeof title === 'string' && title) entityTitles[row.id] = title
         for (const m of found) {
           if (matches.length >= MAX_MATCHES_PER_PROJECT) {
             truncated = true
@@ -116,7 +121,7 @@ const searchReplacePlugin: FastifyPluginAsync = async (fastify) => {
         if (truncated) break
       }
 
-      return { matches, entityVersions, truncated }
+      return { matches, entityVersions, entityTitles, truncated }
     } catch (error) {
       fastify.log.error(error)
       if (error instanceof z.ZodError) {

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { ExtensionSlot } from './ExtensionSlot'
 import { UserMenu } from './UserMenu'
 import { BobbinManagerPopover } from './bobbins'
+import { UnifiedSearch } from './search/UnifiedSearch'
 
 const DEFAULT_LEFT_WIDTH = 256   // current w-64
 const DEFAULT_RIGHT_WIDTH = 320  // current w-80
@@ -275,8 +276,11 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
           )}
         </div>
 
-        {/* Center: topBar extensions (collapses to spacer when empty) */}
-        <div className="flex-1 flex justify-center">
+        {/* Center: unified search + topBar extensions */}
+        <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
+          {projectId && shellContext.apiToken && (
+            <UnifiedSearch projectId={projectId} shellContext={shellContext} />
+          )}
           <ExtensionSlot
             slotId="shell.topBar"
             context={shellContext}

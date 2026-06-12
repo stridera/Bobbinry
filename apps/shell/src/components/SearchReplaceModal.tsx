@@ -4,9 +4,9 @@ import { useMemo, useState } from 'react'
 import { ModalFrame } from '@bobbinry/ui-components'
 import {
   useSearchReplace,
-  type SearchMatch,
   type SearchScope,
 } from '@/hooks/useSearchReplace'
+import { MatchPreviewList, type GroupedMatches } from './search/MatchPreviewList'
 
 interface ActiveChapter {
   id: string
@@ -19,44 +19,6 @@ interface SearchReplaceModalProps {
   activeChapter: ActiveChapter | null
   initialScope: 'project' | 'chapter'
   onClose: () => void
-}
-
-const COLLECTION_LABELS: Record<string, string> = {
-  content: 'Chapter',
-  containers: 'Container',
-  character: 'Character',
-  place: 'Place',
-  lore: 'Lore',
-}
-
-function collectionLabel(collection: string): string {
-  return COLLECTION_LABELS[collection] ?? collection
-}
-
-function fieldLabel(field: string): string {
-  if (!field) return ''
-  return field.charAt(0).toUpperCase() + field.slice(1).replace(/_/g, ' ')
-}
-
-interface GroupedMatches {
-  entityId: string
-  collection: string
-  matches: SearchMatch[]
-}
-
-function groupMatches(matches: SearchMatch[]): GroupedMatches[] {
-  const order: string[] = []
-  const byEntity = new Map<string, GroupedMatches>()
-  for (const m of matches) {
-    let group = byEntity.get(m.entityId)
-    if (!group) {
-      group = { entityId: m.entityId, collection: m.collection, matches: [] }
-      byEntity.set(m.entityId, group)
-      order.push(m.entityId)
-    }
-    group.matches.push(m)
-  }
-  return order.map(id => byEntity.get(id)!)
 }
 
 export function SearchReplaceModal({
@@ -92,8 +54,6 @@ export function SearchReplaceModal({
         : { type: 'project' },
     [scopeType, activeChapter],
   )
-
-  const grouped = useMemo(() => groupMatches(preview?.matches ?? []), [preview])
 
   const selectedIds = useMemo(() => {
     if (!preview) return [] as string[]
@@ -292,59 +252,16 @@ export function SearchReplaceModal({
             <p className="text-sm text-gray-500 dark:text-gray-400">No matches found.</p>
           )}
 
-          {preview && grouped.map(group => {
-            const groupSelected = group.matches.filter(m => !excluded.has(m.id)).length
-            const allOff = groupSelected === 0
-            return (
-              <div key={group.entityId} className="mb-4 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-                <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-900/40">
-                  <label className="inline-flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={!allOff}
-                      ref={el => {
-                        if (el) el.indeterminate = groupSelected > 0 && groupSelected < group.matches.length
-                      }}
-                      onChange={() => toggleGroup(group)}
-                    />
-                    <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                      {collectionLabel(group.collection)}
-                    </span>
-                    <span className="text-xs text-gray-500 dark:text-gray-500 font-mono">
-                      {group.entityId.slice(0, 8)}
-                    </span>
-                  </label>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    {groupSelected} of {group.matches.length} selected
-                  </span>
-                </div>
-                <ul className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {group.matches.map(m => (
-                    <li key={m.id} className="px-3 py-2 flex items-start gap-3">
-                      <input
-                        type="checkbox"
-                        checked={!excluded.has(m.id)}
-                        onChange={() => toggleMatch(m.id)}
-                        className="mt-1"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-0.5">
-                          {fieldLabel(m.field)}
-                        </div>
-                        <div className="text-sm text-gray-800 dark:text-gray-200 font-mono break-words whitespace-pre-wrap">
-                          <span className="text-gray-500 dark:text-gray-400">{m.contextBefore}</span>
-                          <span className="bg-yellow-200 dark:bg-yellow-900/60 text-gray-900 dark:text-yellow-100 px-0.5 rounded">
-                            {m.matchText}
-                          </span>
-                          <span className="text-gray-500 dark:text-gray-400">{m.contextAfter}</span>
-                        </div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )
-          })}
+          {preview && (
+            <MatchPreviewList
+              matches={preview.matches}
+              entityTitles={preview.entityTitles}
+              selectable
+              excluded={excluded}
+              onToggleMatch={toggleMatch}
+              onToggleGroup={toggleGroup}
+            />
+          )}
 
           {lastApply && (
             <div className="mt-4 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-sm text-emerald-900 dark:text-emerald-100">

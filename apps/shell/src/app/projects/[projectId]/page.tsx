@@ -229,7 +229,6 @@ export default function ProjectDashboardPage() {
                 <SearchReplaceLauncher
                   projectId={projectId}
                   apiToken={apiToken}
-                  buttonVariant="inline"
                   defaultScope="project"
                 />
                 <Link
