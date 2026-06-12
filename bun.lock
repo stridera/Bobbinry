@@ -258,22 +258,6 @@
         "react": "^19.0.0",
       },
     },
-    "bobbins/export": {
-      "name": "@bobbinry/export",
-      "version": "1.0.0",
-      "dependencies": {
-        "@bobbinry/sdk": "workspace:*",
-        "@bobbinry/types": "workspace:*",
-        "@bobbinry/ui-components": "workspace:*",
-      },
-      "devDependencies": {
-        "@types/react": "^19.2.14",
-        "typescript": "6.0.3",
-      },
-      "peerDependencies": {
-        "react": "^19.0.0",
-      },
-    },
     "bobbins/feedback": {
       "name": "@bobbinry/feedback",
       "version": "1.0.0",
@@ -324,22 +308,6 @@
     },
     "bobbins/hello-world": {
       "name": "@bobbinry/hello-world",
-      "version": "1.0.0",
-      "dependencies": {
-        "@bobbinry/sdk": "workspace:*",
-        "@bobbinry/types": "workspace:*",
-        "@bobbinry/ui-components": "workspace:*",
-      },
-      "devDependencies": {
-        "@types/react": "^19.2.14",
-        "typescript": "6.0.3",
-      },
-      "peerDependencies": {
-        "react": "^19.0.0",
-      },
-    },
-    "bobbins/import": {
-      "name": "@bobbinry/import",
       "version": "1.0.0",
       "dependencies": {
         "@bobbinry/sdk": "workspace:*",
@@ -741,8 +709,6 @@
 
     "@bobbinry/event-bus": ["@bobbinry/event-bus@workspace:packages/event-bus"],
 
-    "@bobbinry/export": ["@bobbinry/export@workspace:bobbins/export"],
-
     "@bobbinry/feedback": ["@bobbinry/feedback@workspace:bobbins/feedback"],
 
     "@bobbinry/goals": ["@bobbinry/goals@workspace:bobbins/goals"],
@@ -750,8 +716,6 @@
     "@bobbinry/google-drive-backup": ["@bobbinry/google-drive-backup@workspace:bobbins/google-drive-backup"],
 
     "@bobbinry/hello-world": ["@bobbinry/hello-world@workspace:bobbins/hello-world"],
-
-    "@bobbinry/import": ["@bobbinry/import@workspace:bobbins/import"],
 
     "@bobbinry/manuscript": ["@bobbinry/manuscript@workspace:bobbins/manuscript"],
 

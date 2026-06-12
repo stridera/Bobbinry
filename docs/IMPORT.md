@@ -13,7 +13,7 @@ created.
 | Parse + commit routes | `apps/api/src/routes/import.ts` |
 | Per-format parsers | `apps/api/src/lib/import-parsers/*.ts` |
 | Wizard UI | `apps/shell/src/app/projects/[projectId]/components/dashboard/import/ImportWizard.tsx` |
-| Bobbin stub | `bobbins/import/` |
+| HTML sanitizer (shared with commit) | `apps/api/src/lib/sanitize-html.ts` |
 
 ## Format support matrix
 

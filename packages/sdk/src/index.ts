@@ -1,3 +1,5 @@
+import type { ExportSnapshot, ImportCommitResult, ImportParseResult } from '@bobbinry/types'
+
 declare const process: { env: Record<string, string | undefined> }
 
 function getCurrentOrigin(): string {
@@ -886,46 +888,11 @@ export class UploadAPI {
   }
 }
 
-// Import types and API — used by the manuscript-import wizard
-export interface ImportSegment {
-  tempId: string
-  suggestedTitle: string
-  html: string
-  wordCount: number
-  firstLine: string
-  /** Structured title-detection metadata. Currently emitted by the docx
-   *  parser when a chapter-marker paragraph is recognized; absent for
-   *  plain text / markdown / formats without an explicit title element. */
-  titleStructure?: {
-    label: string
-    subtitle?: string
-  }
-  /** Body HTML with the title source paragraph(s) removed. Only present
-   *  when `titleStructure` is set. Use this when the user wants the
-   *  chapter title kept only as metadata and not duplicated in the body. */
-  htmlWithoutTitle?: string
-}
-
-export interface ImportWarning {
-  code:
-    | 'IMAGE_FAILED'
-    | 'EXTERNAL_IMAGE_LEFT'
-    | 'FORMATTING_LOST'
-    | 'STRUCTURE_GUESSED'
-    | 'EMPTY_DOCUMENT'
-  message: string
-  detail?: string
-}
-
-export interface ParseResult {
-  segments: ImportSegment[]
-  warnings: ImportWarning[]
-  sourceFormat: string
-}
-
-export interface CommitResult {
-  entities: Array<{ id: string; title: string; order: number }>
-}
+// Import API — used by the manuscript-import wizard and import-source
+// bobbins. The segment/result types live in @bobbinry/types (re-exported
+// from this package); the aliases below keep older imports compiling.
+export type ParseResult = ImportParseResult
+export type CommitResult = ImportCommitResult
 
 export class ImportAPI {
   private api: BobbinryAPI
@@ -970,6 +937,32 @@ export class ImportAPI {
     if (!response.ok) {
       const err = await response.json().catch(() => ({ error: 'Commit failed' }))
       throw new Error(err.error || `Import commit failed: ${response.statusText}`)
+    }
+    return response.json()
+  }
+}
+
+// Export API — normalized manuscript reads for export/publisher bobbins.
+export class ExportAPI {
+  private api: BobbinryAPI
+
+  constructor(api: BobbinryAPI) {
+    this.api = api
+  }
+
+  /**
+   * Fetch the normalized manuscript snapshot (project meta, containers,
+   * content with HTML bodies, ordered). The blessed read path for export
+   * and publisher bobbins — use this instead of querying the manuscript
+   * collections directly.
+   */
+  async getSnapshot(projectId: string): Promise<ExportSnapshot> {
+    const response = await fetch(`${this.api.apiBaseUrl}/projects/${projectId}/export/snapshot`, {
+      headers: this.api.getAuthHeaders(),
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: 'Snapshot failed' }))
+      throw new Error(err.error || `Export snapshot failed: ${response.statusText}`)
     }
     return response.json()
   }
@@ -1051,6 +1044,7 @@ export class BobbinrySDK {
   public reader: ReaderAPI
   public uploads: UploadAPI
   public import: ImportAPI
+  public export: ExportAPI
   public templates: TemplateAPI
 
   constructor(componentId: string, apiBaseURL?: string) {
@@ -1062,6 +1056,7 @@ export class BobbinrySDK {
     this.reader = new ReaderAPI(this.api)
     this.uploads = new UploadAPI(this.api)
     this.import = new ImportAPI(this.api)
+    this.export = new ExportAPI(this.api)
     this.templates = new TemplateAPI(this.api)
   }
 

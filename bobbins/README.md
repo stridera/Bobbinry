@@ -28,8 +28,12 @@ own `manifest.yaml`, `package.json`, and (preferably) `README.md`.
 | Bobbin | What it does |
 |---|---|
 | [`web-publisher`](./web-publisher) | Publish to Bobbinry readers, with analytics. |
-| [`export`](./export) | PDF / EPUB / Markdown / plain-text export. |
 | [`feedback`](./feedback) | Author inbox for reader annotations. |
+
+(Manuscript import/export are core shell features — see `apps/api/src/routes/import.ts`
+and `apps/api/src/routes/export.ts`. Bobbins can contribute additional import
+sources via the `shell.importSource` slot and read manuscripts via
+`sdk.export.getSnapshot()`.)
 
 ## Integrations
 

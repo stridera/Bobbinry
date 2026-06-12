@@ -15,7 +15,7 @@ import type {
   ParserContext,
   ParserResult,
 } from './index'
-import { sanitizeImportedHtml } from './sanitize'
+import { sanitizeImportedHtml } from '../sanitize-html'
 
 const CHAPTER_PATTERN = /^\s*(chapter|prologue|epilogue|part|book)\b.*$/i
 const FIRST_LINE_LIMIT = 140

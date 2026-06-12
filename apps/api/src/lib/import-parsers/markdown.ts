@@ -17,7 +17,7 @@ import type {
   ParserContext,
   ParserResult,
 } from './index'
-import { sanitizeImportedHtml } from './sanitize'
+import { sanitizeImportedHtml } from '../sanitize-html'
 
 const ATX_HEADING_PATTERN = /^(#{1,2})\s+(.+?)\s*#*\s*$/
 const FIRST_LINE_LIMIT = 140

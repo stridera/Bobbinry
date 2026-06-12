@@ -1,6 +1,8 @@
 'use client'
 
+import { useMemo } from 'react'
 import { CATEGORIES } from './types'
+import type { BobbinMetadata } from './types'
 
 interface BobbinFiltersProps {
   searchQuery: string
@@ -12,6 +14,10 @@ interface BobbinFiltersProps {
   sortBy: 'name' | 'author' | 'recent'
   onSortChange: (sort: 'name' | 'author' | 'recent') => void
   showStatusFilter?: boolean
+  /** When provided, category pills are limited to categories that at least
+   *  one of these bobbins declares — empty categories (e.g. import/export
+   *  before any such bobbin ships) are hidden. Omit to show all. */
+  bobbins?: BobbinMetadata[]
 }
 
 export function BobbinFilters({
@@ -24,12 +30,19 @@ export function BobbinFilters({
   sortBy,
   onSortChange,
   showStatusFilter = true,
+  bobbins,
 }: BobbinFiltersProps) {
+  const visibleCategories = useMemo(() => {
+    if (!bobbins) return CATEGORIES
+    const present = new Set(bobbins.map(b => b.category).filter(Boolean))
+    return CATEGORIES.filter(cat => cat.id === 'all' || present.has(cat.id))
+  }, [bobbins])
+
   return (
     <div className="space-y-4">
       {/* Category pills */}
       <div className="flex flex-wrap gap-2">
-        {CATEGORIES.map(cat => (
+        {visibleCategories.map(cat => (
           <button
             key={cat.id}
             onClick={() => onCategoryChange(cat.id)}

@@ -4,12 +4,14 @@
  *   POST /import/parse  — read an uploaded source file from S3, dispatch to
  *                         the format-specific parser, return proposed
  *                         segments + warnings, delete the source from S3.
- *   POST /import/commit — validate the target container, then atomically
- *                         insert each segment as a `content` entity under
- *                         the manuscript bobbin.
+ *   POST /import/commit — validate the target container, sanitize each
+ *                         segment's HTML, then atomically insert each
+ *                         segment as a `content` entity under the
+ *                         manuscript bobbin.
  *
- * Phase 3 ships txt + markdown. Later phases add docx/epub/pdf/odt/rtf/html
- * by extending the parser dispatcher only — this route is format-agnostic.
+ * Commit is the core import "waist": any client — the built-in wizard or an
+ * import-source bobbin — writes manuscript content through it, so HTML
+ * sanitization happens here, not only in the format parsers.
  */
 
 import { FastifyPluginAsync } from 'fastify'
@@ -31,6 +33,7 @@ import {
   type ImportWarning,
 } from '../lib/import-parsers'
 import { ZipBombError } from '../lib/import-parsers/zip-safe'
+import { sanitizeImportedHtml } from '../lib/sanitize-html'
 import {
   serverEventBus,
   importParseCompleted,
@@ -386,12 +389,17 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
           const order = startingOrder + (i + 1) * orderStep
           const now = new Date().toISOString()
 
+          // Commit is reachable by any client with a content:write scope, so
+          // sanitize here even though the built-in parsers already did — the
+          // sanitizer is idempotent, and import-source bobbins post raw HTML.
+          const cleanHtml = sanitizeImportedHtml(seg.html)
+
           const data: Record<string, any> = {
             title: seg.title,
             type: 'scene',
-            body: seg.html,
+            body: cleanHtml,
             order,
-            word_count: countWordsFromHtml(seg.html),
+            word_count: countWordsFromHtml(cleanHtml),
             status: 'draft',
             created_at: now,
             updated_at: now,

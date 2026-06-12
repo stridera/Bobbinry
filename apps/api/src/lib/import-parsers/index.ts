@@ -7,6 +7,13 @@
  * the switch in parseBuffer().
  */
 
+import type { ImportSegment, ImportWarning } from '@bobbinry/types'
+
+// Re-exported so the per-format parser modules (and the import route) keep
+// importing from this dispatcher; the canonical definitions live in
+// @bobbinry/types because the SDK and bobbins share them.
+export type { ImportSegment, ImportWarning }
+
 export type SupportedFormat =
   | 'txt'
   | 'markdown'
@@ -16,39 +23,6 @@ export type SupportedFormat =
   | 'odt'
   | 'rtf'
   | 'pdf'
-
-export interface ImportSegment {
-  tempId: string
-  suggestedTitle: string
-  html: string
-  wordCount: number
-  firstLine: string
-  /** Structured title-detection metadata for parsers that can identify a
-   *  distinct title element (heading, chapter-marker paragraph, optionally
-   *  with a matching subtitle paragraph). Used by the wizard to recompute
-   *  the displayed title when the user picks a different separator and to
-   *  decide whether the "strip title from body" toggle should be available. */
-  titleStructure?: {
-    label: string
-    subtitle?: string
-  }
-  /** Body HTML with the title source paragraph(s) removed. Only set when
-   *  `titleStructure` is set. Surrounding empty paragraphs are kept so
-   *  vertical spacing stays intact. Used when the wizard's strip-from-body
-   *  option is enabled. */
-  htmlWithoutTitle?: string
-}
-
-export interface ImportWarning {
-  code:
-    | 'IMAGE_FAILED'
-    | 'EXTERNAL_IMAGE_LEFT'
-    | 'FORMATTING_LOST'
-    | 'STRUCTURE_GUESSED'
-    | 'EMPTY_DOCUMENT'
-  message: string
-  detail?: string
-}
 
 export interface ParserContext {
   userId: string

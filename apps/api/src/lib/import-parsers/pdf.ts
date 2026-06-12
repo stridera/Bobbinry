@@ -24,7 +24,7 @@ import type {
   ParserContext,
   ParserResult,
 } from './index'
-import { sanitizeImportedHtml } from './sanitize'
+import { sanitizeImportedHtml } from '../sanitize-html'
 
 const FIRST_LINE_LIMIT = 140
 const TITLE_FALLBACK_LIMIT = 80

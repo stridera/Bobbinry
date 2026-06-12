@@ -13,7 +13,9 @@ import { getEffectiveBobbins } from '../lib/effective-bobbins'
 // Bobbins auto-installed on every new project and protected from uninstall.
 // Source of truth is each bobbin's manifest `core: true` flag; this list keeps
 // the create path from having to scan every manifest on disk to find them.
-const CORE_BOBBIN_IDS = ['manuscript', 'import', 'export'] as const
+// (Import/export are core shell features, not bobbins — see routes/import.ts
+// and routes/export.ts.)
+const CORE_BOBBIN_IDS = ['manuscript'] as const
 
 const projectsPlugin: FastifyPluginAsync = async (fastify) => {
   // Create a new project (requires authentication)
@@ -61,7 +63,7 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
 
       // Create the project and auto-install core bobbins in a single
       // transaction so a partial setup can't ship — either the project lands
-      // with manuscript/import/export pre-installed, or nothing lands.
+      // with manuscript pre-installed, or nothing lands.
       const coreManifests = await loadDiskManifests([...CORE_BOBBIN_IDS])
 
       const project = await db.transaction(async (tx) => {

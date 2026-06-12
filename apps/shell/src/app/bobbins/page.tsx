@@ -101,6 +101,7 @@ function BobbinsContent() {
       <div className="bg-gray-50 dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 px-6 py-4">
         <div className="max-w-6xl mx-auto">
           <BobbinFilters
+            bobbins={availableBobbins}
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
             selectedCategory={selectedCategory}

@@ -21,7 +21,7 @@ import type {
   ParserContext,
   ParserResult,
 } from './index'
-import { sanitizeImportedHtml } from './sanitize'
+import { sanitizeImportedHtml } from '../sanitize-html'
 import { uploadImportImage } from './images'
 import { assertSafeZip, ZipBombError } from './zip-safe'
 

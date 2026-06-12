@@ -41,7 +41,7 @@ import type {
   ParserContext,
   ParserResult,
 } from './index'
-import { sanitizeImportedHtml } from './sanitize'
+import { sanitizeImportedHtml } from '../sanitize-html'
 import { uploadImportImage } from './images'
 
 const PAGE_BREAK_MARKER = '☃___bbnr_pb_marker___☃'

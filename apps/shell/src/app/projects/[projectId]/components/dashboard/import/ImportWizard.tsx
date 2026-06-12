@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
+import type { BobbinrySDK } from '@bobbinry/sdk'
 import { apiFetch } from '@/lib/api'
+import { extensionRegistry, type RegisteredExtension } from '@/lib/extensions'
 
 interface ImportWizardProps {
   projectId: string
+  sdk: BobbinrySDK
   onClose: () => void
   onComplete: () => void
 }
@@ -53,6 +56,12 @@ type Phase =
   | { kind: 'committing' }
   | { kind: 'done'; createdCount: number }
   | { kind: 'error'; message: string; retryTo: 'pick' | 'preview' }
+  // A bobbin-contributed import source (shell.importSource slot) is driving
+  // the import. The panel gathers/formats content itself and writes through
+  // sdk.import.commit, then signals back via onComplete/onCancel.
+  | { kind: 'source'; extensionId: string }
+
+const IMPORT_SOURCE_SLOT = 'shell.importSource'
 
 const ACCEPT_ATTR = [
   '.txt', '.md', '.markdown',
@@ -107,10 +116,20 @@ function putWithProgress(url: string, file: File, contentType: string, onProgres
   })
 }
 
-export function ImportWizard({ projectId, onClose, onComplete }: ImportWizardProps) {
+export function ImportWizard({ projectId, sdk, onClose, onComplete }: ImportWizardProps) {
   const { data: session } = useSession()
   const apiToken = session?.apiToken
   const [phase, setPhase] = useState<Phase>({ kind: 'pick' })
+  // Bobbin-contributed import sources. ImportManuscript registers manifest
+  // extensions when the wizard opens, so contributions (and their async-
+  // loaded components) can arrive after mount — keep subscribed.
+  const [importSources, setImportSources] = useState<RegisteredExtension[]>(
+    () => extensionRegistry.getExtensionsForSlot(IMPORT_SOURCE_SLOT)
+  )
+  useEffect(
+    () => extensionRegistry.onSlotChange(IMPORT_SOURCE_SLOT, setImportSources),
+    []
+  )
   const [editedSegments, setEditedSegments] = useState<Segment[]>([])
   const [containers, setContainers] = useState<ContainerOption[]>([])
   // `containerId` holds either an existing container's UUID or one of the
@@ -411,6 +430,9 @@ export function ImportWizard({ projectId, onClose, onComplete }: ImportWizardPro
             </h2>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
               {phase.kind === 'pick' && 'Choose a file to import'}
+              {phase.kind === 'source' && (
+                importSources.find(s => s.id === phase.extensionId)?.contribution.title || 'Import from source'
+              )}
               {phase.kind === 'uploading' && 'Uploading source file…'}
               {phase.kind === 'parsing' && 'Splitting into chapters…'}
               {phase.kind === 'preview' && `${editedSegments.length} chapters detected · ${totalWords.toLocaleString()} words`}
@@ -434,7 +456,21 @@ export function ImportWizard({ projectId, onClose, onComplete }: ImportWizardPro
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-6">
           {phase.kind === 'pick' && (
-            <PickStep onPickFile={handleFile} />
+            <PickStep
+              onPickFile={handleFile}
+              sources={importSources}
+              onPickSource={(extensionId) => setPhase({ kind: 'source', extensionId })}
+            />
+          )}
+
+          {phase.kind === 'source' && (
+            <SourceStep
+              extension={importSources.find(s => s.id === phase.extensionId)}
+              projectId={projectId}
+              sdk={sdk}
+              onComplete={(result) => setPhase({ kind: 'done', createdCount: result?.createdCount ?? 0 })}
+              onCancel={() => setPhase({ kind: 'pick' })}
+            />
           )}
 
           {phase.kind === 'uploading' && (
@@ -536,7 +572,15 @@ export function ImportWizard({ projectId, onClose, onComplete }: ImportWizardPro
 
 // ---------- Sub-step components ----------
 
-function PickStep({ onPickFile }: { onPickFile: (file: File) => void }) {
+function PickStep({
+  onPickFile,
+  sources,
+  onPickSource,
+}: {
+  onPickFile: (file: File) => void
+  sources: RegisteredExtension[]
+  onPickSource: (extensionId: string) => void
+}) {
   return (
     <div className="text-center py-10">
       <svg className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -570,6 +614,69 @@ function PickStep({ onPickFile }: { onPickFile: (file: File) => void }) {
       <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
         Up to 25 MB on the free tier · 50 MB for supporters
       </p>
+
+      {sources.length > 0 && (
+        <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-3">
+            Or import from
+          </p>
+          <div className="flex flex-wrap justify-center gap-2">
+            {sources.map((source) => (
+              <button
+                key={source.id}
+                onClick={() => onPickSource(source.id)}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors cursor-pointer"
+              >
+                {source.contribution.icon && <span aria-hidden>{source.contribution.icon}</span>}
+                {source.contribution.title || source.contribution.label || source.contribution.id}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SourceStep({
+  extension,
+  projectId,
+  sdk,
+  onComplete,
+  onCancel,
+}: {
+  extension: RegisteredExtension | undefined
+  projectId: string
+  sdk: BobbinrySDK
+  onComplete: (result?: { createdCount?: number }) => void
+  onCancel: () => void
+}) {
+  if (!extension) {
+    return <ErrorStep message="This import source is no longer available." onRetry={onCancel} />
+  }
+
+  const Component = extension.component
+  return (
+    <div>
+      <button
+        onClick={onCancel}
+        className="inline-flex items-center gap-1 mb-4 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 cursor-pointer"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
+        Back to file import
+      </button>
+      {Component ? (
+        <Component
+          projectId={projectId}
+          sdk={sdk}
+          onComplete={onComplete}
+          onCancel={onCancel}
+        />
+      ) : (
+        <LoadingStep title="Loading import source…" hint="One moment." />
+      )}
     </div>
   )
 }

@@ -30,7 +30,7 @@ export interface Manifest {
   visibility?: BobbinVisibility
 
   // Core infrastructure bobbins are auto-installed on project creation
-  // and cannot be uninstalled. Reserved for manuscript / import / export.
+  // and cannot be uninstalled. Reserved for manuscript.
   core?: boolean
 
   // Installation scope configuration
@@ -456,6 +456,16 @@ export const BUILTIN_SLOTS: Record<string, ExtensionSlotDefinition> = {
     description: 'Pre-publish checklists, approval steps',
     supportedTypes: ['panel', 'action'],
     maxContributions: 5,
+  },
+  'shell.importSource': {
+    id: 'shell.importSource',
+    name: 'Import Source',
+    description:
+      'Import sources listed in the import wizard. Panels gather and format ' +
+      'content themselves and write via sdk.import.commit; rendered with props ' +
+      '{ projectId, sdk, onComplete({ createdCount }), onCancel }',
+    supportedTypes: ['panel'],
+    maxContributions: 8,
   },
   'reader.toolbar': {
     id: 'reader.toolbar',

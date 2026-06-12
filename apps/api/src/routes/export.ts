@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { requireAuth, requireProjectOwnership } from '../middleware/auth'
+import type { ExportSnapshot } from '@bobbinry/types'
+import { requireAuth, requireProjectOwnership, assertEntityScope } from '../middleware/auth'
 import { db } from '../db/connection'
 import { entities, projects } from '../db/schema'
 import { eq, and, sql } from 'drizzle-orm'
@@ -19,37 +20,82 @@ type ExportFormat = (typeof VALID_FORMATS)[number]
 // Simple concurrency guard — one export per project at a time
 const activeExports = new Set<string>()
 
-async function getProjectName(projectId: string): Promise<string> {
+async function getProjectMeta(projectId: string): Promise<{ name: string; description: string | null }> {
   const [project] = await db
-    .select({ name: projects.name })
+    .select({ name: projects.name, description: projects.description })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1)
-  return project?.name || 'Untitled Project'
+  return {
+    name: project?.name || 'Untitled Project',
+    description: project?.description ?? null,
+  }
+}
+
+/**
+ * Normalized manuscript read model — the export "waist". Export and
+ * publisher bobbins consume this via GET /projects/:projectId/export/snapshot
+ * instead of querying the manuscript collections directly; the binary
+ * download formats below derive their Chapter[] from it too.
+ */
+async function getSnapshot(projectId: string): Promise<ExportSnapshot> {
+  const [meta, containers, content] = await Promise.all([
+    getProjectMeta(projectId),
+    db
+      .select({
+        id: entities.id,
+        title: sql<string>`COALESCE(${entities.entityData}->>'title', 'Untitled')`,
+        type: sql<string>`COALESCE(${entities.entityData}->>'type', 'chapter')`,
+        order: sql<number>`COALESCE((${entities.entityData}->>'order')::bigint, 0)`,
+        // Legacy entity rows may use either key shape — same pattern as the
+        // sibling lookups in import.ts.
+        parentId: sql<string | null>`COALESCE(${entities.entityData}->>'parent_id', ${entities.entityData}->>'parentId')`,
+      })
+      .from(entities)
+      .where(
+        and(
+          eq(entities.projectId, projectId),
+          eq(entities.bobbinId, 'manuscript'),
+          eq(entities.collectionName, 'containers')
+        )
+      )
+      .orderBy(sql`COALESCE((${entities.entityData}->>'order')::bigint, 0) ASC`),
+    db
+      .select({
+        id: entities.id,
+        title: sql<string>`COALESCE(${entities.entityData}->>'title', 'Untitled')`,
+        html: sql<string>`COALESCE(${entities.entityData}->>'body', '')`,
+        containerId: sql<string | null>`COALESCE(${entities.entityData}->>'container_id', ${entities.entityData}->>'containerId')`,
+        order: sql<number>`COALESCE((${entities.entityData}->>'order')::bigint, 0)`,
+        status: sql<string>`COALESCE(${entities.entityData}->>'status', 'draft')`,
+        wordCount: sql<number>`COALESCE((${entities.entityData}->>'word_count')::int, 0)`,
+      })
+      .from(entities)
+      .where(
+        and(
+          eq(entities.projectId, projectId),
+          eq(entities.collectionName, 'content')
+        )
+      )
+      .orderBy(sql`COALESCE((${entities.entityData}->>'order')::bigint, 0) ASC`),
+  ])
+
+  return {
+    project: { id: projectId, name: meta.name, description: meta.description },
+    generatedAt: new Date().toISOString(),
+    // pg returns ::bigint casts as strings — coerce so the JSON matches the
+    // ExportSnapshot contract (order: number).
+    containers: containers.map((c) => ({ ...c, order: Number(c.order) })),
+    content: content.map((item) => ({ ...item, order: Number(item.order) })),
+  }
 }
 
 async function getManuscriptData(projectId: string): Promise<Chapter[]> {
   // Each content item is a chapter — matches what the dashboard UI shows.
   // Containers are structural wrappers, not user-visible chapters.
-  const content = await db
-    .select({
-      id: entities.id,
-      title: sql<string>`COALESCE(${entities.entityData}->>'title', 'Untitled')`,
-      body: sql<string>`COALESCE(${entities.entityData}->>'body', '')`,
-      containerId: sql<string>`(${entities.entityData}->>'container_id')`,
-      order: sql<number>`COALESCE((${entities.entityData}->>'order')::bigint, 0)`,
-      status: sql<string>`COALESCE(${entities.entityData}->>'status', 'draft')`,
-    })
-    .from(entities)
-    .where(
-      and(
-        eq(entities.projectId, projectId),
-        eq(entities.collectionName, 'content')
-      )
-    )
-    .orderBy(sql`COALESCE((${entities.entityData}->>'order')::bigint, 0) ASC`)
+  const snapshot = await getSnapshot(projectId)
 
-  return content.map((item) => ({
+  return snapshot.content.map((item) => ({
     container: {
       id: item.id,
       title: item.title || 'Untitled',
@@ -57,11 +103,37 @@ async function getManuscriptData(projectId: string): Promise<Chapter[]> {
       order: item.order,
       parentId: null,
     },
-    scenes: [item],
+    scenes: [{
+      id: item.id,
+      title: item.title,
+      body: item.html,
+      containerId: item.containerId ?? '',
+      order: item.order,
+      status: item.status,
+    }],
   }))
 }
 
 const exportPlugin: FastifyPluginAsync = async (fastify) => {
+  // Normalized JSON read model for export/publisher bobbins. Returns the
+  // snapshot even when the manuscript is empty — consumers decide what an
+  // empty manuscript means. (Fastify prefers this static segment over the
+  // :format param on the route below.)
+  fastify.get<{
+    Params: { projectId: string }
+  }>('/projects/:projectId/export/snapshot', {
+    preHandler: requireAuth,
+  }, async (request, reply) => {
+    const { projectId } = request.params
+    const hasAccess = await requireProjectOwnership(request, reply, projectId)
+    if (!hasAccess) return
+
+    // Snapshot exposes manuscript content — gate on the manuscript read scope.
+    if (!assertEntityScope(request, reply, 'content', 'read')) return
+
+    return getSnapshot(projectId)
+  })
+
   fastify.get<{
     Params: { projectId: string; format: string }
     Querystring: { mode?: string }
@@ -94,8 +166,8 @@ const exportPlugin: FastifyPluginAsync = async (fastify) => {
 
     activeExports.add(projectId)
     try {
-      const [projectName, chapters] = await Promise.all([
-        getProjectName(projectId),
+      const [{ name: projectName }, chapters] = await Promise.all([
+        getProjectMeta(projectId),
         getManuscriptData(projectId),
       ])
 
