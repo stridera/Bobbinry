@@ -27,6 +27,7 @@ echo "  [5/8] Vercel compat..."
 
 echo "  [6/8] Dockerfile workspaces..."
 ./scripts/check-dockerfile-workspaces.sh
+./scripts/check-api-bobbin-imports.sh
 
 echo "  [7/8] Typecheck..."
 bun run typecheck

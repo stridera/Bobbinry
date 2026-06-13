@@ -196,13 +196,18 @@ export default function DriveSyncPanel(props: DriveSyncPanelProps) {
           {message ? <PanelMessage tone="error">{message.text}</PanelMessage> : null}
           <PanelEmptyState
             title="Google Drive not connected"
-            description="Connect once to back up every project, then opt individual projects in or out."
+            description="Connect once to back up every project, then opt individual projects in or out. Manage all your backups from the Backups page."
             action={
               <PanelActionButton tone="primary" onClick={handleConnect}>
                 Connect Google Drive
               </PanelActionButton>
             }
           />
+          <p className="text-center text-xs">
+            <a href="/backups" className="font-medium text-blue-600 hover:underline dark:text-blue-400">
+              Go to Backups →
+            </a>
+          </p>
         </PanelBody>
       </PanelFrame>
     )
@@ -306,6 +311,11 @@ export default function DriveSyncPanel(props: DriveSyncPanelProps) {
 
         <p className="text-[10px] leading-tight text-gray-400 dark:text-gray-500">
           One-way backup sync. Content in Drive is auto-updated, and edits made in Drive will be overwritten.
+        </p>
+        <p className="text-xs">
+          <a href="/backups" className="font-medium text-blue-600 hover:underline dark:text-blue-400">
+            Manage all backups →
+          </a>
         </p>
       </PanelBody>
     </PanelFrame>

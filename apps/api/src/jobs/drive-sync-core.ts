@@ -124,9 +124,14 @@ export async function runProjectSync(
       return { status: 'failed', succeeded: 0, failed: 0, total: 0, error: 'subfolder' }
     }
 
-    // The bobbin's compiled sync service (dist/ so it runs under plain node)
+    // The bobbin's compiled sync service (dist/ so it runs under plain node).
+    // Built via a template-literal specifier on purpose: `turbo build --filter=api`
+    // (the Fly Dockerfile build) does NOT build bobbin dist output, so a static
+    // import would fail tsc with TS2307. A template literal stays unresolved at
+    // build time and loads at runtime, where dist/ is present in the image.
+    const bobbinId = 'google-drive-backup'
     const { syncChapterToGoogleDrive } = await import(
-      '../../../../bobbins/google-drive-backup/dist/actions/sync-service'
+      `../../../../bobbins/${bobbinId}/dist/actions/sync-service`
     )
 
     // Persist refreshed tokens back to the user-level install (encrypted)

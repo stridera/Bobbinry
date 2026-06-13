@@ -1,8 +1,8 @@
 id: google-drive-backup
 name: Google Drive Backup
-version: 1.0.4
+version: 1.0.5
 author: Bobbins Core
-description: Automatically back up all your projects to Google Drive
+description: Automatically back up all your projects to Google Drive. Manage and monitor backups from the Backups page.
 tags: [backup, integration, cloud-storage, automation]
 license: MIT
 category: backup
