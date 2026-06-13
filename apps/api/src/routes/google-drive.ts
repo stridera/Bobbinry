@@ -15,6 +15,7 @@ import { requireAuth } from '../middleware/auth'
 import { env } from '../lib/env'
 import { ApiError, UnauthorizedError } from '../lib/errors'
 import { encryptSecret, decryptSecret } from '../lib/secret-storage'
+import { runProjectSync } from '../jobs/drive-sync-core'
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
@@ -316,6 +317,7 @@ const googleDrivePlugin: FastifyPluginAsync = async (fastify) => {
           lastSyncedAt: dest?.lastSyncedAt?.toISOString() || null,
           lastSyncStatus: dest?.lastSyncStatus || null,
           lastSyncError: dest?.lastSyncError || null,
+          driveFolderId: (dest?.config as any)?.subfolderId || null,
           chapterCount: countMap.get(p.id) || 0,
         }
       })
@@ -326,6 +328,7 @@ const googleDrivePlugin: FastifyPluginAsync = async (fastify) => {
           provider: 'google_drive',
           driveEmail: config.driveEmail || null,
           rootFolderName: config.rootFolderName || 'Bobbinry Backup',
+          rootFolderId: config.rootFolderId || null,
         },
         projects: projectList,
       })
@@ -377,7 +380,10 @@ const googleDrivePlugin: FastifyPluginAsync = async (fastify) => {
 
   /**
    * POST /backups/projects/:projectId/sync
-   * Trigger sync for one project
+   * Kick off a sync for one project. Returns 202 immediately and runs the
+   * sync in the background — a full project sync can take minutes and would
+   * otherwise outlive the HTTP connection. The panel polls /backups/status
+   * (the destination flips to 'syncing' here, then success/partial/failed).
    */
   fastify.post<{ Params: { projectId: string } }>(
     '/backups/projects/:projectId/sync',
@@ -423,100 +429,31 @@ const googleDrivePlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Backup is disabled for this project' })
       }
 
-      // Ensure subfolder exists
-      const subfolderId = await ensureProjectSubfolder(
-        config, projectId, project.name, dest, fastify.log, bobbin.id
-      )
-      if (!subfolderId) {
-        return reply.status(502).send({ error: 'Failed to create Drive subfolder' })
-      }
-
-      // Sync all chapters
-      const bobbinId = 'google-drive-backup'
-      const { syncChapterToGoogleDrive } = await import(
-        `../../../../bobbins/${bobbinId}/dist/actions/sync-service`
-      )
-
-      const chapters = await db
-        .select()
-        .from(entities)
-        .where(eq(entities.projectId, projectId))
-
-      let succeeded = 0
-      let failed = 0
-
-      // Build a mock destination with user-level tokens + project subfolder
-      const syncDestination = {
-        id: dest?.id || 'temp',
-        config: {
-          ...config,
-          folderId: subfolderId,
-        },
-      }
-
-      const persistToken = async (_destId: string, accessToken: string, tokenExpiresAt: string) => {
-        await db.update(userBobbinsInstalled).set({
-          config: encryptDriveConfig({ ...config, accessToken, tokenExpiresAt }),
-          updatedAt: new Date(),
-        }).where(eq(userBobbinsInstalled.id, bobbin.id))
-      }
-
-      for (const entity of chapters) {
-        const data = entity.entityData as any
-        const existingFileId = data?.driveFileId || null
-
-        const result = await syncChapterToGoogleDrive(
-          {
-            id: entity.id,
-            title: data?.title || 'Untitled',
-            content: data?.body || '',
-            projectId: entity.projectId,
-          },
-          syncDestination,
-          existingFileId,
-          fastify.log,
-          persistToken
-        )
-
-        if (result.success && result.fileId) {
-          succeeded++
-          await db
-            .update(entities)
-            .set({
-              entityData: {
-                ...data,
-                driveFileId: result.fileId,
-                driveFileUrl: result.fileUrl,
-                lastSyncedAt: new Date().toISOString(),
-              },
-              updatedAt: new Date(),
-            })
-            .where(eq(entities.id, entity.id))
-        } else {
-          failed++
-          if (result.error === 'folder_deleted') break
-        }
-      }
-
-      // Update destination status
+      // Mark the destination 'syncing' so the panel's poll sees in-progress
+      // state right away. First-ever sync has no row yet; create a minimal one
+      // (ensureProjectSubfolder will populate its subfolderId during the run).
       if (dest) {
         await db
           .update(projectDestinations)
-          .set({
-            lastSyncedAt: new Date(),
-            lastSyncStatus: failed === 0 ? 'success' : succeeded > 0 ? 'partial' : 'failed',
-            lastSyncError: failed > 0 ? `${failed} of ${chapters.length} chapters failed` : null,
-            updatedAt: new Date(),
-          })
+          .set({ lastSyncStatus: 'syncing', lastSyncError: null, updatedAt: new Date() })
           .where(eq(projectDestinations.id, dest.id))
+      } else {
+        await db.insert(projectDestinations).values({
+          projectId,
+          type: 'google_drive',
+          name: 'Google Drive Backup',
+          config: {},
+          isActive: true,
+          lastSyncStatus: 'syncing',
+        })
       }
 
-      return reply.send({
-        success: true,
-        succeeded,
-        failed,
-        total: chapters.length,
+      // Run in the background — do not await. Status is persisted by runProjectSync.
+      void runProjectSync(projectId).catch((err) => {
+        fastify.log.error({ err, projectId }, 'Background drive sync failed')
       })
+
+      return reply.code(202).send({ started: true })
     }
   )
 

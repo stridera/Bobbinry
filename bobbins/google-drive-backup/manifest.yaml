@@ -1,6 +1,6 @@
 id: google-drive-backup
 name: Google Drive Backup
-version: 1.0.3
+version: 1.0.4
 author: Bobbins Core
 description: Automatically back up all your projects to Google Drive
 tags: [backup, integration, cloud-storage, automation]
@@ -145,6 +145,10 @@ external:
       url: https://oauth2.googleapis.com/token
       method: POST
       description: Exchange authorization code for access token
+    - id: drive_folder_link
+      url: https://drive.google.com/drive/folders
+      method: GET
+      description: Open the backup folder in the Google Drive web UI
   auth:
     type: oauth
     config:

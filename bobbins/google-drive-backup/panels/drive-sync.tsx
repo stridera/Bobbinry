@@ -40,6 +40,7 @@ interface BackupStatus {
     provider?: string
     driveEmail?: string | null
     rootFolderName?: string | null
+    rootFolderId?: string | null
   }
   projects: Array<{
     id: string
@@ -48,9 +49,13 @@ interface BackupStatus {
     lastSyncedAt: string | null
     lastSyncStatus: string | null
     lastSyncError: string | null
+    driveFolderId?: string | null
     chapterCount: number
   }>
 }
+
+const driveFolderUrl = (folderId?: string | null) =>
+  folderId ? `https://drive.google.com/drive/folders/${folderId}` : null
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4100'
 
@@ -104,6 +109,29 @@ export default function DriveSyncPanel(props: DriveSyncPanelProps) {
     }
   }
 
+  // Poll /backups/status until this project leaves the 'syncing' state (or we
+  // give up). Returns the terminal status, refreshing the panel as it goes.
+  const pollUntilSynced = useCallback(async (): Promise<string> => {
+    if (!apiToken) return 'timeout'
+    for (let i = 0; i < 60; i++) {
+      await new Promise(r => setTimeout(r, 3000))
+      let data: BackupStatus | null = null
+      try {
+        const res = await authFetch('/api/backups/status', apiToken)
+        if (res.ok) {
+          data = await res.json()
+          setStatus(data)
+        }
+      } catch {
+        // transient — keep polling
+      }
+      const proj = data?.projects?.find(p => p.id === projectId)
+      const s = proj?.lastSyncStatus
+      if (s === 'success' || s === 'partial' || s === 'failed') return s
+    }
+    return 'timeout'
+  }, [apiToken, projectId])
+
   const handleSyncNow = async () => {
     if (!projectId || !apiToken) return
     setSyncing(true)
@@ -114,19 +142,25 @@ export default function DriveSyncPanel(props: DriveSyncPanelProps) {
         apiToken,
         { method: 'POST' }
       )
-      if (res.ok) {
-        const data = await res.json()
-        setMessage({
-          type: 'success',
-          text: `Synced ${data.succeeded || 0} of ${data.total || 0} chapters`,
-        })
+      // 202 Accepted — sync runs in the background; poll for the outcome
+      if (res.ok || res.status === 202) {
+        const result = await pollUntilSynced()
+        if (result === 'success') {
+          setMessage({ type: 'success', text: 'Backup synced to Google Drive' })
+        } else if (result === 'partial') {
+          setMessage({ type: 'error', text: 'Some items failed to sync — see status above' })
+        } else if (result === 'failed') {
+          setMessage({ type: 'error', text: 'Sync failed' })
+        } else {
+          setMessage({ type: 'error', text: 'Sync is taking a while — check back shortly' })
+        }
         await loadStatus()
       } else {
         const err = await res.json().catch(() => ({}))
         setMessage({ type: 'error', text: err.error || 'Sync failed' })
       }
     } catch {
-      setMessage({ type: 'error', text: 'Failed to sync' })
+      setMessage({ type: 'error', text: 'Failed to start sync' })
     } finally {
       setSyncing(false)
     }
@@ -203,6 +237,10 @@ export default function DriveSyncPanel(props: DriveSyncPanelProps) {
           </PanelMessage>
         ) : null}
 
+        {projectData?.lastSyncStatus === 'partial' && projectData?.lastSyncError ? (
+          <PanelMessage tone="error">{projectData.lastSyncError}</PanelMessage>
+        ) : null}
+
         <PanelCard className="space-y-3">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -217,6 +255,18 @@ export default function DriveSyncPanel(props: DriveSyncPanelProps) {
               {status?.connection?.rootFolderName ? (
                 <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                   Folder: <span className="font-medium text-gray-700 dark:text-gray-300">{status.connection.rootFolderName}</span>
+                </p>
+              ) : null}
+              {driveFolderUrl(projectData?.driveFolderId || status?.connection?.rootFolderId) ? (
+                <p className="mt-1 text-xs">
+                  <a
+                    href={driveFolderUrl(projectData?.driveFolderId || status?.connection?.rootFolderId)!}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-blue-600 hover:underline dark:text-blue-400"
+                  >
+                    Open in Google Drive ↗
+                  </a>
                 </p>
               ) : null}
               {projectData?.lastSyncedAt ? (
