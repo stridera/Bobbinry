@@ -14,6 +14,7 @@ import { ProjectManagement } from './components/dashboard/ProjectManagement'
 import { ManuscriptDisplaySettings } from './components/dashboard/ManuscriptDisplaySettings'
 import { ExportProject } from './components/dashboard/ExportProject'
 import { ImportManuscript } from './components/dashboard/ImportManuscript'
+import { ProjectBackup } from './components/dashboard/ProjectBackup'
 import { SearchReplaceLauncher } from '@/components/SearchReplaceLauncher'
 import { countsTowardWordCount, type ContentType } from '@bobbinry/types'
 
@@ -394,6 +395,8 @@ export default function ProjectDashboardPage() {
           projectName={data.project.name}
           totalChapters={data.chapters.filter(ch => !ch.archivedAt).length}
         />
+
+        <ProjectBackup projectId={projectId} />
 
         <ProjectManagement
           projectId={projectId}

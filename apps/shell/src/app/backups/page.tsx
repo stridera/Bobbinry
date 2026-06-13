@@ -16,6 +16,7 @@ interface BackupProject {
   lastSyncedAt: string | null
   lastSyncStatus: string | null
   lastSyncError: string | null
+  driveFolderId?: string | null
   chapterCount: number
 }
 
@@ -25,9 +26,13 @@ interface BackupStatus {
     provider?: string
     driveEmail?: string | null
     rootFolderName?: string | null
+    rootFolderId?: string | null
   }
   projects: BackupProject[]
 }
+
+const driveFolderUrl = (folderId?: string | null) =>
+  folderId ? `https://drive.google.com/drive/folders/${folderId}` : null
 
 export default function BackupsPage() {
   return (
@@ -150,6 +155,28 @@ function BackupsContent() {
     }
   }
 
+  // Poll /backups/status until the given project leaves the 'syncing' state.
+  // Refreshes the page as it goes; returns the terminal status (or 'timeout').
+  const pollProjectSync = useCallback(async (projectId: string): Promise<string> => {
+    if (!apiToken) return 'timeout'
+    for (let i = 0; i < 60; i++) {
+      await new Promise(r => setTimeout(r, 3000))
+      let data: BackupStatus | null = null
+      try {
+        const res = await apiFetch('/api/backups/status', apiToken)
+        if (res.ok) {
+          data = await res.json()
+          setStatus(data)
+        }
+      } catch {
+        // transient — keep polling
+      }
+      const s = data?.projects?.find(p => p.id === projectId)?.lastSyncStatus
+      if (s === 'success' || s === 'partial' || s === 'failed') return s
+    }
+    return 'timeout'
+  }, [apiToken])
+
   const handleSyncProject = async (projectId: string) => {
     if (!apiToken) return
     setActionInProgress(projectId)
@@ -158,12 +185,18 @@ function BackupsContent() {
       const res = await apiFetch(`/api/backups/projects/${projectId}/sync`, apiToken, {
         method: 'POST',
       })
-      if (res.ok) {
-        const data = await res.json()
-        setMessage({
-          type: 'success',
-          text: `Synced ${data.succeeded} of ${data.total} chapters.`,
-        })
+      // 202 Accepted — sync runs in the background; poll for the outcome
+      if (res.ok || res.status === 202) {
+        const result = await pollProjectSync(projectId)
+        if (result === 'success') {
+          setMessage({ type: 'success', text: 'Backup synced to Google Drive.' })
+        } else if (result === 'partial') {
+          setMessage({ type: 'error', text: 'Some items failed to sync — see the project status.' })
+        } else if (result === 'failed') {
+          setMessage({ type: 'error', text: 'Sync failed.' })
+        } else {
+          setMessage({ type: 'error', text: 'Sync is taking a while — check back shortly.' })
+        }
         await loadStatus()
       } else {
         const err = await res.json().catch(() => ({}))
@@ -297,6 +330,16 @@ function BackupsContent() {
                       Automatically sync all your projects to Google Drive
                     </p>
                   )}
+                  {connected && driveFolderUrl(status?.connection?.rootFolderId) && (
+                    <a
+                      href={driveFolderUrl(status?.connection?.rootFolderId)!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-block text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline mt-1"
+                    >
+                      Open in Google Drive ↗
+                    </a>
+                  )}
                 </div>
               </div>
               <div>
@@ -369,8 +412,8 @@ function BackupsContent() {
                             Last sync: {new Date(project.lastSyncedAt).toLocaleString()}
                           </p>
                         )}
-                        {project.lastSyncError && project.lastSyncStatus === 'failed' && (
-                          <p className="text-xs text-red-500 dark:text-red-400 mt-0.5">
+                        {project.lastSyncError && (project.lastSyncStatus === 'failed' || project.lastSyncStatus === 'partial') && (
+                          <p className={`text-xs mt-0.5 ${project.lastSyncStatus === 'partial' ? 'text-amber-600 dark:text-amber-400' : 'text-red-500 dark:text-red-400'}`}>
                             {project.lastSyncError}
                           </p>
                         )}
@@ -378,6 +421,17 @@ function BackupsContent() {
                     </div>
 
                     <div className="flex items-center gap-2 flex-shrink-0">
+                      {driveFolderUrl(project.driveFolderId) && (
+                        <a
+                          href={driveFolderUrl(project.driveFolderId)!}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2.5 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition-colors"
+                          title="Open this project's backup folder in Google Drive"
+                        >
+                          Open in Drive ↗
+                        </a>
+                      )}
                       {project.isBackedUp && (
                         <button
                           onClick={() => handleSyncProject(project.id)}
