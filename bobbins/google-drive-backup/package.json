@@ -2,9 +2,9 @@
   "name": "@bobbinry/google-drive-backup",
   "version": "0.1.0",
   "description": "Google Drive Backup bobbin - automatically back up projects to Google Drive",
-  "main": "panels/drive-sync.tsx",
+  "main": "actions/sync-service.ts",
   "exports": {
-    "./panels/drive-sync": "./panels/drive-sync.tsx"
+    "./actions/*": "./actions/*.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.actions.json",

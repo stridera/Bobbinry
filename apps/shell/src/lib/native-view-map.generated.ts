@@ -22,7 +22,6 @@ export const NATIVE_VIEW_MAP: Record<string, () => Promise<any>> = {
   'notes.panels/chapter-notes': () => import('@bobbinry/notes/panels/chapter-notes'),
   'ai-tools.panels/ai-panel': () => import('@bobbinry/ai-tools/panels/ai-panel'),
   'discord-notifier.panels/settings': () => import('@bobbinry/discord-notifier/panels/settings'),
-  'google-drive-backup.panels/drive-sync': () => import('@bobbinry/google-drive-backup/panels/drive-sync'),
   'feedback.panels/annotation-panel': () => import('@bobbinry/feedback/panels/annotation-panel'),
   'entities.config': () => import('@bobbinry/entities/views/config'),
   'entities.entity-list': () => import('@bobbinry/entities/views/entity-list'),
