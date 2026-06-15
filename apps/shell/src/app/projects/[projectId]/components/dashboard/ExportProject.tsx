@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { apiFetch } from '@/lib/api'
+import { CollapsibleCard } from './CollapsibleCard'
 
 interface ExportProjectProps {
   projectId: string
@@ -129,26 +130,17 @@ export function ExportProject({ projectId, projectName, totalChapters }: ExportP
   const hasContent = totalChapters > 0
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 animate-fade-in">
-      <div className="p-6">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100">
-              Export
-            </h2>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {hasContent
-                ? `Download your manuscript in multiple formats (${totalChapters} chapter${totalChapters === 1 ? '' : 's'})`
-                : 'Add chapters to your manuscript to enable export'}
-            </p>
-          </div>
-        </div>
+    <CollapsibleCard title="Export">
+      <p className="text-sm text-gray-500 dark:text-gray-400">
+        {hasContent
+          ? `Download your manuscript in multiple formats (${totalChapters} chapter${totalChapters === 1 ? '' : 's'})`
+          : 'Add chapters to your manuscript to enable export'}
+      </p>
 
-        {hasContent && (
-          <>
-            {/* Mode toggle */}
-            <div className="mt-5 flex items-center gap-1 p-1 bg-gray-100 dark:bg-gray-900/50 rounded-lg w-fit">
+      {hasContent && (
+        <>
+          {/* Mode toggle */}
+          <div className="mt-5 flex items-center gap-1 p-1 bg-gray-100 dark:bg-gray-900/50 rounded-lg w-fit">
               <button
                 onClick={() => setMode('full')}
                 className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors cursor-pointer ${
@@ -245,7 +237,6 @@ export function ExportProject({ projectId, projectName, totalChapters }: ExportP
             )}
           </>
         )}
-      </div>
-    </div>
+    </CollapsibleCard>
   )
 }

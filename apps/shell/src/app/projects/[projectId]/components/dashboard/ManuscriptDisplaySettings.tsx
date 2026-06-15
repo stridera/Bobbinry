@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { apiFetch } from '@/lib/api'
 import { HintTip } from '@/components/HintTip'
+import { CollapsibleCard } from './CollapsibleCard'
 import {
   DISPLAY_PRESETS,
   PARAGRAPH_SPACING_VALUES,
@@ -140,36 +141,32 @@ export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) 
 
   if (loading) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 animate-fade-in">
-        <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1">Manuscript Display</h2>
+      <CollapsibleCard title="Manuscript Display">
         <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
-      </div>
+      </CollapsibleCard>
     )
   }
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 animate-fade-in">
-      <div className="flex items-center justify-between mb-1">
-        <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100">Manuscript Display</h2>
-        <div className="flex items-center gap-3">
-          {savedFlash && (
-            <span className="inline-flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400 transition-opacity">
-              <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path fillRule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-7.5 7.5a1 1 0 01-1.42 0l-3.5-3.5a1 1 0 011.42-1.42L8.5 12.08l6.79-6.79a1 1 0 011.41 0z" clipRule="evenodd" />
-              </svg>
-              {savedFlash}
-            </span>
-          )}
-          {hasAnyOverride && (
-            <button
-              type="button"
-              onClick={clearOverrides}
-              className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors cursor-pointer"
-            >
-              Reset
-            </button>
-          )}
-        </div>
+    <CollapsibleCard title="Manuscript Display">
+      <div className="flex items-center justify-end gap-3 mb-3 min-h-[1.25rem]">
+        {savedFlash && (
+          <span className="inline-flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400 transition-opacity">
+            <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path fillRule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-7.5 7.5a1 1 0 01-1.42 0l-3.5-3.5a1 1 0 011.42-1.42L8.5 12.08l6.79-6.79a1 1 0 011.41 0z" clipRule="evenodd" />
+            </svg>
+            {savedFlash}
+          </span>
+        )}
+        {hasAnyOverride && (
+          <button
+            type="button"
+            onClick={clearOverrides}
+            className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors cursor-pointer"
+          >
+            Reset
+          </button>
+        )}
       </div>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
         Project-level overrides. Empty fields inherit from your user defaults.
@@ -277,7 +274,7 @@ export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) 
           ))}
         </div>
       </div>
-    </div>
+    </CollapsibleCard>
   )
 }
 

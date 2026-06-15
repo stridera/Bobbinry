@@ -383,8 +383,6 @@ export default function ProjectDashboardPage() {
           </div>
         </div>
 
-        <ManuscriptDisplaySettings projectId={projectId} />
-
         <ImportManuscript
           projectId={projectId}
           onImportComplete={() => loadDashboard()}
@@ -416,6 +414,8 @@ export default function ProjectDashboardPage() {
           }}
           onDelete={() => router.push('/dashboard')}
         />
+
+        <ManuscriptDisplaySettings projectId={projectId} />
       </div>
     </div>
   )

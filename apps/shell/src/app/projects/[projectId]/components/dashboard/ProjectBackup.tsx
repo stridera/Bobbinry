@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
+import { CollapsibleCard } from './CollapsibleCard'
 
 interface ProjectBackupProps {
   projectId: string
@@ -143,45 +144,42 @@ export function ProjectBackup({ projectId }: ProjectBackupProps) {
   const folderUrl = driveFolderUrl(project?.driveFolderId || connection?.rootFolderId)
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 animate-fade-in">
-      <div className="p-6">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100">
-                Backup
-              </h2>
-              {connection?.connected && (
-                <span
-                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                    isBackedUp
-                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                      : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-                  }`}
-                >
-                  {isBackedUp ? 'Active' : 'Disabled'}
-                </span>
-              )}
-            </div>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {connection?.connected
-                ? 'This project is backed up to Google Drive.'
-                : 'Connect Google Drive to automatically back up this project.'}
-            </p>
-          </div>
-          {connection?.connected && isBackedUp && (
-            <button
-              onClick={handleSyncNow}
-              disabled={syncing}
-              className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 font-medium flex-shrink-0"
-            >
-              {syncing ? 'Syncing…' : 'Sync now'}
-            </button>
-          )}
+    <CollapsibleCard
+      title="Backup"
+      headerAccessory={
+        connection?.connected ? (
+          <span
+            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+              isBackedUp
+                ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+            }`}
+          >
+            {isBackedUp ? 'Active' : 'Disabled'}
+          </span>
+        ) : undefined
+      }
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            {connection?.connected
+              ? 'This project is backed up to Google Drive.'
+              : 'Connect Google Drive to automatically back up this project.'}
+          </p>
         </div>
+        {connection?.connected && isBackedUp && (
+          <button
+            onClick={handleSyncNow}
+            disabled={syncing}
+            className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 font-medium flex-shrink-0"
+          >
+            {syncing ? 'Syncing…' : 'Sync now'}
+          </button>
+        )}
+      </div>
 
-        {message && (
+      {message && (
           <div
             className={`mt-4 p-3 rounded-lg text-sm ${
               message.type === 'success'
@@ -254,7 +252,6 @@ export function ProjectBackup({ projectId }: ProjectBackupProps) {
             </p>
           </>
         )}
-      </div>
-    </div>
+    </CollapsibleCard>
   )
 }

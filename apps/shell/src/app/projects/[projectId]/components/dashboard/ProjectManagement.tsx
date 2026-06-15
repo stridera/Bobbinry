@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { apiFetch } from '@/lib/api'
 import { ConfirmModal } from '@bobbinry/sdk'
+import { CollapsibleCard } from './CollapsibleCard'
 
 interface Bobbin {
   id: string
@@ -32,7 +33,6 @@ type ConfirmAction =
 
 export function ProjectManagement({ projectId, isArchived, bobbins, onArchiveChange, onBobbinUninstall, onDelete }: ProjectManagementProps) {
   const { data: session } = useSession()
-  const [expanded, setExpanded] = useState(false)
   const [success, setSuccess] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null)
@@ -130,22 +130,8 @@ export function ProjectManagement({ projectId, isArchived, bobbins, onArchiveCha
 
   return (
     <>
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 animate-fade-in">
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="w-full flex items-center justify-between p-6 cursor-pointer"
-        >
-          <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100">Project Management</h2>
-          <svg
-            className={`w-5 h-5 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
-            fill="none" stroke="currentColor" viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-
-        {expanded && (
-          <div className="px-6 pb-6 border-t border-gray-100 dark:border-gray-700 pt-4 space-y-6">
+      <CollapsibleCard title="Project Management">
+        <div className="space-y-6">
             {/* Messages */}
             {success && (
               <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
@@ -243,9 +229,8 @@ export function ProjectManagement({ projectId, isArchived, bobbins, onArchiveCha
                 Delete Project
               </button>
             </div>
-          </div>
-        )}
-      </div>
+        </div>
+      </CollapsibleCard>
 
       {confirmModalProps && (
         <ConfirmModal
