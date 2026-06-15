@@ -54,7 +54,7 @@
     "qrcode": "^1.5.4",
     "resend": "^6.12.4",
     "sanitize-html": "^2.17.4",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.1",
     "stripe": "^22.2.0",
     "turndown": "^7.2.4",
     "yaml": "^2.9.0",
