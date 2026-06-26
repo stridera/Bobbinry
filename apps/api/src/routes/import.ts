@@ -16,7 +16,7 @@
 
 import { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db } from '../db/connection'
 import { entities, uploads } from '../db/schema'
 import { requireAuth, requireProjectOwnership, assertEntityScope } from '../middleware/auth'
@@ -25,6 +25,7 @@ import {
   findBobbinForCollectionAcrossScopes,
 } from '../lib/disk-manifests'
 import { getEffectiveBobbins } from '../lib/effective-bobbins'
+import { getMaxContentOrder } from './entities'
 import {
   formatFromMime,
   parseBuffer,
@@ -350,35 +351,12 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
         })
       }
 
-      // Find the current max order for siblings so new chapters land at the
-      // end. When committing into a container, "siblings" are content items
-      // with the same container_id (both camelCase and snake_case keys are
-      // checked because legacy entity rows may use either shape — same
-      // pattern as deleteContainerCascade in entities.ts). When committing
-      // at root, siblings are content items with no container_id at all.
-      const siblingsFilter = containerId === null
-        ? sql`(${entities.entityData}->>'container_id' IS NULL
-            AND ${entities.entityData}->>'containerId' IS NULL)`
-        : sql`(${entities.entityData}->>'container_id' = ${containerId}
-            OR ${entities.entityData}->>'containerId' = ${containerId})`
-
-      const [maxRow] = await db
-        .select({
-          maxOrder: sql<string | null>`
-            COALESCE(
-              MAX((${entities.entityData}->>'order')::bigint),
-              0
-            )::text
-          `,
-        })
-        .from(entities)
-        .where(and(
-          eq(entities.projectId, projectId),
-          eq(entities.collectionName, 'content'),
-          siblingsFilter,
-        ))
-
-      const startingOrder = Number(maxRow?.maxOrder ?? 0)
+      // Append imported chapters after every existing chapter in the project.
+      // Order is a single project-wide sequence (the reader sorts by it), so we
+      // base the starting point on the project-wide max rather than container
+      // siblings — a sibling-scoped max restarts low and collides with chapters
+      // in other containers, dropping imports into the middle of the list.
+      const startingOrder = await getMaxContentOrder(db, projectId)
       const orderStep = 100
 
       const created = await db.transaction(async (tx) => {

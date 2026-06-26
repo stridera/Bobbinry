@@ -270,6 +270,9 @@ export const projectPublishConfig = pgTable('project_publish_config', {
   enableAnnotations: boolean('enable_annotations').default(false).notNull(),
   annotationAccess: varchar('annotation_access', { length: 50 }).default('beta_only').notNull(), // beta_only, subscribers, all_authenticated
   moderationMode: varchar('moderation_mode', { length: 50 }).default('open').notNull(), // open, approval_required, disabled
+  // When true (default) the reader follows manuscript order (entity_data.order).
+  // When false the author sets an independent reader order via publish_order.
+  useManuscriptOrder: boolean('use_manuscript_order').default(true).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull()
 })

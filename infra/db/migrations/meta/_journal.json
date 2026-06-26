@@ -246,6 +246,13 @@
       "when": 1781056800000,
       "tag": "0035_manuscript_smart_typography",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1782509030704,
+      "tag": "0036_use_manuscript_order",
+      "breakpoints": true
     }
   ]
 }

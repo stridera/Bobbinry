@@ -45,6 +45,33 @@ import {
 } from '../lib/effective-bobbins'
 
 // ============================================
+// CHAPTER ORDERING
+// ============================================
+
+/** Manuscript order: the `order` field shared with the write-side editor. */
+const manuscriptOrderSql = sql`COALESCE((${entities.entityData}->>'order')::bigint, 0)`
+
+/**
+ * Build the ORDER BY clauses for published chapters for a given project.
+ *
+ * Reader order follows manuscript order by default. When an author turns off
+ * "Use manuscript order" on the publishing page, the reader instead follows the
+ * independent `publish_order`, with manuscript order as a stable tiebreak.
+ */
+async function getChapterOrderClauses(projectId: string) {
+  const [config] = await db
+    .select({ useManuscriptOrder: projectPublishConfig.useManuscriptOrder })
+    .from(projectPublishConfig)
+    .where(eq(projectPublishConfig.projectId, projectId))
+    .limit(1)
+  // Default to manuscript order when no config row exists yet.
+  const useManuscriptOrder = config?.useManuscriptOrder ?? true
+  return useManuscriptOrder
+    ? [manuscriptOrderSql]
+    : [asc(entities.publishOrder), manuscriptOrderSql]
+}
+
+// ============================================
 // AUTHOR RESOLUTION
 // ============================================
 
@@ -503,7 +530,8 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         .limit(1)
       const defaultVisibility = publishConfig?.defaultVisibility || 'public'
 
-      // Get all published chapters for this project
+      // Get all published chapters for this project, in reader order.
+      const orderClauses = await getChapterOrderClauses(projectId)
       const publishedChapters = await db
         .select({
           chapterId: chapterPublications.chapterId,
@@ -520,7 +548,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           eq(chapterPublications.projectId, projectId),
           eq(chapterPublications.isPublished, true)
         ))
-        .orderBy(sql`COALESCE((${entities.entityData}->>'order')::bigint, 0)`)
+        .orderBy(...orderClauses)
 
       // Total words across all published chapters — counted regardless of
       // whether the caller can read each chapter, so the project's overall
@@ -660,7 +688,8 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       const contentDisplay = sanitizeDisplaySettings(chapter.contentDisplaySettings)
       const resolvedDisplay = resolveDisplaySettings(userDisplay, projectDisplay, contentDisplay)
 
-      // Get navigation (previous/next chapters)
+      // Get navigation (previous/next chapters) — must match TOC reader order.
+      const navOrderClauses = await getChapterOrderClauses(projectId)
       const allChapters = await db
         .select({
           id: entities.id,
@@ -672,7 +701,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           eq(entities.projectId, projectId),
           eq(chapterPublications.isPublished, true)
         ))
-        .orderBy(sql`COALESCE((${entities.entityData}->>'order')::bigint, 0)`)
+        .orderBy(...navOrderClauses)
 
       const currentIndex = allChapters.findIndex(c => c.id === chapterId)
       const previousChapter = currentIndex > 0 ? allChapters[currentIndex - 1] : null
@@ -1074,7 +1103,8 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
     try {
       const { projectId } = request.params
 
-      // Get all published chapters
+      // Get all published chapters in reader order.
+      const sitemapOrderClauses = await getChapterOrderClauses(projectId)
       const chapters = await db
         .select({
           id: entities.id,
@@ -1087,7 +1117,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           eq(entities.projectId, projectId),
           eq(chapterPublications.isPublished, true)
         ))
-        .orderBy(sql`COALESCE((${entities.entityData}->>'order')::bigint, 0)`)
+        .orderBy(...sitemapOrderClauses)
 
       const baseUrl = env.WEB_ORIGIN
 

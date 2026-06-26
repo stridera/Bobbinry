@@ -17,6 +17,33 @@ function countWordsFromHtml(html: string): number {
   return words.length
 }
 
+/**
+ * Highest `order` value among the project's `content` rows (0 if none).
+ *
+ * New chapters use `max + 100` so they always append at the end of the
+ * manuscript — and therefore the reader, which sorts by this same field.
+ * Centralizing this here keeps every creation path (manuscript panel, editor,
+ * importer) consistent; previously each invented its own scheme (timestamps,
+ * sibling-scoped maxes) which produced colliding values that landed new
+ * chapters in the middle of the list. `executor` accepts either `db` or a
+ * transaction so callers inside a tx see their own pending inserts.
+ */
+export async function getMaxContentOrder(
+  executor: Pick<typeof db, 'select'>,
+  projectId: string,
+): Promise<number> {
+  const [row] = await executor
+    .select({
+      maxOrder: sql<string | null>`COALESCE(MAX((${entities.entityData}->>'order')::bigint), 0)::text`,
+    })
+    .from(entities)
+    .where(and(
+      eq(entities.projectId, projectId),
+      eq(entities.collectionName, 'content'),
+    ))
+  return Number(row?.maxOrder ?? 0)
+}
+
 /** Resolve the contentType column value for a row in the `content` collection.
  * Pulls from `data.content_type` if the caller supplied it; otherwise defaults
  * to 'chapter'. Returns null for non-content collections (the column is only
@@ -365,6 +392,13 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       // For content entities, compute word_count from body if present
       if (collection === 'content' && typeof data.body === 'string') {
         data.word_count = countWordsFromHtml(data.body)
+      }
+
+      // Always append new chapters at the end of the manuscript, regardless of
+      // any `order` the client supplied. This is the single source of truth for
+      // ordering on create — see getMaxContentOrder.
+      if (collection === 'content') {
+        data.order = (await getMaxContentOrder(db, projectId)) + 100
       }
 
       // Set the correct FK based on the resolved scope

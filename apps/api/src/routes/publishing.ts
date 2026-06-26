@@ -652,6 +652,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       enableComments?: boolean
       enableReactions?: boolean
       moderationMode?: string
+      useManuscriptOrder?: boolean
     }
   }>('/projects/:projectId/publish-config', {
     preHandler: [requireAuth, requireVerified]
@@ -687,6 +688,34 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
           .returning()
         config = created
         statusCode = 201
+      }
+
+      // When the author first turns OFF "use manuscript order", seed each
+      // chapter's publish_order from its current manuscript-order rank. Without
+      // this every row keeps the default 0, so the reorder UI would start from
+      // an all-tied state instead of the sequence the author already sees.
+      const turningOffManuscriptOrder =
+        updates.useManuscriptOrder === false &&
+        (existing?.useManuscriptOrder ?? true) === true
+      if (turningOffManuscriptOrder) {
+        try {
+          await db.execute(sql`
+            WITH ranked AS (
+              SELECT id, (ROW_NUMBER() OVER (
+                ORDER BY COALESCE((${entities.entityData}->>'order')::bigint, 0)
+              ) - 1) AS rank
+              FROM ${entities}
+              WHERE ${entities.projectId} = ${projectId}
+                AND ${entities.collectionName} = 'content'
+            )
+            UPDATE ${entities} AS e
+            SET publish_order = ranked.rank
+            FROM ranked
+            WHERE e.id = ranked.id
+          `)
+        } catch (seedError) {
+          fastify.log.warn({ err: seedError, projectId }, 'Failed to seed publish_order from manuscript order')
+        }
       }
 
       // When auto-release is enabled, schedule any complete chapters that aren't scheduled yet
