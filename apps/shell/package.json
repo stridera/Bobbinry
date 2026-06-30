@@ -15,6 +15,7 @@
   "dependencies": {
     "@auth/core": "^0.41.2",
     "@bobbinry/ai-tools": "workspace:*",
+    "@bobbinry/bookworm-siege": "workspace:*",
     "@bobbinry/cat": "workspace:*",
     "@bobbinry/corkboard": "workspace:*",
     "@bobbinry/dictionary-panel": "workspace:*",

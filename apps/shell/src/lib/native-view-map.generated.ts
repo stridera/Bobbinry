@@ -16,6 +16,7 @@ export const NATIVE_VIEW_MAP: Record<string, () => Promise<any>> = {
   'manuscript.editor': () => import('@bobbinry/manuscript/views/editor'),
   'manuscript.panels/navigation': () => import('@bobbinry/manuscript/panels/navigation'),
   'manuscript.views/session-stats': () => import('@bobbinry/manuscript/views/session-stats'),
+  'bookworm-siege.panels/game-panel': () => import('@bobbinry/bookworm-siege/panels/game-panel'),
   'notes.note-editor': () => import('@bobbinry/notes/views/note-editor'),
   'notes.pinboard': () => import('@bobbinry/notes/views/pinboard'),
   'notes.panels/navigation': () => import('@bobbinry/notes/panels/navigation'),

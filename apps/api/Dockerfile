@@ -27,6 +27,7 @@ COPY packages/ui-components/package.json packages/ui-components/
 
 # Bobbins
 COPY bobbins/ai-tools/package.json bobbins/ai-tools/
+COPY bobbins/bookworm-siege/package.json bobbins/bookworm-siege/
 COPY bobbins/cat/package.json bobbins/cat/
 COPY bobbins/corkboard/package.json bobbins/corkboard/
 COPY bobbins/dictionary-panel/package.json bobbins/dictionary-panel/
