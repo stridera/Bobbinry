@@ -7,18 +7,27 @@ export type SearchOptions = {
   wholeWord: boolean
 }
 
-/** A single match returned to the client. The `id` is stable across re-previews
- * as long as the surrounding field text hasn't changed, because it embeds the
- * 0-based match index within that field. */
+/** One run of a rendered snippet: either plain context (`match: false`) or a
+ * highlighted occurrence of the query (`match: true`). A display match holds
+ * the highlighted middle as segments so the UI can highlight every coalesced
+ * occurrence in a single row. */
+export type MatchSegment = { text: string; match: boolean }
+
+/** A match row returned to the client. Adjacent occurrences whose context
+ * windows would overlap are coalesced into one row (they'd otherwise render as
+ * near-identical "duplicate" entries). `indices` lists every underlying
+ * 0-based occurrence index within the field so replace can target them all;
+ * `id` embeds the first index and is stable across re-previews as long as the
+ * surrounding field text hasn't changed. */
 export type EntityMatch = {
   id: string
   entityId: string
   collection: string
   field: string
-  index: number
-  matchText: string
+  indices: number[]
   contextBefore: string
   contextAfter: string
+  segments: MatchSegment[]
 }
 
 type RawMatch = {
@@ -32,8 +41,16 @@ type FieldSpec = { field: string; kind: 'plain' | 'html' }
 
 type Hit = { start: number; end: number; matchText: string }
 
+/** A located occurrence in a field's context-coordinate space, tagged with its
+ * 0-based occurrence index within the field (the value `replace` keys on). */
+type LocatedHit = { start: number; end: number; matchText: string; idx: number }
+
 const CONTEXT_RADIUS = 40
 const MAX_MATCHES_PER_FIELD = 500
+/** Coalesce two occurrences into one display row when the gap between them is
+ * at most this many chars — i.e. their ±CONTEXT_RADIUS windows would overlap
+ * and the rows would look like duplicates. */
+const MERGE_GAP = CONTEXT_RADIUS
 
 const CONTENT_FIELDS: FieldSpec[] = [
   { field: 'title', kind: 'plain' },
@@ -85,14 +102,27 @@ function findHits(text: string, opts: SearchOptions): Hit[] {
   return hits
 }
 
-export function findInPlainText(text: string, opts: SearchOptions): RawMatch[] {
-  const hits = findHits(text, opts)
-  return hits.map((h, i) => ({
-    index: i,
+/** Resolve a field's searchable text plus its occurrences, in a single
+ * coordinate space. For plain text that space is the text itself; for HTML it
+ * is the concatenation of all text nodes (see `locateHtml`). Both feed the
+ * shared context/merge logic. */
+function locatePlain(text: string, opts: SearchOptions): { text: string; hits: LocatedHit[] } {
+  const hits = findHits(text, opts).map((h, i) => ({ ...h, idx: i }))
+  return { text, hits }
+}
+
+function rawFromLocated(text: string, hits: LocatedHit[]): RawMatch[] {
+  return hits.map(h => ({
+    index: h.idx,
     matchText: h.matchText,
     contextBefore: text.slice(Math.max(0, h.start - CONTEXT_RADIUS), h.start),
     contextAfter: text.slice(h.end, Math.min(text.length, h.end + CONTEXT_RADIUS)),
   }))
+}
+
+export function findInPlainText(text: string, opts: SearchOptions): RawMatch[] {
+  const { text: src, hits } = locatePlain(text, opts)
+  return rawFromLocated(src, hits)
 }
 
 export function replaceInPlainText(
@@ -151,11 +181,15 @@ function walkTextNodes(
   return nodes
 }
 
-export function findInHtml(html: string, opts: SearchOptions): RawMatch[] {
-  if (!html || !opts.query) return []
+/** Locate matches within HTML by walking text nodes (matches that straddle a
+ * text-node boundary are intentionally skipped). Occurrences are numbered in
+ * document order; positions are mapped into the concatenated text-node string
+ * so context and merging are computed against readable prose. */
+function locateHtml(html: string, opts: SearchOptions): { text: string; hits: LocatedHit[] } {
+  if (!html || !opts.query) return { text: '', hits: [] }
   const { $, $root } = loadFragment(html)
   const textNodes = walkTextNodes($, $root)
-  if (textNodes.length === 0) return []
+  if (textNodes.length === 0) return { text: '', hits: [] }
 
   let concat = ''
   const nodeRanges: Array<{ start: number; end: number }> = []
@@ -166,27 +200,73 @@ export function findInHtml(html: string, opts: SearchOptions): RawMatch[] {
     nodeRanges.push({ start, end: concat.length })
   }
 
-  const results: RawMatch[] = []
+  const hits: LocatedHit[] = []
   let globalIndex = 0
   for (let i = 0; i < textNodes.length; i++) {
     const node = textNodes[i]!
     const data = node.data ?? ''
     if (!data) continue
-    const hits = findHits(data, opts)
     const range = nodeRanges[i]!
-    for (const h of hits) {
-      const gStart = range.start + h.start
-      const gEnd = range.start + h.end
-      results.push({
-        index: globalIndex++,
+    for (const h of findHits(data, opts)) {
+      hits.push({
+        start: range.start + h.start,
+        end: range.start + h.end,
         matchText: h.matchText,
-        contextBefore: concat.slice(Math.max(0, gStart - CONTEXT_RADIUS), gStart),
-        contextAfter: concat.slice(gEnd, Math.min(concat.length, gEnd + CONTEXT_RADIUS)),
+        idx: globalIndex++,
       })
-      if (results.length >= MAX_MATCHES_PER_FIELD) return results
+      if (hits.length >= MAX_MATCHES_PER_FIELD) return { text: concat, hits }
     }
   }
-  return results
+  return { text: concat, hits }
+}
+
+export function findInHtml(html: string, opts: SearchOptions): RawMatch[] {
+  const { text, hits } = locateHtml(html, opts)
+  return rawFromLocated(text, hits)
+}
+
+/** Coalesce located hits whose context windows overlap into display rows, each
+ * carrying the highlighted middle as segments and every underlying occurrence
+ * index for replace. Hits arrive in occurrence order. */
+function buildDisplayMatches(
+  entityId: string,
+  collection: string,
+  field: string,
+  text: string,
+  hits: LocatedHit[],
+): EntityMatch[] {
+  if (hits.length === 0) return []
+
+  const groups: LocatedHit[][] = []
+  for (const h of hits) {
+    const current = groups[groups.length - 1]
+    const prev = current?.[current.length - 1]
+    if (current && prev && h.start - prev.end <= MERGE_GAP) current.push(h)
+    else groups.push([h])
+  }
+
+  return groups.map(group => {
+    const first = group[0]!
+    const last = group[group.length - 1]!
+    const segments: MatchSegment[] = []
+    let cursor = first.start
+    for (const h of group) {
+      if (h.start > cursor) segments.push({ text: text.slice(cursor, h.start), match: false })
+      segments.push({ text: text.slice(h.start, h.end), match: true })
+      cursor = h.end
+    }
+    const indices = group.map(h => h.idx)
+    return {
+      id: `${entityId}:${field}:${indices[0]}`,
+      entityId,
+      collection,
+      field,
+      indices,
+      contextBefore: text.slice(Math.max(0, first.start - CONTEXT_RADIUS), first.start),
+      contextAfter: text.slice(last.end, Math.min(text.length, last.end + CONTEXT_RADIUS)),
+      segments,
+    }
+  })
 }
 
 export function replaceInHtml(
@@ -256,19 +336,8 @@ export function findInEntity(
   for (const { field, kind } of specs) {
     const val = entityData[field]
     if (typeof val !== 'string' || !val) continue
-    const raws = kind === 'html' ? findInHtml(val, opts) : findInPlainText(val, opts)
-    for (const r of raws) {
-      results.push({
-        id: `${entityId}:${field}:${r.index}`,
-        entityId,
-        collection,
-        field,
-        index: r.index,
-        matchText: r.matchText,
-        contextBefore: r.contextBefore,
-        contextAfter: r.contextAfter,
-      })
-    }
+    const { text, hits } = kind === 'html' ? locateHtml(val, opts) : locatePlain(val, opts)
+    results.push(...buildDisplayMatches(entityId, collection, field, text, hits))
   }
   return results
 }

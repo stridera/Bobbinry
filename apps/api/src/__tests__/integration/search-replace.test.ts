@@ -22,11 +22,19 @@ type Match = {
   entityId: string
   collection: string
   field: string
-  index: number
-  matchText: string
+  indices: number[]
   contextBefore: string
   contextAfter: string
+  segments: { text: string; match: boolean }[]
 }
+
+/** The highlighted occurrence texts within a (possibly merged) match row. */
+const matchedTexts = (m: Match): string[] => m.segments.filter(s => s.match).map(s => s.text)
+
+/** Mirror the shell's expandMatchIds: a merged row maps to one apply id per
+ * underlying occurrence index. */
+const expandIds = (ms: Match[]): string[] =>
+  ms.flatMap(m => m.indices.map(i => `${m.entityId}:${m.field}:${i}`))
 
 describe('Search & Replace', () => {
   let app: any
@@ -122,7 +130,7 @@ describe('Search & Replace', () => {
 
     // 'theme' inside 'themes' should not be confused with 'Caelan' — sanity check
     // that the engine isn't matching attribute strings or unrelated content.
-    const allMatchTexts = body.matches.map(m => m.matchText)
+    const allMatchTexts = body.matches.flatMap(matchedTexts)
     expect(allMatchTexts.every(t => t === 'Caelan')).toBe(true)
 
     // entityVersions present for every row with a match.
@@ -158,7 +166,7 @@ describe('Search & Replace', () => {
     // seeded chapter body don't muddy the signal.
     const bodyMatches = body.matches.filter(m => m.entityId === extra!.id && m.field === 'body')
     expect(bodyMatches).toHaveLength(1)
-    expect(bodyMatches[0]!.matchText.toLowerCase()).toBe('the')
+    expect(matchedTexts(bodyMatches[0]!).map(t => t.toLowerCase())).toEqual(['the'])
     expect(bodyMatches[0]!.contextAfter).toBe(' bird flew')
   })
 
@@ -199,7 +207,7 @@ describe('Search & Replace', () => {
         wholeWord: false,
         replacement: 'Cael',
         scope: { type: 'project' },
-        selectedMatchIds: previewBody.matches.map(m => m.id),
+        selectedMatchIds: expandIds(previewBody.matches),
         entityVersions: previewBody.entityVersions,
       },
     })
@@ -258,7 +266,7 @@ describe('Search & Replace', () => {
         wholeWord: false,
         replacement: 'Cael',
         scope: { type: 'project' },
-        selectedMatchIds: previewBody.matches.map(m => m.id),
+        selectedMatchIds: expandIds(previewBody.matches),
         entityVersions: previewBody.entityVersions,
       },
     })
@@ -285,5 +293,44 @@ describe('Search & Replace', () => {
       payload: { query: 'Caelan', caseSensitive: false, wholeWord: false, scope: { type: 'project' } },
     })
     expect(res.statusCode).toBe(403)
+  })
+
+  it('returns chapter matches in manuscript reading order, not insertion order', async () => {
+    // Insert deliberately out of reading order: order 2, then 0, then 1.
+    const bodies = [
+      { title: 'Third chapter', order: 2 },
+      { title: 'First chapter', order: 0 },
+      { title: 'Second chapter', order: 1 },
+    ]
+    const idsByOrder: Record<number, string> = {}
+    for (const { title, order } of bodies) {
+      const [row] = await db.insert(entities).values({
+        projectId,
+        bobbinId: 'manuscript',
+        collectionName: 'content',
+        contentType: 'chapter',
+        entityData: {
+          title,
+          body: `<p>The beacon shone over ${title}.</p>`,
+          order,
+          word_count: 5,
+        },
+      }).returning()
+      idsByOrder[order] = row!.id
+    }
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/projects/${projectId}/search-replace/preview`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { query: 'beacon', caseSensitive: false, wholeWord: false, scope: { type: 'project' } },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.payload) as { matches: Match[] }
+
+    const chapterOrder = body.matches
+      .filter(m => m.collection === 'content')
+      .map(m => m.entityId)
+    expect(chapterOrder).toEqual([idsByOrder[0], idsByOrder[1], idsByOrder[2]])
   })
 })

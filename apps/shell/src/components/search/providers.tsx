@@ -23,8 +23,6 @@ export interface SearchPanelProps {
   ctx: ShellSearchContext
   /** Live value of the top-bar input — the panel's "Find" field. */
   query: string
-  /** Incremented each time the user presses Enter in the top-bar input. */
-  submitCount: number
   /** 'replace' when opened via Ctrl+Shift+H; find-only panels ignore it. */
   initialMode: 'find' | 'replace'
   onClose: () => void
@@ -36,6 +34,8 @@ export interface SearchProviderDef {
   supportsReplace: boolean
   /** Live debounced search vs explicit Enter-to-search. */
   searchTrigger: 'live' | 'submit'
+  /** Browser-style find in the open chapter: Enter cycles, counter shows n/m. */
+  supportsInChapterFind: boolean
   Panel: ComponentType<SearchPanelProps>
 }
 
@@ -43,7 +43,8 @@ export const manuscriptSearchProvider: SearchProviderDef = {
   id: 'manuscript',
   placeholder: 'Search manuscript…',
   supportsReplace: true,
-  searchTrigger: 'submit',
+  searchTrigger: 'live',
+  supportsInChapterFind: true,
   Panel: ManuscriptSearchPanel,
 }
 
@@ -52,6 +53,7 @@ export const entitySearchProvider: SearchProviderDef = {
   placeholder: 'Search characters, places & lore…',
   supportsReplace: false,
   searchTrigger: 'live',
+  supportsInChapterFind: false,
   Panel: EntitySearchPanel,
 }
 

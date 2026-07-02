@@ -1,22 +1,28 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   useSearchReplace,
+  expandMatchIds,
   type SearchMatch,
   type SearchScope,
 } from '@/hooks/useSearchReplace'
 import { MatchPreviewList, type GroupedMatches } from './MatchPreviewList'
+import { requestSearchHighlight } from './pendingFind'
 import type { SearchPanelProps } from './providers'
+
+const MIN_QUERY_LENGTH = 2
+const DEBOUNCE_MS = 300
 
 /**
  * Anchored search & replace panel for manuscript views. The top-bar input is
- * the Find field; preview runs on explicit Enter (tracked via `submitCount`)
- * because the preview snapshot anchors the optimistic-concurrency
- * `entityVersions` contract — live-searching the whole project per keystroke
- * would be wasteful and racy.
+ * the Find field. Search is live: every keystroke drives the in-editor find
+ * session (instant, client-side) and a debounced project-wide preview. Each
+ * preview response carries its own `entityVersions` snapshot, so the
+ * optimistic-concurrency contract for replace still holds — apply always uses
+ * the versions of the preview it was invoked on.
  */
-export function ManuscriptSearchPanel({ ctx, query, submitCount, initialMode, onClose }: SearchPanelProps) {
+export function ManuscriptSearchPanel({ ctx, query, initialMode, onClose }: SearchPanelProps) {
   const [replacement, setReplacement] = useState('')
   const [showReplace, setShowReplace] = useState(initialMode === 'replace')
   const [caseSensitive, setCaseSensitive] = useState(false)
@@ -25,6 +31,8 @@ export function ManuscriptSearchPanel({ ctx, query, submitCount, initialMode, on
     initialMode === 'replace' && ctx.activeChapter ? 'chapter' : 'project',
   )
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
+  // Bumped after a successful apply so the effect re-fetches a fresh preview.
+  const [refreshNonce, setRefreshNonce] = useState(0)
 
   const {
     preview,
@@ -34,6 +42,7 @@ export function ManuscriptSearchPanel({ ctx, query, submitCount, initialMode, on
     applying,
     error,
     lastApply,
+    reset,
   } = useSearchReplace({ projectId: ctx.projectId, apiToken: ctx.apiToken })
 
   // Ctrl+Shift+H while the panel is already open should still reveal the
@@ -52,47 +61,67 @@ export function ManuscriptSearchPanel({ ctx, query, submitCount, initialMode, on
     [scopeType, ctx.activeChapter],
   )
 
-  const selectedIds = useMemo(() => {
-    if (!preview) return [] as string[]
-    return preview.matches.filter(m => !excluded.has(m.id)).map(m => m.id)
-  }, [preview, excluded])
+  const selectedMatches = useMemo(
+    () => (preview ? preview.matches.filter(m => !excluded.has(m.id)) : []),
+    [preview, excluded],
+  )
 
-  const doPreview = useCallback(async (overrides?: {
-    caseSensitive?: boolean
-    wholeWord?: boolean
-    scope?: SearchScope
-  }) => {
-    if (!query.trim()) return
-    setExcluded(new Set())
-    await runPreview({
-      query,
-      replacement,
-      caseSensitive: overrides?.caseSensitive ?? caseSensitive,
-      wholeWord: overrides?.wholeWord ?? wholeWord,
-      scope: overrides?.scope ?? scope,
-    })
-  }, [query, replacement, caseSensitive, wholeWord, scope, runPreview])
+  const trimmed = query.trim()
 
-  // Fire a preview exactly once per Enter press; the guard keeps option/query
-  // changes from re-triggering a stale submit.
-  const lastSubmitRef = useRef(0)
+  // Live project-wide preview, debounced per keystroke; option/scope changes
+  // re-fire it immediately via the deps. The hook aborts superseded requests.
   useEffect(() => {
-    if (submitCount === lastSubmitRef.current) return
-    lastSubmitRef.current = submitCount
-    void doPreview()
-  }, [submitCount, doPreview])
+    if (trimmed.length < MIN_QUERY_LENGTH) {
+      reset()
+      return
+    }
+    const timer = setTimeout(() => {
+      setExcluded(new Set())
+      void runPreview({
+        query: trimmed,
+        replacement: '',
+        caseSensitive,
+        wholeWord,
+        scope,
+      })
+    }, DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [trimmed, caseSensitive, wholeWord, scope, refreshNonce, runPreview, reset])
+
+  // Drive the in-editor find session (highlight-all + Enter cycling) — no
+  // debounce, it's client-side and instant. Deliberately NOT cleared on
+  // unmount: dismissing the dropdown keeps the browser-like find session
+  // alive; Esc in the top bar is the explicit clear.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('bobbinry:find-update', {
+      detail: { query: trimmed, caseSensitive, wholeWord },
+    }))
+  }, [trimmed, caseSensitive, wholeWord])
+
+  // Ctrl+F with a retained query asks for the session back (an earlier Esc
+  // cleared the highlights but the query/options are still here).
+  useEffect(() => {
+    const handler = () => {
+      if (!trimmed) return
+      window.dispatchEvent(new CustomEvent('bobbinry:find-update', {
+        detail: { query: trimmed, caseSensitive, wholeWord },
+      }))
+    }
+    window.addEventListener('bobbinry:find-reactivate', handler)
+    return () => window.removeEventListener('bobbinry:find-reactivate', handler)
+  }, [trimmed, caseSensitive, wholeWord])
 
   const handleApply = async () => {
-    if (!preview || selectedIds.length === 0) return
+    if (!preview || selectedMatches.length === 0) return
     const res = await apply(
-      { query, replacement, caseSensitive, wholeWord, scope },
-      selectedIds,
+      { query: trimmed, replacement, caseSensitive, wholeWord, scope },
+      expandMatchIds(selectedMatches),
       preview.entityVersions,
     )
     if (res && res.stale.length === 0 && res.applied.length > 0) {
       // Successful end-to-end — pop a fresh preview so the panel shows the
       // updated state (or nothing left to replace).
-      await doPreview()
+      setRefreshNonce(n => n + 1)
     }
   }
 
@@ -118,41 +147,51 @@ export function ManuscriptSearchPanel({ ctx, query, submitCount, initialMode, on
     })
   }
 
-  const toggleCase = () => {
-    const next = !caseSensitive
-    setCaseSensitive(next)
-    if (preview) void doPreview({ caseSensitive: next })
-  }
-
-  const toggleWholeWord = () => {
-    const next = !wholeWord
-    setWholeWord(next)
-    if (preview) void doPreview({ wholeWord: next })
-  }
-
+  // Option/scope changes feed the live-preview effect via its deps.
+  const toggleCase = () => setCaseSensitive(v => !v)
+  const toggleWholeWord = () => setWholeWord(v => !v)
   const changeScope = (type: 'project' | 'chapter') => {
     if (type === 'chapter' && !ctx.activeChapter) return
     setScopeType(type)
-    const nextScope: SearchScope =
-      type === 'chapter' && ctx.activeChapter
-        ? { type: 'chapter', chapterId: ctx.activeChapter.id }
-        : { type: 'project' }
-    if (preview) void doPreview({ scope: nextScope })
   }
 
+  // The chapter being edited reads first in the list — that's the match the
+  // user usually wants. Rows keep their internal (API) order.
+  const orderedMatches = useMemo(() => {
+    if (!preview) return []
+    const activeId = ctx.activeChapter?.id
+    if (!activeId) return preview.matches
+    const current = preview.matches.filter(m => m.entityId === activeId)
+    if (current.length === 0) return preview.matches
+    return [...current, ...preview.matches.filter(m => m.entityId !== activeId)]
+  }, [preview, ctx.activeChapter])
+
   const handleMatchClick = (m: SearchMatch) => {
-    const detail =
-      m.collection === 'content'
-        ? { entityType: 'content', entityId: m.entityId, bobbinId: 'manuscript' }
-        : m.collection === 'containers'
-          ? { entityType: 'container', entityId: m.entityId, bobbinId: 'manuscript' }
-          : { entityType: m.collection, entityId: m.entityId, bobbinId: 'entities', metadata: { view: 'entity-editor', isNew: false } }
-    window.dispatchEvent(new CustomEvent('bobbinry:navigate', { detail }))
-    // Hook for future in-editor scroll-to-match: no listener exists yet, but
-    // the manuscript editor can pick this up to highlight/scroll via TipTap.
-    window.dispatchEvent(new CustomEvent('bobbinry:search-highlight', {
-      detail: { entityId: m.entityId, field: m.field, query, caseSensitive, wholeWord },
-    }))
+    // Clicking a match in the chapter that's already open just scrolls to it;
+    // re-navigating would pointlessly remount the editor.
+    const isOpenChapter = m.collection === 'content' && m.entityId === ctx.activeChapter?.id
+    if (!isOpenChapter) {
+      const detail =
+        m.collection === 'content'
+          ? { entityType: 'content', entityId: m.entityId, bobbinId: 'manuscript' }
+          : m.collection === 'containers'
+            ? { entityType: 'container', entityId: m.entityId, bobbinId: 'manuscript' }
+            : { entityType: m.collection, entityId: m.entityId, bobbinId: 'entities', metadata: { view: 'entity-editor', isNew: false } }
+      window.dispatchEvent(new CustomEvent('bobbinry:navigate', { detail }))
+    }
+    // Ask the manuscript editor to select & scroll to this occurrence. `index`
+    // is the first occurrence this (possibly merged) row covers; the editor
+    // counts occurrences with the same regex options to land on the right one.
+    // Dispatched via the pending-highlight helper so the request survives the
+    // destination editor not being mounted yet.
+    requestSearchHighlight({
+      entityId: m.entityId,
+      field: m.field,
+      index: m.indices[0] ?? 0,
+      query: trimmed,
+      caseSensitive,
+      wholeWord,
+    })
   }
 
   const chipClass = (active: boolean) =>
@@ -240,20 +279,29 @@ export function ManuscriptSearchPanel({ ctx, query, submitCount, initialMode, on
           />
         )}
 
-        <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
-          {previewing ? (
+        <div className="flex items-center justify-between gap-2 text-xs text-gray-600 dark:text-gray-400">
+          {trimmed.length < MIN_QUERY_LENGTH ? (
+            <span>Type at least {MIN_QUERY_LENGTH} characters to search the project</span>
+          ) : previewing ? (
             <span>Searching…</span>
           ) : preview ? (
             <span>
               {preview.matches.length === 0
                 ? 'No matches'
-                : `${selectedIds.length} of ${preview.matches.length} selected`}
+                : showReplace
+                  ? `${selectedMatches.length} of ${preview.matches.length} selected`
+                  : `${preview.matches.length} ${preview.matches.length === 1 ? 'match' : 'matches'}`}
               {preview.truncated && (
                 <span className="ml-2 text-amber-600 dark:text-amber-400">(results truncated)</span>
               )}
             </span>
           ) : (
-            <span>Press Enter to search</span>
+            <span>Searching…</span>
+          )}
+          {ctx.activeChapter && (
+            <span className="shrink-0 text-gray-400 dark:text-gray-500">
+              Enter cycles matches · Esc edits at match
+            </span>
           )}
         </div>
 
@@ -263,14 +311,15 @@ export function ManuscriptSearchPanel({ ctx, query, submitCount, initialMode, on
       {preview && preview.matches.length > 0 && (
         <div className="overflow-y-auto max-h-[50vh] px-3 py-2.5">
           <MatchPreviewList
-            matches={preview.matches}
+            matches={orderedMatches}
             entityTitles={preview.entityTitles}
-            selectable
+            selectable={showReplace}
             compact
             excluded={excluded}
             onToggleMatch={toggleMatch}
             onToggleGroup={toggleGroup}
             onMatchClick={handleMatchClick}
+            activeEntityId={ctx.activeChapter?.id}
           />
         </div>
       )}
@@ -299,10 +348,10 @@ export function ManuscriptSearchPanel({ ctx, query, submitCount, initialMode, on
           <button
             type="button"
             onClick={handleApply}
-            disabled={!preview || selectedIds.length === 0 || applying}
+            disabled={!preview || selectedMatches.length === 0 || applying}
             className="px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {applying ? 'Replacing…' : `Replace ${selectedIds.length || ''} selected`.trim()}
+            {applying ? 'Replacing…' : `Replace ${selectedMatches.length || ''} selected`.trim()}
           </button>
         </footer>
       )}

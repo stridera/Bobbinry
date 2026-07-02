@@ -181,11 +181,27 @@ describe('getEntityFields', () => {
 })
 
 describe('findInEntity', () => {
-  it('returns matches with stable ids encoding entity/field/index', () => {
+  it('coalesces nearby occurrences and ids the row by its first index', () => {
+    // The two body Caelans are <40 chars apart, so their context windows would
+    // overlap — they merge into one row carrying both occurrence indices.
     const data = { title: 'Caelan returns', body: '<p>Caelan walked. Caelan ran.</p>' }
     const matches = findInEntity('ent1', 'content', data, { query: 'Caelan', caseSensitive: true, wholeWord: false })
-    expect(matches).toHaveLength(3)
-    expect(matches.map(m => m.id)).toEqual(['ent1:title:0', 'ent1:body:0', 'ent1:body:1'])
+    expect(matches).toHaveLength(2)
+    expect(matches.map(m => m.id)).toEqual(['ent1:title:0', 'ent1:body:0'])
+    const body = matches.find(m => m.field === 'body')!
+    expect(body.indices).toEqual([0, 1])
+    // Both occurrences are highlighted in the single merged snippet.
+    expect(body.segments.filter(s => s.match).map(s => s.text)).toEqual(['Caelan', 'Caelan'])
+    expect(body.segments.find(s => !s.match)!.text).toContain('walked')
+  })
+
+  it('keeps occurrences far apart as separate rows', () => {
+    const filler = ' '.repeat(60)
+    const data = { body: `<p>Caelan walked.${filler}Then Caelan ran.</p>` }
+    const matches = findInEntity('ent1', 'content', data, { query: 'Caelan', caseSensitive: true, wholeWord: false })
+    expect(matches).toHaveLength(2)
+    expect(matches.map(m => m.indices)).toEqual([[0], [1]])
+    expect(matches.map(m => m.id)).toEqual(['ent1:body:0', 'ent1:body:1'])
   })
 })
 

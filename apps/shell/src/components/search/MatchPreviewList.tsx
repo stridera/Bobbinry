@@ -54,6 +54,8 @@ interface MatchPreviewListProps {
   onMatchClick?: ((match: SearchMatch) => void) | undefined
   /** Tighter padding for dropdown panels. */
   compact?: boolean
+  /** The chapter open in the editor — its group gets a "you are here" accent. */
+  activeEntityId?: string | undefined
 }
 
 export function MatchPreviewList({
@@ -65,6 +67,7 @@ export function MatchPreviewList({
   onToggleGroup,
   onMatchClick,
   compact = false,
+  activeEntityId,
 }: MatchPreviewListProps) {
   const grouped = useMemo(() => groupMatches(matches), [matches])
   const pad = compact ? 'px-2.5 py-1.5' : 'px-3 py-2'
@@ -75,9 +78,19 @@ export function MatchPreviewList({
         const groupSelected = group.matches.filter(m => !excluded?.has(m.id)).length
         const allOff = groupSelected === 0
         const title = entityTitles?.[group.entityId]
+        const isActive = activeEntityId != null && group.entityId === activeEntityId
         return (
-          <div key={group.entityId} className={`${compact ? 'mb-2.5' : 'mb-4'} border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden`}>
-            <div className={`flex items-center justify-between ${pad} bg-gray-50 dark:bg-gray-900/40`}>
+          <div
+            key={group.entityId}
+            className={`${compact ? 'mb-2.5' : 'mb-4'} border rounded-lg overflow-hidden ${
+              isActive
+                ? 'border-blue-200 dark:border-blue-900'
+                : 'border-gray-200 dark:border-gray-700'
+            }`}
+          >
+            <div className={`flex items-center justify-between ${pad} ${
+              isActive ? 'bg-blue-50/60 dark:bg-blue-950/30' : 'bg-gray-50 dark:bg-gray-900/40'
+            }`}>
               <label className={`inline-flex items-center gap-2 min-w-0 ${selectable ? 'cursor-pointer' : ''}`}>
                 {selectable && (
                   <input
@@ -97,6 +110,11 @@ export function MatchPreviewList({
                 ) : (
                   <span className="text-xs text-gray-500 dark:text-gray-500 font-mono">
                     {group.entityId.slice(0, 8)}
+                  </span>
+                )}
+                {isActive && (
+                  <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-blue-600 dark:text-blue-400">
+                    Open now
                   </span>
                 )}
               </label>
@@ -126,9 +144,18 @@ export function MatchPreviewList({
                     </div>
                     <div className="text-sm text-gray-800 dark:text-gray-200 font-mono break-words whitespace-pre-wrap">
                       <span className="text-gray-500 dark:text-gray-400">{m.contextBefore}</span>
-                      <span className="bg-yellow-200 dark:bg-yellow-900/60 text-gray-900 dark:text-yellow-100 px-0.5 rounded">
-                        {m.matchText}
-                      </span>
+                      {m.segments.map((seg, i) =>
+                        seg.match ? (
+                          <span
+                            key={i}
+                            className="bg-yellow-200 dark:bg-yellow-900/60 text-gray-900 dark:text-yellow-100 px-0.5 rounded"
+                          >
+                            {seg.text}
+                          </span>
+                        ) : (
+                          <span key={i} className="text-gray-700 dark:text-gray-300">{seg.text}</span>
+                        ),
+                      )}
                       <span className="text-gray-500 dark:text-gray-400">{m.contextAfter}</span>
                     </div>
                   </div>

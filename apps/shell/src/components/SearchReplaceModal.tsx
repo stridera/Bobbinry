@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { ModalFrame } from '@bobbinry/ui-components'
 import {
   useSearchReplace,
+  expandMatchIds,
   type SearchScope,
 } from '@/hooks/useSearchReplace'
 import { MatchPreviewList, type GroupedMatches } from './search/MatchPreviewList'
@@ -55,10 +56,10 @@ export function SearchReplaceModal({
     [scopeType, activeChapter],
   )
 
-  const selectedIds = useMemo(() => {
-    if (!preview) return [] as string[]
-    return preview.matches.filter(m => !excluded.has(m.id)).map(m => m.id)
-  }, [preview, excluded])
+  const selectedMatches = useMemo(
+    () => (preview ? preview.matches.filter(m => !excluded.has(m.id)) : []),
+    [preview, excluded],
+  )
 
   const handlePreview = async () => {
     if (!query.trim()) return
@@ -73,10 +74,10 @@ export function SearchReplaceModal({
   }
 
   const handleApply = async () => {
-    if (!preview || selectedIds.length === 0) return
+    if (!preview || selectedMatches.length === 0) return
     const res = await apply(
       { query, replacement, caseSensitive, wholeWord, scope },
-      selectedIds,
+      expandMatchIds(selectedMatches),
       preview.entityVersions,
     )
     if (res && res.stale.length === 0 && res.applied.length > 0) {
@@ -227,7 +228,7 @@ export function SearchReplaceModal({
               <div className="text-sm text-gray-600 dark:text-gray-400">
                 {preview.matches.length === 0
                   ? 'No matches'
-                  : `${selectedIds.length} of ${preview.matches.length} selected`}
+                  : `${selectedMatches.length} of ${preview.matches.length} selected`}
                 {preview.truncated && (
                   <span className="ml-2 text-amber-600 dark:text-amber-400">(results truncated)</span>
                 )}
@@ -287,10 +288,10 @@ export function SearchReplaceModal({
           <button
             type="button"
             onClick={handleApply}
-            disabled={!preview || selectedIds.length === 0 || applying}
+            disabled={!preview || selectedMatches.length === 0 || applying}
             className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {applying ? 'Replacing…' : `Replace ${selectedIds.length || ''} selected`.trim()}
+            {applying ? 'Replacing…' : `Replace ${selectedMatches.length || ''} selected`.trim()}
           </button>
         </footer>
       </div>

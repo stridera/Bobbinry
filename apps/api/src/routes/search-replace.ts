@@ -1,6 +1,6 @@
 import { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
-import { and, eq, inArray, notInArray } from 'drizzle-orm'
+import { and, asc, eq, inArray, notInArray, sql } from 'drizzle-orm'
 import { db } from '../db/connection'
 import { entities } from '../db/schema'
 import { requireAuth, requireProjectOwnership, assertEntityScope } from '../middleware/auth'
@@ -91,7 +91,21 @@ const searchReplacePlugin: FastifyPluginAsync = async (fastify) => {
         )
       }
 
-      const rows = await db.select().from(entities).where(where)
+      // Deterministic result order: manuscript chapters in reading order
+      // (entityData->>'order', same as export.ts), id as the tiebreaker so
+      // truncation cuts at a stable point instead of physical row order.
+      const rows = await db
+        .select()
+        .from(entities)
+        .where(where)
+        .orderBy(
+          asc(entities.bobbinId),
+          asc(entities.collectionName),
+          // Regex-guarded cast: unlike export.ts this query also scans entity
+          // collections, whose 'order' (if present) isn't guaranteed numeric.
+          sql`CASE WHEN ${entities.entityData}->>'order' ~ '^-?\\d+$' THEN (${entities.entityData}->>'order')::bigint ELSE 0 END ASC`,
+          asc(entities.id),
+        )
 
       const opts: SearchOptions = {
         query: body.query,

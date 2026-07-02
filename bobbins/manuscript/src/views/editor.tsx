@@ -26,6 +26,14 @@ import TextAlign from '@tiptap/extension-text-align'
 import { ImageUpload } from '../extensions/image-upload'
 import { EntityHighlight } from '../extensions/entity-highlight'
 import type { EntityEntry } from '../extensions/entity-highlight'
+import {
+  SearchHighlight,
+  setSearchHighlight,
+  getSearchHighlightStorage,
+  findMatchRanges,
+  MAX_FIND_MATCHES,
+} from '../extensions/search-highlight'
+import type { FindOptions } from '../extensions/search-highlight'
 import { SmartTypography } from '../extensions/smart-typography'
 import {
   displaySettingsToClass,
@@ -358,6 +366,112 @@ function SaveIndicator({ status, focusMode }: { status: SaveStatus; focusMode: b
   )
 }
 
+// --- Search & replace: scroll to a clicked match ---
+// The search panel dispatches `bobbinry:search-highlight` after navigating to a
+// chapter. The destination editor often hasn't mounted/loaded yet when the
+// event fires, so we stash the request at module scope (it survives the view
+// remount) and apply it once the matching chapter's content is in the editor.
+
+interface SearchHighlightRequest {
+  entityId: string
+  field: string
+  index: number
+  query: string
+  caseSensitive: boolean
+  wholeWord: boolean
+}
+
+// Kept until the active chapter navigates away or a grace window elapses, so a
+// background content reconcile (a second applyContent after the server version
+// check) re-applies the highlight rather than clobbering it.
+let pendingSearchHighlight: SearchHighlightRequest | null = null
+let pendingHighlightExpiry = 0
+const HIGHLIGHT_GRACE_MS = 4000
+
+function setPendingHighlight(req: SearchHighlightRequest, now: number): void {
+  pendingSearchHighlight = req
+  pendingHighlightExpiry = now + HIGHLIGHT_GRACE_MS
+}
+
+function clearPendingHighlight(): void {
+  pendingSearchHighlight = null
+  pendingHighlightExpiry = 0
+}
+
+// The listener lives at module scope (not in a component effect) so the stash
+// is written even when NO editor is mounted — e.g. a match clicked from the
+// outline view dispatches navigate + search-highlight before this view's
+// dynamic import has even resolved. A mounted editor registers itself here to
+// be poked when a request arrives while it's already showing the chapter.
+let applyPendingHighlightHook: (() => void) | null = null
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('bobbinry:search-highlight', (e: Event) => {
+    const detail = (e as CustomEvent<SearchHighlightRequest>).detail
+    if (!detail?.entityId || !detail.query) return
+    setPendingHighlight(detail, Date.now())
+    applyPendingHighlightHook?.()
+  })
+}
+
+// Scroll the editor's `.overflow-y-auto` container so the given document
+// position is visible (centered). The second pass catches the load-settle
+// race where a re-render resets scrollTop right after the first scroll.
+function scrollEditorToPos(editor: Editor, from: number): void {
+  const doScroll = () => {
+    try {
+      // Prefer the active-match decoration span: it wraps exactly the matched
+      // text, so centering it is precise even inside paragraphs taller than
+      // the scroll viewport (centering the whole <p> can leave the match
+      // off-screen).
+      const activeEl = editor.view.dom.querySelector('.search-match-active')
+      if (activeEl) {
+        activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        return
+      }
+      const domAtPos = editor.view.domAtPos(from)
+      const node = domAtPos.node instanceof HTMLElement ? domAtPos.node : domAtPos.node.parentElement
+      node?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    } catch {
+      const coords = editor.view.coordsAtPos(from)
+      const scrollParent = editor.view.dom.closest('.overflow-y-auto')
+      if (scrollParent) {
+        const parentRect = scrollParent.getBoundingClientRect()
+        scrollParent.scrollTo({
+          top: scrollParent.scrollTop + (coords.top - parentRect.top) - parentRect.height / 3,
+          behavior: 'smooth',
+        })
+      }
+    }
+  }
+  requestAnimationFrame(doScroll)
+  window.setTimeout(() => {
+    if (editor.isDestroyed) return
+    const scrollParent = editor.view.dom.closest('.overflow-y-auto')
+    // Retry only if something yanked us back to the top after the first pass.
+    if (scrollParent && scrollParent.scrollTop === 0) doScroll()
+  }, 250)
+}
+
+// Select and scroll to the req.index-th occurrence of the query, and light up
+// every occurrence via the SearchHighlight decorations. Occurrence numbering
+// matches the server's match indices (see search-highlight.ts header).
+function runSearchHighlight(editor: Editor, req: SearchHighlightRequest): void {
+  // Only the chapter body lives in this editor; other fields just open.
+  if (req.field !== 'body') return
+  const opts = { query: req.query, caseSensitive: req.caseSensitive, wholeWord: req.wholeWord }
+  const ranges = findMatchRanges(editor.state.doc, opts)
+  if (ranges.length === 0) return
+  const activeIndex = Math.min(req.index, ranges.length - 1)
+  setSearchHighlight(editor, { ...opts, activeIndex })
+  const target = ranges[activeIndex]!
+  // Explicit click on a match = intent to edit there, so place the caret too
+  // (unlike Enter-cycling, which keeps focus in the search input).
+  editor.commands.setTextSelection(target)
+  editor.commands.focus()
+  scrollEditorToPos(editor, target.from)
+}
+
 /**
  * Editor View for Manuscript bobbin
  * Provides rich text editing for content with auto-save and local draft caching.
@@ -685,6 +799,7 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
         allowBase64: false,
       } as any),
       EntityHighlight,
+      SearchHighlight,
       SmartTypography,
     ],
     content: '',
@@ -708,6 +823,9 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
       window.dispatchEvent(new CustomEvent('bobbinry:editor-content-update', {
         detail: { text: editor.state.doc.textContent }
       }))
+      // Keep the find counter honest while the doc is edited mid-search
+      // (decorations rebuild automatically on docChanged).
+      if (findOptsRef.current.query) emitFindState(editor)
       const html = editor.getHTML()
       const currentEntityId = activeEntityRef.current
 
@@ -774,6 +892,11 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
   useEffect(() => {
     // On mount or entityId change: record the new active entity
     activeEntityRef.current = entityId ?? null
+
+    // Drop a stale search-highlight aimed at a chapter we just left.
+    if (pendingSearchHighlight && pendingSearchHighlight.entityId !== entityId) {
+      clearPendingHighlight()
+    }
 
     if (entityType === 'content' && entityId && editor) {
       loadContent(entityId)
@@ -913,6 +1036,49 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
   const editorRef = useRef(editor)
   editorRef.current = editor
 
+  // The live find session (browser-style Ctrl+F). Mirrors the SearchHighlight
+  // extension storage; kept in a ref so window-event handlers and applyContent
+  // see the latest values without re-subscribing.
+  const findOptsRef = useRef<FindOptions>({ query: '', caseSensitive: false, wholeWord: false })
+
+  // Tell the search UI how many in-chapter matches exist and which is active.
+  const emitFindState = (ed: Editor) => {
+    const storage = getSearchHighlightStorage(ed)
+    const total = findOptsRef.current.query
+      ? findMatchRanges(ed.state.doc, findOptsRef.current).length
+      : 0
+    window.dispatchEvent(new CustomEvent('bobbinry:find-state', {
+      detail: {
+        total,
+        activeIndex: total === 0 ? -1 : storage.activeIndex,
+        capped: total >= MAX_FIND_MATCHES,
+        query: findOptsRef.current.query,
+        entityId: activeEntityRef.current,
+      },
+    }))
+  }
+
+  // Apply a stashed search-highlight once the editor holds the matching chapter.
+  // Called both when the event arrives and after a chapter's content loads.
+  const tryApplySearchHighlightRef = useRef<() => void>(() => {})
+  tryApplySearchHighlightRef.current = () => {
+    const req = pendingSearchHighlight
+    const ed = editorRef.current
+    if (!req || !ed || req.entityId !== activeEntityRef.current) return
+    if (Date.now() > pendingHighlightExpiry) {
+      clearPendingHighlight()
+      return
+    }
+    // Don't clear on apply: a follow-up content reconcile would otherwise reset
+    // the selection with nothing left to re-apply. The grace window above bounds
+    // how long we keep re-selecting.
+    runSearchHighlight(ed, req)
+    // Adopt the click's query as the live find session so Enter keeps cycling
+    // from the landing spot and the top-bar counter updates.
+    findOptsRef.current = { query: req.query, caseSensitive: req.caseSensitive, wholeWord: req.wholeWord }
+    emitFindState(ed)
+  }
+
   useEffect(() => {
     function handleFocus(e: Event) {
       const { quote, paragraphIndex } = (e as CustomEvent).detail
@@ -981,6 +1147,102 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
     return () => window.removeEventListener('bobbinry:editor-focus-text', handleFocus)
   }, [])
 
+  // --- Search & replace: scroll to the clicked match occurrence ---
+  // The window listener lives at module scope (see top of file) so requests
+  // aren't lost while this view is unmounted; register to be poked when a
+  // request arrives while we're already showing the chapter.
+  useEffect(() => {
+    applyPendingHighlightHook = () => tryApplySearchHighlightRef.current()
+    return () => { applyPendingHighlightHook = null }
+  }, [])
+
+  // --- Live find session (browser-style Ctrl+F, driven by the shell) ---
+  useEffect(() => {
+    function handleFindUpdate(e: Event) {
+      const detail = (e as CustomEvent<FindOptions>).detail
+      const ed = editorRef.current
+      if (!ed || !detail) return
+      const query = (detail.query ?? '').trim()
+      const opts: FindOptions = {
+        query,
+        caseSensitive: Boolean(detail.caseSensitive),
+        wholeWord: Boolean(detail.wholeWord),
+      }
+      findOptsRef.current = opts
+      if (!query) {
+        setSearchHighlight(ed, { ...opts, activeIndex: -1 })
+        emitFindState(ed)
+        return
+      }
+      const ranges = findMatchRanges(ed.state.doc, opts)
+      // Start from the match at/after the caret — where the user last was —
+      // matching how browser find picks its first hit.
+      const caret = ed.state.selection.from
+      let activeIndex = ranges.findIndex(r => r.from >= caret)
+      if (activeIndex === -1) activeIndex = ranges.length > 0 ? 0 : -1
+      setSearchHighlight(ed, { ...opts, activeIndex })
+      if (activeIndex >= 0) scrollEditorToPos(ed, ranges[activeIndex]!.from)
+      emitFindState(ed)
+    }
+
+    function handleFindStep(e: Event) {
+      const { dir } = (e as CustomEvent<{ dir: 1 | -1 }>).detail ?? {}
+      const ed = editorRef.current
+      if (!ed || (dir !== 1 && dir !== -1)) return
+      const opts = findOptsRef.current
+      if (!opts.query) return
+      const ranges = findMatchRanges(ed.state.doc, opts)
+      if (ranges.length === 0) {
+        emitFindState(ed)
+        return
+      }
+      const storage = getSearchHighlightStorage(ed)
+      const activeIndex = (storage.activeIndex + dir + ranges.length) % ranges.length
+      setSearchHighlight(ed, { activeIndex })
+      scrollEditorToPos(ed, ranges[activeIndex]!.from)
+      emitFindState(ed)
+    }
+
+    function handleFindClear() {
+      const ed = editorRef.current
+      findOptsRef.current = { query: '', caseSensitive: false, wholeWord: false }
+      if (!ed) return
+      setSearchHighlight(ed, { query: '', activeIndex: -1 })
+      emitFindState(ed)
+    }
+
+    // Esc from the search bar: end the find session and hand the caret to the
+    // editor at the active match (selected, ready to type over) — the "I
+    // found it, let me edit" gesture. Without a session, just give the
+    // manuscript its focus back.
+    function handleFindCommit() {
+      const ed = editorRef.current
+      if (!ed) return
+      const opts = findOptsRef.current
+      if (opts.query) {
+        const ranges = findMatchRanges(ed.state.doc, opts)
+        const storage = getSearchHighlightStorage(ed)
+        const target = storage.activeIndex >= 0 ? ranges[Math.min(storage.activeIndex, ranges.length - 1)] : undefined
+        if (target) ed.commands.setTextSelection(target)
+      }
+      findOptsRef.current = { query: '', caseSensitive: false, wholeWord: false }
+      setSearchHighlight(ed, { query: '', activeIndex: -1 })
+      ed.commands.focus()
+      emitFindState(ed)
+    }
+
+    window.addEventListener('bobbinry:find-update', handleFindUpdate)
+    window.addEventListener('bobbinry:find-step', handleFindStep)
+    window.addEventListener('bobbinry:find-clear', handleFindClear)
+    window.addEventListener('bobbinry:find-commit', handleFindCommit)
+    return () => {
+      window.removeEventListener('bobbinry:find-update', handleFindUpdate)
+      window.removeEventListener('bobbinry:find-step', handleFindStep)
+      window.removeEventListener('bobbinry:find-clear', handleFindClear)
+      window.removeEventListener('bobbinry:find-commit', handleFindCommit)
+    }
+  }, [])
+
   // --- Text replace: find and replace text in the live editor document ---
   useEffect(() => {
     function handleReplace(e: Event) {
@@ -1031,6 +1293,24 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
       }
       .entity-highlight:hover {
         background-color: rgba(147, 130, 220, 0.15);
+      }
+      .search-match {
+        background-color: rgba(250, 204, 21, 0.35);
+        border-radius: 2px;
+        box-decoration-break: clone;
+        -webkit-box-decoration-break: clone;
+      }
+      .dark .search-match {
+        background-color: rgba(202, 138, 4, 0.45);
+      }
+      .search-match-active {
+        background-color: rgba(251, 146, 60, 0.75);
+        box-shadow: 0 0 0 2px rgba(251, 146, 60, 0.55);
+        color: inherit;
+      }
+      .dark .search-match-active {
+        background-color: rgba(234, 88, 12, 0.65);
+        box-shadow: 0 0 0 2px rgba(234, 88, 12, 0.5);
       }
     `
     document.head.appendChild(style)
@@ -1105,6 +1385,23 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
         .run()
       queueMicrotask(() => {
         suppressSaveRef.current = false
+
+        // A search-match click may have navigated here before the content was
+        // ready — now that it is, scroll to the requested occurrence.
+        tryApplySearchHighlightRef.current()
+
+        // A live find session survives chapter switches: re-anchor to this
+        // chapter's first match (decorations already rebuilt via docChanged)
+        // and refresh the top-bar count. No auto-scroll — the user navigated
+        // here deliberately, not via a match click.
+        if (findOptsRef.current.query && editor) {
+          const ranges = findMatchRanges(editor.state.doc, findOptsRef.current)
+          setSearchHighlight(editor, {
+            ...findOptsRef.current,
+            activeIndex: ranges.length > 0 ? 0 : -1,
+          })
+          emitFindState(editor)
+        }
 
         // If stored word count is 0 but the editor has text, recalculate
         // and persist so the count is accurate without requiring an edit.
