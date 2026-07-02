@@ -418,8 +418,16 @@ export class EntityAPI {
     const version = response.headers.get('X-Entity-Version')
     const updatedAt = response.headers.get('X-Entity-Updated-At')
 
+    // A missing header means we can't read the version (e.g. it wasn't
+    // CORS-exposed), NOT that the version is 0. Fabricating 0 here made every
+    // optimistic-lock comparison fail and surfaced phantom conflict dialogs.
+    if (version === null) {
+      console.warn('[BobbinrySDK] getVersion: X-Entity-Version header missing from HEAD response — treating as unknown')
+      return null
+    }
+
     return {
-      version: version ? parseInt(version, 10) : 0,
+      version: parseInt(version, 10),
       updatedAt: updatedAt || new Date().toISOString()
     }
   }

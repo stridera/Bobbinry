@@ -59,6 +59,24 @@ function findNodeInTree(nodes: TreeNode[], nodeId: string): TreeNode | null {
 }
 
 /**
+ * Broadcast an entity's bumped version after a server update so the editor's
+ * optimistic-locking state stays in sync. Every update here (rename, reorder,
+ * move, color change) bumps the entity version server-side; if the chapter is
+ * open in the editor and this event isn't dispatched, the editor's cached
+ * version goes stale and its next save or visibility check surfaces a phantom
+ * "Editing conflict" dialog.
+ */
+function broadcastVersionChange(entityId: string, result: any) {
+  const version = result?._meta?.version
+  if (version == null || typeof window === 'undefined') return
+  window.dispatchEvent(
+    new CustomEvent('bobbinry:entity-version-changed', {
+      detail: { entityId, version },
+    })
+  )
+}
+
+/**
  * Navigation Panel for Manuscript bobbin
  * Displays hierarchical tree of containers and content with drag/drop reorder
  */
@@ -837,11 +855,12 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
         const collection = draggedNode.nodeType === 'container' ? 'containers' : 'content'
         const field = draggedNode.nodeType === 'container' ? 'parent_id' : 'container_id'
 
-        await sdk.entities.update(collection, draggedNode.id, {
+        const moveResult = await sdk.entities.update(collection, draggedNode.id, {
           [field]: targetId,
           order: Date.now(), // place at end
           updated_at: new Date().toISOString()
         })
+        broadcastVersionChange(draggedNode.id, moveResult)
 
         await loadTree()
         setExpandedNodes(prev => new Set(prev).add(targetId))
@@ -898,14 +917,14 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
             [field]: targetParentId,
             order: (i + 1) * 100,
             updated_at: new Date().toISOString()
-          })
+          }).then(result => broadcastVersionChange(draggedId, result))
         )
       } else {
         updates.push(
           sdk.entities.update(collection, nodeId, {
             order: (i + 1) * 100,
             updated_at: new Date().toISOString()
-          })
+          }).then(result => broadcastVersionChange(nodeId, result))
         )
       }
     }
@@ -941,11 +960,15 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     // Move any item to root level
     const collection = draggedNode.nodeType === 'container' ? 'containers' : 'content'
     const field = draggedNode.nodeType === 'container' ? 'parent_id' : 'container_id'
-    sdk.entities.update(collection, draggedNode.id, {
+    const draggedId = draggedNode.id
+    sdk.entities.update(collection, draggedId, {
       [field]: null,
       order: Date.now(),
       updated_at: new Date().toISOString()
-    }).then(() => loadTree()).catch(error => {
+    }).then(result => {
+      broadcastVersionChange(draggedId, result)
+      return loadTree()
+    }).catch(error => {
       console.error('Failed to move to root:', error)
     })
 
@@ -984,7 +1007,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     try {
       const updated = await sdk.entities.update('content', nodeId, patch, node.version)
       const nextVersion =
-        typeof (updated as any)?.version === 'number' ? (updated as any).version : (node.version ?? 0) + 1
+        typeof (updated as any)?._meta?.version === 'number' ? (updated as any)._meta.version : (node.version ?? 0) + 1
       setTree(prev => {
         const apply = (nodes: TreeNode[]): TreeNode[] =>
           nodes.map(n => {
@@ -1006,6 +1029,11 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
         window.dispatchEvent(
           new CustomEvent('bobbinry:chapter-color-changed', {
             detail: { entityId: nodeId, patch },
+          }),
+        )
+        window.dispatchEvent(
+          new CustomEvent('bobbinry:entity-version-changed', {
+            detail: { entityId: nodeId, version: nextVersion },
           }),
         )
       }

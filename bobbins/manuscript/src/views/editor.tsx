@@ -120,6 +120,31 @@ function loadDraft(entityId: string): DraftEntry | null {
   }
 }
 
+// --- Version-conflict debug trail ---
+// The "Editing conflict" dialog is hard to reproduce, so every version-related
+// decision is logged to the console AND to a localStorage ring buffer. When the
+// dialog appears unexpectedly, the trail can be inspected after the fact with:
+//   JSON.parse(localStorage.getItem('bobbinry:version-debug'))
+const VERSION_DEBUG_KEY = 'bobbinry:version-debug'
+const VERSION_DEBUG_MAX = 100
+
+function versionDebug(
+  site: string,
+  data: Record<string, unknown>,
+  level: 'debug' | 'info' | 'warn' = 'info'
+) {
+  console[level]('[manuscript:version]', site, data)
+  try {
+    const raw = localStorage.getItem(VERSION_DEBUG_KEY)
+    const trail: unknown[] = raw ? JSON.parse(raw) : []
+    trail.push({ t: new Date().toISOString(), site, ...data })
+    if (trail.length > VERSION_DEBUG_MAX) trail.splice(0, trail.length - VERSION_DEBUG_MAX)
+    localStorage.setItem(VERSION_DEBUG_KEY, JSON.stringify(trail))
+  } catch {
+    // localStorage full or unavailable — console output still happened
+  }
+}
+
 // --- Save state ---
 type SaveStatus = 'clean' | 'dirty' | 'saving' | 'saved' | 'error' | 'offline' | 'conflict'
 
@@ -692,6 +717,11 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
       const detail = (e as CustomEvent<{ entityId: string; version: number }>).detail
       if (!detail || detail.entityId !== activeEntityRef.current) return
 
+      versionDebug('version-event', {
+        eid: detail.entityId,
+        newVersion: detail.version,
+        prevVersionRef: versionRef.current,
+      }, 'debug')
       versionRef.current = detail.version
 
       // Also update the draft's stored version so it stays in sync
@@ -729,7 +759,10 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
         // Bail if user navigated elsewhere while the request was in flight
         if (activeEntityRef.current !== eid) return
         // Bail if a save started (or finished) while the HEAD was in flight
-        if (savingRef.current) return
+        if (savingRef.current) {
+          versionDebug('visibility-check', { eid, branch: 'skip: save in flight' }, 'debug')
+          return
+        }
 
         // Re-read the draft — a debounced save may have completed during
         // the async getVersion round-trip, updating version/savedToServer.
@@ -737,17 +770,30 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
         if (!draft) return
 
         const serverVersion = versionInfo.version
+        const ctx = {
+          eid,
+          serverVersion,
+          draftVersion: draft.version,
+          savedToServer: draft.savedToServer,
+          versionRef: versionRef.current,
+          draftAgeMs: Date.now() - draft.timestamp,
+          savePending: pendingFieldsRef.current !== null,
+        }
         if (draft.version !== null && serverVersion === draft.version) {
           // Versions match — nothing to do
+          versionDebug('visibility-check', { ...ctx, branch: 'match' }, 'debug')
           return
         }
 
         if (!draft.savedToServer) {
           // Local unsaved edits AND server changed — conflict
+          versionDebug('visibility-check', { ...ctx, branch: 'CONFLICT: unsaved local edits + server version differs' }, 'warn')
           setSaveStatus('conflict')
           setConflictInfo({ serverVersion, localVersion: draft.version })
           return
         }
+
+        versionDebug('visibility-check', { ...ctx, branch: 'server newer, draft clean — reconciling' })
 
         // Draft was saved, server is newer — fetch and apply fresh content
         sdk.entities.get('content', eid).then((result: any) => {
@@ -1448,23 +1494,48 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
         if (isStale() || !versionInfo) return
         const serverVersion = versionInfo.version
 
-        if (draft.version !== null && serverVersion === draft.version) {
-          // Versions match — cache is fresh
-          if (draft.savedToServer) {
-            // Nothing to do, we're in sync
-            return
-          }
-          // Local unsaved edits, but server hasn't changed — safe to save normally
+        // Don't judge against a mid-flight save — its completion re-stamps
+        // the draft and the next check will see consistent state.
+        if (savingRef.current) {
+          versionDebug('load-check', { eid: targetEntityId, branch: 'skip: save in flight' }, 'debug')
+          return
+        }
+
+        // Re-read the draft: the scheduleSave above (or a keystroke save) may
+        // have completed during the HEAD round-trip, bumping the server version
+        // and re-stamping the draft. Judging against the stale pre-request
+        // snapshot produced phantom conflict dialogs — same race the
+        // visibility-change handler guards against.
+        const fresh = loadDraft(targetEntityId) ?? draft
+
+        const ctx = {
+          eid: targetEntityId,
+          serverVersion,
+          draftVersion: fresh.version,
+          savedToServer: fresh.savedToServer,
+          versionRef: versionRef.current,
+          draftAgeMs: Date.now() - fresh.timestamp,
+          savePending: pendingFieldsRef.current !== null,
+        }
+
+        if (fresh.version !== null && serverVersion === fresh.version) {
+          // Versions match — cache is fresh. If there are local unsaved
+          // edits the server hasn't changed underneath them, so the normal
+          // save path is safe. Either way, nothing to do here.
+          versionDebug('load-check', { ...ctx, branch: 'match' }, 'debug')
           return
         }
 
         // Versions differ
-        if (!draft.savedToServer) {
+        if (!fresh.savedToServer) {
           // CONFLICT: local unsaved edits AND server changed
+          versionDebug('load-check', { ...ctx, branch: 'CONFLICT: unsaved local edits + server version differs' }, 'warn')
           setSaveStatus('conflict')
-          setConflictInfo({ serverVersion, localVersion: draft.version })
+          setConflictInfo({ serverVersion, localVersion: fresh.version })
           return
         }
+
+        versionDebug('load-check', { ...ctx, branch: 'server newer, draft clean — reconciling' })
 
         // Draft was saved — server is newer, fetch full content to update
         sdk.entities.get('content', targetEntityId).then((result: any) => {
@@ -1476,15 +1547,15 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
           const newVersion = serverContent?._meta?.version ?? serverVersion
           if (isContentType(serverContent?.contentType)) setContentType(serverContent.contentType)
 
-          applyContent(serverBody, serverTitle || draft.title, serverWordCount)
+          applyContent(serverBody, serverTitle || fresh.title, serverWordCount)
           versionRef.current = newVersion
           saveDraft(targetEntityId, {
             html: serverBody,
-            title: serverTitle || draft.title,
+            title: serverTitle || fresh.title,
             wordCount: serverWordCount,
             savedToServer: true,
             version: newVersion,
-            containerId: serverContent?.container_id ?? draft.containerId,
+            containerId: serverContent?.container_id ?? fresh.containerId,
           })
         }).catch(() => {})
       }).catch(() => {
@@ -1636,21 +1707,27 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
       return
     }
 
+    const expectedVersion = opts?.skipVersionCheck ? undefined : (versionRef.current ?? undefined)
+
+    const data: Record<string, any> = {}
+    if (html !== undefined) data.body = html
+    if (count !== undefined) data.word_count = count
+    if (opts?.title !== undefined) data.title = opts.title
+
     try {
       savingRef.current = true
       setSaveStatus('saving')
-
-      const expectedVersion = opts?.skipVersionCheck ? undefined : (versionRef.current ?? undefined)
-
-      const data: Record<string, any> = {}
-      if (html !== undefined) data.body = html
-      if (count !== undefined) data.word_count = count
-      if (opts?.title !== undefined) data.title = opts.title
 
       const result = await sdk.entities.update('content', targetEntityId,
         data, expectedVersion) as any
 
       const newVersion = result?._meta?.version ?? null
+      versionDebug('save-ok', {
+        eid: targetEntityId,
+        expectedVersion: expectedVersion ?? null,
+        newVersion,
+        fields: Object.keys(data),
+      }, 'debug')
       // Persist draft as saved. When the save was title-only, reuse the
       // existing draft's html/wordCount so we don't wipe the cached body.
       const existingDraft = loadDraft(targetEntityId)
@@ -1692,7 +1769,15 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
       }
 
       if (error instanceof ConflictError) {
-        console.warn('[EditorView] Save conflict detected:', error.currentVersion, 'vs expected', error.expectedVersion)
+        versionDebug('save-conflict', {
+          eid: targetEntityId,
+          branch: 'CONFLICT: server rejected save (409)',
+          expectedVersion: error.expectedVersion,
+          serverVersion: error.currentVersion,
+          versionRef: versionRef.current,
+          draftVersion: loadDraft(targetEntityId)?.version ?? null,
+          fields: Object.keys(data),
+        }, 'warn')
         markDirty()
         // Only show conflict UI if this entity is still active
         if (activeEntityRef.current === targetEntityId) {

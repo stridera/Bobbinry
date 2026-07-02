@@ -211,7 +211,11 @@ export function build(opts = {}): FastifyInstance {
       : [env.WEB_ORIGIN],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Correlation-ID']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Correlation-ID'],
+    // Optimistic-locking version headers from the HEAD /entities/:id route.
+    // Without this the browser hides them from cross-origin JS and the SDK's
+    // getVersion() can't read the real version.
+    exposedHeaders: ['X-Entity-Version', 'X-Entity-Updated-At']
   })
 
   // Health check endpoint with database connectivity
