@@ -863,7 +863,7 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
       setWordCount(count)
       // Broadcast word count for shell.editorFooter session stats
       window.dispatchEvent(new CustomEvent('bobbinry:view-context-change', {
-        detail: { wordCount: count }
+        detail: { wordCount: count, entityId: activeEntityRef.current }
       }))
       // Broadcast text content for bobbins that need to detect typed words
       window.dispatchEvent(new CustomEvent('bobbinry:editor-content-update', {
