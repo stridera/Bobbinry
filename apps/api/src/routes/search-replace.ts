@@ -6,6 +6,7 @@ import { entities } from '../db/schema'
 import { requireAuth, requireProjectOwnership, assertEntityScope } from '../middleware/auth'
 import { getCollectionIdsForProject, buildScopeCondition } from '../lib/effective-bobbins'
 import { serverEventBus, contentEdited } from '../lib/event-bus'
+import { diffEntityData, extractTitle, recordEntityChanges, type EntityChangeEvent } from '../lib/entity-changes'
 import {
   findInEntity,
   replaceInEntity,
@@ -123,8 +124,8 @@ const searchReplacePlugin: FastifyPluginAsync = async (fastify) => {
         const found = findInEntity(row.id, row.collectionName, data, opts)
         if (found.length === 0) continue
         entityVersions[row.id] = row.version
-        const title = data.title ?? data.name
-        if (typeof title === 'string' && title) entityTitles[row.id] = title
+        const title = extractTitle(data)
+        if (title) entityTitles[row.id] = title
         for (const m of found) {
           if (matches.length >= MAX_MATCHES_PER_PROJECT) {
             truncated = true
@@ -227,6 +228,7 @@ const searchReplacePlugin: FastifyPluginAsync = async (fastify) => {
       const appliedMatchIds: string[] = []
 
       await db.transaction(async (tx) => {
+        const changeEvents: EntityChangeEvent[] = []
         for (const entityId of entityIds) {
           const row = rowsById.get(entityId)
           if (!row) {
@@ -289,8 +291,24 @@ const searchReplacePlugin: FastifyPluginAsync = async (fastify) => {
               appliedMatchIds.push(`${entityId}:${field}:${idx}`)
             }
           }
+
+          const diff = diffEntityData(data, nextData)
+          changeEvents.push({
+            projectId,
+            entityId,
+            collection: row.collectionName,
+            contentType: row.contentType,
+            title: extractTitle(nextData),
+            action: 'updated',
+            fieldsChanged: diff.fieldsChanged.length > 0 ? diff.fieldsChanged : touchedFields,
+            wordCountBefore: diff.wordCountBefore,
+            wordCountAfter: diff.wordCountAfter,
+            actor: userId,
+          })
+
           serverEventBus.fire(contentEdited(projectId, entityId, userId, row.collectionName))
         }
+        await recordEntityChanges(tx, changeEvents)
       })
 
       return {

@@ -79,6 +79,7 @@ const ALL_TABLES = [
   'email_verification_tokens',
   'password_reset_tokens',
   'provenance_events',
+  'entity_changes',
   'uploads',
   'entities',
   'publish_targets',

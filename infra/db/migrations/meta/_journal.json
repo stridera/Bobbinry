@@ -253,6 +253,13 @@
       "when": 1782509030704,
       "tag": "0036_use_manuscript_order",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1783235864432,
+      "tag": "0037_add_entity_changes",
+      "breakpoints": true
     }
   ]
 }

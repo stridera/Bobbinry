@@ -25,7 +25,7 @@ import {
   findBobbinForCollectionAcrossScopes,
 } from '../lib/disk-manifests'
 import { getEffectiveBobbins } from '../lib/effective-bobbins'
-import { getMaxContentOrder } from './entities'
+import { getMaxContentOrder, resolveContentTypeColumn } from './entities'
 import {
   formatFromMime,
   parseBuffer,
@@ -35,6 +35,7 @@ import {
 } from '../lib/import-parsers'
 import { ZipBombError } from '../lib/import-parsers/zip-safe'
 import { sanitizeImportedHtml } from '../lib/sanitize-html'
+import { diffEntityData, extractWordCount, recordEntityChanges, type EntityChangeEvent } from '../lib/entity-changes'
 import {
   serverEventBus,
   importParseCompleted,
@@ -361,6 +362,7 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
 
       const created = await db.transaction(async (tx) => {
         const insertedIds: Array<{ id: string; title: string; order: number }> = []
+        const changeEvents: EntityChangeEvent[] = []
 
         for (let i = 0; i < segments.length; i++) {
           const seg = segments[i]!
@@ -392,6 +394,7 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
             collectionName: 'content',
             entityData: data,
             scope: match.scope,
+            contentType: resolveContentTypeColumn('content', data),
           }
 
           if (match.scope === 'project') {
@@ -410,7 +413,21 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
           const row = result[0]
           if (!row) throw new Error('Insert returned no row')
           insertedIds.push({ id: row.id, title: seg.title, order })
+
+          changeEvents.push({
+            projectId,
+            entityId: row.id,
+            collection: 'content',
+            contentType: insertValues.contentType,
+            title: seg.title,
+            action: 'created',
+            fieldsChanged: diffEntityData(null, data).fieldsChanged,
+            wordCountAfter: extractWordCount(data),
+            actor: user.id,
+          })
         }
+
+        await recordEntityChanges(tx, changeEvents)
 
         return insertedIds
       })

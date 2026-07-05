@@ -19,6 +19,7 @@ import { entities, subscriptionTiers, projects } from '../db/schema'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { requireAuth, requireProjectOwnership, assertEntityScope } from '../middleware/auth'
 import { getCollectionIdsForProject, buildScopeCondition } from '../lib/effective-bobbins'
+import { extractTitle, recordEntityChanges, recordEntityChangesSafe, type EntityChangeEvent } from '../lib/entity-changes'
 
 const TYPE_DEF_COLLECTION = 'entity_type_definitions'
 
@@ -120,10 +121,13 @@ const entityPublishPlugin: FastifyPluginAsync = async (fastify) => {
           id: entities.id,
           isPublished: entities.isPublished,
           publishedAt: entities.publishedAt,
+          publishOrder: entities.publishOrder,
+          minimumTierLevel: entities.minimumTierLevel,
           publishBase: entities.publishBase,
           publishedVariantIds: entities.publishedVariantIds,
           variantAccessLevels: entities.variantAccessLevels,
           entityData: entities.entityData,
+          contentType: entities.contentType,
         })
         .from(entities)
         .where(and(
@@ -211,6 +215,31 @@ const entityPublishPlugin: FastifyPluginAsync = async (fastify) => {
           publishedVariantIds: entities.publishedVariantIds,
           variantAccessLevels: entities.variantAccessLevels,
         })
+
+      // Feed only the fields that actually changed vs the pre-update row; a
+      // no-op PATCH (e.g. a settings panel re-sending the full publish state)
+      // records nothing.
+      const publishFieldsChanged: string[] = []
+      if (body.isPublished !== undefined && body.isPublished !== current.isPublished) publishFieldsChanged.push('is_published')
+      if (body.publishOrder !== undefined && body.publishOrder !== current.publishOrder) publishFieldsChanged.push('publish_order')
+      if (body.minimumTierLevel !== undefined && body.minimumTierLevel !== current.minimumTierLevel) publishFieldsChanged.push('minimum_tier_level')
+      if (body.publishBase !== undefined && body.publishBase !== current.publishBase) publishFieldsChanged.push('publish_base')
+      if (body.publishedVariantIds !== undefined &&
+          JSON.stringify(body.publishedVariantIds) !== JSON.stringify(current.publishedVariantIds ?? [])) publishFieldsChanged.push('published_variant_ids')
+      if (body.variantAccessLevels !== undefined &&
+          JSON.stringify(body.variantAccessLevels) !== JSON.stringify(current.variantAccessLevels ?? {})) publishFieldsChanged.push('variant_access_levels')
+      if (publishFieldsChanged.length > 0) {
+        await recordEntityChangesSafe(db, [{
+          projectId: body.projectId,
+          entityId: current.id,
+          collection: body.collection,
+          contentType: current.contentType,
+          title: extractTitle(current.entityData as Record<string, unknown>),
+          action: 'updated',
+          fieldsChanged: publishFieldsChanged,
+          actor: userId,
+        }])
+      }
 
       return result
     } catch (error) {
@@ -320,7 +349,12 @@ const entityPublishPlugin: FastifyPluginAsync = async (fastify) => {
 
       // Verify every id belongs to this project + collection before writing
       const existing = await db
-        .select({ id: entities.id })
+        .select({
+          id: entities.id,
+          publishOrder: entities.publishOrder,
+          contentType: entities.contentType,
+          title: sql<string | null>`COALESCE(${entities.entityData}->>'title', ${entities.entityData}->>'name')`,
+        })
         .from(entities)
         .where(and(
           scopeFilter,
@@ -337,13 +371,31 @@ const entityPublishPlugin: FastifyPluginAsync = async (fastify) => {
         })
       }
 
+      const existingById = new Map(existing.map(r => [r.id, r]))
+
       await db.transaction(async (tx) => {
+        const events: EntityChangeEvent[] = []
         for (let i = 0; i < body.orderedIds.length; i++) {
           await tx
             .update(entities)
             .set({ publishOrder: i, updatedAt: new Date() })
             .where(eq(entities.id, body.orderedIds[i]!))
+
+          const prior = existingById.get(body.orderedIds[i]!)
+          if (prior && prior.publishOrder !== i) {
+            events.push({
+              projectId,
+              entityId: prior.id,
+              collection: body.collection,
+              contentType: prior.contentType,
+              title: prior.title,
+              action: 'updated',
+              fieldsChanged: ['publish_order'],
+              actor: userId,
+            })
+          }
         }
+        await recordEntityChanges(tx, events)
       })
 
       return { success: true, reordered: body.orderedIds.length }

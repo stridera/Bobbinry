@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, jsonb, boolean, varchar, integer, bigint, decimal, index, uniqueIndex, primaryKey } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, text, timestamp, jsonb, boolean, varchar, integer, bigint, bigserial, decimal, index, uniqueIndex, primaryKey } from 'drizzle-orm/pg-core'
 import { relations, sql } from 'drizzle-orm'
 
 // Users table - authentication and user management
@@ -871,6 +871,27 @@ export const provenanceEvents = pgTable('provenance_events', {
   actorCreatedIdx: index('provenance_events_actor_created_idx').on(table.actor, table.createdAt),
 }))
 
+// Entity changes - append-only change feed written at entity write time.
+// Consumed via GET /api/projects/:projectId/changes with a `seq` cursor.
+// entity_id has no FK so events survive entity deletion.
+export const entityChanges = pgTable('entity_changes', {
+  seq: bigserial('seq', { mode: 'number' }).primaryKey(),
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  entityId: uuid('entity_id').notNull(),
+  collection: varchar('collection', { length: 255 }).notNull(),
+  contentType: varchar('content_type', { length: 32 }), // snapshot at event time
+  title: text('title'), // snapshot (after) so the feed is self-contained
+  action: varchar('action', { length: 20 }).notNull(), // created | updated | deleted
+  fieldsChanged: text('fields_changed').array().notNull().default(sql`'{}'::text[]`),
+  wordCountBefore: integer('word_count_before'), // null for non-content entities
+  wordCountAfter: integer('word_count_after'),
+  actor: varchar('actor', { length: 255 }),
+  occurredAt: timestamp('occurred_at').defaultNow().notNull()
+}, (table) => ({
+  projectSeqIdx: index('entity_changes_project_seq_idx').on(table.projectId, table.seq),
+  projectEntitySeqIdx: index('entity_changes_project_entity_seq_idx').on(table.projectId, table.entityId, table.seq),
+}))
+
 // Relations
 export const usersRelations = relations(users, ({ many, one }) => ({
   projects: many(projects),
@@ -894,6 +915,7 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   entities: many(entities),
   publishTargets: many(publishTargets),
   provenanceEvents: many(provenanceEvents),
+  entityChanges: many(entityChanges),
   collectionMemberships: many(projectCollectionMemberships),
   projectFollows: many(projectFollows)
 }))
@@ -949,6 +971,13 @@ export const entitiesRelations = relations(entities, ({ one }) => ({
 export const provenanceEventsRelations = relations(provenanceEvents, ({ one }) => ({
   project: one(projects, {
     fields: [provenanceEvents.projectId],
+    references: [projects.id]
+  })
+}))
+
+export const entityChangesRelations = relations(entityChanges, ({ one }) => ({
+  project: one(projects, {
+    fields: [entityChanges.projectId],
     references: [projects.id]
   })
 }))

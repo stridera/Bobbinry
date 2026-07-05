@@ -6,12 +6,21 @@ import { eq, and, sql, or, inArray, isNull } from 'drizzle-orm'
 import { CONTENT_TYPES, isContentType, type ContentType } from '@bobbinry/types'
 import { requireAuth, requireProjectOwnership, assertEntityScope } from '../middleware/auth'
 import { serverEventBus, contentEdited } from '../lib/event-bus'
+import {
+  changeEventFromRow,
+  diffEntityData,
+  extractWordCount,
+  hasChanges,
+  recordEntityChanges,
+  recordEntityChangesSafe,
+  type EntityChangeEvent,
+} from '../lib/entity-changes'
 import { findBobbinForCollectionAcrossScopes } from '../lib/disk-manifests'
 import { getEffectiveBobbins, getCollectionIdsForProject, buildScopeCondition } from '../lib/effective-bobbins'
 import { ApiError, ValidationError, NotFoundError } from '../lib/errors'
 
 /** Strip HTML tags and count words in plain text. */
-function countWordsFromHtml(html: string): number {
+export function countWordsFromHtml(html: string): number {
   const text = html.replace(/<[^>]*>/g, ' ').replace(/&[a-z]+;/gi, ' ')
   const words = text.split(/\s+/).filter(w => w.length > 0)
   return words.length
@@ -48,7 +57,7 @@ export async function getMaxContentOrder(
  * Pulls from `data.content_type` if the caller supplied it; otherwise defaults
  * to 'chapter'. Returns null for non-content collections (the column is only
  * meaningful for manuscript content). */
-function resolveContentTypeColumn(collection: string, data: Record<string, any>): ContentType | null {
+export function resolveContentTypeColumn(collection: string, data: Record<string, any>): ContentType | null {
   if (collection !== 'content') return null
   const raw = data['content_type'] ?? data['contentType']
   return isContentType(raw) ? raw : 'chapter'
@@ -430,6 +439,11 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(500).send({ error: 'Failed to create entity - no result returned' })
       }
 
+      await recordEntityChangesSafe(db, [changeEventFromRow('created', { projectId, actor: userId }, created, {
+        fieldsChanged: diffEntityData(null, data).fieldsChanged,
+        wordCountAfter: extractWordCount(data),
+      })])
+
       return formatEntityResponse(created)
 
     } catch (error) {
@@ -571,6 +585,22 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
 
       const updated = result[0]!
 
+      // Record in the change feed — but only when something actually changed.
+      // A no-op re-save (identical data) produces no event, so feed consumers
+      // never mistake an autosave for writing. Not awaited: the feed write
+      // stays off the editor's autosave critical path.
+      const diff = diffEntityData(
+        currentEntity.entityData as Record<string, unknown>,
+        mergedData as Record<string, unknown>
+      )
+      if (hasChanges(diff)) {
+        await recordEntityChangesSafe(db, [changeEventFromRow('updated', { projectId, actor: userId }, updated, {
+          fieldsChanged: diff.fieldsChanged,
+          wordCountBefore: diff.wordCountBefore,
+          wordCountAfter: diff.wordCountAfter,
+        })])
+      }
+
       // Emit content:edited event for backup bobbins and other listeners
       serverEventBus.fire(contentEdited(projectId, entityId, request.user!.id, collection))
 
@@ -598,8 +628,10 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // Recursive helper function to delete container and all its children
-  async function deleteContainerCascade(projectId: string, containerId: string, tx: any) {
+  // Recursive helper function to delete container and all its children.
+  // Collects a `deleted` change-feed event for every removed row into
+  // `events` — the top-level caller records them once (atomic, same tx).
+  async function deleteContainerCascade(projectId: string, containerId: string, tx: any, actor: string | undefined, events: EntityChangeEvent[]) {
     // Find all child containers - check both camelCase and snake_case field names
     const childContainers = await tx
       .select()
@@ -615,11 +647,11 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
 
     // Recursively delete child containers
     for (const child of childContainers) {
-      await deleteContainerCascade(projectId, child.id, tx)
+      await deleteContainerCascade(projectId, child.id, tx, actor, events)
     }
 
     // Delete all content in this container - check both camelCase and snake_case
-    await tx
+    const deletedContent = await tx
       .delete(entities)
       .where(and(
         eq(entities.projectId, projectId),
@@ -629,15 +661,24 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
           sql`${entities.entityData}->>'containerId' = ${containerId}`
         )
       ))
+      .returning({ id: entities.id, contentType: entities.contentType, entityData: entities.entityData })
 
     // Delete the container itself
-    await tx
+    const deletedContainer = await tx
       .delete(entities)
       .where(and(
         eq(entities.id, containerId),
         eq(entities.projectId, projectId),
         eq(entities.collectionName, 'containers')
       ))
+      .returning({ id: entities.id, entityData: entities.entityData })
+
+    for (const row of deletedContent) {
+      events.push(changeEventFromRow('deleted', { projectId, actor }, { ...row, collectionName: 'content' }))
+    }
+    for (const row of deletedContainer) {
+      events.push(changeEventFromRow('deleted', { projectId, actor }, { ...row, collectionName: 'containers' }))
+    }
   }
 
   // Delete entity (requires project ownership)
@@ -673,7 +714,9 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       // (containers are always project-scoped — manuscript is project-only)
       if (collection === 'containers') {
         await db.transaction(async (tx) => {
-          await deleteContainerCascade(projectId, entityId, tx)
+          const events: EntityChangeEvent[] = []
+          await deleteContainerCascade(projectId, entityId, tx, userId, events)
+          await recordEntityChanges(tx, events)
         })
 
         return { success: true, id: entityId }
@@ -687,11 +730,15 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
           scopeFilter,
           eq(entities.collectionName, collection)
         ))
-        .returning({ id: entities.id })
+        .returning({ id: entities.id, contentType: entities.contentType, entityData: entities.entityData })
 
       if (result.length === 0) {
         return reply.status(404).send({ error: 'Entity not found' })
       }
+
+      await recordEntityChangesSafe(db, [
+        changeEventFromRow('deleted', { projectId, actor: userId }, { ...result[0]!, collectionName: collection }),
+      ])
 
       return { success: true, id: entityId }
 
@@ -794,6 +841,11 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
           inserted.push(result[0])
         }
 
+        await recordEntityChanges(tx, inserted.map(row => changeEventFromRow('created', { projectId, actor: userId }, row, {
+          fieldsChanged: diffEntityData(null, row.entityData as Record<string, unknown>).fieldsChanged,
+          wordCountAfter: extractWordCount(row.entityData as Record<string, unknown>),
+        })))
+
         return inserted
       })
 
@@ -861,6 +913,23 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       // Start a transaction
       const results = await db.transaction(async (tx) => {
         const opResults = []
+        const changeEvents: EntityChangeEvent[] = []
+
+        // Prefetch the old entityData of every update target in one query so
+        // the feed can report field-level deltas without a per-op SELECT.
+        const updateIds = operations
+          .filter(op => op.type === 'update' && op.id)
+          .map(op => op.id!)
+        const oldDataById = new Map<string, Record<string, unknown>>()
+        if (updateIds.length > 0) {
+          const oldRows = await tx
+            .select({ id: entities.id, entityData: entities.entityData })
+            .from(entities)
+            .where(and(scopeFilter, inArray(entities.id, updateIds)))
+          for (const row of oldRows) {
+            oldDataById.set(row.id, row.entityData as Record<string, unknown>)
+          }
+        }
 
         for (const operation of operations) {
           const { type, collection, id, data } = operation
@@ -909,6 +978,11 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
                   .values(insertValues as any)
                   .returning()
 
+                changeEvents.push(changeEventFromRow('created', { projectId, actor: userId }, created[0]!, {
+                  fieldsChanged: diffEntityData(null, data).fieldsChanged,
+                  wordCountAfter: extractWordCount(data),
+                }))
+
                 result = {
                   id: created[0]!.id,
                   ...(created[0]!.entityData as object)
@@ -937,6 +1011,17 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
                   throw new NotFoundError('Entity', id)
                 }
 
+                {
+                  const diff = diffEntityData(oldDataById.get(id) ?? null, data)
+                  if (hasChanges(diff)) {
+                    changeEvents.push(changeEventFromRow('updated', { projectId, actor: userId }, updated[0]!, {
+                      fieldsChanged: diff.fieldsChanged,
+                      wordCountBefore: diff.wordCountBefore,
+                      wordCountAfter: diff.wordCountAfter,
+                    }))
+                  }
+                }
+
                 result = {
                   id: updated[0]!.id,
                   ...(updated[0]!.entityData as object)
@@ -950,7 +1035,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
 
                 // Use cascade delete for containers (always project-scoped)
                 if (collection === 'containers') {
-                  await deleteContainerCascade(projectId, id, tx)
+                  await deleteContainerCascade(projectId, id, tx, userId, changeEvents)
                   result = { deleted: true, id }
                 } else {
                   const deleted = await tx
@@ -960,11 +1045,13 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
                       scopeFilter,
                       eq(entities.collectionName, collection)
                     ))
-                    .returning({ id: entities.id })
+                    .returning({ id: entities.id, contentType: entities.contentType, entityData: entities.entityData })
 
                   if (deleted.length === 0) {
                     throw new NotFoundError('Entity', id)
                   }
+
+                  changeEvents.push(changeEventFromRow('deleted', { projectId, actor: userId }, { ...deleted[0]!, collectionName: collection }))
 
                   result = { deleted: true, id }
                 }
@@ -980,6 +1067,8 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
             throw err
           }
         }
+
+        await recordEntityChanges(tx, changeEvents)
 
         return opResults
       })
@@ -1154,7 +1243,11 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
             inArray(entities.id, ids),
             isNull(entities.archivedAt),
           ))
-          .returning({ id: entities.id })
+          .returning({ id: entities.id, collectionName: entities.collectionName, contentType: entities.contentType, entityData: entities.entityData })
+
+        await recordEntityChangesSafe(db, updated.map(row =>
+          changeEventFromRow('updated', { projectId, actor: request.user!.id }, row, { fieldsChanged: ['archived'] })
+        ))
 
         return { archived: updated.length, ids: updated.map(r => r.id) }
       } catch (error) {
@@ -1188,7 +1281,11 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
             eq(entities.projectId, projectId),
             inArray(entities.id, ids),
           ))
-          .returning({ id: entities.id })
+          .returning({ id: entities.id, collectionName: entities.collectionName, contentType: entities.contentType, entityData: entities.entityData })
+
+        await recordEntityChangesSafe(db, updated.map(row =>
+          changeEventFromRow('updated', { projectId, actor: request.user!.id }, row, { fieldsChanged: ['archived'] })
+        ))
 
         return { restored: updated.length, ids: updated.map(r => r.id) }
       } catch (error) {
@@ -1226,19 +1323,25 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
             ))
 
           const removed: string[] = []
+          const events: EntityChangeEvent[] = []
           for (const row of rows) {
             if (row.collectionName === 'containers') {
-              await deleteContainerCascade(projectId, row.id, tx)
+              await deleteContainerCascade(projectId, row.id, tx, request.user!.id, events)
             } else {
-              await tx
+              const deletedRows = await tx
                 .delete(entities)
                 .where(and(
                   eq(entities.id, row.id),
                   eq(entities.projectId, projectId),
                 ))
+                .returning({ id: entities.id, contentType: entities.contentType, entityData: entities.entityData })
+              if (deletedRows[0]) {
+                events.push(changeEventFromRow('deleted', { projectId, actor: request.user!.id }, { ...deletedRows[0], collectionName: row.collectionName }))
+              }
             }
             removed.push(row.id)
           }
+          await recordEntityChanges(tx, events)
           return removed
         })
 
@@ -1294,7 +1397,12 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       }
 
       const matched = await db
-        .select({ id: entities.id })
+        .select({
+          id: entities.id,
+          contentType: entities.contentType,
+          currentOrder: sql<string | null>`${entities.entityData}->>'order'`,
+          title: sql<string | null>`COALESCE(${entities.entityData}->>'title', ${entities.entityData}->>'name')`,
+        })
         .from(entities)
         .where(and(...matchConds))
 
@@ -1306,8 +1414,11 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
         })
       }
 
+      const matchedById = new Map(matched.map(m => [m.id, m]))
+
       const reordered = await db.transaction(async (tx) => {
         let count = 0
+        const events: EntityChangeEvent[] = []
         for (let idx = 0; idx < orderedIds.length; idx++) {
           const id = orderedIds[idx]!
           const result = await tx
@@ -1319,7 +1430,26 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
             .where(and(eq(entities.id, id), eq(entities.projectId, projectId)))
             .returning({ id: entities.id })
           if (result.length > 0) count++
+
+          // Only feed entities whose order actually moved — a drag rewrites
+          // every index, but most rows land where they already were. A row
+          // with no order key at all is always a move (Number(null) is 0,
+          // which would otherwise silently swallow a drag to position 0).
+          const prior = matchedById.get(id)
+          if (result.length > 0 && prior && (prior.currentOrder === null || Number(prior.currentOrder) !== idx)) {
+            events.push({
+              projectId,
+              entityId: id,
+              collection,
+              contentType: prior.contentType,
+              title: prior.title,
+              action: 'updated',
+              fieldsChanged: ['order'],
+              actor: request.user!.id,
+            })
+          }
         }
+        await recordEntityChanges(tx, events)
         return count
       })
 
@@ -1368,11 +1498,15 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
           eq(entities.projectId, projectId),
           eq(entities.collectionName, 'content'),
         ))
-        .returning({ id: entities.id, contentType: entities.contentType })
+        .returning({ id: entities.id, contentType: entities.contentType, entityData: entities.entityData })
 
       if (updated.length === 0) {
         return reply.status(404).send({ error: 'Entity not found in content collection' })
       }
+
+      await recordEntityChangesSafe(db, [
+        changeEventFromRow('updated', { projectId, actor: request.user!.id }, { ...updated[0]!, collectionName: 'content' }, { fieldsChanged: ['content_type'] }),
+      ])
 
       return { id: updated[0]!.id, contentType: updated[0]!.contentType }
     } catch (error) {

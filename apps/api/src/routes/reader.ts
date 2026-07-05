@@ -38,6 +38,8 @@ import { randomUUID } from 'crypto'
 import { env } from '../lib/env'
 import { optionalAuth, requireAuth, requireProjectOwnership } from '../middleware/auth'
 import { hashRssToken } from './rss-tokens'
+import { countWordsFromHtml } from './entities'
+import { changeEventFromRow, extractWordCount, recordEntityChangesSafe } from '../lib/entity-changes'
 import {
   getEffectiveBobbins,
   getCollectionIdsForProject,
@@ -3019,7 +3021,13 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       const body = request.body as { editorWillApply?: boolean } | undefined
       if (!body?.editorWillApply) {
         const [chapter] = await db
-          .select({ id: entities.id, entityData: entities.entityData, version: entities.version })
+          .select({
+            id: entities.id,
+            entityData: entities.entityData,
+            version: entities.version,
+            collectionName: entities.collectionName,
+            contentType: entities.contentType,
+          })
           .from(entities)
           .where(eq(entities.id, annotation.chapterId))
           .limit(1)
@@ -3029,14 +3037,23 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           const chapterBody = data?.body as string | undefined
           if (chapterBody?.includes(annotation.anchorQuote)) {
             const updatedBody = chapterBody.replace(annotation.anchorQuote, annotation.suggestedText)
+            const newWordCount = countWordsFromHtml(updatedBody)
             await db
               .update(entities)
               .set({
-                entityData: { ...data, body: updatedBody },
+                entityData: { ...data, body: updatedBody, word_count: newWordCount },
                 version: (chapter.version ?? 0) + 1,
                 lastEditedAt: new Date()
               })
               .where(eq(entities.id, chapter.id))
+
+            await recordEntityChangesSafe(db, [
+              changeEventFromRow('updated', { projectId, actor: request.user!.id }, chapter, {
+                fieldsChanged: ['body'],
+                wordCountBefore: extractWordCount(data),
+                wordCountAfter: newWordCount,
+              }),
+            ])
           }
         }
       }

@@ -13,6 +13,7 @@ import { entities, userBobbinsInstalled, provenanceEvents } from '../db/schema'
 import { requireAuth, requireProjectOwnership } from '../middleware/auth'
 import { ApiError } from '../lib/errors'
 import { encryptSecret, decryptSecret } from '../lib/secret-storage'
+import { extractTitle, recordEntityChangesSafe } from '../lib/entity-changes'
 
 // --- AI Provider types and constants (inlined to stay within rootDir) ---
 
@@ -544,6 +545,17 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
         },
       })
 
+      await recordEntityChangesSafe(db, [{
+        projectId,
+        entityId,
+        collection: entity.collectionName,
+        contentType: entity.contentType,
+        title: extractTitle(currentData),
+        action: 'updated',
+        fieldsChanged: ['synopsis'],
+        actor: userId,
+      }])
+
       return reply.send({ success: true })
     }
   )
@@ -639,6 +651,17 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
               bobbinId: 'ai-tools',
             },
           })
+
+          await recordEntityChangesSafe(db, [{
+            projectId,
+            entityId,
+            collection: freshEntity.collectionName,
+            contentType: freshEntity.contentType,
+            title: extractTitle(currentData),
+            action: 'updated',
+            fieldsChanged: ['last_review'],
+            actor: userId,
+          }])
         }
 
         return reply.send({

@@ -7,6 +7,7 @@ import { randomUUID } from 'crypto'
 import { performance } from 'perf_hooks'
 import projectsPlugin from './routes/projects'
 import entitiesPlugin from './routes/entities'
+import entityChangesPlugin from './routes/entity-changes'
 import usersPlugin from './routes/users'
 import subscriptionsPlugin from './routes/subscriptions'
 import stripePlugin from './routes/stripe'
@@ -263,6 +264,7 @@ export function build(opts = {}): FastifyInstance {
   // Register route plugins
   server.register(projectsPlugin, { prefix: '/api' })
   server.register(entitiesPlugin, { prefix: '/api' })
+  server.register(entityChangesPlugin, { prefix: '/api' })
   server.register(usersPlugin, { prefix: '/api' })
   server.register(subscriptionsPlugin, { prefix: '/api' })
   server.register(stripePlugin, { prefix: '/api' })
