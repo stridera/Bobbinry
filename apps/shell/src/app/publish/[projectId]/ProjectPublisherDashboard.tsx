@@ -9,6 +9,7 @@ import { BobbinrySDK } from '@bobbinry/sdk'
 import PublishManagerPanel from '@bobbinry/web-publisher/panels/publish-manager'
 import ReleaseConfig from '@bobbinry/web-publisher/views/release-config'
 import { ChapterReleaseTable } from './components/ChapterReleaseTable'
+import { DisplaySettingsSummary } from './components/DisplaySettingsSummary'
 
 interface User {
   id: string
@@ -368,6 +369,8 @@ export function ProjectPublisherDashboard({
                   )}
                 </div>
               </section>
+
+              <DisplaySettingsSummary projectId={projectId} apiToken={apiToken} />
             </div>
           </div>
         )}

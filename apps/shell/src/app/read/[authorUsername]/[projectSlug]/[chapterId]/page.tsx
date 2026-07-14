@@ -18,6 +18,7 @@ import { ExtensionSlot } from '@/components/ExtensionSlot'
 import { AnnotationSelectionPopover, type TextAnchor } from '@/components/AnnotationSelectionPopover'
 import { AnnotationForm } from '@/components/AnnotationForm'
 import EntityModal from '../EntityModal'
+import EntitySidebar from '../EntitySidebar'
 import type { PublishedEntity, PublishedType } from '../entities-data'
 
 interface ChapterData {
@@ -67,8 +68,9 @@ interface Annotation {
 
 type FontSize = 'small' | 'medium' | 'large' | 'xlarge'
 type ReaderTheme = 'light' | 'dark' | 'sepia'
-type ReaderWidth = 'narrow' | 'standard' | 'wide'
+type ReaderWidth = 'narrow' | 'standard' | 'wide' | 'fit'
 type EntityHighlightStyle = 'highlight' | 'underline' | 'off'
+type EntityInfoDisplay = 'sidebar' | 'popup'
 
 interface PublishedEntityName {
   id: string
@@ -88,7 +90,26 @@ const FONT_SIZES: Record<FontSize, string> = {
 const WIDTHS: Record<ReaderWidth, string> = {
   narrow: 'max-w-lg',
   standard: 'max-w-2xl',
-  wide: 'max-w-4xl'
+  wide: 'max-w-4xl',
+  fit: 'max-w-none'
+}
+
+/**
+ * Tracks the lg breakpoint so we can pick between the docked entity sidebar
+ * and the modal (which has side effects like body scroll lock — CSS hiding
+ * alone isn't enough). SSR-safe: starts false, resolves on mount.
+ */
+function useIsDesktop() {
+  const [isDesktop, setIsDesktop] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)')
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration bridge
+    setIsDesktop(mq.matches)
+    const onChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  return isDesktop
 }
 
 const THEME_CLASSES: Record<ReaderTheme, string> = {
@@ -256,6 +277,9 @@ export default function ChapterReaderPage() {
   })
   const [readerWidth, setReaderWidth] = useState<ReaderWidth>('standard')
   const [entityHighlightStyle, setEntityHighlightStyle] = useState<EntityHighlightStyle>('highlight')
+  const [entityInfoDisplay, setEntityInfoDisplay] = useState<EntityInfoDisplay>('sidebar')
+  const isDesktop = useIsDesktop()
+  const showEntitySidebar = entityInfoDisplay === 'sidebar' && isDesktop
   const [showSettings, setShowSettings] = useState(false)
 
   // Published-entity names + click-to-open modal state
@@ -413,9 +437,12 @@ export default function ChapterReaderPage() {
         const prefs = JSON.parse(saved)
         /* eslint-disable react-hooks/set-state-in-effect -- hydration bridge */
         if (prefs.fontSize) setFontSize(prefs.fontSize)
-        if (prefs.readerWidth) setReaderWidth(prefs.readerWidth)
+        if (prefs.readerWidth in WIDTHS) setReaderWidth(prefs.readerWidth)
         if (prefs.entityHighlightStyle === 'highlight' || prefs.entityHighlightStyle === 'underline' || prefs.entityHighlightStyle === 'off') {
           setEntityHighlightStyle(prefs.entityHighlightStyle)
+        }
+        if (prefs.entityInfoDisplay === 'sidebar' || prefs.entityInfoDisplay === 'popup') {
+          setEntityInfoDisplay(prefs.entityInfoDisplay)
         }
         /* eslint-enable react-hooks/set-state-in-effect */
       } catch {}
@@ -1057,7 +1084,7 @@ export default function ChapterReaderPage() {
               <div>
                 <span className={`text-xs ${mutedText} block mb-1`}>Width</span>
                 <div className="flex gap-1">
-                  {(['narrow', 'standard', 'wide'] as ReaderWidth[]).map(w => (
+                  {(['narrow', 'standard', 'wide', 'fit'] as ReaderWidth[]).map(w => (
                     <button
                       key={w}
                       onClick={() => { setReaderWidth(w); savePrefs('readerWidth', w) }}
@@ -1081,6 +1108,25 @@ export default function ChapterReaderPage() {
                         key={opt.id}
                         onClick={() => { setEntityHighlightStyle(opt.id); savePrefs('entityHighlightStyle', opt.id) }}
                         className={`px-2 py-1 rounded text-xs ${entityHighlightStyle === opt.id ? activeBg : hoverBg}`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {publishedEntityNames.length > 0 && (
+                <div className="hidden lg:block">
+                  <span className={`text-xs ${mutedText} block mb-1`}>Entity info</span>
+                  <div className="flex gap-1">
+                    {([
+                      { id: 'sidebar' as const, label: 'Sidebar' },
+                      { id: 'popup' as const, label: 'Popup' },
+                    ]).map(opt => (
+                      <button
+                        key={opt.id}
+                        onClick={() => { setEntityInfoDisplay(opt.id); savePrefs('entityInfoDisplay', opt.id) }}
+                        className={`px-2 py-1 rounded text-xs ${entityInfoDisplay === opt.id ? activeBg : hoverBg}`}
                       >
                         {opt.label}
                       </button>
@@ -1323,9 +1369,22 @@ export default function ChapterReaderPage() {
             </div>
           </div>
         )}
+
+        {/* Entity sidebar — docked beside the text so reading can continue */}
+        {openEntity && projectId && showEntitySidebar && (
+          <EntitySidebar
+            type={openEntity.type}
+            entity={openEntity.entity}
+            projectId={projectId}
+            apiToken={session?.apiToken}
+            subpageHref={`/read/${authorUsername}/${projectSlug}/entity/${openEntity.entity.id}`}
+            entityHrefBase={`/read/${authorUsername}/${projectSlug}/entity`}
+            onClose={() => setOpenEntity(null)}
+          />
+        )}
       </div>
 
-      {openEntity && projectId && (
+      {openEntity && projectId && !showEntitySidebar && (
         <EntityModal
           type={openEntity.type}
           entity={openEntity.entity}

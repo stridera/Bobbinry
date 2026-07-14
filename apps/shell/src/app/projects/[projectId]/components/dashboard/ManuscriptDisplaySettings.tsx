@@ -10,6 +10,12 @@ import {
   PARAGRAPH_SPACING_VALUES,
   PARAGRAPH_INDENT_VALUES,
   SCENE_BREAK_VALUES,
+  PARAGRAPH_SPACING_LABELS,
+  PARAGRAPH_INDENT_LABELS,
+  SCENE_BREAK_LABELS,
+  resolveDisplaySettings,
+  sanitizeDisplaySettings,
+  type ManuscriptDisplaySettings as ResolvedDisplaySettings,
   type ParagraphSpacing,
   type ParagraphIndent,
   type SceneBreakStyle,
@@ -44,21 +50,6 @@ const empty: ProjectSettings = {
   dropCaps: null,
 }
 
-const PARAGRAPH_SPACING_LABEL: Record<ParagraphSpacing, string> = {
-  standard: 'Standard',
-  manuscript: 'Manuscript',
-}
-const PARAGRAPH_INDENT_LABEL: Record<ParagraphIndent, string> = {
-  none: 'No indent',
-  'first-line': 'First-line indent',
-  every: 'Every paragraph indented',
-}
-const SCENE_BREAK_LABEL: Record<SceneBreakStyle, string> = {
-  asterism: 'Asterism (* * *)',
-  rule: 'Horizontal rule',
-  'blank-line': 'Blank line',
-}
-
 const inputClass =
   'w-full px-3 py-2 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 ' +
   'text-gray-900 dark:text-gray-100 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/40 outline-none ' +
@@ -70,6 +61,7 @@ export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) 
   const { data: session } = useSession()
   const apiToken = session?.apiToken
   const [settings, setSettings] = useState<ProjectSettings>(empty)
+  const [userDefaults, setUserDefaults] = useState<ResolvedDisplaySettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [savedFlash, setSavedFlash] = useState<string | null>(null)
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -78,7 +70,10 @@ export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) 
     if (!apiToken) return
     setLoading(true)
     try {
-      const res = await apiFetch(`/api/projects/${projectId}/manuscript-display-settings`, apiToken)
+      const [res, userRes] = await Promise.all([
+        apiFetch(`/api/projects/${projectId}/manuscript-display-settings`, apiToken),
+        apiFetch('/api/users/me/manuscript-display-settings', apiToken),
+      ])
       if (res.ok) {
         const data = await res.json()
         setSettings({
@@ -88,6 +83,10 @@ export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) 
           sceneBreakStyle: data.settings?.sceneBreakStyle ?? null,
           dropCaps: data.settings?.dropCaps ?? null,
         })
+      }
+      if (userRes.ok) {
+        const userData = await userRes.json()
+        setUserDefaults(resolveDisplaySettings(sanitizeDisplaySettings(userData.settings), null, null))
       }
     } finally {
       setLoading(false)
@@ -139,6 +138,9 @@ export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) 
 
   const hasAnyOverride = Object.values(settings).some(v => v !== null)
 
+  const inheritLabel = (effective: string | undefined) =>
+    effective ? `Inherit — currently ${effective}` : 'Inherit from your default'
+
   if (loading) {
     return (
       <CollapsibleCard title="Manuscript Display">
@@ -184,9 +186,9 @@ export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) 
             value={settings.paragraphSpacing ?? ''}
             onChange={e => save({ paragraphSpacing: (e.target.value || null) as ParagraphSpacing | null })}
           >
-            <option value="">Inherit from your default</option>
+            <option value="">{inheritLabel(userDefaults && PARAGRAPH_SPACING_LABELS[userDefaults.paragraphSpacing] || undefined)}</option>
             {PARAGRAPH_SPACING_VALUES.map(v => (
-              <option key={v} value={v}>{PARAGRAPH_SPACING_LABEL[v]}</option>
+              <option key={v} value={v}>{PARAGRAPH_SPACING_LABELS[v]}</option>
             ))}
           </select>
         </div>
@@ -201,9 +203,9 @@ export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) 
             value={settings.paragraphIndent ?? ''}
             onChange={e => save({ paragraphIndent: (e.target.value || null) as ParagraphIndent | null })}
           >
-            <option value="">Inherit from your default</option>
+            <option value="">{inheritLabel(userDefaults && PARAGRAPH_INDENT_LABELS[userDefaults.paragraphIndent] || undefined)}</option>
             {PARAGRAPH_INDENT_VALUES.map(v => (
-              <option key={v} value={v}>{PARAGRAPH_INDENT_LABEL[v]}</option>
+              <option key={v} value={v}>{PARAGRAPH_INDENT_LABELS[v]}</option>
             ))}
           </select>
         </div>
@@ -218,9 +220,9 @@ export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) 
             value={settings.sceneBreakStyle ?? ''}
             onChange={e => save({ sceneBreakStyle: (e.target.value || null) as SceneBreakStyle | null })}
           >
-            <option value="">Inherit from your default</option>
+            <option value="">{inheritLabel(userDefaults && SCENE_BREAK_LABELS[userDefaults.sceneBreakStyle] || undefined)}</option>
             {SCENE_BREAK_VALUES.map(v => (
-              <option key={v} value={v}>{SCENE_BREAK_LABEL[v]}</option>
+              <option key={v} value={v}>{SCENE_BREAK_LABELS[v]}</option>
             ))}
           </select>
         </div>
@@ -232,6 +234,7 @@ export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) 
           </label>
           <TriSelect
             value={settings.codeBlockWrap}
+            inheritLabel={inheritLabel(userDefaults ? (userDefaults.codeBlockWrap ? 'On' : 'Off') : undefined)}
             onChange={v => save({ codeBlockWrap: v })}
           />
         </div>
@@ -243,6 +246,7 @@ export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) 
           </label>
           <TriSelect
             value={settings.dropCaps}
+            inheritLabel={inheritLabel(userDefaults ? (userDefaults.dropCaps ? 'On' : 'Off') : undefined)}
             onChange={v => save({ dropCaps: v })}
           />
         </div>
@@ -280,9 +284,11 @@ export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) 
 
 function TriSelect({
   value,
+  inheritLabel,
   onChange,
 }: {
   value: boolean | null
+  inheritLabel?: string
   onChange: (v: boolean | null) => void
 }) {
   return (
@@ -294,7 +300,7 @@ function TriSelect({
         onChange(v === '' ? null : v === 'on')
       }}
     >
-      <option value="">Inherit from your default</option>
+      <option value="">{inheritLabel ?? 'Inherit from your default'}</option>
       <option value="on">On</option>
       <option value="off">Off</option>
     </select>

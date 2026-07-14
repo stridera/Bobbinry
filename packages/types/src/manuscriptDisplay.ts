@@ -111,6 +111,64 @@ export const PARAGRAPH_SPACING_VALUES: readonly ParagraphSpacing[] = ['standard'
 export const PARAGRAPH_INDENT_VALUES: readonly ParagraphIndent[] = ['none', 'first-line', 'every'] as const
 export const SCENE_BREAK_VALUES: readonly SceneBreakStyle[] = ['asterism', 'rule', 'blank-line'] as const
 
+export const PARAGRAPH_SPACING_LABELS: Record<ParagraphSpacing, string> = {
+  standard: 'Standard',
+  manuscript: 'Manuscript',
+}
+
+export const PARAGRAPH_INDENT_LABELS: Record<ParagraphIndent, string> = {
+  none: 'No indent',
+  'first-line': 'First-line indent',
+  every: 'Every paragraph indented',
+}
+
+export const SCENE_BREAK_LABELS: Record<SceneBreakStyle, string> = {
+  asterism: 'Asterism (* * *)',
+  rule: 'Horizontal rule',
+  'blank-line': 'Blank line',
+}
+
+export const DISPLAY_FIELD_LABELS: Record<keyof ManuscriptDisplaySettings, string> = {
+  paragraphSpacing: 'Paragraph spacing',
+  paragraphIndent: 'Paragraph indent',
+  codeBlockWrap: 'Code block wrap',
+  sceneBreakStyle: 'Scene break style',
+  dropCaps: 'Drop caps',
+  smartDashes: 'Smart dashes',
+  smartEllipsis: 'Smart ellipsis',
+}
+
+/** Human label for a single resolved display-settings value. */
+export function displayValueLabel<K extends keyof ManuscriptDisplaySettings>(
+  field: K,
+  value: ManuscriptDisplaySettings[K],
+): string {
+  switch (field) {
+    case 'paragraphSpacing':
+      return PARAGRAPH_SPACING_LABELS[value as ParagraphSpacing]
+    case 'paragraphIndent':
+      return PARAGRAPH_INDENT_LABELS[value as ParagraphIndent]
+    case 'sceneBreakStyle':
+      return SCENE_BREAK_LABELS[value as SceneBreakStyle]
+    default:
+      return value ? 'On' : 'Off'
+  }
+}
+
+/** Compact one-line summary of resolved settings, e.g. "standard spacing, code wrap". */
+export function summarizeDisplaySettings(s: ManuscriptDisplaySettings): string {
+  const parts: string[] = []
+  parts.push(s.paragraphSpacing === 'manuscript' ? 'manuscript ¶ spacing' : 'standard spacing')
+  if (s.paragraphIndent === 'first-line') parts.push('first-line indent')
+  else if (s.paragraphIndent === 'every') parts.push('all ¶ indented')
+  if (s.codeBlockWrap) parts.push('code wrap')
+  if (s.dropCaps) parts.push('drop caps')
+  if (s.smartDashes) parts.push('smart dashes')
+  if (s.smartEllipsis) parts.push('smart ellipsis')
+  if (s.sceneBreakStyle !== MANUSCRIPT_DISPLAY_DEFAULTS.sceneBreakStyle) parts.push(`${s.sceneBreakStyle} breaks`)
+  return parts.join(', ')
+}
+
 function pick<T>(...candidates: (T | null | undefined)[]): T | undefined {
   for (const c of candidates) {
     if (c !== null && c !== undefined) return c

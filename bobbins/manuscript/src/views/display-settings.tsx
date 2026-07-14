@@ -1,13 +1,13 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
 import {
-  MANUSCRIPT_DISPLAY_DEFAULTS,
   DISPLAY_PRESETS,
   resolveDisplaySettings,
   sanitizeDisplaySettings,
   PARAGRAPH_SPACING_VALUES,
   PARAGRAPH_INDENT_VALUES,
   SCENE_BREAK_VALUES,
+  summarizeDisplaySettings,
   type ManuscriptDisplaySettings,
   type PartialManuscriptDisplaySettings,
   type ParagraphSpacing,
@@ -447,7 +447,7 @@ export function DisplayDropdown({ state }: DisplayDropdownProps) {
         </div>
         <div className="text-[10px] text-gray-500 dark:text-gray-400 leading-snug pt-1">
           <span className="text-gray-400 dark:text-gray-500">Now showing: </span>
-          {summarize(state.resolved)}
+          {summarizeDisplaySettings(state.resolved)}
         </div>
       </div>
     </div>
@@ -561,17 +561,4 @@ function TriToggle({ value, onChange }: { value: boolean | null; onChange: (v: b
       ))}
     </div>
   )
-}
-
-function summarize(s: ManuscriptDisplaySettings): string {
-  const parts: string[] = []
-  parts.push(s.paragraphSpacing === 'manuscript' ? 'manuscript ¶ spacing' : 'standard spacing')
-  if (s.paragraphIndent === 'first-line') parts.push('first-line indent')
-  else if (s.paragraphIndent === 'every') parts.push('all ¶ indented')
-  if (s.codeBlockWrap) parts.push('code wrap')
-  if (s.dropCaps) parts.push('drop caps')
-  if (s.smartDashes) parts.push('smart dashes')
-  if (s.smartEllipsis) parts.push('smart ellipsis')
-  if (s.sceneBreakStyle !== MANUSCRIPT_DISPLAY_DEFAULTS.sceneBreakStyle) parts.push(`${s.sceneBreakStyle} breaks`)
-  return parts.join(', ')
 }
