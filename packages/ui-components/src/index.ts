@@ -26,6 +26,9 @@ export type { TextareaProps } from './Textarea'
 export { Badge } from './Badge'
 export type { BadgeProps } from './Badge'
 
+export { Segmented } from './Segmented'
+export type { SegmentedProps, SegmentedOption } from './Segmented'
+
 export { Toast, ToastContainer } from './Toast'
 export type { ToastProps } from './Toast'
 

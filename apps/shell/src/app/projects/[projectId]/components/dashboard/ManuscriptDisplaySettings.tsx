@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react'
 import { apiFetch } from '@/lib/api'
 import { HintTip } from '@/components/HintTip'
 import { CollapsibleCard } from './CollapsibleCard'
+import { Segmented } from '@bobbinry/ui-components'
 import {
   DISPLAY_PRESETS,
   PARAGRAPH_SPACING_VALUES,
@@ -52,64 +53,6 @@ const empty: ProjectSettings = {
 
 /** The subset of cascade fields this card edits (smart dashes/ellipsis live in the editor). */
 const CARD_FIELDS = ['paragraphSpacing', 'paragraphIndent', 'codeBlockWrap', 'sceneBreakStyle', 'dropCaps'] as const
-
-interface SegmentOption {
-  value: string
-  label: string
-}
-
-/**
- * Segmented control: every option visible, selection shown by a sliding pill.
- * Equal-width segments keep the pill math trivial (translateX in multiples of
- * its own width).
- */
-function Segmented({
-  options,
-  value,
-  onChange,
-  ariaLabel,
-}: {
-  options: SegmentOption[]
-  value: string
-  onChange: (v: string) => void
-  ariaLabel: string
-}) {
-  const activeIndex = Math.max(0, options.findIndex(o => o.value === value))
-  return (
-    <div
-      role="radiogroup"
-      aria-label={ariaLabel}
-      className="relative grid rounded-lg bg-gray-100 dark:bg-gray-700 p-0.5"
-      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
-    >
-      <span
-        aria-hidden
-        className="absolute top-0.5 bottom-0.5 left-0.5 rounded-md bg-white dark:bg-gray-600 shadow-sm transition-transform duration-200 ease-out motion-reduce:transition-none"
-        style={{
-          width: `calc((100% - 0.25rem) / ${options.length})`,
-          transform: `translateX(${activeIndex * 100}%)`,
-        }}
-      />
-      {options.map((o, i) => (
-        <button
-          key={o.value}
-          type="button"
-          role="radio"
-          aria-checked={i === activeIndex}
-          onClick={() => onChange(o.value)}
-          title={o.label}
-          className={`relative z-10 px-2 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer text-center truncate ${
-            i === activeIndex
-              ? 'text-gray-900 dark:text-gray-100'
-              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  )
-}
 
 function Field({
   label,

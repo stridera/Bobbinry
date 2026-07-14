@@ -1,13 +1,12 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
+import { Segmented } from '@bobbinry/ui-components'
 import {
   DISPLAY_PRESETS,
   resolveDisplaySettings,
   sanitizeDisplaySettings,
-  PARAGRAPH_SPACING_VALUES,
-  PARAGRAPH_INDENT_VALUES,
-  SCENE_BREAK_VALUES,
   summarizeDisplaySettings,
+  displayValueLabel,
   type ManuscriptDisplaySettings,
   type PartialManuscriptDisplaySettings,
   type ParagraphSpacing,
@@ -188,22 +187,32 @@ const SCOPE_LABEL: Record<Scope, string> = {
   content: 'This chapter',
 }
 
-const PARAGRAPH_SPACING_LABELS: Record<ParagraphSpacing, string> = {
-  standard: 'Standard (HTML spacing)',
-  manuscript: 'Manuscript (no extra line)',
-}
+/** Short labels sized for segments; the hint tooltips carry the nuance. */
+const SPACING_SEGMENTS = [
+  { value: '', label: 'Inherit' },
+  { value: 'standard', label: 'Standard' },
+  { value: 'manuscript', label: 'Manuscript' },
+]
+const INDENT_SEGMENTS = [
+  { value: '', label: 'Inherit' },
+  { value: 'none', label: 'None' },
+  { value: 'first-line', label: 'First-line' },
+  { value: 'every', label: 'Every' },
+]
+const SCENE_BREAK_SEGMENTS = [
+  { value: '', label: 'Inherit' },
+  { value: 'asterism', label: 'Asterism' },
+  { value: 'rule', label: 'Rule' },
+  { value: 'blank-line', label: 'Blank line' },
+]
+const BOOL_SEGMENTS = [
+  { value: '', label: 'Inherit' },
+  { value: 'off', label: 'Off' },
+  { value: 'on', label: 'On' },
+]
 
-const PARAGRAPH_INDENT_LABELS: Record<ParagraphIndent, string> = {
-  none: 'No indent',
-  'first-line': 'First-line indent (after first ¶)',
-  every: 'Every paragraph indented',
-}
-
-const SCENE_BREAK_LABELS: Record<SceneBreakStyle, string> = {
-  asterism: 'Asterism (* * *)',
-  rule: 'Horizontal rule',
-  'blank-line': 'Blank line',
-}
+/** The fields presets define — used to decide which preset the scope currently matches. */
+const PRESET_FIELDS = ['paragraphSpacing', 'paragraphIndent', 'codeBlockWrap', 'sceneBreakStyle', 'dropCaps'] as const
 
 const HINTS: Record<keyof ManuscriptDisplaySettings, string> = {
   paragraphSpacing:
@@ -221,11 +230,6 @@ const HINTS: Record<keyof ManuscriptDisplaySettings, string> = {
   smartEllipsis:
     'Auto-converts three dots (...) into an ellipsis character (…). Skipped inside code blocks and inline code. Ctrl+Z reverts to the dots.',
 }
-
-const popoverInputClass =
-  'w-full px-2.5 py-1.5 rounded-md border border-gray-200 dark:border-gray-600 ' +
-  'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-xs ' +
-  'focus:ring-2 focus:ring-blue-500/40 outline-none cursor-pointer'
 
 /**
  * Toolbar dropdown that exposes the cascade. The scope switcher decides
@@ -286,6 +290,13 @@ export function DisplayDropdown({ state }: DisplayDropdownProps) {
     return 'default'
   }
 
+  const boolToSeg = (v: boolean | null | undefined) => (v == null ? '' : v ? 'on' : 'off')
+  const segToBool = (v: string) => (v === '' ? null : v === 'on')
+
+  /** A preset is "active" when the edited scope's overrides exactly match its values. */
+  const presetActive = (preset: (typeof DISPLAY_PRESETS)[number]): boolean =>
+    PRESET_FIELDS.every(f => (scoped[f] ?? null) === (preset.values[f] ?? null))
+
   const popover = open && position ? (
     <div
       ref={popoverRef}
@@ -296,22 +307,13 @@ export function DisplayDropdown({ state }: DisplayDropdownProps) {
         <div className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1.5">
           Editing
         </div>
-        <div className="inline-flex rounded-md bg-gray-100 dark:bg-gray-900/50 p-0.5">
-          {(['user', 'project', 'content'] as Scope[]).map(s => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setScope(s)}
-              className={`px-2.5 py-1 rounded text-[11px] transition-colors cursor-pointer ${
-                scope === s
-                  ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 font-medium shadow-sm'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-              }`}
-            >
-              {SCOPE_LABEL[s]}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          size="sm"
+          ariaLabel="Editing scope"
+          value={scope}
+          onChange={s => setScope(s as Scope)}
+          options={(['user', 'project', 'content'] as Scope[]).map(s => ({ value: s, label: SCOPE_LABEL[s] }))}
+        />
       </div>
 
       <div className="px-4 py-3 space-y-3">
@@ -320,17 +322,15 @@ export function DisplayDropdown({ state }: DisplayDropdownProps) {
           hint={HINTS.paragraphSpacing}
           inherited={inheritedFrom('paragraphSpacing')}
           currentScope={scope}
+          effectiveLabel={displayValueLabel('paragraphSpacing', state.resolved.paragraphSpacing)}
         >
-          <select
-            className={popoverInputClass}
+          <Segmented
+            size="sm"
+            ariaLabel="Paragraph spacing"
             value={(scoped.paragraphSpacing ?? '') as string}
-            onChange={e => setField('paragraphSpacing', (e.target.value || null) as ParagraphSpacing | null)}
-          >
-            <option value="">Inherit</option>
-            {PARAGRAPH_SPACING_VALUES.map(v => (
-              <option key={v} value={v}>{PARAGRAPH_SPACING_LABELS[v]}</option>
-            ))}
-          </select>
+            onChange={v => setField('paragraphSpacing', (v || null) as ParagraphSpacing | null)}
+            options={SPACING_SEGMENTS}
+          />
         </FieldRow>
 
         <FieldRow
@@ -338,17 +338,15 @@ export function DisplayDropdown({ state }: DisplayDropdownProps) {
           hint={HINTS.paragraphIndent}
           inherited={inheritedFrom('paragraphIndent')}
           currentScope={scope}
+          effectiveLabel={displayValueLabel('paragraphIndent', state.resolved.paragraphIndent)}
         >
-          <select
-            className={popoverInputClass}
+          <Segmented
+            size="sm"
+            ariaLabel="Paragraph indent"
             value={(scoped.paragraphIndent ?? '') as string}
-            onChange={e => setField('paragraphIndent', (e.target.value || null) as ParagraphIndent | null)}
-          >
-            <option value="">Inherit</option>
-            {PARAGRAPH_INDENT_VALUES.map(v => (
-              <option key={v} value={v}>{PARAGRAPH_INDENT_LABELS[v]}</option>
-            ))}
-          </select>
+            onChange={v => setField('paragraphIndent', (v || null) as ParagraphIndent | null)}
+            options={INDENT_SEGMENTS}
+          />
         </FieldRow>
 
         <FieldRow
@@ -356,17 +354,15 @@ export function DisplayDropdown({ state }: DisplayDropdownProps) {
           hint={HINTS.sceneBreakStyle}
           inherited={inheritedFrom('sceneBreakStyle')}
           currentScope={scope}
+          effectiveLabel={displayValueLabel('sceneBreakStyle', state.resolved.sceneBreakStyle)}
         >
-          <select
-            className={popoverInputClass}
+          <Segmented
+            size="sm"
+            ariaLabel="Scene break style"
             value={(scoped.sceneBreakStyle ?? '') as string}
-            onChange={e => setField('sceneBreakStyle', (e.target.value || null) as SceneBreakStyle | null)}
-          >
-            <option value="">Inherit</option>
-            {SCENE_BREAK_VALUES.map(v => (
-              <option key={v} value={v}>{SCENE_BREAK_LABELS[v]}</option>
-            ))}
-          </select>
+            onChange={v => setField('sceneBreakStyle', (v || null) as SceneBreakStyle | null)}
+            options={SCENE_BREAK_SEGMENTS}
+          />
         </FieldRow>
 
         <FieldRow
@@ -374,10 +370,14 @@ export function DisplayDropdown({ state }: DisplayDropdownProps) {
           hint={HINTS.codeBlockWrap}
           inherited={inheritedFrom('codeBlockWrap')}
           currentScope={scope}
+          effectiveLabel={displayValueLabel('codeBlockWrap', state.resolved.codeBlockWrap)}
         >
-          <TriToggle
-            value={scoped.codeBlockWrap ?? null}
-            onChange={v => setField('codeBlockWrap', v)}
+          <Segmented
+            size="sm"
+            ariaLabel="Code block wrap"
+            value={boolToSeg(scoped.codeBlockWrap)}
+            onChange={v => setField('codeBlockWrap', segToBool(v))}
+            options={BOOL_SEGMENTS}
           />
         </FieldRow>
 
@@ -386,10 +386,14 @@ export function DisplayDropdown({ state }: DisplayDropdownProps) {
           hint={HINTS.dropCaps}
           inherited={inheritedFrom('dropCaps')}
           currentScope={scope}
+          effectiveLabel={displayValueLabel('dropCaps', state.resolved.dropCaps)}
         >
-          <TriToggle
-            value={scoped.dropCaps ?? null}
-            onChange={v => setField('dropCaps', v)}
+          <Segmented
+            size="sm"
+            ariaLabel="Drop caps"
+            value={boolToSeg(scoped.dropCaps)}
+            onChange={v => setField('dropCaps', segToBool(v))}
+            options={BOOL_SEGMENTS}
           />
         </FieldRow>
 
@@ -398,10 +402,14 @@ export function DisplayDropdown({ state }: DisplayDropdownProps) {
           hint={HINTS.smartDashes}
           inherited={inheritedFrom('smartDashes')}
           currentScope={scope}
+          effectiveLabel={displayValueLabel('smartDashes', state.resolved.smartDashes)}
         >
-          <TriToggle
-            value={scoped.smartDashes ?? null}
-            onChange={v => setField('smartDashes', v)}
+          <Segmented
+            size="sm"
+            ariaLabel="Smart dashes"
+            value={boolToSeg(scoped.smartDashes)}
+            onChange={v => setField('smartDashes', segToBool(v))}
+            options={BOOL_SEGMENTS}
           />
         </FieldRow>
 
@@ -410,10 +418,14 @@ export function DisplayDropdown({ state }: DisplayDropdownProps) {
           hint={HINTS.smartEllipsis}
           inherited={inheritedFrom('smartEllipsis')}
           currentScope={scope}
+          effectiveLabel={displayValueLabel('smartEllipsis', state.resolved.smartEllipsis)}
         >
-          <TriToggle
-            value={scoped.smartEllipsis ?? null}
-            onChange={v => setField('smartEllipsis', v)}
+          <Segmented
+            size="sm"
+            ariaLabel="Smart ellipsis"
+            value={boolToSeg(scoped.smartEllipsis)}
+            onChange={v => setField('smartEllipsis', segToBool(v))}
+            options={BOOL_SEGMENTS}
           />
         </FieldRow>
       </div>
@@ -429,21 +441,27 @@ export function DisplayDropdown({ state }: DisplayDropdownProps) {
           {DISPLAY_PRESETS
             // User scope has no layer above to inherit from — hide the Inherit preset there.
             .filter(preset => !(scope === 'user' && preset.id === 'inherit'))
-            .map(preset => (
-              <button
-                key={preset.id}
-                type="button"
-                onClick={() => save(preset.values)}
-                title={preset.description}
-                className={`px-2.5 py-1.5 rounded-md border text-[11px] font-medium transition-colors cursor-pointer text-left ${
-                  preset.id === 'inherit'
-                    ? 'border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/40 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-900/70'
-                    : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-300 dark:hover:border-blue-700 text-gray-800 dark:text-gray-100'
-                }`}
-              >
-                {preset.name}
-              </button>
-            ))}
+            .map(preset => {
+              const active = presetActive(preset)
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => save(preset.values)}
+                  title={preset.description}
+                  aria-pressed={active}
+                  className={`px-2.5 py-1.5 rounded-md border text-[11px] font-medium transition-colors cursor-pointer text-left ${
+                    active
+                      ? 'border-blue-400 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                      : preset.id === 'inherit'
+                        ? 'border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/40 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-900/70'
+                        : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-300 dark:hover:border-blue-700 text-gray-800 dark:text-gray-100'
+                  }`}
+                >
+                  {preset.name}
+                </button>
+              )
+            })}
         </div>
         <div className="text-[10px] text-gray-500 dark:text-gray-400 leading-snug pt-1">
           <span className="text-gray-400 dark:text-gray-500">Now showing: </span>
@@ -481,28 +499,31 @@ function FieldRow({
   hint,
   inherited,
   currentScope,
+  effectiveLabel,
   children,
 }: {
   label: string
   hint?: string
   inherited: Scope | 'default'
   currentScope: Scope
+  /** Human label of the resolved value, shown when this scope is inheriting. */
+  effectiveLabel: string
   children: React.ReactNode
 }) {
   const overriddenHere = currentScope === inherited
   return (
     <div>
-      <div className="flex items-baseline justify-between mb-1">
+      <div className="flex items-baseline justify-between gap-2 mb-1">
         <label className="inline-flex items-center font-medium text-gray-700 dark:text-gray-300 text-[11px]">
           {label}
           {hint && <PopoverHint text={hint} />}
         </label>
-        <span className={`text-[10px] ${overriddenHere ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500'}`}>
+        <span className={`text-[10px] truncate ${overriddenHere ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500'}`}>
           {overriddenHere
             ? 'set here'
             : inherited === 'default'
-              ? 'default'
-              : `from ${SCOPE_LABEL[inherited as Scope].toLowerCase()}`}
+              ? `${effectiveLabel} · default`
+              : `${effectiveLabel} · from ${SCOPE_LABEL[inherited as Scope].toLowerCase()}`}
         </span>
       </div>
       {children}
@@ -534,31 +555,5 @@ function PopoverHint({ text }: { text: string }) {
         {text}
       </span>
     </span>
-  )
-}
-
-function TriToggle({ value, onChange }: { value: boolean | null; onChange: (v: boolean | null) => void }) {
-  const opts: Array<{ k: string; v: boolean | null; label: string }> = [
-    { k: 'inherit', v: null, label: 'Inherit' },
-    { k: 'off', v: false, label: 'Off' },
-    { k: 'on', v: true, label: 'On' },
-  ]
-  return (
-    <div className="inline-flex rounded-md bg-gray-100 dark:bg-gray-900/50 p-0.5">
-      {opts.map(o => (
-        <button
-          key={o.k}
-          type="button"
-          onClick={() => onChange(o.v)}
-          className={`px-2.5 py-1 rounded text-[11px] transition-colors cursor-pointer ${
-            value === o.v
-              ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 font-medium shadow-sm'
-              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
   )
 }
