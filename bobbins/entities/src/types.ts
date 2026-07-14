@@ -58,6 +58,20 @@ export interface FieldDefinition {
   schema?: JsonSchema | Record<string, string>  // For json type
   targetEntityType?: string  // For relation: typeId of the target entity type
   allowMultiple?: boolean  // For relation: if true, stores array of IDs
+  /** For relation (readonly/reader views): richer display of the linked entities.
+   * mode 'grouped' renders links grouped by a field on the target entity
+   * (e.g. spells grouped by unlock_level) with a short synopsis per link.
+   * Requires entity details to be resolvable (ResolvedEntityDetailsProvider);
+   * falls back to plain pills when they aren't. */
+  relationDisplay?: {
+    mode: 'grouped'
+    /** Field on the target entity to group by (e.g. 'unlock_level'). */
+    groupByField: string
+    /** Label prefix for group headers (e.g. 'Level' → "Level 4"). */
+    groupLabel?: string
+    /** Target-entity field to show as the one-line synopsis (defaults to 'description'). */
+    synopsisField?: string
+  }
   /** When true, the field can have per-variant overrides on an entity.
    * When false/undefined, the field is always shared across all variants. */
   versionable?: boolean

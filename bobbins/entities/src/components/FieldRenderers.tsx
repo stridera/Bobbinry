@@ -9,7 +9,7 @@ import { getSanitizedHtmlProps, useClickOutside } from '@bobbinry/sdk'
 import { PALETTE_TOKENS, isPaletteToken, paletteClasses } from '@bobbinry/ui-components'
 import type { FieldDefinition, FieldType } from '../types'
 import { normalizeJsonSchema } from '../types'
-import { useUpload, useEntityContext, useResolvedEntityNamesContext, useEntityNavContext } from './UploadContext'
+import { useUpload, useEntityContext, useResolvedEntityNamesContext, useResolvedEntityDetailsContext, useEntityNavContext } from './UploadContext'
 import { ObjectFormRenderer, ListFormRenderer, KeyedListFormRenderer, FreeformKeyValueEditor } from './json-renderers'
 import { TipTapEditor } from './TipTapEditor'
 
@@ -474,14 +474,20 @@ function ReadonlyJsonDisplay({ schema, value }: { schema: ReturnType<typeof norm
     const fieldEntries = Object.entries(schema.fields) as [string, { type: string; label?: string }][]
     const firstTextKey = fieldEntries.find(([, f]) => f.type === 'text')?.[0]
 
-    if (schema.mode === 'list' && Array.isArray(value) && value.length > 0) {
-      return (
-        <div className="space-y-2">
-          {value.map((item, i) => (
-            <ReadonlyItemCard key={i} item={item} fieldEntries={fieldEntries} firstTextKey={firstTextKey} />
-          ))}
-        </div>
-      )
+    if (schema.mode === 'list') {
+      // Canonical shape is an array; tolerate a bare item object.
+      const items: any[] = Array.isArray(value)
+        ? value
+        : value && typeof value === 'object' ? [value] : []
+      if (items.length > 0) {
+        return (
+          <div className="space-y-2">
+            {items.map((item, i) => (
+              <ReadonlyItemCard key={i} item={item} fieldEntries={fieldEntries} firstTextKey={firstTextKey} />
+            ))}
+          </div>
+        )
+      }
     }
 
     if (schema.mode === 'keyed-list' && typeof value === 'object' && !Array.isArray(value)) {
@@ -492,11 +498,16 @@ function ReadonlyJsonDisplay({ schema, value }: { schema: ReturnType<typeof norm
       return (
         <div className="space-y-2">
           {sortedKeys.map(groupKey => {
-            const items = value[groupKey] || []
+            // Canonical shape is an array of items per key, but tolerate a
+            // bare item object (older imports stored one item directly).
+            const raw = value[groupKey]
+            const items: any[] = Array.isArray(raw)
+              ? raw
+              : raw && typeof raw === 'object' ? [raw] : []
             return (
               <div key={groupKey}>
                 <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-1">{keyLabel} {groupKey}</div>
-                {Array.isArray(items) && items.map((item: any, i: number) => (
+                {items.map((item: any, i: number) => (
                   <ReadonlyItemCard key={i} item={item} fieldEntries={fieldEntries} firstTextKey={firstTextKey} className="ml-3" />
                 ))}
               </div>
@@ -1023,9 +1034,88 @@ function RelationReadonlyDisplay({ field, value }: { field: FieldDefinition; val
 
   const { names, isResolving } = useResolvedEntityNames(field.targetEntityType, ids)
   const getLinkProps = useEntityNavContext()
+  const details = useResolvedEntityDetailsContext()
 
   if (ids.length === 0) {
     return <span className="text-gray-400 dark:text-gray-500 italic">Not set</span>
+  }
+
+  // Grouped display: links grouped by a field on the target entity, each with
+  // a one-line synopsis. Requires resolved details; falls back to pills below.
+  if (field.relationDisplay?.mode === 'grouped' && details) {
+    const { groupByField, groupLabel = '', synopsisField = 'description' } = field.relationDisplay
+    const groups = new Map<string, string[]>()
+    const ungrouped: string[] = []
+    for (const id of ids) {
+      const g = details.get(id)?.data?.[groupByField]
+      if (g === undefined || g === null || g === '') ungrouped.push(id)
+      else {
+        const key = String(g)
+        groups.set(key, [...(groups.get(key) ?? []), id])
+      }
+    }
+    const sortedKeys = [...groups.keys()].sort((a, b) => {
+      const na = Number(a), nb = Number(b)
+      return Number.isFinite(na) && Number.isFinite(nb) ? na - nb : a.localeCompare(b)
+    })
+
+    const renderRow = (id: string) => {
+      const d = details.get(id)
+      const name = names.get(id) ?? d?.name
+      if (!name) {
+        if (isResolving) return null
+        return (
+          <div key={id} className="text-xs text-gray-500 dark:text-gray-400 italic" title="This reference isn't available to you">
+            Locked
+          </div>
+        )
+      }
+      const rawSynopsis = d?.data?.[synopsisField] ?? d?.description ?? ''
+      const synopsis = String(rawSynopsis).replace(/<[^>]+>/g, '').trim()
+      const truncated = synopsis.length > 140 ? synopsis.slice(0, 140).trimEnd() + '…' : synopsis
+      const linkProps = field.targetEntityType
+        ? getLinkProps?.(field.targetEntityType, id) ?? null
+        : null
+      return (
+        <div key={id} className="flex items-baseline gap-2">
+          {linkProps ? (
+            <a
+              href={linkProps.href ?? '#'}
+              onClick={linkProps.onClick}
+              className="text-sm font-medium text-purple-700 dark:text-purple-300 hover:underline whitespace-nowrap"
+            >
+              {name}
+            </a>
+          ) : (
+            <span className="text-sm font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">{name}</span>
+          )}
+          {truncated && (
+            <span className="text-xs text-gray-500 dark:text-gray-400 min-w-0">{truncated}</span>
+          )}
+        </div>
+      )
+    }
+
+    return (
+      <div className="space-y-3">
+        {sortedKeys.map(key => (
+          <div key={key}>
+            <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-1">
+              {groupLabel ? `${groupLabel} ${key}` : key}
+            </div>
+            <div className="ml-3 space-y-1">{groups.get(key)!.map(renderRow)}</div>
+          </div>
+        ))}
+        {ungrouped.length > 0 && (
+          <div>
+            {sortedKeys.length > 0 && (
+              <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-1">Other</div>
+            )}
+            <div className="ml-3 space-y-1">{ungrouped.map(renderRow)}</div>
+          </div>
+        )}
+      </div>
+    )
   }
 
   const pillClass = 'px-2 py-1 bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 rounded text-xs'

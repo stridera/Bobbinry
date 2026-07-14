@@ -68,6 +68,40 @@ export function useResolvedEntityNamesContext(): Map<string, string> | null {
 }
 
 /**
+ * Synchronous map of entity ID → summary details, for relation displays that
+ * need more than a name (e.g. grouped relation lists with a synopsis). Like
+ * the names map, this is pre-fetched by consumers such as the public reader;
+ * when absent, richer relation displays fall back to plain name pills.
+ */
+export interface ResolvedEntityDetails {
+  name: string
+  /** Short synopsis (usually the entity's base description). */
+  description?: string
+  /** The entity's full field data, for group-by / synopsis field lookups. */
+  data?: Record<string, any>
+}
+
+const ResolvedEntityDetailsContext = createContext<Map<string, ResolvedEntityDetails> | null>(null)
+
+export function ResolvedEntityDetailsProvider({
+  details,
+  children,
+}: {
+  details: Map<string, ResolvedEntityDetails>
+  children: React.ReactNode
+}) {
+  return (
+    <ResolvedEntityDetailsContext.Provider value={details}>
+      {children}
+    </ResolvedEntityDetailsContext.Provider>
+  )
+}
+
+export function useResolvedEntityDetailsContext(): Map<string, ResolvedEntityDetails> | null {
+  return useContext(ResolvedEntityDetailsContext)
+}
+
+/**
  * Link-builder for relation pills. Reader supplies an href so middle-click /
  * cmd-click work naturally; editor supplies an onClick that dispatches its
  * internal navigation event. Returning null means the target isn't navigable
