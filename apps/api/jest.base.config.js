@@ -15,7 +15,7 @@ module.exports = {
   transformIgnorePatterns: [
     // ESM modules — jest must transform these or the import fails at runtime.
     // Match both the .bun-hashed dir and the bare package dir.
-    'node_modules/(?!(\\.bun/)?(jose|nanoid|archiver|compress-commons|zip-stream|crc32-stream|is-stream|minimatch|brace-expansion|balanced-match)(@|/))'
+    'node_modules/(?!(\\.bun/)?(jose|nanoid|archiver|compress-commons|zip-stream|crc32-stream|is-stream|minimatch|brace-expansion|balanced-match|htmlparser2|domhandler|domutils|dom-serializer|domelementtype|entities)(@|/))'
   ],
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',

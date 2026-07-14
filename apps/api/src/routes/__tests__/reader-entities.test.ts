@@ -311,6 +311,205 @@ describe('Public Reader — Entities', () => {
       expect(velka.lockedVariantCount).toBe(1)
     })
 
+    it('strips hidden variant content and unpublished fields out of entityData', async () => {
+      const author = await createTestUser()
+      await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, author.id))
+      const project = await createTestProject(author.id)
+      await installEntitiesBobbin(project.id)
+
+      // Type with a versionable custom field so variants can override it
+      await db.insert(entities).values({
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        scope: 'project',
+        bobbinId: 'entities',
+        collectionName: TYPE_COLLECTION,
+        entityData: {
+          type_id: 'characters',
+          label: 'Characters',
+          icon: '👤',
+          custom_fields: [{ name: 'backstory', type: 'text', versionable: true }],
+          list_layout: { display: 'grid', showFields: ['name'] },
+          editor_layout: { template: 'compact-card', imagePosition: 'top-right', imageSize: 'medium', headerFields: ['name'], sections: [] },
+        },
+        isPublished: true,
+      })
+
+      // Base is public; 'book1' is public, 'book5' is tier-gated, 'secret' is
+      // unpublished entirely. The raw record used to ship all three.
+      await db.insert(entities).values({
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        scope: 'project',
+        bobbinId: 'entities',
+        collectionName: 'characters',
+        entityData: {
+          name: 'Wade',
+          backstory: 'A regular guy',
+          _variants: {
+            axis_id: 'timeline',
+            active: 'secret',
+            order: ['book1', 'book5', 'secret'],
+            items: {
+              book1: { label: 'Book 1', overrides: {} },
+              book5: { label: 'Book 5', overrides: { backstory: 'SPOILER: sim built on future brains' } },
+              secret: { label: 'Ending', overrides: { backstory: 'SPOILER: the substrate ending' } },
+            },
+          },
+        },
+        isPublished: true,
+        publishBase: true,
+        publishedVariantIds: ['book1', 'book5'],
+        variantAccessLevels: { book5: 2 },
+      })
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/public/projects/${project.id}/entities`,
+      })
+      expect(res.statusCode).toBe(200)
+      const wade = JSON.parse(res.payload).types[0].entities[0]
+
+      // Metadata says book1 only — and now entityData agrees.
+      expect(wade.publishedVariantIds).toEqual(['book1'])
+      expect(Object.keys(wade.entityData._variants.items)).toEqual(['book1'])
+      expect(wade.entityData._variants.order).toEqual(['book1'])
+      expect(wade.entityData._variants.active).toBeNull()
+      expect(res.payload).not.toContain('SPOILER')
+    })
+
+    it('drops base values of versionable fields that every visible variant overrides when the base is hidden', async () => {
+      const author = await createTestUser()
+      await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, author.id))
+      const project = await createTestProject(author.id)
+      await installEntitiesBobbin(project.id)
+
+      await db.insert(entities).values({
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        scope: 'project',
+        bobbinId: 'entities',
+        collectionName: TYPE_COLLECTION,
+        entityData: {
+          type_id: 'characters',
+          label: 'Characters',
+          icon: '👤',
+          custom_fields: [
+            { name: 'backstory', type: 'text', versionable: true },
+            { name: 'motivation', type: 'text', versionable: true },
+          ],
+          list_layout: { display: 'grid', showFields: ['name'] },
+          editor_layout: { template: 'compact-card', imagePosition: 'top-right', imageSize: 'medium', headerFields: ['name'], sections: [] },
+        },
+        isPublished: true,
+      })
+
+      // Base unpublished; only 'book1' visible. 'backstory' is overridden by the
+      // visible variant → base value must not ship. 'motivation' is not
+      // overridden → the variant renders the base value, so it must ship.
+      await db.insert(entities).values({
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        scope: 'project',
+        bobbinId: 'entities',
+        collectionName: 'characters',
+        entityData: {
+          name: 'Wade',
+          backstory: 'SPOILER: base backstory',
+          motivation: 'Wants to go home',
+          _variants: {
+            order: ['book1'],
+            items: {
+              book1: { label: 'Book 1', overrides: { backstory: 'Safe early-book backstory' } },
+            },
+          },
+        },
+        isPublished: true,
+        publishBase: false,
+        publishedVariantIds: ['book1'],
+      })
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/public/projects/${project.id}/entities`,
+      })
+      expect(res.statusCode).toBe(200)
+      const wade = JSON.parse(res.payload).types[0].entities[0]
+      expect(wade.publishBase).toBe(false)
+      expect(wade.entityData.backstory).toBeUndefined()
+      expect(wade.entityData.motivation).toBe('Wants to go home')
+      expect(wade.entityData._variants.items.book1.overrides.backstory).toBe('Safe early-book backstory')
+      expect(res.payload).not.toContain('SPOILER')
+    })
+
+    it('returns an empty entityData when no view of the entity is visible', async () => {
+      const author = await createTestUser()
+      await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, author.id))
+      const project = await createTestProject(author.id)
+      await installEntitiesBobbin(project.id)
+
+      await seedType(project.id, 'characters', { isPublished: true })
+      await db.insert(entities).values({
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        scope: 'project',
+        bobbinId: 'entities',
+        collectionName: 'characters',
+        entityData: { name: 'Hidden', description: 'SPOILER: secret description' },
+        isPublished: true,
+        publishBase: true,
+        publishedVariantIds: [],
+        variantAccessLevels: { __base__: 3 },
+      })
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/public/projects/${project.id}/entities`,
+      })
+      expect(res.statusCode).toBe(200)
+      const hidden = JSON.parse(res.payload).types[0].entities[0]
+      expect(hidden.publishBase).toBe(false)
+      expect(hidden.entityData).toEqual({})
+      expect(hidden.name).toBeNull()
+      expect(res.payload).not.toContain('SPOILER')
+    })
+
+    it('keeps the full raw entityData for the owner', async () => {
+      const author = await createTestUser()
+      await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, author.id))
+      const project = await createTestProject(author.id)
+      await installEntitiesBobbin(project.id)
+
+      await seedType(project.id, 'characters', { isPublished: true })
+      await db.insert(entities).values({
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        scope: 'project',
+        bobbinId: 'entities',
+        collectionName: 'characters',
+        entityData: {
+          name: 'Wade',
+          _variants: {
+            order: ['secret'],
+            items: { secret: { label: 'Ending', overrides: { name: 'Spoiler Name' } } },
+          },
+        },
+        isPublished: true,
+        publishBase: true,
+        publishedVariantIds: [],
+      })
+
+      const token = await createTestToken(author.id)
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/public/projects/${project.id}/entities`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(res.statusCode).toBe(200)
+      const wade = JSON.parse(res.payload).types[0].entities[0]
+      expect(wade.entityData._variants.items.secret.overrides.name).toBe('Spoiler Name')
+    })
+
     it('grants the owner visibility regardless of publish/tier state', async () => {
       const author = await createTestUser()
       await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, author.id))
@@ -334,7 +533,117 @@ describe('Public Reader — Entities', () => {
     })
   })
 
+  describe('GET /public/projects/:projectId/entities/:entityId', () => {
+    it('strips hidden variant content out of entityData for the single-entity view', async () => {
+      const author = await createTestUser()
+      await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, author.id))
+      const project = await createTestProject(author.id)
+      await installEntitiesBobbin(project.id)
+
+      await seedType(project.id, 'characters', { isPublished: true })
+      const [wade] = await db.insert(entities).values({
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        scope: 'project',
+        bobbinId: 'entities',
+        collectionName: 'characters',
+        entityData: {
+          name: 'Wade',
+          _variants: {
+            order: ['book1', 'secret'],
+            items: {
+              book1: { label: 'Book 1', overrides: {} },
+              secret: { label: 'Ending', overrides: { description: 'SPOILER: the substrate ending' } },
+            },
+          },
+        },
+        isPublished: true,
+        publishBase: true,
+        publishedVariantIds: ['book1'],
+      }).returning()
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/public/projects/${project.id}/entities/${wade!.id}`,
+      })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.payload)
+      expect(body.entity.publishedVariantIds).toEqual(['book1'])
+      expect(Object.keys(body.entity.entityData._variants.items)).toEqual(['book1'])
+      expect(res.payload).not.toContain('SPOILER')
+    })
+  })
+
   describe('GET /public/projects/:projectId/entities/published-names', () => {
+    it('hides name overrides of tier-gated variants from lower-tier callers', async () => {
+      const author = await createTestUser()
+      await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, author.id))
+      const project = await createTestProject(author.id)
+      await installEntitiesBobbin(project.id)
+
+      await db.insert(entities).values({
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        scope: 'project',
+        bobbinId: 'entities',
+        collectionName: TYPE_COLLECTION,
+        entityData: {
+          type_id: 'characters',
+          label: 'Characters',
+          icon: '👤',
+          custom_fields: [],
+          versionable_base_fields: ['name'],
+          list_layout: { display: 'grid', showFields: ['name'] },
+          editor_layout: { template: 'compact-card', imagePosition: 'top-right', imageSize: 'medium', headerFields: ['name'], sections: [] },
+        },
+        isPublished: true,
+      })
+
+      // Both variants published, but the post-reveal form needs tier 1.
+      await db.insert(entities).values({
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        scope: 'project',
+        bobbinId: 'entities',
+        collectionName: 'characters',
+        entityData: {
+          name: 'Velka',
+          _variants: {
+            order: ['human', 'werewolf'],
+            items: {
+              human: { label: 'Human', overrides: { name: 'Velka' } },
+              werewolf: { label: 'Werewolf', overrides: { name: 'Valkyr the Beast' } },
+            },
+          },
+        },
+        isPublished: true,
+        publishBase: false,
+        publishedVariantIds: ['human', 'werewolf'],
+        variantAccessLevels: { werewolf: 1 },
+      })
+
+      const anonRes = await app.inject({
+        method: 'GET',
+        url: `/api/public/projects/${project.id}/entities/published-names`,
+      })
+      expect(anonRes.statusCode).toBe(200)
+      const anonNames = JSON.parse(anonRes.payload).entities.map((e: any) => e.name).sort()
+      expect(anonNames).toEqual(['Velka'])
+
+      const subscriber = await createTestUser()
+      await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, subscriber.id))
+      await seedActiveSubscription(subscriber.id, author.id, 1)
+      const token = await createTestToken(subscriber.id)
+      const subRes = await app.inject({
+        method: 'GET',
+        url: `/api/public/projects/${project.id}/entities/published-names`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(subRes.statusCode).toBe(200)
+      const subNames = JSON.parse(subRes.payload).entities.map((e: any) => e.name).sort()
+      expect(subNames).toEqual(['Valkyr the Beast', 'Velka'])
+    })
+
     it('returns the EntityEntry-shaped list, tier-filtered', async () => {
       const author = await createTestUser()
       await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, author.id))

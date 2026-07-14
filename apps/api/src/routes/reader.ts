@@ -1987,6 +1987,97 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
     return sub?.tierLevel ?? 0
   }
 
+  interface ReaderVariantItem {
+    label?: string | undefined
+    axis_value?: unknown
+    overrides?: Record<string, unknown> | undefined
+  }
+
+  interface ReaderVariantsBlock {
+    axis_id?: string | null
+    active?: string | null
+    order?: string[]
+    items?: Record<string, ReaderVariantItem>
+  }
+
+  /** Fields whose values variants may override (custom fields flagged versionable + versionable base fields). */
+  function collectVersionableFields(typeData: Record<string, any>): Set<string> {
+    const fields = new Set<string>()
+    const customFields: Array<{ name?: string; versionable?: boolean }> = Array.isArray(typeData.custom_fields)
+      ? typeData.custom_fields
+      : []
+    for (const f of customFields) {
+      if (f?.versionable === true && typeof f.name === 'string') fields.add(f.name)
+    }
+    const versionableBase: unknown[] = Array.isArray(typeData.versionable_base_fields)
+      ? typeData.versionable_base_fields
+      : []
+    for (const name of versionableBase) {
+      if (typeof name === 'string') fields.add(name)
+    }
+    return fields
+  }
+
+  /**
+   * Rebuild entityData so it contains only what the caller may see. The raw DB
+   * record holds every base field plus the full `_variants` block — published
+   * or not, tier-gated or not — so returning it verbatim hands hidden variant
+   * content to anyone reading the network response, even though the metadata
+   * (publishBase / publishedVariantIds) says it's locked.
+   *
+   * Base fields ship when the base view is visible, or when a visible variant
+   * can still render them (variants only override versionable fields and fall
+   * back to the base value otherwise). A versionable field's base value is
+   * dropped when the base is hidden and every visible variant overrides it —
+   * that value is never rendered through any visible view.
+   */
+  function sanitizeEntityDataForReader(
+    data: Record<string, unknown>,
+    visibleBase: boolean,
+    visibleVariantIds: string[],
+    versionableFields: Set<string>
+  ): Record<string, unknown> {
+    if (!visibleBase && visibleVariantIds.length === 0) return {}
+
+    const { _variants, ...base } = data
+    const variantsRoot = (_variants ?? {}) as ReaderVariantsBlock
+    const rawItems = variantsRoot.items ?? {}
+
+    const visibleItems: Record<string, ReaderVariantItem> = {}
+    for (const vid of visibleVariantIds) {
+      const item = rawItems[vid]
+      if (!item) continue
+      const overrides: Record<string, unknown> = {}
+      for (const [key, value] of Object.entries(item.overrides ?? {})) {
+        if (versionableFields.has(key)) overrides[key] = value
+      }
+      visibleItems[vid] = { label: item.label, axis_value: item.axis_value ?? null, overrides }
+    }
+
+    const sanitized: Record<string, unknown> = { ...base }
+    if (!visibleBase) {
+      for (const field of versionableFields) {
+        const renderedNowhere = visibleVariantIds.every(vid =>
+          visibleItems[vid] ? field in (visibleItems[vid].overrides ?? {}) : false
+        )
+        if (renderedNowhere) delete sanitized[field]
+      }
+    }
+
+    if (visibleVariantIds.length > 0) {
+      const visibleSet = new Set(visibleVariantIds)
+      const active = variantsRoot.active
+      sanitized['_variants'] = {
+        axis_id: variantsRoot.axis_id ?? null,
+        active: typeof active === 'string' && visibleSet.has(active) ? active : null,
+        order: (variantsRoot.order ?? []).filter(vid => visibleSet.has(vid)),
+        items: visibleItems,
+      }
+    }
+
+    return sanitized
+  }
+
   /**
    * List published entities for the public reader, grouped by published type.
    * Gated by subscriber tier level when minimum_tier_level > 0.
@@ -2075,6 +2166,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       const types = visibleTypes.map(t => {
         const typeData = t.data as Record<string, any>
         const typeId = typeData.type_id as string
+        const versionableFields = collectVersionableFields(typeData)
         const rows = entityRowsByType.get(typeId) ?? []
         const visibleRows = isOwner ? rows : rows.filter(r => r.minimumTierLevel <= callerTier)
         lockedEntityCount += rows.length - visibleRows.length
@@ -2128,14 +2220,18 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
               visibleVariantIds = filteredIds
             }
 
+            const sanitizedData = isOwner
+              ? data
+              : sanitizeEntityDataForReader(data, visibleBase, visibleVariantIds, versionableFields)
+
             return {
               id: r.id,
               typeId,
-              name: data?.name ?? null,
-              description: data?.description ?? null,
-              imageUrl: data?.image_url ?? null,
-              tags: Array.isArray(data?.tags) ? data.tags : [],
-              entityData: data,
+              name: sanitizedData?.name ?? null,
+              description: sanitizedData?.description ?? null,
+              imageUrl: sanitizedData?.image_url ?? null,
+              tags: Array.isArray(sanitizedData?.tags) ? sanitizedData.tags : [],
+              entityData: sanitizedData,
               publishOrder: r.publishOrder,
               minimumTierLevel: r.minimumTierLevel,
               publishedAt: r.publishedAt,
@@ -2253,6 +2349,10 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           (publishedVariantIds.length - visibleVariantIds.length)
       }
 
+      const sanitizedData = isOwner
+        ? data
+        : sanitizeEntityDataForReader(data, visibleBase, visibleVariantIds, collectVersionableFields(typeData))
+
       return {
         type: {
           typeId: typeData.type_id,
@@ -2271,11 +2371,11 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         entity: {
           id: entityRow.id,
           typeId: entityRow.collectionName,
-          name: (data?.name as string) ?? null,
-          description: (data?.description as string) ?? null,
-          imageUrl: (data?.image_url as string) ?? null,
-          tags: Array.isArray(data?.tags) ? data.tags : [],
-          entityData: data,
+          name: (sanitizedData?.name as string) ?? null,
+          description: (sanitizedData?.description as string) ?? null,
+          imageUrl: (sanitizedData?.image_url as string) ?? null,
+          tags: Array.isArray(sanitizedData?.tags) ? sanitizedData.tags : [],
+          entityData: sanitizedData,
           publishOrder: entityRow.publishOrder,
           minimumTierLevel: entityRow.minimumTierLevel,
           publishedAt: entityRow.publishedAt,
@@ -2370,6 +2470,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           minimumTierLevel: entities.minimumTierLevel,
           publishBase: entities.publishBase,
           publishedVariantIds: entities.publishedVariantIds,
+          variantAccessLevels: entities.variantAccessLevels,
         })
         .from(entities)
         .where(and(
@@ -2403,9 +2504,17 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           })
         }
 
-        if (r.publishBase) pushName(baseName)
+        // Apply the same per-variant tier gates as the codex endpoints so a
+        // locked variant's name override (often itself a spoiler) never ships.
+        const variantAccess = (r.variantAccessLevels ?? {}) as Record<string, number>
+        const visibleBase = r.publishBase &&
+          (isOwner || Math.max(r.minimumTierLevel, variantAccess['__base__'] ?? 0) <= callerTier)
+        const variantIds = (r.publishedVariantIds ?? []).filter(vid =>
+          isOwner || Math.max(r.minimumTierLevel, variantAccess[vid] ?? 0) <= callerTier
+        )
 
-        const variantIds = r.publishedVariantIds ?? []
+        if (visibleBase) pushName(baseName)
+
         if (variantIds.length > 0) {
           const variantsRoot = data?._variants
           const items = variantsRoot?.items as Record<string, { overrides?: Record<string, unknown> }> | undefined
@@ -2425,8 +2534,9 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
 
         // Aliases are entity-level alternate names (nicknames, epithets, titles).
         // Emit one row per alias so the client matcher treats them as separate
-        // match targets that resolve to the same entity id.
-        if (Array.isArray(data?.aliases)) {
+        // match targets that resolve to the same entity id. Only when some view
+        // of the entity is actually visible to this caller.
+        if ((visibleBase || variantIds.length > 0) && Array.isArray(data?.aliases)) {
           for (const alias of data.aliases) pushName(alias)
         }
       }
