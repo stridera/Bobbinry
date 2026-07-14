@@ -85,7 +85,7 @@ export function DisplaySettingsSummary({ projectId, apiToken }: { projectId: str
           Manuscript Display
         </h3>
         <Link
-          href={`/projects/${projectId}`}
+          href={`/projects/${projectId}#manuscript-display`}
           className="text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
         >
           Edit

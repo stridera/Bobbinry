@@ -181,7 +181,7 @@ export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) 
 
   if (loading) {
     return (
-      <CollapsibleCard title="Manuscript Display">
+      <CollapsibleCard title="Manuscript Display" id="manuscript-display">
         <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
       </CollapsibleCard>
     )
@@ -190,7 +190,7 @@ export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) 
   const resolved = resolveDisplaySettings(userDefaults, { ...settings, ...projectExtras }, null)
 
   return (
-    <CollapsibleCard title="Manuscript Display">
+    <CollapsibleCard title="Manuscript Display" id="manuscript-display">
       <div className="flex items-start justify-between gap-3 mb-4">
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Overrides for this project. Inherit uses your defaults;

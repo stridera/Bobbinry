@@ -1,20 +1,54 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useState, useEffect, useRef, type ReactNode } from 'react'
 
 interface CollapsibleCardProps {
   title: string
   defaultExpanded?: boolean
   /** Non-interactive content (e.g. a status badge) shown beside the title in the header. */
   headerAccessory?: ReactNode
+  /** Anchor id: navigating to #<id> expands the card and scrolls it into view. */
+  id?: string
   children: ReactNode
 }
 
-export function CollapsibleCard({ title, defaultExpanded = false, headerAccessory, children }: CollapsibleCardProps) {
+export function CollapsibleCard({ title, defaultExpanded = false, headerAccessory, id, children }: CollapsibleCardProps) {
   const [expanded, setExpanded] = useState(defaultExpanded)
+  const cardRef = useRef<HTMLDivElement>(null)
+
+  // Deep-link support: #<id> in the URL (on load or via in-page navigation)
+  // expands this card and scrolls to it. The scroll re-fires for a while
+  // because content above (stats, chapter list, images) keeps growing after
+  // mount and would otherwise push the card back out of view — but any manual
+  // scroll from the user cancels the remaining re-fires.
+  useEffect(() => {
+    if (!id) return
+    const timers: ReturnType<typeof setTimeout>[] = []
+    const cancelEvents = ['wheel', 'touchstart', 'keydown'] as const
+    const cancel = () => {
+      timers.forEach(clearTimeout)
+      cancelEvents.forEach(ev => window.removeEventListener(ev, cancel))
+    }
+    const openFromHash = () => {
+      if (window.location.hash !== `#${id}`) return
+      setExpanded(true)
+      cancelEvents.forEach(ev => window.addEventListener(ev, cancel, { passive: true }))
+      for (const delay of [0, 250, 700, 1400]) {
+        timers.push(setTimeout(() => {
+          cardRef.current?.scrollIntoView({ behavior: 'auto', block: 'start' })
+        }, delay))
+      }
+    }
+    openFromHash()
+    window.addEventListener('hashchange', openFromHash)
+    return () => {
+      window.removeEventListener('hashchange', openFromHash)
+      cancel()
+    }
+  }, [id])
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 animate-fade-in">
+    <div ref={cardRef} id={id} className="scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 animate-fade-in">
       <button
         onClick={() => setExpanded(v => !v)}
         aria-expanded={expanded}
