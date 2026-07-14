@@ -51,6 +51,7 @@ interface ChapterPublication {
   uniqueViewCount?: number
   completionCount?: number
   avgReadTimeSeconds?: number
+  slug?: string | null
 }
 
 interface ChapterEntity {
@@ -61,6 +62,7 @@ interface ChapterEntity {
 
 interface ChapterWithStats {
   id: string
+  slug: string | null
   title: string
   order: number
   publishStatus: string
@@ -119,6 +121,7 @@ export default function PublishManagerPanel(props: PublishManagerPanelProps) {
         const pub = pubMap.get(ch.id)
         return {
           id: ch.id,
+          slug: pub?.slug ?? null,
           title: ch.title || `Chapter ${idx + 1}`,
           order: ch.order ?? idx,
           publishStatus: pub?.publishStatus || 'draft',
@@ -360,7 +363,7 @@ export default function PublishManagerPanel(props: PublishManagerPanelProps) {
                         </span>
                         {isPublished && readerBaseUrl && (
                           <a
-                            href={`${readerBaseUrl}/${chapter.id}`}
+                            href={`${readerBaseUrl}/${chapter.slug ?? chapter.id}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             onClick={(e) => e.stopPropagation()}

@@ -27,6 +27,7 @@ function EntitySubpageContent() {
   const params = useParams()
   const authorUsername = params.authorUsername as string
   const projectSlug = params.projectSlug as string
+  // Slug, old-slug alias, or legacy UUID — the API resolves all three.
   const entityId = params.entityId as string
   const { data: session } = useSession()
   const apiToken = (session as any)?.apiToken as string | undefined
@@ -67,7 +68,7 @@ function EntitySubpageContent() {
     /* eslint-enable react-hooks/set-state-in-effect */
     const headers: Record<string, string> = {}
     if (apiToken) headers['Authorization'] = `Bearer ${apiToken}`
-    fetch(`${config.apiUrl}/api/public/projects/${projectId}/entities/${entityId}`, { headers })
+    fetch(`${config.apiUrl}/api/public/projects/${projectId}/entities/${encodeURIComponent(entityId)}`, { headers })
       .then(async r => {
         if (r.status === 403) {
           const body = await r.json().catch(() => ({}))
@@ -78,7 +79,15 @@ function EntitySubpageContent() {
         return r.json() as Promise<EntityPayload>
       })
       .then(data => {
-        if (!cancelled && data) setPayload(data)
+        if (!cancelled && data) {
+          setPayload(data)
+          // Canonicalize UUID / old-slug-alias URLs to the current slug.
+          // Shallow replaceState so the route param doesn't change and
+          // re-trigger this effect.
+          if (data.entity.slug && entityId !== data.entity.slug) {
+            window.history.replaceState(null, '', `/read/${authorUsername}/${projectSlug}/entity/${data.entity.slug}`)
+          }
+        }
       })
       .catch(err => {
         if (!cancelled) setError(err?.message ?? 'Failed to load entity')
@@ -87,7 +96,7 @@ function EntitySubpageContent() {
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [projectId, entityId, apiToken])
+  }, [projectId, entityId, apiToken, authorUsername, projectSlug])
 
   const crumbs = [
     { label: authorName || authorUsername, href: `/read/${authorUsername}` },

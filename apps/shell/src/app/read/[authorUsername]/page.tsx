@@ -34,6 +34,7 @@ interface CollectionGroup {
   description: string | null
   coverImage: string | null
   colorTheme: string | null
+  shortUrl: string | null
   projectIds: string[]
 }
 
@@ -318,7 +319,7 @@ export default function AuthorReadPage() {
                       </div>
                     </div>
                     <Link
-                      href={`/read/${author.username}/collection/${collection.id}`}
+                      href={`/read/${author.username}/collection/${collection.shortUrl ?? collection.id}`}
                       className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex-shrink-0"
                     >
                       View series

@@ -892,6 +892,27 @@ export const entityChanges = pgTable('entity_changes', {
   projectEntitySeqIdx: index('entity_changes_project_entity_seq_idx').on(table.projectId, table.entityId, table.seq),
 }))
 
+// Public reader URL slugs for entities (chapters + codex entities).
+// One current slug per entity; older rows (is_current = false) are aliases
+// that 301-redirect to the current slug. is_pinned marks a manual override
+// that renames must not move. Namespace is per-project across all entities.
+export const entitySlugs = pgTable('entity_slugs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }).notNull(),
+  entityId: uuid('entity_id').references(() => entities.id, { onDelete: 'cascade' }).notNull(),
+  slug: varchar('slug', { length: 160 }).notNull(),
+  isCurrent: boolean('is_current').default(true).notNull(),
+  isPinned: boolean('is_pinned').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull()
+}, (table) => ({
+  projectSlugUnique: uniqueIndex('entity_slugs_project_slug_unique').on(table.projectId, table.slug),
+  // Per (project, entity): a user-scoped entity published into several
+  // projects gets a current slug in each project's namespace.
+  entityCurrentUnique: uniqueIndex('entity_slugs_entity_current_unique').on(table.projectId, table.entityId).where(sql`is_current`),
+  entityIdx: index('entity_slugs_entity_idx').on(table.entityId)
+}))
+
 // Relations
 export const usersRelations = relations(users, ({ many, one }) => ({
   projects: many(projects),

@@ -44,6 +44,7 @@ import importPlugin from './routes/import'
 import templatesPlugin from './routes/templates'
 import entityTypesPlugin from './routes/entity-types'
 import entityPublishPlugin from './routes/entity-publish'
+import entitySlugsPlugin from './routes/entity-slugs'
 import promoCodesPlugin from './routes/promo-codes'
 import searchReplacePlugin from './routes/search-replace'
 import { hashApiKey, getApiKeyTier } from './middleware/auth'
@@ -278,6 +279,7 @@ export function build(opts = {}): FastifyInstance {
   server.register(templatesPlugin, { prefix: '/api' })
   server.register(entityTypesPlugin, { prefix: '/api' })
   server.register(entityPublishPlugin, { prefix: '/api' })
+  server.register(entitySlugsPlugin, { prefix: '/api' })
   server.register(uploadsPlugin, { prefix: '/api' })
   server.register(projectTagsPlugin, { prefix: '/api' })
   server.register(projectFollowsPlugin, { prefix: '/api' })

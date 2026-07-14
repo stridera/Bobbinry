@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { permanentRedirect } from 'next/navigation'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4100'
 const BASE_URL = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://bobbinry.com'
@@ -8,6 +9,7 @@ interface CollectionData {
     name: string
     description: string | null
     coverImage: string | null
+    shortUrl: string | null
   }
   author: {
     displayName: string | null
@@ -45,7 +47,7 @@ export async function generateMetadata({
   const description = collection.description
     ? collection.description.slice(0, 160)
     : `Read the ${collection.name} series by ${authorName} on Bobbinry`
-  const url = `${BASE_URL}/read/${authorUsername}/collection/${collectionId}`
+  const url = `${BASE_URL}/read/${authorUsername}/collection/${collection.shortUrl ?? collectionId}`
 
   return {
     title,
@@ -77,6 +79,12 @@ export default async function CollectionLayout({
   const { authorUsername, collectionId } = await params
   const data = await fetchCollection(authorUsername, collectionId)
 
+  // Real 301 for crawlers and old links: UUID URLs permanently redirect to
+  // the collection's short URL.
+  if (data?.collection.shortUrl && data.collection.shortUrl !== collectionId) {
+    permanentRedirect(`/read/${authorUsername}/collection/${data.collection.shortUrl}`)
+  }
+
   const jsonLd = data
     ? {
         '@context': 'https://schema.org',
@@ -87,7 +95,7 @@ export default async function CollectionLayout({
           name: data.author.displayName || data.author.userName || data.author.username || authorUsername,
           url: `${BASE_URL}/u/${authorUsername}`,
         },
-        url: `${BASE_URL}/read/${authorUsername}/collection/${collectionId}`,
+        url: `${BASE_URL}/read/${authorUsername}/collection/${data.collection.shortUrl ?? collectionId}`,
         ...(data.collection.description && { description: data.collection.description }),
         ...(data.collection.coverImage && { image: data.collection.coverImage }),
         publisher: {

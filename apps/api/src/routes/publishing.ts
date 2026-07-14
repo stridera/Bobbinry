@@ -18,6 +18,7 @@ import {
 import { eq, and, desc, sql } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { serverEventBus, contentPublished, contentStatusChange } from '../lib/event-bus'
+import { ensureCurrentSlug, getSlugsForEntities } from '../lib/slugs'
 import {
   getNextAvailableReleaseSlot,
   getProjectReleaseSchedule,
@@ -312,6 +313,15 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
         }
       }
 
+      // Make sure the chapter has a reader-URL slug. Non-fatal: publishing
+      // must never break on slug trouble (the UUID URL always works).
+      try {
+        const chapterTitle = (chapter.entityData as Record<string, unknown>)?.['title']
+        await ensureCurrentSlug(projectId, chapterId, typeof chapterTitle === 'string' ? chapterTitle : null)
+      } catch (slugError) {
+        fastify.log.warn({ slugError, correlationId, chapterId }, 'Failed to ensure chapter slug on publish')
+      }
+
       // Emit content:published event
       if (publishStatus === 'published') {
         if (scheduledSlotBeingReleasedEarly) {
@@ -583,7 +593,11 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
         .where(whereConditions)
         .orderBy(desc(chapterPublications.lastPublishedAt))
 
-      return reply.send({ publications, count: publications.length, correlationId })
+      // Reader-URL slugs so author dashboards can show/link the pretty URL.
+      const slugMap = await getSlugsForEntities(projectId, publications.map(p => p.chapterId))
+      const withSlugs = publications.map(p => ({ ...p, slug: slugMap.get(p.chapterId) ?? null }))
+
+      return reply.send({ publications: withSlugs, count: withSlugs.length, correlationId })
     } catch (error) {
       fastify.log.error({ error, correlationId }, 'Failed to list publications')
       return reply.status(500).send({ error: 'Failed to list publications', correlationId })

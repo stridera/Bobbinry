@@ -191,7 +191,7 @@ export default function EntitiesTab({
           entity={open.entity}
           projectId={projectId}
           apiToken={apiToken}
-          subpageHref={`/read/${authorUsername}/${projectSlug}/entity/${open.entity.id}`}
+          subpageHref={`/read/${authorUsername}/${projectSlug}/entity/${open.entity.slug ?? open.entity.id}`}
           entityHrefBase={`/read/${authorUsername}/${projectSlug}/entity`}
           onClose={() => setOpen(null)}
         />

@@ -20,6 +20,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 import { requireAuth, requireProjectOwnership, assertEntityScope } from '../middleware/auth'
 import { getCollectionIdsForProject, buildScopeCondition } from '../lib/effective-bobbins'
 import { extractTitle, recordEntityChanges, recordEntityChangesSafe, type EntityChangeEvent } from '../lib/entity-changes'
+import { ensureCurrentSlug, resolveSlugProjects } from '../lib/slugs'
 
 const TYPE_DEF_COLLECTION = 'entity_type_definitions'
 
@@ -119,6 +120,8 @@ const entityPublishPlugin: FastifyPluginAsync = async (fastify) => {
       const [current] = await db
         .select({
           id: entities.id,
+          projectId: entities.projectId,
+          collectionId: entities.collectionId,
           isPublished: entities.isPublished,
           publishedAt: entities.publishedAt,
           publishOrder: entities.publishOrder,
@@ -215,6 +218,22 @@ const entityPublishPlugin: FastifyPluginAsync = async (fastify) => {
           publishedVariantIds: entities.publishedVariantIds,
           variantAccessLevels: entities.variantAccessLevels,
         })
+
+      // Make sure a published entity has a reader-URL slug in every project
+      // it's visible from (collection-scoped entities appear in all member
+      // projects). Non-fatal: publishing must never break on slug trouble
+      // (the UUID URL works).
+      if (body.isPublished === true) {
+        try {
+          const name = extractTitle(current.entityData as Record<string, unknown>)
+          const slugProjects = await resolveSlugProjects(current)
+          for (const slugProjectId of slugProjects.length > 0 ? slugProjects : [body.projectId]) {
+            await ensureCurrentSlug(slugProjectId, current.id, name)
+          }
+        } catch (slugError) {
+          fastify.log.warn({ slugError, entityId: current.id }, 'Failed to ensure entity slug on publish')
+        }
+      }
 
       // Feed only the fields that actually changed vs the pre-update row; a
       // no-op PATCH (e.g. a settings panel re-sending the full publish state)

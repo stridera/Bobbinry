@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 
-interface ProjectToolBobbin {
+interface DashboardBobbin {
   bobbinId: string
   manifest: {
     name: string
@@ -12,9 +12,9 @@ interface ProjectToolBobbin {
   }
 }
 
-interface ProjectToolsProps {
+interface BobbinsProps {
   projectId: string
-  bobbins: ProjectToolBobbin[]
+  bobbins: DashboardBobbin[]
   bobbinStats: Record<string, number>
 }
 
@@ -45,13 +45,13 @@ function formatCount(count: number): string {
   return `${count.toLocaleString()} items`
 }
 
-export function ProjectTools({ projectId, bobbins, bobbinStats }: ProjectToolsProps) {
-  const tools = bobbins.filter(b => b.manifest.hasLeftPanel)
+export function Bobbins({ projectId, bobbins, bobbinStats }: BobbinsProps) {
+  const installed = bobbins.filter(b => b.manifest.hasLeftPanel)
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 animate-fade-in">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100">Project Tools</h2>
+        <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100">Bobbins</h2>
         <Link
           href={`/projects/${projectId}/bobbins`}
           className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
@@ -60,7 +60,7 @@ export function ProjectTools({ projectId, bobbins, bobbinStats }: ProjectToolsPr
         </Link>
       </div>
 
-      {tools.length === 0 ? (
+      {installed.length === 0 ? (
         <div className="border border-dashed border-gray-300 dark:border-gray-700 rounded-lg p-6 text-center">
           <p className="text-sm text-gray-600 dark:text-gray-300 mb-1">No project-wide tools installed yet.</p>
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
@@ -75,30 +75,30 @@ export function ProjectTools({ projectId, bobbins, bobbinStats }: ProjectToolsPr
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {tools.map(tool => {
-            const count = bobbinStats[tool.bobbinId] ?? 0
-            const initial = tool.manifest.name.charAt(0).toUpperCase()
+          {installed.map(bobbin => {
+            const count = bobbinStats[bobbin.bobbinId] ?? 0
+            const initial = bobbin.manifest.name.charAt(0).toUpperCase()
             return (
               <Link
-                key={tool.bobbinId}
-                href={`/projects/${projectId}/${tool.bobbinId}`}
+                key={bobbin.bobbinId}
+                href={`/projects/${projectId}/${bobbin.bobbinId}`}
                 className="group flex items-start gap-3 p-3 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50/40 dark:hover:bg-blue-950/20 transition-colors"
               >
-                <div className={`shrink-0 w-10 h-10 rounded-lg flex items-center justify-center font-semibold text-base ${avatarColor(tool.bobbinId)}`}>
-                  {tool.manifest.icon || initial}
+                <div className={`shrink-0 w-10 h-10 rounded-lg flex items-center justify-center font-semibold text-base ${avatarColor(bobbin.bobbinId)}`}>
+                  {bobbin.manifest.icon || initial}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline justify-between gap-2">
                     <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                      {tool.manifest.name}
+                      {bobbin.manifest.name}
                     </h3>
                     <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">
                       {formatCount(count)}
                     </span>
                   </div>
-                  {tool.manifest.description && (
+                  {bobbin.manifest.description && (
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">
-                      {tool.manifest.description}
+                      {bobbin.manifest.description}
                     </p>
                   )}
                 </div>

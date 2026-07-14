@@ -28,10 +28,12 @@ interface ChapterPublication {
   viewCount?: number
   uniqueViewCount?: number
   completionCount?: number
+  slug?: string | null
 }
 
 interface ChapterRow {
   id: string
+  slug: string | null
   title: string
   order: number
   publishOrder: number
@@ -127,6 +129,7 @@ export function ChapterReleaseTable({
         const pub = pubMap.get(e.id)
         return {
           id: e.id,
+          slug: pub?.slug ?? null,
           title: e.title || `Chapter ${idx + 1}`,
           order: e.order ?? idx,
           publishOrder: e.publishOrder ?? idx,
@@ -411,7 +414,7 @@ export function ChapterReleaseTable({
                         </span>
                         {chapter.status === 'published' && readerBaseUrl && (
                           <a
-                            href={`${readerBaseUrl}/${chapter.id}`}
+                            href={`${readerBaseUrl}/${chapter.slug ?? chapter.id}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex-shrink-0 text-gray-400 hover:text-blue-500 dark:text-gray-500 dark:hover:text-blue-400 transition-colors"

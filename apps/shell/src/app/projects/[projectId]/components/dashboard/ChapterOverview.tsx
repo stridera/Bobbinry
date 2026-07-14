@@ -31,6 +31,7 @@ import { CSS } from '@dnd-kit/utilities'
 
 interface Chapter {
   id: string
+  slug?: string | null
   title: string
   order: number
   collectionName: string
@@ -495,7 +496,7 @@ function ChapterRow({
 
   const status = chapter.publication?.publishStatus || 'draft'
   const isPublished = status === 'published'
-  const readerUrl = isPublished && readerBaseUrl ? `${readerBaseUrl}/${chapter.id}` : null
+  const readerUrl = isPublished && readerBaseUrl ? `${readerBaseUrl}/${chapter.slug ?? chapter.id}` : null
   const canToggle = status === 'draft' || status === 'complete'
   const rowTint = selected
     ? 'bg-blue-50/60 dark:bg-blue-950/30'

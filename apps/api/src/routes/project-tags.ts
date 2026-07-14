@@ -13,10 +13,12 @@ import {
   reactions,
   chapterAnnotations
 } from '../db/schema'
-import { eq, and, ne, sql } from 'drizzle-orm'
+import { eq, and, sql } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { requireAuth, requireProjectOwnership } from '../middleware/auth'
 import { loadDiskManifests } from '../lib/disk-manifests'
+import { getCollectionIdsForProject, buildScopeCondition } from '../lib/effective-bobbins'
+import { getSlugsForEntities } from '../lib/slugs'
 import { countsTowardWordCount, type ContentType } from '@bobbinry/types'
 
 const VALID_TAG_CATEGORIES = ['genre', 'theme', 'trope', 'setting', 'custom'] as const
@@ -169,6 +171,14 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
 
       const isOwner = await requireProjectOwnership(request, reply, projectId)
       if (!isOwner) return
+
+      // Entity visibility scope for the bobbin tile counts: project-scoped
+      // rows, plus collection-scoped rows from collections this project
+      // belongs to, plus the owner's global entities — the same scope the
+      // entity views use, so the counts match what clicking a tile shows.
+      const scopeUserId = request.user!.id
+      const scopeCollectionIds = await getCollectionIdsForProject(projectId)
+      const entityScopeFilter = buildScopeCondition(projectId, scopeCollectionIds, scopeUserId)
 
       // We always fetch every chapter (active + archived) and partition in JS
       // before returning. Project chapter counts are small enough that this is
@@ -333,9 +343,10 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
           ))
           .groupBy(chapterAnnotations.chapterId),
 
-        // 13. Per-bobbin item counts. Drives the Project Tools tile counts.
-        // Excludes entity_type_definitions so type-schema rows don't get
-        // counted as content (matches the precedent in dashboard.ts).
+        // 13. Per-bobbin item counts. Drives the dashboard Bobbins tile counts.
+        // Excludes entity_type_definitions and shared_templates so schema and
+        // template rows don't get counted as content (matches the precedent
+        // in dashboard.ts).
         db
           .select({
             bobbinId: entities.bobbinId,
@@ -343,8 +354,8 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
           })
           .from(entities)
           .where(and(
-            eq(entities.projectId, projectId),
-            ne(entities.collectionName, 'entity_type_definitions')
+            entityScopeFilter,
+            sql`${entities.collectionName} NOT IN ('entity_type_definitions', 'shared_templates')`
           ))
           .groupBy(entities.bobbinId)
       ])
@@ -364,6 +375,9 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
       const reactionCountMap = new Map(reactionCountsResult.map(r => [r.chapterId, r.count]))
       const annotationCountMap = new Map(annotationCountsResult.map(a => [a.chapterId, a.count]))
 
+      // Reader-URL slugs so the dashboard chapter list links the pretty URL.
+      const chapterSlugMap = await getSlugsForEntities(projectId, chaptersResult.map(ch => ch.id))
+
       // Format chapters. `contentType` defaults to 'chapter' for legacy rows
       // that haven't been backfilled (the migration handles this on deploy).
       const allChapters = chaptersResult.map(ch => {
@@ -372,6 +386,7 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
         const wordCount = typeof data?.word_count === 'number' ? data.word_count : 0
         return {
           id: ch.id,
+          slug: chapterSlugMap.get(ch.id) ?? null,
           title: data?.title || 'Untitled',
           order: data?.order ?? data?.sortOrder ?? 0,
           collectionName: ch.collectionName,
@@ -434,7 +449,7 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
       }
 
       // Format bobbins using disk manifests as source of truth. The
-      // hasLeftPanel flag tells the Project Tools UI which bobbins are
+      // hasLeftPanel flag tells the dashboard Bobbins UI which bobbins are
       // project-wide workspaces (owning a `shell.leftPanel` contribution) and
       // therefore deserve a launcher tile.
       const diskManifests = await loadDiskManifests(bobbinsResult.map(b => b.bobbinId))
@@ -459,7 +474,7 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
         }
       })
 
-      // bobbinId → entity count, used by Project Tools tiles.
+      // bobbinId → entity count, used by the dashboard Bobbins tiles.
       const bobbinStats: Record<string, number> = {}
       for (const row of bobbinStatsResult) {
         bobbinStats[row.bobbinId] = row.count

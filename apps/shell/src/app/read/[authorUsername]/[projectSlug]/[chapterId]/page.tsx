@@ -23,15 +23,21 @@ import type { PublishedEntity, PublishedType } from '../entities-data'
 
 interface ChapterData {
   id: string
+  slug: string | null
   title: string
   content: string
   publishedAt: string | null
   viewCount: number
 }
 
+interface NavTarget {
+  id: string
+  slug: string | null
+}
+
 interface Navigation {
-  previous: string | null
-  next: string | null
+  previous: NavTarget | null
+  next: NavTarget | null
 }
 
 interface ReactionCount {
@@ -74,6 +80,7 @@ type EntityInfoDisplay = 'sidebar' | 'popup'
 
 interface PublishedEntityName {
   id: string
+  slug: string | null
   name: string
   typeId: string
   typeIcon: string
@@ -235,11 +242,15 @@ export default function ChapterReaderPage() {
   const sessionUserId = session?.user?.id
   const authorUsername = params.authorUsername as string
   const projectSlug = params.projectSlug as string
-  const chapterId = params.chapterId as string
+  // Slug, old-slug alias, or legacy UUID — the API resolves all three.
+  const chapterParam = params.chapterId as string
 
   const basePath = `/read/${authorUsername}/${projectSlug}`
 
   const [chapter, setChapter] = useState<ChapterData | null>(null)
+  // Canonical chapter UUID from the API — sub-resources (reactions, comments,
+  // annotations, view tracking, bookmarks) key on this, never the URL param.
+  const chapterId = chapter?.id ?? null
   const [displaySettings, setDisplaySettings] = useState<ManuscriptDisplaySettings>(MANUSCRIPT_DISPLAY_DEFAULTS)
   const [nav, setNav] = useState<Navigation>({ previous: null, next: null })
   const [reactions, setReactions] = useState<ReactionCount[]>([])
@@ -293,21 +304,25 @@ export default function ChapterReaderPage() {
   const progressRef = useRef(0)
   const [isBookmarked, setIsBookmarked] = useState(false)
 
-  // Bookmark management
-  const bookmarkKey = `bobbinry-bookmark-${chapterId}`
+  // Bookmark management — keyed by UUID so bookmarks survive slug renames
+  // and legacy UUID-URL bookmarks keep working.
+  const bookmarkKey = chapterId ? `bobbinry-bookmark-${chapterId}` : null
 
   const saveBookmark = useCallback(() => {
+    if (!bookmarkKey) return
     const scrollPercent = progress
     localStorage.setItem(bookmarkKey, JSON.stringify({ progress: scrollPercent, savedAt: Date.now() }))
     setIsBookmarked(true)
   }, [bookmarkKey, progress])
 
   const removeBookmark = useCallback(() => {
+    if (!bookmarkKey) return
     localStorage.removeItem(bookmarkKey)
     setIsBookmarked(false)
   }, [bookmarkKey])
 
   const restoreBookmark = useCallback(() => {
+    if (!bookmarkKey) return
     try {
       const saved = localStorage.getItem(bookmarkKey)
       if (saved) {
@@ -322,8 +337,9 @@ export default function ChapterReaderPage() {
     } catch {}
   }, [bookmarkKey])
 
-  // Check for existing bookmark on mount
+  // Check for existing bookmark once the chapter (and its UUID) is loaded
   useEffect(() => {
+    if (!bookmarkKey) return
     const saved = localStorage.getItem(bookmarkKey)
     // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration bridge
     setIsBookmarked(!!saved)
@@ -348,7 +364,7 @@ export default function ChapterReaderPage() {
       setAuthorDisplayName(slugData.author?.displayName || slugData.author?.userName || authorUsername)
 
       const userId = sessionUserId
-      const chapterUrl = `${config.apiUrl}/api/public/projects/${projId}/chapters/${chapterId}${userId ? `?userId=${userId}` : ''}`
+      const chapterUrl = `${config.apiUrl}/api/public/projects/${projId}/chapters/${encodeURIComponent(chapterParam)}${userId ? `?userId=${userId}` : ''}`
 
       const res = await fetch(chapterUrl)
       if (res.status === 403) {
@@ -371,10 +387,21 @@ export default function ChapterReaderPage() {
         resolveDisplaySettings(null, null, sanitizeDisplaySettings(data.resolvedDisplay))
       )
 
+      // Canonicalize the URL: UUID and old-slug-alias hits get replaced with
+      // the current slug so the address bar always shows the shareable form.
+      // Shallow replaceState (not router.replace) — a route-param change
+      // would re-run this effect and double-count the view.
+      if (data.chapter.slug && chapterParam !== data.chapter.slug) {
+        window.history.replaceState(null, '', `${basePath}/${data.chapter.slug}`)
+      }
+
+      // Sub-resources key on the canonical UUID, never the URL param.
+      const canonicalId = data.chapter.id
+
       // Load reactions and comments in parallel
       const [reactionsRes, commentsRes] = await Promise.all([
-        fetch(`${config.apiUrl}/api/public/chapters/${chapterId}/reactions`),
-        fetch(`${config.apiUrl}/api/public/chapters/${chapterId}/comments`)
+        fetch(`${config.apiUrl}/api/public/chapters/${canonicalId}/reactions`),
+        fetch(`${config.apiUrl}/api/public/chapters/${canonicalId}/comments`)
       ])
 
       if (reactionsRes.ok) {
@@ -387,7 +414,7 @@ export default function ChapterReaderPage() {
       }
 
       // Track view
-      fetch(`${config.apiUrl}/api/public/projects/${projId}/chapters/${chapterId}/view`, {
+      fetch(`${config.apiUrl}/api/public/projects/${projId}/chapters/${canonicalId}/view`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -401,7 +428,7 @@ export default function ChapterReaderPage() {
     } finally {
       setLoading(false)
     }
-  }, [authorUsername, projectSlug, chapterId, sessionUserId])
+  }, [authorUsername, projectSlug, chapterParam, sessionUserId, basePath])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
@@ -410,7 +437,7 @@ export default function ChapterReaderPage() {
 
   // Load annotation access separately — session loads async after chapter
   useEffect(() => {
-    if (!session?.apiToken || !projectId) return
+    if (!session?.apiToken || !projectId || !chapterId) return
     const headers = { Authorization: `Bearer ${session.apiToken}` }
 
     fetch(`${config.apiUrl}/api/public/projects/${projectId}/can-annotate`, { headers })
@@ -483,7 +510,7 @@ export default function ChapterReaderPage() {
 
   // Save progress periodically (debounced) and on page leave
   useEffect(() => {
-    if (!projectId || !session?.user?.id || progress === 0) return
+    if (!projectId || !chapterId || !session?.user?.id || progress === 0) return
 
     const saveProgress = () => {
       fetch(`${config.apiUrl}/api/public/projects/${projectId}/chapters/${chapterId}/view`, {
@@ -503,7 +530,7 @@ export default function ChapterReaderPage() {
 
   // Save progress when leaving the page (back button, link click, tab close)
   useEffect(() => {
-    if (!projectId || !session?.user?.id) return
+    if (!projectId || !chapterId || !session?.user?.id) return
 
     const saveOnLeave = () => {
       if (progressRef.current === 0) return
@@ -792,7 +819,7 @@ export default function ChapterReaderPage() {
   }, [projectId, session?.apiToken, loading])
 
   const toggleReaction = async (type: string) => {
-    if (!session?.user) return
+    if (!session?.user || !chapterId) return
     try {
       await fetch(`${config.apiUrl}/api/public/chapters/${chapterId}/reactions`, {
         method: 'POST',
@@ -816,7 +843,7 @@ export default function ChapterReaderPage() {
 
   const postComment = async (parentId?: string) => {
     const content = parentId ? replyContent : newComment
-    if (!session?.apiToken || !content.trim()) return
+    if (!session?.apiToken || !content.trim() || !chapterId) return
     try {
       const res = await fetch(`${config.apiUrl}/api/public/chapters/${chapterId}/comments`, {
         method: 'POST',
@@ -850,7 +877,7 @@ export default function ChapterReaderPage() {
     content: string
     suggestedText?: string
   }) => {
-    if (!session?.apiToken || !projectId) return
+    if (!session?.apiToken || !projectId || !chapterId) return
     const res = await fetch(`${config.apiUrl}/api/public/chapters/${chapterId}/annotations`, {
       method: 'POST',
       headers: {
@@ -884,7 +911,7 @@ export default function ChapterReaderPage() {
   }
 
   const deleteAnnotation = async (annotationId: string) => {
-    if (!session?.apiToken) return
+    if (!session?.apiToken || !chapterId) return
     await fetch(`${config.apiUrl}/api/public/chapters/${chapterId}/annotations/${annotationId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${session.apiToken}` }
@@ -1250,7 +1277,7 @@ export default function ChapterReaderPage() {
           <div className="mt-8 flex justify-between">
             {nav.previous ? (
               <Link
-                href={`${basePath}/${nav.previous}`}
+                href={`${basePath}/${nav.previous.slug ?? nav.previous.id}`}
                 className={`text-sm ${linkColor} hover:underline`}
               >
                 &larr; Previous Chapter
@@ -1258,7 +1285,7 @@ export default function ChapterReaderPage() {
             ) : <div />}
             {nav.next ? (
               <Link
-                href={`${basePath}/${nav.next}`}
+                href={`${basePath}/${nav.next.slug ?? nav.next.id}`}
                 className={`text-sm ${linkColor} hover:underline`}
               >
                 Next Chapter &rarr;
@@ -1377,7 +1404,7 @@ export default function ChapterReaderPage() {
             entity={openEntity.entity}
             projectId={projectId}
             apiToken={session?.apiToken}
-            subpageHref={`/read/${authorUsername}/${projectSlug}/entity/${openEntity.entity.id}`}
+            subpageHref={`/read/${authorUsername}/${projectSlug}/entity/${openEntity.entity.slug ?? openEntity.entity.id}`}
             entityHrefBase={`/read/${authorUsername}/${projectSlug}/entity`}
             onClose={() => setOpenEntity(null)}
           />
@@ -1390,7 +1417,7 @@ export default function ChapterReaderPage() {
           entity={openEntity.entity}
           projectId={projectId}
           apiToken={session?.apiToken}
-          subpageHref={`/read/${authorUsername}/${projectSlug}/entity/${openEntity.entity.id}`}
+          subpageHref={`/read/${authorUsername}/${projectSlug}/entity/${openEntity.entity.slug ?? openEntity.entity.id}`}
           entityHrefBase={`/read/${authorUsername}/${projectSlug}/entity`}
           onClose={() => setOpenEntity(null)}
         />

@@ -8,7 +8,7 @@ import { SiteNav } from '@/components/SiteNav'
 import { apiFetch } from '@/lib/api'
 import { DashboardHero } from './components/dashboard/DashboardHero'
 import { TagsEditor } from './components/dashboard/TagsEditor'
-import { ProjectTools } from './components/dashboard/ProjectTools'
+import { Bobbins } from './components/dashboard/Bobbins'
 import { ChapterOverview } from './components/dashboard/ChapterOverview'
 import { ProjectManagement } from './components/dashboard/ProjectManagement'
 import { ManuscriptDisplaySettings } from './components/dashboard/ManuscriptDisplaySettings'
@@ -48,6 +48,7 @@ interface DashboardData {
   }
   chapters: Array<{
     id: string
+    slug?: string | null
     title: string
     order: number
     collectionName: string
@@ -279,7 +280,7 @@ export default function ProjectDashboardPage() {
           }}
         />
 
-        <ProjectTools
+        <Bobbins
           projectId={projectId}
           bobbins={data.bobbins}
           bobbinStats={data.bobbinStats}

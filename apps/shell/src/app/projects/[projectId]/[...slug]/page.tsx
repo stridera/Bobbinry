@@ -11,7 +11,7 @@ import { useManifestExtensions } from '@/components/ExtensionProvider'
 import { apiFetch } from '@/lib/api'
 
 // Default landing nav per bobbin when the URL is just /projects/{id}/{bobbinId}
-// (e.g. from the dashboard "Project Tools" tile). Without this, ViewRouter
+// (e.g. from the dashboard "Bobbins" tile). Without this, ViewRouter
 // falls back to localStorage lastNav — usually the last manuscript chapter —
 // so opening "Entities" from the dashboard would dump you back in the editor.
 const DEFAULT_BOBBIN_NAVS: Record<string, { entityType: string; entityId: string; metadata?: Record<string, any> }> = {

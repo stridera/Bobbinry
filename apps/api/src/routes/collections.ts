@@ -12,6 +12,7 @@ import { projectCollections, projectCollectionMemberships, projects, bobbinsInst
 import { eq, and, desc, sql, isNull, isNotNull, inArray } from 'drizzle-orm'
 import { randomBytes } from 'crypto'
 import { requireAuth } from '../middleware/auth'
+import { slugifyName } from '../lib/slugs'
 import { ManifestCompiler } from '@bobbinry/compiler'
 import { loadDiskManifests, getManifestScopes, loadManifestFromBobbinsPath } from '../lib/disk-manifests'
 
@@ -128,11 +129,33 @@ const collectionsPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'name is required' })
       }
 
+      // Auto-claim a name-derived short URL so public collection links are
+      // readable from day one. The claim endpoints below stay authoritative
+      // for custom URLs. Non-fatal: a collection without a shortUrl still
+      // works via its UUID.
+      let shortUrl: string | null = null
+      try {
+        const base = slugifyName(name)
+        for (let i = 1; i <= 5 && !shortUrl; i++) {
+          const candidate = i === 1 ? base : `${base}-${i}`
+          const [taken] = await db
+            .select({ id: projectCollections.id })
+            .from(projectCollections)
+            .where(eq(projectCollections.shortUrl, candidate))
+            .limit(1)
+          if (!taken) shortUrl = candidate
+        }
+        if (!shortUrl) shortUrl = `${base}-${randomBytes(4).toString('hex')}`
+      } catch {
+        shortUrl = null
+      }
+
       const [collection] = await db
         .insert(projectCollections)
         .values({
           userId,
           name,
+          shortUrl,
           description: description || null,
           colorTheme: colorTheme || null,
           coverImage: coverImage || null

@@ -54,6 +54,8 @@ export interface PublishedType {
 
 export interface PublishedEntity {
   id: string
+  /** Reader-URL slug (current); null until the entity is published with one. */
+  slug?: string | null
   typeId: string
   name: string | null
   description: string | null

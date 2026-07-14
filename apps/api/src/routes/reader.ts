@@ -45,6 +45,7 @@ import {
   getCollectionIdsForProject,
   buildScopeCondition,
 } from '../lib/effective-bobbins'
+import { resolveSlug, getSlugsForEntities, UUID_RE } from '../lib/slugs'
 
 // ============================================
 // CHAPTER ORDERING
@@ -500,6 +501,26 @@ async function canUserAnnotate(
   return false
 }
 
+/**
+ * Pretty reader base URL (`<origin>/read/<author>/<shortUrl>`) for a project,
+ * or null when the project has no claimed short URL — callers fall back to
+ * the legacy /projects/<uuid> form.
+ */
+async function getReaderProjectBase(projectId: string): Promise<string | null> {
+  const [row] = await db
+    .select({
+      shortUrl: projects.shortUrl,
+      ownerId: projects.ownerId,
+      username: userProfiles.username
+    })
+    .from(projects)
+    .leftJoin(userProfiles, eq(userProfiles.userId, projects.ownerId))
+    .where(eq(projects.id, projectId))
+    .limit(1)
+  if (!row?.shortUrl) return null
+  return `${env.WEB_ORIGIN}/read/${row.username || row.ownerId}/${row.shortUrl}`
+}
+
 const readerPlugin: FastifyPluginAsync = async (fastify) => {
   // ============================================
   // PUBLIC READER ENDPOINTS
@@ -570,11 +591,14 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         defaultVisibility
       )
 
+      const slugMap = await getSlugsForEntities(projectId, publishedChapters.map(ch => ch.chapterId))
+
       const accessibleChapters = publishedChapters.map(chapter => {
         const access = accessMap.get(chapter.chapterId) ?? { canAccess: true }
         if (access.canAccess) {
           return {
             id: chapter.chapterId,
+            slug: slugMap.get(chapter.chapterId) ?? null,
             title: chapter.title,
             publishedAt: chapter.publishedAt,
             viewCount: chapter.viewCount,
@@ -583,6 +607,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         } else {
           return {
             id: chapter.chapterId,
+            slug: slugMap.get(chapter.chapterId) ?? null,
             title: chapter.title,
             embargoUntil: access.embargoUntil,
             order: chapter.order,
@@ -616,10 +641,17 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
-      const { projectId, chapterId } = request.params
+      const { projectId, chapterId: chapterParam } = request.params
       // Identity sourced from authenticated session only — see /toc handler above
       // for why query-string userId would have been an embargo-bypass.
       const userId = request.user?.id
+
+      // The URL param may be the chapter's slug, an old slug alias, or a UUID.
+      const resolved = await resolveSlug(projectId, chapterParam)
+      if (!resolved) {
+        return reply.status(404).send({ error: 'Chapter not found', correlationId })
+      }
+      const chapterId = resolved.entityId
 
       // Get project visibility setting
       const [chapterPublishConfig] = await db
@@ -709,17 +741,23 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       const previousChapter = currentIndex > 0 ? allChapters[currentIndex - 1] : null
       const nextChapter = currentIndex < allChapters.length - 1 ? allChapters[currentIndex + 1] : null
 
+      const navSlugs = await getSlugsForEntities(
+        projectId,
+        [previousChapter?.id, nextChapter?.id].filter((id): id is string => Boolean(id))
+      )
+
       return reply.send({
         chapter: {
           id: chapter.id,
+          slug: resolved.currentSlug,
           title: chapter.title,
           content: chapter.content,
           publishedAt: chapter.publishedAt,
           viewCount: chapter.viewCount
         },
         navigation: {
-          previous: previousChapter?.id || null,
-          next: nextChapter?.id || null
+          previous: previousChapter ? { id: previousChapter.id, slug: navSlugs.get(previousChapter.id) ?? null } : null,
+          next: nextChapter ? { id: nextChapter.id, slug: navSlugs.get(nextChapter.id) ?? null } : null
         },
         resolvedDisplay,
         correlationId
@@ -1003,7 +1041,13 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/public/projects/:projectId/chapters/:chapterId/metadata', async (request, reply) => {
     const correlationId = randomUUID()
     try {
-      const { projectId, chapterId } = request.params
+      const { projectId, chapterId: chapterParam } = request.params
+
+      const resolved = await resolveSlug(projectId, chapterParam)
+      if (!resolved) {
+        return reply.status(404).send({ error: 'Chapter not found', correlationId })
+      }
+      const chapterId = resolved.entityId
 
       // Get chapter and project
       const [chapter] = await db
@@ -1032,10 +1076,14 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         .select({
           name: projects.name,
           coverImage: projects.coverImage,
+          shortUrl: projects.shortUrl,
           ownerName: users.name,
+          ownerUsername: userProfiles.username,
+          ownerId: projects.ownerId,
         })
         .from(projects)
         .leftJoin(users, eq(projects.ownerId, users.id))
+        .leftJoin(userProfiles, eq(userProfiles.userId, projects.ownerId))
         .where(eq(projects.id, projectId))
         .limit(1)
 
@@ -1044,18 +1092,27 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         : null
       const baseUrl = env.WEB_ORIGIN
 
+      // Pretty reader URL when the project has a claimed short URL; the old
+      // /projects/<uuid>/chapters/<uuid> form otherwise.
+      const authorSegment = project?.ownerUsername || project?.ownerId
+      const readerUrl = project?.shortUrl && authorSegment
+        ? `${baseUrl}/read/${authorSegment}/${project.shortUrl}/${resolved.currentSlug ?? chapterId}`
+        : `${baseUrl}/projects/${projectId}/chapters/${chapterId}`
+
       // Generate excerpt from content
       const excerpt = (chapter.content || '').substring(0, 200).replace(/\n/g, ' ') + '...'
 
       const metadata = {
         title: `${chapter.title} - ${projectData?.title || 'Untitled Project'}`,
         description: excerpt,
+        slug: resolved.currentSlug,
+        isCurrentSlug: resolved.requestedIsCurrent,
 
         openGraph: {
           type: 'article',
           title: chapter.title,
           description: excerpt,
-          url: `${baseUrl}/projects/${projectId}/chapters/${chapterId}`,
+          url: readerUrl,
           image: projectData?.coverImage || `${baseUrl}/default-cover.jpg`,
           siteName: 'Bobbinry',
           publishedTime: chapter.publishedAt?.toISOString(),
@@ -1085,7 +1142,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           }
         },
 
-        canonical: `${baseUrl}/projects/${projectId}/chapters/${chapterId}`
+        canonical: readerUrl
       }
 
       return reply.send({ metadata, correlationId })
@@ -1122,13 +1179,20 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         .orderBy(...sitemapOrderClauses)
 
       const baseUrl = env.WEB_ORIGIN
+      const readerBase = await getReaderProjectBase(projectId)
+      const slugMap = readerBase
+        ? await getSlugsForEntities(projectId, chapters.map(c => c.id))
+        : new Map<string, string>()
 
       // Build XML sitemap
       const urls = chapters.map(chapter => {
         const lastmod = (chapter.updatedAt || chapter.publishedAt)?.toISOString().split('T')[0]
+        const loc = readerBase
+          ? `${readerBase}/${slugMap.get(chapter.id) ?? chapter.id}`
+          : `${baseUrl}/projects/${projectId}/chapters/${chapter.id}`
         return `
   <url>
-    <loc>${baseUrl}/projects/${projectId}/chapters/${chapter.id}</loc>
+    <loc>${loc}</loc>
     <lastmod>${lastmod}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
@@ -1138,7 +1202,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>${baseUrl}/projects/${projectId}</loc>
+    <loc>${readerBase ?? `${baseUrl}/projects/${projectId}`}</loc>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>${urls}
@@ -1256,11 +1320,19 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         .filter(c => accessMap.get(c.id)?.canAccess === true)
         .slice(0, limit)
 
+      const readerBase = await getReaderProjectBase(projectId)
+      const slugMap = readerBase
+        ? await getSlugsForEntities(projectId, chapters.map(c => c.id))
+        : new Map<string, string>()
+      const projectLink = readerBase ?? `${baseUrl}/projects/${projectId}`
+
       // Build RSS feed items
       const items = chapters.map(chapter => {
         const excerpt = (chapter.content || '').substring(0, 500).replace(/\n/g, ' ')
         const pubDate = (chapter.publishedAt || new Date()).toUTCString()
-        const link = `${baseUrl}/projects/${projectId}/chapters/${chapter.id}`
+        const link = readerBase
+          ? `${readerBase}/${slugMap.get(chapter.id) ?? chapter.id}`
+          : `${baseUrl}/projects/${projectId}/chapters/${chapter.id}`
 
         // Escape XML special characters
         const escapeXml = (str: string) =>
@@ -1270,11 +1342,15 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&apos;')
 
+        // guid stays keyed to the UUID URL: slugs move on rename, and a
+        // changed guid would make feed readers re-surface old chapters.
+        const guid = `${baseUrl}/projects/${projectId}/chapters/${chapter.id}`
+
         return `
     <item>
       <title>${escapeXml(chapter.title || 'Untitled')}</title>
       <link>${link}</link>
-      <guid isPermaLink="true">${link}</guid>
+      <guid isPermaLink="true">${guid}</guid>
       <pubDate>${pubDate}</pubDate>
       <description>${escapeXml(excerpt)}...</description>
       <author>${escapeXml(projectData.author || 'Unknown Author')}</author>
@@ -1285,7 +1361,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>${projectData.title || 'Untitled Project'}</title>
-    <link>${baseUrl}/projects/${projectId}</link>
+    <link>${projectLink}</link>
     <description>${projectData.description || 'No description'}</description>
     <language>en</language>
     <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
@@ -1293,7 +1369,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
     <image>
       <url>${projectData.coverImage || `${baseUrl}/default-cover.jpg`}</url>
       <title>${projectData.title || 'Untitled Project'}</title>
-      <link>${baseUrl}/projects/${projectId}</link>
+      <link>${projectLink}</link>
     </image>${items}
   </channel>
 </rss>`
@@ -1503,6 +1579,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         description: string | null
         coverImage: string | null
         colorTheme: string | null
+        shortUrl: string | null
         publishedProjectCount: number
       } | null = null
 
@@ -1513,6 +1590,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           description: projectCollections.description,
           coverImage: projectCollections.coverImage,
           colorTheme: projectCollections.colorTheme,
+          shortUrl: projectCollections.shortUrl,
         })
         .from(projectCollectionMemberships)
         .innerJoin(projectCollections, eq(projectCollections.id, projectCollectionMemberships.collectionId))
@@ -1598,6 +1676,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         description: string | null
         coverImage: string | null
         colorTheme: string | null
+        shortUrl: string | null
         projectIds: string[]
       }[] = []
 
@@ -1611,6 +1690,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
             description: projectCollections.description,
             coverImage: projectCollections.coverImage,
             colorTheme: projectCollections.colorTheme,
+            shortUrl: projectCollections.shortUrl,
           })
           .from(projectCollectionMemberships)
           .innerJoin(projectCollections, eq(projectCollections.id, projectCollectionMemberships.collectionId))
@@ -1637,6 +1717,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
               description: first.description,
               coverImage: first.coverImage,
               colorTheme: first.colorTheme,
+              shortUrl: first.shortUrl,
               projectIds: members.map(m => m.projectId),
             })
           }
@@ -1670,7 +1751,8 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(404).send({ error: 'Author not found', correlationId })
       }
 
-      // Fetch collection owned by this author
+      // Fetch collection owned by this author. The URL param may be the
+      // collection's short URL or a raw UUID (legacy links).
       const [collection] = await db
         .select({
           id: projectCollections.id,
@@ -1678,10 +1760,13 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           description: projectCollections.description,
           coverImage: projectCollections.coverImage,
           colorTheme: projectCollections.colorTheme,
+          shortUrl: projectCollections.shortUrl,
         })
         .from(projectCollections)
         .where(and(
-          eq(projectCollections.id, collectionId),
+          UUID_RE.test(collectionId)
+            ? eq(projectCollections.id, collectionId)
+            : eq(projectCollections.shortUrl, collectionId),
           eq(projectCollections.userId, author.userId),
           isNull(projectCollections.deletedAt),
         ))
@@ -2162,6 +2247,11 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         }
       }
 
+      const codexSlugMap = await getSlugsForEntities(
+        projectId,
+        [...entityRowsByType.values()].flat().map(r => r.id)
+      )
+
       let lockedVariantCount = 0
       const types = visibleTypes.map(t => {
         const typeData = t.data as Record<string, any>
@@ -2226,6 +2316,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
 
             return {
               id: r.id,
+              slug: codexSlugMap.get(r.id) ?? null,
               typeId,
               name: sanitizedData?.name ?? null,
               description: sanitizedData?.description ?? null,
@@ -2276,7 +2367,12 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
     preHandler: optionalAuth
   }, async (request, reply) => {
     try {
-      const { projectId, entityId } = request.params
+      const { projectId, entityId: entityParam } = request.params
+
+      // The URL param may be the entity's slug, an old slug alias, or a UUID.
+      const resolved = await resolveSlug(projectId, entityParam)
+      if (!resolved) return reply.status(404).send({ error: 'Entity not found' })
+      const entityId = resolved.entityId
 
       const [project] = await db
         .select({ id: projects.id, ownerId: projects.ownerId })
@@ -2370,6 +2466,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         },
         entity: {
           id: entityRow.id,
+          slug: resolved.currentSlug,
           typeId: entityRow.collectionName,
           name: (sanitizedData?.name as string) ?? null,
           description: (sanitizedData?.description as string) ?? null,
@@ -2479,9 +2576,11 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           eq(entities.isPublished, true),
         ))
 
+      const nameSlugMap = await getSlugsForEntities(projectId, entityRows.map(r => r.id))
+
       // Build one row per (entity, distinct visible name). The highlight matcher
       // on the client dedupes by lowercase name and keeps a list per match.
-      const rows: { id: string; name: string; typeId: string; typeIcon: string; typeLabel: string }[] = []
+      const rows: { id: string; slug: string | null; name: string; typeId: string; typeIcon: string; typeLabel: string }[] = []
       for (const r of entityRows) {
         if (!isOwner && r.minimumTierLevel > callerTier) continue
         const meta = visibleTypeMeta.get(r.collectionName)!
@@ -2497,6 +2596,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           seen.add(key)
           rows.push({
             id: r.id,
+            slug: nameSlugMap.get(r.id) ?? null,
             name: trimmed,
             typeId: r.collectionName,
             typeIcon: meta.icon,

@@ -31,6 +31,7 @@ interface AuthorInfo {
 
 interface TocChapter {
   id: string
+  slug: string | null
   title: string
   publishedAt?: string
   viewCount?: number
@@ -57,6 +58,7 @@ interface CollectionInfo {
   description: string | null
   coverImage: string | null
   colorTheme: string | null
+  shortUrl: string | null
   publishedProjectCount: number
 }
 
@@ -577,7 +579,7 @@ function ProjectReadingContent() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       <ReaderNav crumbs={[
         { label: authorName, href: `/read/${authorUsername}` },
-        ...(collection ? [{ label: collection.name, href: `/read/${authorUsername}/collection/${collection.id}` }] : []),
+        ...(collection ? [{ label: collection.name, href: `/read/${authorUsername}/collection/${collection.shortUrl ?? collection.id}` }] : []),
         { label: project.name }
       ]} />
 
@@ -617,7 +619,7 @@ function ProjectReadingContent() {
           </div>
           {collection && (
             <Link
-              href={`/read/${authorUsername}/collection/${collection.id}`}
+              href={`/read/${authorUsername}/collection/${collection.shortUrl ?? collection.id}`}
               className="inline-flex items-center gap-1.5 mb-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -838,7 +840,7 @@ function ProjectReadingContent() {
               return (
                 <Link
                   key={chapter.id}
-                  href={`/read/${authorUsername}/${projectSlug}/${chapter.id}`}
+                  href={`/read/${authorUsername}/${projectSlug}/${chapter.slug ?? chapter.id}`}
                   className="flex items-center justify-between px-4 py-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-900/30 transition-colors group"
                 >
                   <div className="flex items-center gap-3">

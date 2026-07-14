@@ -1,7 +1,7 @@
 import { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/connection'
-import { entities } from '../db/schema'
+import { entities, chapterPublications } from '../db/schema'
 import { eq, and, sql, or, inArray, isNull } from 'drizzle-orm'
 import { CONTENT_TYPES, isContentType, type ContentType } from '@bobbinry/types'
 import { requireAuth, requireProjectOwnership, assertEntityScope } from '../middleware/auth'
@@ -9,12 +9,14 @@ import { serverEventBus, contentEdited } from '../lib/event-bus'
 import {
   changeEventFromRow,
   diffEntityData,
+  extractTitle,
   extractWordCount,
   hasChanges,
   recordEntityChanges,
   recordEntityChangesSafe,
   type EntityChangeEvent,
 } from '../lib/entity-changes'
+import { renameSlug, resolveSlugProjects } from '../lib/slugs'
 import { findBobbinForCollectionAcrossScopes } from '../lib/disk-manifests'
 import { getEffectiveBobbins, getCollectionIdsForProject, buildScopeCondition } from '../lib/effective-bobbins'
 import { ApiError, ValidationError, NotFoundError } from '../lib/errors'
@@ -599,6 +601,36 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
           wordCountBefore: diff.wordCountBefore,
           wordCountAfter: diff.wordCountAfter,
         })])
+
+        // Renaming a published entity moves its reader-URL slug (in every
+        // project it's visible from); the old slug stays behind as a
+        // redirecting alias. Non-fatal: saves must never break on slug trouble.
+        if (diff.fieldsChanged.includes('title') || diff.fieldsChanged.includes('name')) {
+          try {
+            let isPubliclyVisible = updated.isPublished
+            if (!isPubliclyVisible && collection === 'content') {
+              const [pub] = await db
+                .select({ id: chapterPublications.id })
+                .from(chapterPublications)
+                .where(and(
+                  eq(chapterPublications.chapterId, entityId),
+                  eq(chapterPublications.projectId, projectId),
+                  eq(chapterPublications.isPublished, true)
+                ))
+                .limit(1)
+              isPubliclyVisible = Boolean(pub)
+            }
+            if (isPubliclyVisible) {
+              const newName = extractTitle(mergedData as Record<string, unknown>)
+              const slugProjects = await resolveSlugProjects(updated)
+              for (const slugProjectId of slugProjects.length > 0 ? slugProjects : [projectId]) {
+                await renameSlug(slugProjectId, entityId, newName)
+              }
+            }
+          } catch (slugError) {
+            fastify.log.warn({ slugError, entityId }, 'Failed to move slug on rename')
+          }
+        }
       }
 
       // Emit content:edited event for backup bobbins and other listeners

@@ -62,6 +62,11 @@ interface PublishConfig {
   autoReleaseEnabled?: boolean
 }
 
+interface SlugInfo {
+  slug: string | null
+  isPinned: boolean
+}
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
 async function apiFetchLocal(path: string, token: string, init?: RequestInit) {
@@ -92,6 +97,13 @@ export default function ChapterPublishPanel(props: ChapterPublishProps) {
   const [error, setError] = useState<string | null>(null)
   const [showScheduleEditor, setShowScheduleEditor] = useState(false)
   const [scheduledFor, setScheduledFor] = useState('')
+
+  // Reader-URL slug for the selected chapter
+  const [slugInfo, setSlugInfo] = useState<SlugInfo | null>(null)
+  const [slugEditing, setSlugEditing] = useState(false)
+  const [slugInput, setSlugInput] = useState('')
+  const [slugError, setSlugError] = useState<string | null>(null)
+  const [slugSaving, setSlugSaving] = useState(false)
 
   const loadData = useCallback(async () => {
     if (!projectId || !apiToken) return
@@ -136,11 +148,19 @@ export default function ChapterPublishPanel(props: ChapterPublishProps) {
 
       if (entityId && entityType === 'content') {
         try {
-          const [chapterRes, pubRes, nextSlotRes] = await Promise.all([
+          const [chapterRes, pubRes, nextSlotRes, slugRes] = await Promise.all([
             apiFetchLocal(`/api/entities/${entityId}?projectId=${projectId}&collection=content`, apiToken),
             apiFetchLocal(`/api/projects/${projectId}/chapters/${entityId}/publication`, apiToken),
             apiFetchLocal(`/api/projects/${projectId}/chapters/${entityId}/next-release-slot`, apiToken),
+            apiFetchLocal(`/api/projects/${projectId}/entities/${entityId}/slug`, apiToken),
           ])
+
+          if (slugRes.ok) {
+            const slugData = await slugRes.json()
+            setSlugInfo({ slug: slugData.slug ?? null, isPinned: !!slugData.isPinned })
+          } else {
+            setSlugInfo(null)
+          }
 
           if (chapterRes.ok) {
             const chapterData = await chapterRes.json()
@@ -187,6 +207,7 @@ export default function ChapterPublishPanel(props: ChapterPublishProps) {
           setChapterAnalytics(null)
           setScheduledFor('')
           setNextReleaseSlot(null)
+          setSlugInfo(null)
         }
       } else {
         setChapterTitle(null)
@@ -194,6 +215,7 @@ export default function ChapterPublishPanel(props: ChapterPublishProps) {
         setChapterAnalytics(null)
         setScheduledFor('')
         setNextReleaseSlot(null)
+        setSlugInfo(null)
       }
     } catch (err) {
       console.error('ChapterPublishPanel: Failed to load data', err)
@@ -206,6 +228,42 @@ export default function ChapterPublishPanel(props: ChapterPublishProps) {
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  // Leave slug-edit mode when switching chapters
+  useEffect(() => {
+    setSlugEditing(false)
+    setSlugError(null)
+  }, [entityId])
+
+  const saveSlug = async () => {
+    if (!projectId || !apiToken || !entityId) return
+    const requested = slugInput.trim().toLowerCase()
+    if (!requested) return
+    setSlugSaving(true)
+    setSlugError(null)
+    try {
+      const res = await apiFetchLocal(
+        `/api/projects/${projectId}/entities/${entityId}/slug`,
+        apiToken,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slug: requested }),
+        }
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setSlugError(data.error || 'Failed to update the URL slug')
+        return
+      }
+      setSlugInfo({ slug: data.slug ?? requested, isPinned: !!data.isPinned })
+      setSlugEditing(false)
+    } catch {
+      setSlugError('Failed to update the URL slug')
+    } finally {
+      setSlugSaving(false)
+    }
+  }
 
   const publishChapter = async () => {
     if (!projectId || !apiToken || !entityId) return
@@ -330,7 +388,7 @@ export default function ChapterPublishPanel(props: ChapterPublishProps) {
   const autoReleaseEnabled = !!publishConfig?.autoReleaseEnabled
   const isFutureScheduled = isScheduled && !!publication?.publishedAt && new Date(publication.publishedAt).getTime() > Date.now()
   const chapterReadUrl = isPublished && projectInfo?.ownerUsername && projectInfo.shortUrl && entityId
-    ? `/read/${projectInfo.ownerUsername}/${projectInfo.shortUrl}/${entityId}`
+    ? `/read/${projectInfo.ownerUsername}/${projectInfo.shortUrl}/${slugInfo?.slug ?? entityId}`
     : null
 
   return (
@@ -405,15 +463,65 @@ export default function ChapterPublishPanel(props: ChapterPublishProps) {
 
                   {chapterReadUrl ? (
                     <div className="space-y-1">
-                      <div className="text-xs font-medium text-gray-700 dark:text-gray-300">Reader URL</div>
-                      <a
-                        href={chapterReadUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="block truncate text-xs text-blue-600 hover:underline dark:text-blue-400"
-                      >
-                        {chapterReadUrl}
-                      </a>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                          Reader URL
+                          {slugInfo?.isPinned ? (
+                            <span className="ml-1.5 text-[10px] font-normal text-gray-400 dark:text-gray-500" title="Custom slug — renaming the chapter won’t change it">
+                              pinned
+                            </span>
+                          ) : null}
+                        </div>
+                        {slugInfo?.slug && !slugEditing ? (
+                          <button
+                            onClick={() => {
+                              setSlugInput(slugInfo.slug || '')
+                              setSlugError(null)
+                              setSlugEditing(true)
+                            }}
+                            className="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                            title="Customize the URL slug"
+                          >
+                            Edit
+                          </button>
+                        ) : null}
+                      </div>
+                      {slugEditing ? (
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={slugInput}
+                              onChange={(event) => setSlugInput(event.target.value)}
+                              onKeyDown={(event) => { if (event.key === 'Enter') saveSlug() }}
+                              placeholder="url-slug"
+                              autoFocus
+                              className="min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-2 py-1 font-mono text-xs text-gray-900 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100"
+                            />
+                            <PanelActionButton onClick={saveSlug} disabled={slugSaving || !slugInput.trim()}>
+                              {slugSaving ? 'Saving…' : 'Save'}
+                            </PanelActionButton>
+                            <PanelActionButton onClick={() => { setSlugEditing(false); setSlugError(null) }} disabled={slugSaving}>
+                              Cancel
+                            </PanelActionButton>
+                          </div>
+                          {slugError ? (
+                            <p className="text-xs text-red-600 dark:text-red-400">{slugError}</p>
+                          ) : null}
+                          <p className="text-[10px] text-gray-400 dark:text-gray-500">
+                            The old URL keeps working and redirects here. Custom slugs stay put when the chapter is renamed.
+                          </p>
+                        </div>
+                      ) : (
+                        <a
+                          href={chapterReadUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block truncate text-xs text-blue-600 hover:underline dark:text-blue-400"
+                        >
+                          {chapterReadUrl}
+                        </a>
+                      )}
                     </div>
                   ) : null}
 
