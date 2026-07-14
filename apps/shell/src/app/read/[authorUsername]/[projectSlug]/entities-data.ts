@@ -77,6 +77,22 @@ export interface EntitiesPayload {
 }
 
 /**
+ * Description for card previews and search. When the base view isn't
+ * published, the server strips base fields that every visible variant
+ * overrides, so `entity.description` can be null even though the visible
+ * variants carry one — fall back to the first published variant's override,
+ * matching the display-name fallback and what the drawer opens to.
+ */
+export function resolveCardDescription(entity: PublishedEntity): string | null {
+  if (entity.publishBase) return entity.description
+  const firstVariantId = entity.publishedVariantIds[0]
+  const override = firstVariantId
+    ? entity.entityData._variants?.items?.[firstVariantId]?.overrides?.description
+    : undefined
+  return typeof override === 'string' ? override : entity.description
+}
+
+/**
  * Strip the `_variants` block and overlay a variant's overrides on top of the
  * base entity. Null variantId returns the base (with variants stripped).
  * Only fields declared versionable are allowed through as overrides — matches

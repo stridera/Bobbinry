@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { htmlToPlainText } from '@bobbinry/sdk'
 import { config } from '@/lib/config'
 import EntityModal from './EntityModal'
+import { resolveCardDescription } from './entities-data'
 import type { EntitiesPayload, PublishedEntity, PublishedType } from './entities-data'
 
 const OVERVIEW_PREVIEW_LIMIT = 6
@@ -317,7 +318,7 @@ function FocusedSection({
     return type.entities.filter(e => {
       const haystack = [
         e.name ?? '',
-        htmlToPlainText(e.description),
+        htmlToPlainText(resolveCardDescription(e)),
         ...(Array.isArray(e.tags) ? e.tags : []),
       ]
         .join(' ')
@@ -434,7 +435,7 @@ function EntityCard({
 
   // Descriptions are stored as rich-text HTML; strip tags for the card preview
   // so `<p></p>` markers don't leak into the line-clamped text.
-  const description = htmlToPlainText(entity.description) || null
+  const description = htmlToPlainText(resolveCardDescription(entity)) || null
 
   return (
     <button
