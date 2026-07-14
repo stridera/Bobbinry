@@ -553,10 +553,15 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       // without this, entityData.updated_at stays at the create timestamp.
       data.updated_at = new Date().toISOString()
 
-      // Merge the new data with existing entity_data to preserve unmodified fields
-      const mergedData = {
+      // Merge the new data with existing entity_data to preserve unmodified fields.
+      // An explicit null deletes the key: schemaless entityData has no other way
+      // to remove a field, and a stored null renders the same as an absent key.
+      const mergedData: Record<string, unknown> = {
         ...(currentEntity.entityData as object),
         ...data
+      }
+      for (const key of Object.keys(data)) {
+        if (data[key] === null) delete mergedData[key]
       }
 
       const newVersion = currentEntity.version + 1

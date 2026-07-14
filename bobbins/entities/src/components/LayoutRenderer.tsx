@@ -31,14 +31,54 @@ function defaultLayout(fields: FieldDefinition[]): EditorLayout {
   }
 }
 
+function isEmptyValue(value: unknown): boolean {
+  if (value === null || value === undefined) return true
+  if (typeof value === 'string') return value.trim() === ''
+  if (Array.isArray(value)) return value.length === 0
+  if (typeof value === 'object') return Object.keys(value).length === 0
+  return false
+}
+
+/** In readonly (reader) mode, fields with nothing to show are dropped and
+ * sections left empty disappear with them — a labeled blank row is noise for
+ * readers. Only fields we have a definition for are pruned; names the layout
+ * references but that aren't in `fields` keep their existing handling. The
+ * editor renders every field so authors can fill them in. */
+function pruneEmptyFields(
+  layout: EditorLayout,
+  fields: FieldDefinition[],
+  entity: Record<string, any>
+): { layout: EditorLayout; fields: FieldDefinition[] } {
+  const prunable = (name: string): boolean => {
+    const def = fields.find(f => f.name === name)
+    return def ? isEmptyValue(entity[def.name]) : false
+  }
+  return {
+    fields: fields.filter(f => !isEmptyValue(entity[f.name])),
+    layout: {
+      ...layout,
+      headerFields: layout.headerFields.filter(name => !prunable(name)),
+      sections: layout.sections
+        .map(section => ({
+          ...section,
+          fields: section.fields.filter(name => !prunable(name)),
+        }))
+        .filter(section => section.fields.length > 0),
+    },
+  }
+}
+
 export function LayoutRenderer({
   layout: configuredLayout,
-  fields,
+  fields: allFields,
   entity,
   onFieldChange,
   readonly = false
 }: LayoutRendererProps) {
-  const layout = configuredLayout ?? defaultLayout(fields)
+  const configured = configuredLayout ?? defaultLayout(allFields)
+  const { layout, fields } = readonly
+    ? pruneEmptyFields(configured, allFields, entity)
+    : { layout: configured, fields: allFields }
 
   // Route to appropriate layout template
   switch (layout.template) {

@@ -253,6 +253,31 @@ describe('GET /api/projects/:projectId/changes', () => {
     expect(body.cursor).toBeGreaterThan(boot.cursor)
   })
 
+  it('deletes a key when the update sends an explicit null', async () => {
+    const chapter = await seedChapter({ legacy_field: 'stale' })
+    const boot = (await get(`/api/projects/${project.id}/changes`)).json()
+
+    const putRes = await app.inject({
+      method: 'PUT',
+      url: `/api/entities/${chapter.id}`,
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      payload: {
+        collection: 'content',
+        projectId: project.id,
+        data: { legacy_field: null },
+      },
+    })
+    expect(putRes.statusCode).toBe(200)
+
+    const [row] = await db.select().from(entities).where(eq(entities.id, chapter.id)).limit(1)
+    expect(row!.entityData).not.toHaveProperty('legacy_field')
+
+    // Key removal is a real change and must reach the feed
+    const res = (await get(`/api/projects/${project.id}/changes?since=${boot.cursor}`)).json()
+    expect(res.changes).toHaveLength(1)
+    expect(res.changes[0].fieldsChanged).toContain('legacy_field')
+  })
+
   it('records nothing for a no-op re-save', async () => {
     const chapter = await seedChapter()
     const boot = (await get(`/api/projects/${project.id}/changes`)).json()
