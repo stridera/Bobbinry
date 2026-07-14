@@ -8,8 +8,6 @@ import { CollapsibleCard } from './CollapsibleCard'
 import {
   DISPLAY_PRESETS,
   PARAGRAPH_SPACING_VALUES,
-  PARAGRAPH_INDENT_VALUES,
-  SCENE_BREAK_VALUES,
   PARAGRAPH_SPACING_LABELS,
   PARAGRAPH_INDENT_LABELS,
   SCENE_BREAK_LABELS,
@@ -52,18 +50,90 @@ const empty: ProjectSettings = {
   dropCaps: null,
 }
 
-const rowSelectClass =
-  'w-56 px-2.5 py-1.5 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 ' +
-  'text-gray-900 dark:text-gray-100 rounded-md text-xs focus:ring-2 focus:ring-blue-500/40 outline-none ' +
-  'disabled:opacity-50 cursor-pointer'
+/** The subset of cascade fields this card edits (smart dashes/ellipsis live in the editor). */
+const CARD_FIELDS = ['paragraphSpacing', 'paragraphIndent', 'codeBlockWrap', 'sceneBreakStyle', 'dropCaps'] as const
 
-function SettingRow({ label, hint, children }: { label: string; hint: string; children: React.ReactNode }) {
+interface SegmentOption {
+  value: string
+  label: string
+}
+
+/**
+ * Segmented control: every option visible, selection shown by a sliding pill.
+ * Equal-width segments keep the pill math trivial (translateX in multiples of
+ * its own width).
+ */
+function Segmented({
+  options,
+  value,
+  onChange,
+  ariaLabel,
+}: {
+  options: SegmentOption[]
+  value: string
+  onChange: (v: string) => void
+  ariaLabel: string
+}) {
+  const activeIndex = Math.max(0, options.findIndex(o => o.value === value))
   return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="flex items-center text-sm text-gray-700 dark:text-gray-300">
-        {label}
-        <HintTip>{hint}</HintTip>
-      </span>
+    <div
+      role="radiogroup"
+      aria-label={ariaLabel}
+      className="relative grid rounded-lg bg-gray-100 dark:bg-gray-700 p-0.5"
+      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+    >
+      <span
+        aria-hidden
+        className="absolute top-0.5 bottom-0.5 left-0.5 rounded-md bg-white dark:bg-gray-600 shadow-sm transition-transform duration-200 ease-out motion-reduce:transition-none"
+        style={{
+          width: `calc((100% - 0.25rem) / ${options.length})`,
+          transform: `translateX(${activeIndex * 100}%)`,
+        }}
+      />
+      {options.map((o, i) => (
+        <button
+          key={o.value}
+          type="button"
+          role="radio"
+          aria-checked={i === activeIndex}
+          onClick={() => onChange(o.value)}
+          title={o.label}
+          className={`relative z-10 px-2 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer text-center truncate ${
+            i === activeIndex
+              ? 'text-gray-900 dark:text-gray-100'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function Field({
+  label,
+  hint,
+  inheritNote,
+  children,
+}: {
+  label: string
+  hint: string
+  /** Shown right-aligned when the field is inheriting, e.g. "your default: Standard". */
+  inheritNote?: string | undefined
+  children: React.ReactNode
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <span className="flex items-center text-xs font-medium text-gray-700 dark:text-gray-300">
+          {label}
+          <HintTip>{hint}</HintTip>
+        </span>
+        {inheritNote && (
+          <span className="text-[11px] text-gray-400 dark:text-gray-500 truncate">{inheritNote}</span>
+        )}
+      </div>
       {children}
     </div>
   )
@@ -158,8 +228,13 @@ export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) 
 
   const hasAnyOverride = Object.values(settings).some(v => v !== null)
 
-  const inheritLabel = (effective: string | undefined) =>
-    effective ? `Inherit — currently ${effective}` : 'Inherit from your default'
+  /** A preset is "active" when the project overrides exactly match its values for the fields this card edits. */
+  function presetMatches(preset: (typeof DISPLAY_PRESETS)[number]): boolean {
+    return CARD_FIELDS.every(f => (settings[f] ?? null) === (preset.values[f] ?? null))
+  }
+
+  const inheritNote = (effective: string | undefined) =>
+    effective !== undefined ? `your default: ${effective}` : undefined
 
   if (loading) {
     return (
@@ -175,7 +250,7 @@ export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) 
     <CollapsibleCard title="Manuscript Display">
       <div className="flex items-start justify-between gap-3 mb-4">
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          Overrides for this project. Empty fields inherit from your defaults;
+          Overrides for this project. Inherit uses your defaults;
           chapters can override in the editor.
         </p>
         <div className="flex items-center gap-3 flex-shrink-0">
@@ -199,61 +274,102 @@ export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) 
         </div>
       </div>
 
-      <div className="space-y-3">
-        <SettingRow label="Paragraph spacing" hint={HINTS.paragraphSpacing}>
-          <select
-            className={rowSelectClass}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
+        <Field
+          label="Paragraph spacing"
+          hint={HINTS.paragraphSpacing}
+          inheritNote={settings.paragraphSpacing === null
+            ? inheritNote(userDefaults ? PARAGRAPH_SPACING_LABELS[userDefaults.paragraphSpacing] : undefined)
+            : undefined}
+        >
+          <Segmented
+            ariaLabel="Paragraph spacing"
             value={settings.paragraphSpacing ?? ''}
-            onChange={e => save({ paragraphSpacing: (e.target.value || null) as ParagraphSpacing | null })}
-          >
-            <option value="">{inheritLabel(userDefaults && PARAGRAPH_SPACING_LABELS[userDefaults.paragraphSpacing] || undefined)}</option>
-            {PARAGRAPH_SPACING_VALUES.map(v => (
-              <option key={v} value={v}>{PARAGRAPH_SPACING_LABELS[v]}</option>
-            ))}
-          </select>
-        </SettingRow>
+            onChange={v => save({ paragraphSpacing: (v || null) as ParagraphSpacing | null })}
+            options={[
+              { value: '', label: 'Inherit' },
+              ...PARAGRAPH_SPACING_VALUES.map(v => ({ value: v, label: PARAGRAPH_SPACING_LABELS[v] })),
+            ]}
+          />
+        </Field>
 
-        <SettingRow label="Paragraph indent" hint={HINTS.paragraphIndent}>
-          <select
-            className={rowSelectClass}
+        <Field
+          label="Paragraph indent"
+          hint={HINTS.paragraphIndent}
+          inheritNote={settings.paragraphIndent === null
+            ? inheritNote(userDefaults ? PARAGRAPH_INDENT_LABELS[userDefaults.paragraphIndent] : undefined)
+            : undefined}
+        >
+          <Segmented
+            ariaLabel="Paragraph indent"
             value={settings.paragraphIndent ?? ''}
-            onChange={e => save({ paragraphIndent: (e.target.value || null) as ParagraphIndent | null })}
-          >
-            <option value="">{inheritLabel(userDefaults && PARAGRAPH_INDENT_LABELS[userDefaults.paragraphIndent] || undefined)}</option>
-            {PARAGRAPH_INDENT_VALUES.map(v => (
-              <option key={v} value={v}>{PARAGRAPH_INDENT_LABELS[v]}</option>
-            ))}
-          </select>
-        </SettingRow>
+            onChange={v => save({ paragraphIndent: (v || null) as ParagraphIndent | null })}
+            options={[
+              { value: '', label: 'Inherit' },
+              { value: 'none', label: 'None' },
+              { value: 'first-line', label: 'First-line' },
+              { value: 'every', label: 'Every' },
+            ]}
+          />
+        </Field>
 
-        <SettingRow label="Scene break style" hint={HINTS.sceneBreakStyle}>
-          <select
-            className={rowSelectClass}
+        <Field
+          label="Scene break style"
+          hint={HINTS.sceneBreakStyle}
+          inheritNote={settings.sceneBreakStyle === null
+            ? inheritNote(userDefaults ? SCENE_BREAK_LABELS[userDefaults.sceneBreakStyle] : undefined)
+            : undefined}
+        >
+          <Segmented
+            ariaLabel="Scene break style"
             value={settings.sceneBreakStyle ?? ''}
-            onChange={e => save({ sceneBreakStyle: (e.target.value || null) as SceneBreakStyle | null })}
-          >
-            <option value="">{inheritLabel(userDefaults && SCENE_BREAK_LABELS[userDefaults.sceneBreakStyle] || undefined)}</option>
-            {SCENE_BREAK_VALUES.map(v => (
-              <option key={v} value={v}>{SCENE_BREAK_LABELS[v]}</option>
-            ))}
-          </select>
-        </SettingRow>
-
-        <SettingRow label="Code block wrap" hint={HINTS.codeBlockWrap}>
-          <TriSelect
-            value={settings.codeBlockWrap}
-            inheritLabel={inheritLabel(userDefaults ? (userDefaults.codeBlockWrap ? 'On' : 'Off') : undefined)}
-            onChange={v => save({ codeBlockWrap: v })}
+            onChange={v => save({ sceneBreakStyle: (v || null) as SceneBreakStyle | null })}
+            options={[
+              { value: '', label: 'Inherit' },
+              { value: 'asterism', label: 'Asterism' },
+              { value: 'rule', label: 'Rule' },
+              { value: 'blank-line', label: 'Blank line' },
+            ]}
           />
-        </SettingRow>
+        </Field>
 
-        <SettingRow label="Drop caps" hint={HINTS.dropCaps}>
-          <TriSelect
-            value={settings.dropCaps}
-            inheritLabel={inheritLabel(userDefaults ? (userDefaults.dropCaps ? 'On' : 'Off') : undefined)}
-            onChange={v => save({ dropCaps: v })}
+        <Field
+          label="Code block wrap"
+          hint={HINTS.codeBlockWrap}
+          inheritNote={settings.codeBlockWrap === null
+            ? inheritNote(userDefaults ? (userDefaults.codeBlockWrap ? 'On' : 'Off') : undefined)
+            : undefined}
+        >
+          <Segmented
+            ariaLabel="Code block wrap"
+            value={settings.codeBlockWrap === null ? '' : settings.codeBlockWrap ? 'on' : 'off'}
+            onChange={v => save({ codeBlockWrap: v === '' ? null : v === 'on' })}
+            options={[
+              { value: '', label: 'Inherit' },
+              { value: 'off', label: 'Off' },
+              { value: 'on', label: 'On' },
+            ]}
           />
-        </SettingRow>
+        </Field>
+
+        <Field
+          label="Drop caps"
+          hint={HINTS.dropCaps}
+          inheritNote={settings.dropCaps === null
+            ? inheritNote(userDefaults ? (userDefaults.dropCaps ? 'On' : 'Off') : undefined)
+            : undefined}
+        >
+          <Segmented
+            ariaLabel="Drop caps"
+            value={settings.dropCaps === null ? '' : settings.dropCaps ? 'on' : 'off'}
+            onChange={v => save({ dropCaps: v === '' ? null : v === 'on' })}
+            options={[
+              { value: '', label: 'Inherit' },
+              { value: 'off', label: 'Off' },
+              { value: 'on', label: 'On' },
+            ]}
+          />
+        </Field>
       </div>
 
       {userDefaults && (
@@ -266,53 +382,35 @@ export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) 
         <div className="flex items-baseline gap-2 mb-2">
           <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Quick styles</span>
           <HintTip>
-            One-click sets the fields above to a known style. Useful for the most common layouts; the individual selects still override.
+            One-click sets the fields above to a known style. The highlighted style is the one the
+            current settings match; the individual controls still override.
           </HintTip>
           <span className="text-xs text-gray-400 dark:text-gray-500">— applies to this project</span>
         </div>
         <div className="flex flex-wrap gap-2">
-          {DISPLAY_PRESETS.map(preset => (
-            <button
-              key={preset.id}
-              type="button"
-              onClick={() => applyPreset(preset.id)}
-              title={preset.description}
-              className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors cursor-pointer ${
-                preset.id === 'inherit'
-                  ? 'border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/40 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-900/70'
-                  : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-300 dark:hover:border-blue-700 text-gray-800 dark:text-gray-100'
-              }`}
-            >
-              {preset.name}
-            </button>
-          ))}
+          {DISPLAY_PRESETS.map(preset => {
+            const active = presetMatches(preset)
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => applyPreset(preset.id)}
+                title={preset.description}
+                aria-pressed={active}
+                className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors cursor-pointer ${
+                  active
+                    ? 'border-blue-400 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                    : preset.id === 'inherit'
+                      ? 'border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/40 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-900/70'
+                      : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-300 dark:hover:border-blue-700 text-gray-800 dark:text-gray-100'
+                }`}
+              >
+                {preset.name}
+              </button>
+            )
+          })}
         </div>
       </div>
     </CollapsibleCard>
-  )
-}
-
-function TriSelect({
-  value,
-  inheritLabel,
-  onChange,
-}: {
-  value: boolean | null
-  inheritLabel?: string
-  onChange: (v: boolean | null) => void
-}) {
-  return (
-    <select
-      className={rowSelectClass}
-      value={value === null ? '' : value ? 'on' : 'off'}
-      onChange={e => {
-        const v = e.target.value
-        onChange(v === '' ? null : v === 'on')
-      }}
-    >
-      <option value="">{inheritLabel ?? 'Inherit from your default'}</option>
-      <option value="on">On</option>
-      <option value="off">Off</option>
-    </select>
   )
 }
