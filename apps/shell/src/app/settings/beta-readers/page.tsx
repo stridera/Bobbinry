@@ -28,6 +28,21 @@ interface BetaReaderEntry {
   } | null
 }
 
+interface InviteEntry {
+  invite: {
+    id: string
+    projectId: string | null
+    token: string
+    accessLevel: string
+    maxUses: number | null
+    useCount: number
+    notifyOnUse: boolean
+    isActive: boolean
+    createdAt: string
+  }
+  projectName: string | null
+}
+
 interface AccessGrantEntry {
   grant: {
     id: string
@@ -53,6 +68,7 @@ export default function BetaReadersPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>('')
   const [betaReaders, setBetaReaders] = useState<BetaReaderEntry[]>([])
   const [accessGrants, setAccessGrants] = useState<AccessGrantEntry[]>([])
+  const [invites, setInvites] = useState<InviteEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [success, setSuccess] = useState<string | null>(null)
@@ -68,6 +84,16 @@ export default function BetaReadersPage() {
   })
   const [lookupResult, setLookupResult] = useState<{ userId: string; displayName: string } | null>(null)
   const [lookupError, setLookupError] = useState<string | null>(null)
+
+  // Invite link form
+  const [showInviteForm, setShowInviteForm] = useState(false)
+  const [inviteForm, setInviteForm] = useState({
+    accessLevel: 'beta' as 'beta' | 'arc' | 'early_access',
+    maxUses: '',
+    notifyOnUse: true,
+    perProject: true
+  })
+  const [copiedInviteId, setCopiedInviteId] = useState<string | null>(null)
 
   // Access grant form
   const [showGrantForm, setShowGrantForm] = useState(false)
@@ -109,9 +135,10 @@ export default function BetaReadersPage() {
       const grantParams = selectedProjectId
         ? `?projectId=${selectedProjectId}&active=true`
         : '?active=true'
-      const [betaRes, grantsRes] = await Promise.all([
+      const [betaRes, grantsRes, invitesRes] = await Promise.all([
         apiFetch(`/api/users/${userId}/beta-readers${betaParams}`, apiToken),
-        apiFetch(`/api/authors/${userId}/access-grants${grantParams}`, apiToken)
+        apiFetch(`/api/authors/${userId}/access-grants${grantParams}`, apiToken),
+        apiFetch(`/api/users/${userId}/beta-invites${betaParams}`, apiToken)
       ])
 
       if (betaRes.ok) {
@@ -121,6 +148,10 @@ export default function BetaReadersPage() {
       if (grantsRes.ok) {
         const data = await grantsRes.json()
         setAccessGrants(data.accessGrants || [])
+      }
+      if (invitesRes.ok) {
+        const data = await invitesRes.json()
+        setInvites(data.invites || [])
       }
     } catch {
       console.error('Failed to load data')
@@ -224,6 +255,68 @@ export default function BetaReadersPage() {
     }
   }
 
+  const createInvite = async () => {
+    if (!apiToken || !userId) return
+    setSaving(true)
+    setError(null)
+    try {
+      const maxUses = inviteForm.maxUses.trim() ? parseInt(inviteForm.maxUses, 10) : undefined
+      if (maxUses !== undefined && (!Number.isInteger(maxUses) || maxUses < 1)) {
+        setError('Max uses must be a positive number')
+        setSaving(false)
+        return
+      }
+      const res = await apiFetch(`/api/users/${userId}/beta-invites`, apiToken, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: inviteForm.perProject && selectedProjectId ? selectedProjectId : undefined,
+          accessLevel: inviteForm.accessLevel,
+          maxUses,
+          notifyOnUse: inviteForm.notifyOnUse
+        })
+      })
+      if (res.ok) {
+        setShowInviteForm(false)
+        setInviteForm({ accessLevel: 'beta', maxUses: '', notifyOnUse: true, perProject: true })
+        setSuccess('Invite link created!')
+        setTimeout(() => setSuccess(null), 3000)
+        await loadData()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        setError(data.error || 'Failed to create invite link')
+      }
+    } catch {
+      setError('Failed to create invite link')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const revokeInvite = async (inviteId: string) => {
+    if (!apiToken || !userId) return
+    try {
+      const res = await apiFetch(`/api/users/${userId}/beta-invites/${inviteId}`, apiToken, {
+        method: 'DELETE'
+      })
+      if (res.ok) {
+        await loadData()
+      }
+    } catch {
+      setError('Failed to revoke invite link')
+    }
+  }
+
+  const copyInviteLink = async (inviteId: string, token: string) => {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/beta-invite/${token}`)
+      setCopiedInviteId(inviteId)
+      setTimeout(() => setCopiedInviteId(null), 2000)
+    } catch {
+      setError('Failed to copy link')
+    }
+  }
+
   const addAccessGrant = async () => {
     if (!apiToken || !userId || !grantLookupResult) return
     setSaving(true)
@@ -290,6 +383,8 @@ export default function BetaReadersPage() {
     early_access: 'Early Access'
   }
 
+  const selectedProjectName = projects.find(p => p.id === selectedProjectId)?.title
+
   const grantTypeLabels: Record<string, string> = {
     gift: 'Gift',
     comp: 'Comp',
@@ -350,6 +445,8 @@ export default function BetaReadersPage() {
                   <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100">Beta Readers</h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                     Beta readers get instant access to all published chapters, regardless of embargo schedules.
+                    Projects appear in a beta reader&rsquo;s Library once the project has a reader URL &mdash; claim
+                    one on the project&rsquo;s publishing page.
                   </p>
                 </div>
                 <button
@@ -473,15 +570,21 @@ export default function BetaReadersPage() {
                         />
                       </div>
                       <div className="flex items-end">
-                        <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 pb-2">
-                          <input
-                            type="checkbox"
-                            checked={betaForm.perProject}
-                            onChange={e => setBetaForm({ ...betaForm, perProject: e.target.checked })}
-                            className="rounded border-gray-300"
-                          />
-                          This project only
-                        </label>
+                        {selectedProjectId ? (
+                          <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 pb-2">
+                            <input
+                              type="checkbox"
+                              checked={betaForm.perProject}
+                              onChange={e => setBetaForm({ ...betaForm, perProject: e.target.checked })}
+                              className="rounded border-gray-300"
+                            />
+                            Only <em>{selectedProjectName}</em>
+                          </label>
+                        ) : (
+                          <p className="text-sm text-gray-400 dark:text-gray-500 pb-2 italic">
+                            Applies to all your projects
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="flex justify-end gap-2">
@@ -492,6 +595,147 @@ export default function BetaReadersPage() {
                         className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50"
                       >
                         {saving ? 'Adding...' : 'Add Beta Reader'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Invite Links */}
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100">Invite Links</h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                    Share a link that lets anyone join as a beta reader &mdash; no username lookup needed.
+                    Cap the number of uses to keep it from spreading.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowInviteForm(!showInviteForm)}
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                >
+                  + New Link
+                </button>
+              </div>
+
+              {invites.length === 0 && !showInviteForm && (
+                <p className="text-sm text-gray-500 dark:text-gray-400 italic">No invite links yet.</p>
+              )}
+
+              {invites.length > 0 && (
+                <div className="space-y-2 mb-4">
+                  {invites.map(({ invite, projectName }) => (
+                    <div key={invite.id} className="flex items-center justify-between gap-3 p-3 bg-gray-50 dark:bg-gray-900/30 rounded-lg text-sm">
+                      <div className="flex items-center gap-2 flex-wrap min-w-0">
+                        <code className="text-xs text-gray-600 dark:text-gray-300 truncate max-w-[200px]" title={`${typeof window !== 'undefined' ? window.location.origin : ''}/beta-invite/${invite.token}`}>
+                          /beta-invite/{invite.token.slice(0, 10)}&hellip;
+                        </code>
+                        <span className={`px-1.5 py-0.5 text-xs rounded ${
+                          invite.accessLevel === 'arc' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300' :
+                          invite.accessLevel === 'early_access' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300' :
+                          'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                        }`}>
+                          {accessLevelLabels[invite.accessLevel] || invite.accessLevel}
+                        </span>
+                        <span className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-xs rounded">
+                          {invite.projectId ? (projectName || 'Project') : 'All projects'}
+                        </span>
+                        <span className="text-gray-400 dark:text-gray-500 text-xs">
+                          {invite.maxUses !== null
+                            ? `${invite.useCount} / ${invite.maxUses} uses`
+                            : `${invite.useCount} use${invite.useCount === 1 ? '' : 's'}`}
+                        </span>
+                        {invite.notifyOnUse && (
+                          <span className="text-gray-400 dark:text-gray-500 text-xs" title="You'll get an email when someone joins">
+                            ✉ notify
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button
+                          onClick={() => copyInviteLink(invite.id, invite.token)}
+                          className="px-2 py-1 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+                        >
+                          {copiedInviteId === invite.id ? 'Copied!' : 'Copy Link'}
+                        </button>
+                        <button
+                          onClick={() => revokeInvite(invite.id)}
+                          className="px-2 py-1 text-xs text-red-500 hover:text-red-700"
+                        >
+                          Revoke
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {showInviteForm && (
+                <div className="border border-blue-200 dark:border-blue-800 rounded-lg p-4 bg-blue-50/30 dark:bg-blue-950/10">
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Access Level</label>
+                        <select
+                          value={inviteForm.accessLevel}
+                          onChange={e => setInviteForm({ ...inviteForm, accessLevel: e.target.value as any })}
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900/50 text-gray-900 dark:text-gray-100 rounded-lg text-sm"
+                        >
+                          <option value="beta">Beta Reader</option>
+                          <option value="arc">ARC Reader</option>
+                          <option value="early_access">Early Access</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Max uses (optional)</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={inviteForm.maxUses}
+                          onChange={e => setInviteForm({ ...inviteForm, maxUses: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900/50 text-gray-900 dark:text-gray-100 rounded-lg text-sm"
+                          placeholder="Unlimited"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                        <input
+                          type="checkbox"
+                          checked={inviteForm.notifyOnUse}
+                          onChange={e => setInviteForm({ ...inviteForm, notifyOnUse: e.target.checked })}
+                          className="rounded border-gray-300"
+                        />
+                        Email me when someone joins
+                      </label>
+                      <div className="flex items-center">
+                        {selectedProjectId ? (
+                          <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                            <input
+                              type="checkbox"
+                              checked={inviteForm.perProject}
+                              onChange={e => setInviteForm({ ...inviteForm, perProject: e.target.checked })}
+                              className="rounded border-gray-300"
+                            />
+                            Only <em>{selectedProjectName}</em>
+                          </label>
+                        ) : (
+                          <p className="text-sm text-gray-400 dark:text-gray-500 italic">
+                            Applies to all your projects
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <button onClick={() => setShowInviteForm(false)} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400">Cancel</button>
+                      <button
+                        onClick={createInvite}
+                        disabled={saving}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50"
+                      >
+                        {saving ? 'Creating...' : 'Create Link'}
                       </button>
                     </div>
                   </div>
@@ -630,15 +874,21 @@ export default function BetaReadersPage() {
                         />
                       </div>
                       <div className="flex items-end">
-                        <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 pb-2">
-                          <input
-                            type="checkbox"
-                            checked={grantForm.perProject}
-                            onChange={e => setGrantForm({ ...grantForm, perProject: e.target.checked })}
-                            className="rounded border-gray-300"
-                          />
-                          This project only
-                        </label>
+                        {selectedProjectId ? (
+                          <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 pb-2">
+                            <input
+                              type="checkbox"
+                              checked={grantForm.perProject}
+                              onChange={e => setGrantForm({ ...grantForm, perProject: e.target.checked })}
+                              className="rounded border-gray-300"
+                            />
+                            Only <em>{selectedProjectName}</em>
+                          </label>
+                        ) : (
+                          <p className="text-sm text-gray-400 dark:text-gray-500 pb-2 italic">
+                            Applies to all your projects
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="flex justify-end gap-2">

@@ -267,6 +267,13 @@
       "when": 1784012887664,
       "tag": "0038_entity_slugs",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1784020644152,
+      "tag": "0039_beta_reader_invites",
+      "breakpoints": true
     }
   ]
 }

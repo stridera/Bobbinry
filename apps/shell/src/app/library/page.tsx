@@ -67,6 +67,25 @@ interface FeedItem {
   authorUsername?: string | null
 }
 
+interface BetaReadingItem {
+  project: {
+    id: string
+    name: string
+    description: string | null
+    coverImage: string | null
+    shortUrl: string | null
+  }
+  author: {
+    id: string
+    username: string | null
+    displayName: string | null
+  }
+  accessLevel: string
+  isLive: boolean
+  publishedChapterCount: number
+  authorWide: boolean
+}
+
 interface ReaderBobbin {
   id: string
   bobbinId: string
@@ -76,7 +95,7 @@ interface ReaderBobbin {
   installedAt: string
 }
 
-type Tab = 'reading' | 'feed' | 'subscriptions' | 'bobbins'
+type Tab = 'reading' | 'feed' | 'beta' | 'subscriptions' | 'bobbins'
 
 export default function LibraryPage() {
   const { data: session, status } = useSession()
@@ -85,6 +104,7 @@ export default function LibraryPage() {
   const [feed, setFeed] = useState<FeedItem[]>([])
   const [subscriptions, setSubscriptions] = useState<SubscriptionRow[]>([])
   const [readerBobbins, setReaderBobbins] = useState<ReaderBobbin[]>([])
+  const [betaReading, setBetaReading] = useState<BetaReadingItem[]>([])
   const [authorProfiles, setAuthorProfiles] = useState<Record<string, { displayName: string; username: string }>>({})
   const [tierNames, setTierNames] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
@@ -101,13 +121,17 @@ export default function LibraryPage() {
         apiFetch(`/api/users/${userId}/reading-progress?limit=10`, apiToken).then(r => r.json()),
         apiFetch(`/api/users/${userId}/feed?limit=20`, apiToken).then(r => r.json()),
         apiFetch(`/api/users/${userId}/reader-bobbins`, apiToken).then(r => r.json()),
-        apiFetch(`/api/users/${userId}/subscriptions?status=active`, apiToken).then(r => r.json())
+        apiFetch(`/api/users/${userId}/subscriptions?status=active`, apiToken).then(r => r.json()),
+        apiFetch(`/api/users/${userId}/beta-reading`, apiToken).then(r => r.json())
       ])
 
       const progressItems: ProgressItem[] = results[0].status === 'fulfilled' ? (results[0].value.progress || []) : []
       const feedItems: FeedItem[] = results[1].status === 'fulfilled' ? (results[1].value.feed || []) : []
       const subscriptionItems: SubscriptionRow[] = results[3].status === 'fulfilled'
         ? (results[3].value.subscriptions || [])
+        : []
+      const betaItems: BetaReadingItem[] = results[4].status === 'fulfilled'
+        ? (results[4].value.betaReading || [])
         : []
 
       const authorIds = new Set<string>()
@@ -182,6 +206,7 @@ export default function LibraryPage() {
 
       setProgress(progressItems)
       setFeed(feedItems)
+      setBetaReading(betaItems)
       setAuthorProfiles(authorProfilesMap)
 
       if (results[2].status === 'fulfilled') {
@@ -284,6 +309,8 @@ export default function LibraryPage() {
   const TABS: { id: Tab; label: string }[] = [
     { id: 'reading', label: 'Continue Reading' },
     { id: 'feed', label: 'Feed' },
+    // Only readers with at least one active beta grant see the Beta Reading tab
+    ...(betaReading.length > 0 ? [{ id: 'beta' as Tab, label: 'Beta Reading' }] : []),
     { id: 'subscriptions', label: 'Subscriptions' },
     { id: 'bobbins', label: 'Reader Bobbins' }
   ]
@@ -474,6 +501,88 @@ export default function LibraryPage() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Beta Reading */}
+        {activeTab === 'beta' && (
+          <div className="space-y-3">
+            {betaReading.map(item => {
+              const accessLabels: Record<string, string> = {
+                beta: 'Beta Reader',
+                arc: 'ARC Reader',
+                early_access: 'Early Access'
+              }
+              const readerHref = item.project.shortUrl
+                ? `/read/${item.author.username || item.author.id}/${item.project.shortUrl}`
+                : null
+
+              const content = (
+                <div className="flex items-center gap-4">
+                  {item.project.coverImage ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={item.project.coverImage}
+                      alt=""
+                      className="w-12 h-16 object-cover rounded flex-shrink-0"
+                    />
+                  ) : (
+                    <div className="w-12 h-16 bg-gray-100 dark:bg-gray-800 rounded flex-shrink-0" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
+                        {item.project.name}
+                      </p>
+                      <span className={`px-1.5 py-0.5 text-xs rounded flex-shrink-0 ${
+                        item.accessLevel === 'arc' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300' :
+                        item.accessLevel === 'early_access' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300' :
+                        'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                      }`}>
+                        {accessLabels[item.accessLevel] || item.accessLevel}
+                      </span>
+                      {!item.isLive && (
+                        <span className="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-xs rounded flex-shrink-0">
+                          Not publicly published
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                      {item.author.displayName || (item.author.username ? `@${item.author.username}` : 'Unknown author')}
+                      {' '}&middot;{' '}
+                      {item.publishedChapterCount > 0
+                        ? `${item.publishedChapterCount} chapter${item.publishedChapterCount === 1 ? '' : 's'}`
+                        : 'No chapters available yet'}
+                    </p>
+                    {!readerHref && (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                        The author hasn&rsquo;t set up a reader link for this project yet.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )
+
+              const cardClasses = 'block p-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 transition-colors'
+
+              if (!readerHref) {
+                return (
+                  <div key={item.project.id} className={`${cardClasses} opacity-70`} aria-disabled="true">
+                    {content}
+                  </div>
+                )
+              }
+
+              return (
+                <Link
+                  key={item.project.id}
+                  href={readerHref}
+                  className={`${cardClasses} hover:border-blue-300 dark:hover:border-blue-700`}
+                >
+                  {content}
+                </Link>
+              )
+            })}
           </div>
         )}
 

@@ -1,14 +1,16 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { signIn } from 'next-auth/react'
 import { config } from '@/lib/config'
 import { GoogleOAuthButton } from '@/components/GoogleOAuthButton'
 
-export default function SignupPage() {
+function SignupForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const callbackUrl = searchParams.get('callbackUrl')
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -45,7 +47,7 @@ export default function SignupPage() {
       if (result?.error) {
         setError('Account created but login failed. Please try logging in.')
       } else if (result?.ok) {
-        router.push('/verify-email')
+        router.push(callbackUrl || '/verify-email')
         router.refresh()
       }
     } catch {
@@ -156,15 +158,26 @@ export default function SignupPage() {
 
             <p className="mt-5 text-center text-sm text-gray-500 dark:text-gray-400">
               Already have an account?{' '}
-              <Link href="/login" className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium">
+              <Link
+                href={callbackUrl ? `/login?callbackUrl=${encodeURIComponent(callbackUrl)}` : '/login'}
+                className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
+              >
                 Sign in
               </Link>
             </p>
 
-            <GoogleOAuthButton label="Sign up with Google" />
+            <GoogleOAuthButton label="Sign up with Google" {...(callbackUrl ? { callbackUrl } : {})} />
           </div>
         </div>
       </div>
     </div>
+  )
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense>
+      <SignupForm />
+    </Suspense>
   )
 }

@@ -296,6 +296,43 @@ export async function sendNewFollowerEmail(
   })
 }
 
+export async function sendBetaReaderJoinedEmail(
+  to: string,
+  readerName: string,
+  projectTitle: string | null,
+  recipientUserId?: string
+): Promise<boolean> {
+  const footer = recipientUserId
+    ? notificationFooter(recipientUserId, 'emailBetaReaderJoined')
+    : undefined
+  const scope = projectTitle
+    ? `your project <strong>${escapeHtml(projectTitle)}</strong>`
+    : 'all your projects'
+  const content = `
+    <h1 style="margin:0 0 16px;font-family:${FONT_HEADING};font-size:24px;color:${COLORS.text};">New beta reader!</h1>
+    <p style="margin:0 0 8px;font-size:16px;color:${COLORS.text};line-height:24px;"><strong>${escapeHtml(readerName)}</strong> joined as a beta reader for ${scope} via your invite link.</p>
+    ${emailButton('Manage beta readers', 'https://bobbinry.com/settings/beta-readers')}
+  `
+
+  const headers: Record<string, string> = {}
+  if (recipientUserId) {
+    const unsub = unsubscribeUrl(recipientUserId, 'emailBetaReaderJoined')
+    headers['List-Unsubscribe'] = `<${unsub}>`
+    headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click'
+  }
+
+  const scopeText = projectTitle ? `your project "${projectTitle}"` : 'all your projects'
+  return sendEmail({
+    to,
+    subject: projectTitle
+      ? `${readerName} joined as a beta reader for "${projectTitle}"`
+      : `${readerName} joined as a beta reader`,
+    html: emailLayout(content, footer),
+    text: `${readerName} joined as a beta reader for ${scopeText} via your invite link. Manage beta readers at https://bobbinry.com/settings/beta-readers`,
+    ...(Object.keys(headers).length > 0 ? { headers } : {}),
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Admin daily report
 // ---------------------------------------------------------------------------

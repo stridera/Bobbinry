@@ -143,6 +143,7 @@ export const userNotificationPreferences = pgTable('user_notification_preference
   emailNewFollower: boolean('email_new_follower').default(true).notNull(),
   emailNewSubscriber: boolean('email_new_subscriber').default(true).notNull(),
   emailNewComment: boolean('email_new_comment').default(true).notNull(),
+  emailBetaReaderJoined: boolean('email_beta_reader_joined').default(true).notNull(),
   emailDigestFrequency: varchar('email_digest_frequency', { length: 20 }).default('daily').notNull(), // instant, daily, weekly, never
   pushNewChapter: boolean('push_new_chapter').default(false).notNull(),
   pushNewComment: boolean('push_new_comment').default(false).notNull(),
@@ -249,6 +250,23 @@ export const betaReaders = pgTable('beta_readers', {
 }, (table) => ({
   authorReaderIdx: index('beta_readers_author_reader_idx').on(table.authorId, table.readerId),
   projectIdx: index('beta_readers_project_idx').on(table.projectId)
+}))
+
+// Beta reader invite links - shareable tokens that enroll the redeemer as a beta reader
+export const betaReaderInvites = pgTable('beta_reader_invites', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  authorId: uuid('author_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }), // Optional: per-project invite
+  token: varchar('token', { length: 128 }).unique().notNull(),
+  accessLevel: varchar('access_level', { length: 50 }).default('beta').notNull(), // beta, arc, early_access
+  maxUses: integer('max_uses'), // null = unlimited
+  useCount: integer('use_count').default(0).notNull(),
+  notifyOnUse: boolean('notify_on_use').default(true).notNull(),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull()
+}, (table) => ({
+  authorIdx: index('beta_reader_invites_author_idx').on(table.authorId)
 }))
 
 // Project-level tables

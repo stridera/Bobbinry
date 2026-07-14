@@ -13,6 +13,7 @@ interface NotificationPrefs {
   emailNewFollower: boolean
   emailNewSubscriber: boolean
   emailNewComment: boolean
+  emailBetaReaderJoined: boolean
   emailDigestFrequency: 'instant' | 'daily' | 'weekly' | 'never'
   pushNewChapter: boolean
   pushNewComment: boolean
@@ -32,6 +33,7 @@ const defaultPrefs: NotificationPrefs = {
   emailNewFollower: true,
   emailNewSubscriber: true,
   emailNewComment: true,
+  emailBetaReaderJoined: true,
   emailDigestFrequency: 'daily',
   pushNewChapter: false,
   pushNewComment: false,
@@ -267,6 +269,12 @@ export default function NotificationsSettingsPage() {
                 onToggle={() => togglePref('emailNewComment')}
                 label="New comments"
                 description="When someone comments on your chapters"
+              />
+              <Toggle
+                enabled={prefs.emailBetaReaderJoined}
+                onToggle={() => togglePref('emailBetaReaderJoined')}
+                label="New beta readers"
+                description="When someone joins through one of your invite links"
               />
 
               {/* Digest frequency */}
