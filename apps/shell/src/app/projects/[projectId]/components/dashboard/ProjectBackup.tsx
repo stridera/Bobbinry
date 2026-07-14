@@ -53,6 +53,7 @@ export function ProjectBackup({ projectId }: ProjectBackupProps) {
   }, [apiToken])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
     if (apiToken) loadStatus()
   }, [apiToken, loadStatus])
 
