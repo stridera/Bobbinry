@@ -208,7 +208,7 @@ export function PublishControl({
               <select
                 value={minimumTierLevel}
                 onChange={handleTierChange}
-                disabled={pending === 'tier' || !isPublished || isExternallyDisabled}
+                disabled={pending === 'tier' || isExternallyDisabled}
                 className={`rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-1.5 py-0.5 text-xs text-gray-900 dark:text-gray-100 disabled:opacity-50 ${
                   compact ? 'max-w-[7rem]' : 'max-w-[10rem]'
                 }`}
@@ -217,7 +217,7 @@ export function PublishControl({
                     ? disabledReason
                     : isPublished
                       ? 'Minimum subscriber tier to view this'
-                      : 'Publish first to gate by tier'
+                      : 'Minimum subscriber tier — takes effect when published'
                 }
               >
                 <option value={0}>Public</option>
