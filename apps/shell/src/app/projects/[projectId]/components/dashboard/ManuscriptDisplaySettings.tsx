@@ -15,7 +15,9 @@ import {
   SCENE_BREAK_LABELS,
   resolveDisplaySettings,
   sanitizeDisplaySettings,
+  summarizeDisplaySettings,
   type ManuscriptDisplaySettings as ResolvedDisplaySettings,
+  type PartialManuscriptDisplaySettings,
   type ParagraphSpacing,
   type ParagraphIndent,
   type SceneBreakStyle,
@@ -50,17 +52,28 @@ const empty: ProjectSettings = {
   dropCaps: null,
 }
 
-const inputClass =
-  'w-full px-3 py-2 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 ' +
-  'text-gray-900 dark:text-gray-100 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/40 outline-none ' +
+const rowSelectClass =
+  'w-56 px-2.5 py-1.5 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 ' +
+  'text-gray-900 dark:text-gray-100 rounded-md text-xs focus:ring-2 focus:ring-blue-500/40 outline-none ' +
   'disabled:opacity-50 cursor-pointer'
 
-const labelClass = 'flex items-center text-xs text-gray-500 dark:text-gray-400 mb-1'
+function SettingRow({ label, hint, children }: { label: string; hint: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="flex items-center text-sm text-gray-700 dark:text-gray-300">
+        {label}
+        <HintTip>{hint}</HintTip>
+      </span>
+      {children}
+    </div>
+  )
+}
 
 export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) {
   const { data: session } = useSession()
   const apiToken = session?.apiToken
   const [settings, setSettings] = useState<ProjectSettings>(empty)
+  const [projectExtras, setProjectExtras] = useState<PartialManuscriptDisplaySettings>({})
   const [userDefaults, setUserDefaults] = useState<ResolvedDisplaySettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [savedFlash, setSavedFlash] = useState<string | null>(null)
@@ -82,6 +95,13 @@ export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) 
           codeBlockWrap: data.settings?.codeBlockWrap ?? null,
           sceneBreakStyle: data.settings?.sceneBreakStyle ?? null,
           dropCaps: data.settings?.dropCaps ?? null,
+        })
+        // smartDashes/smartEllipsis are edited from the editor, not this card,
+        // but still shape what readers get — keep them for the summary line.
+        const sanitized = sanitizeDisplaySettings(data.settings)
+        setProjectExtras({
+          ...(sanitized.smartDashes !== undefined && { smartDashes: sanitized.smartDashes }),
+          ...(sanitized.smartEllipsis !== undefined && { smartEllipsis: sanitized.smartEllipsis }),
         })
       }
       if (userRes.ok) {
@@ -149,40 +169,40 @@ export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) 
     )
   }
 
+  const resolved = resolveDisplaySettings(userDefaults, { ...settings, ...projectExtras }, null)
+
   return (
     <CollapsibleCard title="Manuscript Display">
-      <div className="flex items-center justify-end gap-3 mb-3 min-h-[1.25rem]">
-        {savedFlash && (
-          <span className="inline-flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400 transition-opacity">
-            <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path fillRule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-7.5 7.5a1 1 0 01-1.42 0l-3.5-3.5a1 1 0 011.42-1.42L8.5 12.08l6.79-6.79a1 1 0 011.41 0z" clipRule="evenodd" />
-            </svg>
-            {savedFlash}
-          </span>
-        )}
-        {hasAnyOverride && (
-          <button
-            type="button"
-            onClick={clearOverrides}
-            className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors cursor-pointer"
-          >
-            Reset
-          </button>
-        )}
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Overrides for this project. Empty fields inherit from your defaults;
+          chapters can override in the editor.
+        </p>
+        <div className="flex items-center gap-3 flex-shrink-0">
+          {savedFlash && (
+            <span className="inline-flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400 transition-opacity whitespace-nowrap">
+              <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fillRule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-7.5 7.5a1 1 0 01-1.42 0l-3.5-3.5a1 1 0 011.42-1.42L8.5 12.08l6.79-6.79a1 1 0 011.41 0z" clipRule="evenodd" />
+              </svg>
+              {savedFlash}
+            </span>
+          )}
+          {hasAnyOverride && (
+            <button
+              type="button"
+              onClick={clearOverrides}
+              className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors cursor-pointer"
+            >
+              Reset
+            </button>
+          )}
+        </div>
       </div>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
-        Project-level overrides. Empty fields inherit from your user defaults.
-        Each chapter can override these from the editor.
-      </p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label className={labelClass}>
-            Paragraph spacing
-            <HintTip>{HINTS.paragraphSpacing}</HintTip>
-          </label>
+      <div className="space-y-3">
+        <SettingRow label="Paragraph spacing" hint={HINTS.paragraphSpacing}>
           <select
-            className={inputClass}
+            className={rowSelectClass}
             value={settings.paragraphSpacing ?? ''}
             onChange={e => save({ paragraphSpacing: (e.target.value || null) as ParagraphSpacing | null })}
           >
@@ -191,15 +211,11 @@ export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) 
               <option key={v} value={v}>{PARAGRAPH_SPACING_LABELS[v]}</option>
             ))}
           </select>
-        </div>
+        </SettingRow>
 
-        <div>
-          <label className={labelClass}>
-            Paragraph indent
-            <HintTip>{HINTS.paragraphIndent}</HintTip>
-          </label>
+        <SettingRow label="Paragraph indent" hint={HINTS.paragraphIndent}>
           <select
-            className={inputClass}
+            className={rowSelectClass}
             value={settings.paragraphIndent ?? ''}
             onChange={e => save({ paragraphIndent: (e.target.value || null) as ParagraphIndent | null })}
           >
@@ -208,15 +224,11 @@ export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) 
               <option key={v} value={v}>{PARAGRAPH_INDENT_LABELS[v]}</option>
             ))}
           </select>
-        </div>
+        </SettingRow>
 
-        <div>
-          <label className={labelClass}>
-            Scene break style
-            <HintTip>{HINTS.sceneBreakStyle}</HintTip>
-          </label>
+        <SettingRow label="Scene break style" hint={HINTS.sceneBreakStyle}>
           <select
-            className={inputClass}
+            className={rowSelectClass}
             value={settings.sceneBreakStyle ?? ''}
             onChange={e => save({ sceneBreakStyle: (e.target.value || null) as SceneBreakStyle | null })}
           >
@@ -225,32 +237,30 @@ export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) 
               <option key={v} value={v}>{SCENE_BREAK_LABELS[v]}</option>
             ))}
           </select>
-        </div>
+        </SettingRow>
 
-        <div>
-          <label className={labelClass}>
-            Code block wrap
-            <HintTip>{HINTS.codeBlockWrap}</HintTip>
-          </label>
+        <SettingRow label="Code block wrap" hint={HINTS.codeBlockWrap}>
           <TriSelect
             value={settings.codeBlockWrap}
             inheritLabel={inheritLabel(userDefaults ? (userDefaults.codeBlockWrap ? 'On' : 'Off') : undefined)}
             onChange={v => save({ codeBlockWrap: v })}
           />
-        </div>
+        </SettingRow>
 
-        <div>
-          <label className={labelClass}>
-            Drop caps
-            <HintTip>{HINTS.dropCaps}</HintTip>
-          </label>
+        <SettingRow label="Drop caps" hint={HINTS.dropCaps}>
           <TriSelect
             value={settings.dropCaps}
             inheritLabel={inheritLabel(userDefaults ? (userDefaults.dropCaps ? 'On' : 'Off') : undefined)}
             onChange={v => save({ dropCaps: v })}
           />
-        </div>
+        </SettingRow>
       </div>
+
+      {userDefaults && (
+        <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
+          Readers get: {summarizeDisplaySettings(resolved)}.
+        </p>
+      )}
 
       <div className="mt-5 pt-4 border-t border-gray-100 dark:border-gray-700">
         <div className="flex items-baseline gap-2 mb-2">
@@ -293,7 +303,7 @@ function TriSelect({
 }) {
   return (
     <select
-      className={inputClass}
+      className={rowSelectClass}
       value={value === null ? '' : value ? 'on' : 'off'}
       onChange={e => {
         const v = e.target.value
