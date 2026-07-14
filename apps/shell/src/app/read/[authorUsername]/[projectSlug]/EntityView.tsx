@@ -13,7 +13,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { LayoutRenderer } from '@bobbinry/entities/components/LayoutRenderer'
-import { ResolvedEntityNamesProvider, EntityNavProvider } from '@bobbinry/entities/components/UploadContext'
+import { ResolvedEntityNamesProvider, ResolvedEntityDetailsProvider, EntityNavProvider, type ResolvedEntityDetails } from '@bobbinry/entities/components/UploadContext'
 import { config } from '@/lib/config'
 import type { PublishedType, PublishedEntity } from './entities-data'
 import { resolveEntityForVariant } from './entities-data'
@@ -95,6 +95,40 @@ export default function EntityView({ type, entity, projectId, apiToken, bare = f
     return () => { cancelled = true }
   }, [projectId, apiToken])
 
+  // Relation fields with a rich display (e.g. grouped-by-level spell lists)
+  // need more than names — fetch the full published-entities payload and
+  // build an id → details map. Only fetched when the type asks for it.
+  const needsDetails = useMemo(
+    () => type.customFields.some(f => (f as any).type === 'relation' && (f as any).relationDisplay),
+    [type.customFields]
+  )
+  const [relationDetails, setRelationDetails] = useState<Map<string, ResolvedEntityDetails>>(new Map())
+  useEffect(() => {
+    if (!projectId || !needsDetails) return
+    let cancelled = false
+    const headers: Record<string, string> = {}
+    if (apiToken) headers['Authorization'] = `Bearer ${apiToken}`
+    fetch(`${config.apiUrl}/api/public/projects/${projectId}/entities`, { headers })
+      .then(r => (r.ok ? r.json() : null))
+      .then((data: { types?: Array<{ entities?: Array<{ id: string; name: string; description?: string; entityData?: Record<string, unknown> }> }> } | null) => {
+        if (cancelled || !data?.types) return
+        const map = new Map<string, ResolvedEntityDetails>()
+        for (const t of data.types) {
+          for (const e of t.entities ?? []) {
+            const detail: ResolvedEntityDetails = {
+              name: e.name,
+              data: (e.entityData ?? {}) as Record<string, any>,
+            }
+            if (e.description) detail.description = e.description
+            map.set(e.id, detail)
+          }
+        }
+        setRelationDetails(map)
+      })
+      .catch(() => { /* grouped displays fall back to plain pills — acceptable */ })
+    return () => { cancelled = true }
+  }, [projectId, apiToken, needsDetails])
+
   const layout = type.editorLayout || type.listLayout
   const showVariantBar = visibleVariantIds.length > 1
   const showHeader = !bare
@@ -158,19 +192,21 @@ export default function EntityView({ type, entity, projectId, apiToken, bare = f
 
       <div className="flex-1 overflow-y-auto px-5 py-5">
         <ResolvedEntityNamesProvider names={relationNames}>
-          <EntityNavProvider
-            getLinkProps={(_entityType, id) =>
-              entityHrefBase ? { href: `${entityHrefBase}/${id}` } : null
-            }
-          >
-            <LayoutRenderer
-              layout={layout as any}
-              fields={type.customFields as any}
-              entity={resolvedEntity}
-              onFieldChange={() => {}}
-              readonly
-            />
-          </EntityNavProvider>
+          <ResolvedEntityDetailsProvider details={relationDetails}>
+            <EntityNavProvider
+              getLinkProps={(_entityType, id) =>
+                entityHrefBase ? { href: `${entityHrefBase}/${id}` } : null
+              }
+            >
+              <LayoutRenderer
+                layout={layout as any}
+                fields={type.customFields as any}
+                entity={resolvedEntity}
+                onFieldChange={() => {}}
+                readonly
+              />
+            </EntityNavProvider>
+          </ResolvedEntityDetailsProvider>
         </ResolvedEntityNamesProvider>
       </div>
     </div>
