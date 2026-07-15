@@ -8,7 +8,7 @@
  * @bobbinry/entities directly.
  */
 
-import { getEntityThumbnail, type EntityThumbnail } from '@bobbinry/entities'
+import { getEntityImages, getEntityThumbnail, imageAltText, type EntityThumbnail } from '@bobbinry/entities'
 
 export interface VariantAxis {
   id: string
@@ -100,7 +100,9 @@ export function resolveCardDescription(entity: PublishedEntity): string | null {
  * the first published variant's gallery overrides so the card matches what
  * the drawer opens to.
  */
-export function resolveCardThumbnail(entity: PublishedEntity): EntityThumbnail | null {
+export function resolveCardThumbnail(
+  entity: PublishedEntity
+): (EntityThumbnail & { alt: string }) | null {
   let data: Record<string, unknown> = entity.entityData
   if (!entity.publishBase) {
     const firstVariantId = entity.publishedVariantIds[0]
@@ -109,7 +111,12 @@ export function resolveCardThumbnail(entity: PublishedEntity): EntityThumbnail |
       : undefined
     if (overrides) data = { ...data, ...overrides }
   }
-  return getEntityThumbnail(data)
+  const thumbnail = getEntityThumbnail(data)
+  if (!thumbnail) return null
+  // Author-provided alt/caption for the thumbnail's gallery image; empty
+  // stays correct for decorative images next to the visible card title.
+  const image = getEntityImages(data).find(img => img.url === thumbnail.url)
+  return { ...thumbnail, alt: imageAltText(image) }
 }
 
 /**

@@ -22,6 +22,18 @@ const OVERVIEW_PREVIEW_LIMIT = 10
 /** Card grid shared by overview and focused sections — portrait cards, 2–5 up. */
 const CARD_GRID_CLASS = 'grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5'
 
+/** Grid for sections with no artwork — wider, text-led compact cards. */
+const COMPACT_GRID_CLASS = 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3'
+
+/**
+ * The portrait image well is only earned when a section actually has art.
+ * Sections where no entry has a thumbnail render as compact text cards
+ * instead of rows of tall empty icon wells.
+ */
+function typeHasArt(type: PublishedType): boolean {
+  return type.entities.some(e => resolveCardThumbnail(e) !== null)
+}
+
 interface EntitiesTabProps {
   projectId: string
   authorUsername: string
@@ -245,6 +257,7 @@ function Overview({
       {payload.types.map(t => {
         const overflow = Math.max(0, t.entities.length - OVERVIEW_PREVIEW_LIMIT)
         const previewEntities = t.entities.slice(0, OVERVIEW_PREVIEW_LIMIT)
+        const compact = !typeHasArt(t)
         return (
           <section
             key={t.typeId}
@@ -271,9 +284,9 @@ function Overview({
               </p>
             ) : (
               <>
-                <div className={CARD_GRID_CLASS}>
+                <div className={compact ? COMPACT_GRID_CLASS : CARD_GRID_CLASS}>
                   {previewEntities.map(e => (
-                    <EntityCard key={e.id} type={t} entity={e} onOpen={() => onOpen(t, e)} />
+                    <EntityCard key={e.id} type={t} entity={e} compact={compact} onOpen={() => onOpen(t, e)} />
                   ))}
                   {Object.entries(t.lockedByTier ?? {})
                     .map(([k, v]) => [Number(k), v] as const)
@@ -285,6 +298,7 @@ function Overview({
                           typeIcon={t.icon}
                           typeLabel={t.label}
                           tierLevel={tier}
+                          compact={compact}
                           onClick={onSubscribeNudge}
                         />
                       ))
@@ -331,6 +345,7 @@ function FocusedSection({
 }) {
   const [query, setQuery] = useState('')
   const normalized = query.trim().toLowerCase()
+  const compact = useMemo(() => !typeHasArt(type), [type])
   const filtered = useMemo(() => {
     if (!normalized) return type.entities
     return type.entities.filter(e => {
@@ -407,9 +422,9 @@ function FocusedSection({
           Nothing published in this section yet.
         </p>
       ) : (
-        <div className={CARD_GRID_CLASS}>
+        <div className={compact ? COMPACT_GRID_CLASS : CARD_GRID_CLASS}>
           {filtered.map(e => (
-            <EntityCard key={e.id} type={type} entity={e} onOpen={() => onOpen(e)} />
+            <EntityCard key={e.id} type={type} entity={e} compact={compact} onOpen={() => onOpen(e)} />
           ))}
           {!normalized &&
             Object.entries(type.lockedByTier ?? {})
@@ -422,6 +437,7 @@ function FocusedSection({
                     typeIcon={type.icon}
                     typeLabel={type.label}
                     tierLevel={tier}
+                    compact={compact}
                     onClick={onSubscribeNudge}
                   />
                 ))
@@ -435,10 +451,13 @@ function FocusedSection({
 function EntityCard({
   type,
   entity,
+  compact = false,
   onOpen,
 }: {
   type: PublishedType
   entity: PublishedEntity
+  /** Text-led card for sections with no artwork — no image well. */
+  compact?: boolean
   onOpen: () => void
 }) {
   // Prefer the first published variant's name override when base isn't shown
@@ -457,6 +476,48 @@ function EntityCard({
 
   const thumbnail = resolveCardThumbnail(entity)
 
+  if (compact) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        className="group relative flex items-start gap-3 rounded-lg border border-gray-200 bg-white p-3 text-left transition-all hover:border-blue-300 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-blue-600"
+      >
+        <span
+          aria-hidden
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-gray-100 text-lg dark:bg-gray-900"
+        >
+          {type.icon}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start gap-2">
+            <div className="min-w-0 flex-1 truncate font-medium text-gray-900 group-hover:text-blue-600 dark:text-gray-100 dark:group-hover:text-blue-400">
+              {displayName ?? 'Untitled'}
+            </div>
+            {entity.minimumTierLevel > 0 && <TierBadge level={entity.minimumTierLevel} compact />}
+          </div>
+          {description && (
+            <p className="mt-1 line-clamp-3 text-xs text-gray-500 dark:text-gray-400">
+              {description}
+            </p>
+          )}
+          {entity.tags.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {entity.tags.slice(0, 2).map(tag => (
+                <span
+                  key={tag}
+                  className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </button>
+    )
+  }
+
   return (
     <button
       type="button"
@@ -469,7 +530,7 @@ function EntityCard({
             src={thumbnail.url}
             crop={thumbnail.crop}
             variant="thumb"
-            alt=""
+            alt={thumbnail.alt}
             className="aspect-[3/4] w-full bg-gray-100 dark:bg-gray-900"
           />
         </div>
@@ -519,18 +580,23 @@ function LockedTeaserCard({
   typeIcon,
   typeLabel,
   tierLevel,
+  compact = false,
   onClick,
 }: {
   typeIcon: string
   typeLabel: string
   tierLevel: number
+  /** Match the short text-led cards of art-less sections. */
+  compact?: boolean
   onClick: (tierLevel: number) => void
 }) {
   return (
     <button
       type="button"
       onClick={() => onClick(tierLevel)}
-      className="group flex aspect-[3/4] flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-purple-300 bg-gradient-to-br from-purple-50 to-purple-100/50 p-4 text-center transition-all hover:border-purple-400 hover:from-purple-100 dark:border-purple-700 dark:from-purple-950/30 dark:to-purple-900/20 dark:hover:border-purple-600"
+      className={`group flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-purple-300 bg-gradient-to-br from-purple-50 to-purple-100/50 p-4 text-center transition-all hover:border-purple-400 hover:from-purple-100 dark:border-purple-700 dark:from-purple-950/30 dark:to-purple-900/20 dark:hover:border-purple-600 ${
+        compact ? 'min-h-[5.5rem]' : 'aspect-[3/4]'
+      }`}
       title={`Locked ${typeLabel.toLowerCase().replace(/s$/, '')} — subscribe at Tier ${tierLevel}+ to unlock`}
       aria-label={`Locked — subscribe at Tier ${tierLevel} or higher to reveal`}
     >

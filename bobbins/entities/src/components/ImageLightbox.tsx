@@ -4,17 +4,21 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import type { EntityImage } from '../images'
+import { imageAltText, type EntityImage } from '../images'
+import { ImageCredit } from './ImageCredit'
 
 interface ImageLightboxProps {
   images: EntityImage[]
   startIndex: number
   onClose: () => void
-  /** When set, captions render as editable inputs and changes commit here. */
-  onCaptionChange?: ((index: number, caption: string) => void) | undefined
+  /**
+   * When set, image details (caption, alt text, artist credit) render as
+   * editable inputs and changes commit here as a partial image patch.
+   */
+  onImageChange?: ((index: number, patch: Partial<EntityImage>) => void) | undefined
 }
 
-export function ImageLightbox({ images, startIndex, onClose, onCaptionChange }: ImageLightboxProps) {
+export function ImageLightbox({ images, startIndex, onClose, onImageChange }: ImageLightboxProps) {
   const [index, setIndex] = useState(() =>
     Math.min(Math.max(startIndex, 0), Math.max(images.length - 1, 0))
   )
@@ -51,6 +55,8 @@ export function ImageLightbox({ images, startIndex, onClose, onCaptionChange }: 
 
   const navButtonClass =
     'absolute top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/15 hover:bg-white/30 text-white text-xl flex items-center justify-center cursor-pointer transition-colors'
+  const detailInputClass =
+    'rounded-md border border-white/20 bg-black/40 px-3 py-1.5 text-white placeholder:text-gray-400 focus:border-white/50 focus:outline-none'
 
   return (
     <div
@@ -65,20 +71,48 @@ export function ImageLightbox({ images, startIndex, onClose, onCaptionChange }: 
       >
         <img
           src={current.url}
-          alt={current.caption || ''}
+          alt={imageAltText(current)}
           className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl cursor-default"
         />
 
-        {onCaptionChange ? (
-          <input
-            type="text"
-            value={current.caption ?? ''}
-            onChange={e => onCaptionChange(index, e.target.value)}
-            placeholder="Add a caption…"
-            className="w-full max-w-md rounded-md border border-white/20 bg-black/40 px-3 py-1.5 text-center text-sm text-white placeholder:text-gray-400 focus:border-white/50 focus:outline-none"
-          />
-        ) : current.caption ? (
-          <div className="max-w-md text-center text-sm text-gray-200">{current.caption}</div>
+        {onImageChange ? (
+          <div className="flex w-full max-w-md flex-col gap-1.5">
+            <input
+              type="text"
+              value={current.caption ?? ''}
+              onChange={e => onImageChange(index, { caption: e.target.value })}
+              placeholder="Add a caption…"
+              className={`${detailInputClass} text-center text-sm`}
+            />
+            <input
+              type="text"
+              value={current.alt ?? ''}
+              onChange={e => onImageChange(index, { alt: e.target.value })}
+              placeholder="Alt text (for screen readers)…"
+              className={`${detailInputClass} text-xs`}
+            />
+            <div className="flex gap-1.5">
+              <input
+                type="text"
+                value={current.artist ?? ''}
+                onChange={e => onImageChange(index, { artist: e.target.value })}
+                placeholder="Illustrated by…"
+                className={`${detailInputClass} flex-1 text-xs`}
+              />
+              <input
+                type="url"
+                value={current.artistUrl ?? ''}
+                onChange={e => onImageChange(index, { artistUrl: e.target.value })}
+                placeholder="https://artist-link…"
+                className={`${detailInputClass} flex-1 text-xs`}
+              />
+            </div>
+          </div>
+        ) : current.caption || current.artist ? (
+          <div className="flex max-w-md flex-col items-center gap-0.5 text-center">
+            {current.caption && <div className="text-sm text-gray-200">{current.caption}</div>}
+            <ImageCredit image={current} className="!text-gray-400" />
+          </div>
         ) : null}
 
         {images.length > 1 && (

@@ -34,12 +34,14 @@ import {
   cropToCssStyles,
   getEntityImages,
   getEntityThumbnail,
+  imageAltText,
   normalizeGallery,
   type EntityGallery,
   type EntityImage,
   type ThumbnailCrop,
 } from '../images'
 import { useUpload } from './UploadContext'
+import { ImageCredit } from './ImageCredit'
 import { ImageLightbox } from './ImageLightbox'
 import { ThumbnailCropModal } from './ThumbnailCropModal'
 
@@ -135,11 +137,15 @@ export function EntityImageGallery({
     commit({ images, thumbnail: { url: thumbnail.url, crop } })
   }, [images, thumbnail, commit])
 
-  const handleCaptionChange = useCallback((index: number, caption: string) => {
+  const handleImageChange = useCallback((index: number, patch: Partial<EntityImage>) => {
     const next = images.map((img, i) => {
       if (i !== index) return img
-      const { caption: _prev, ...rest } = img
-      return caption ? { ...rest, caption } : rest
+      const merged: EntityImage = { ...img, ...patch }
+      // Empty strings mean "cleared" — drop the key entirely.
+      for (const key of Object.keys(patch) as (keyof EntityImage)[]) {
+        if (key !== 'url' && !merged[key]) delete merged[key]
+      }
+      return merged
     })
     commit({ images: next, thumbnail })
   }, [images, thumbnail, commit])
@@ -156,6 +162,12 @@ export function EntityImageGallery({
 
   const thumbnailIndex = thumbnail ? images.findIndex(img => img.url === thumbnail.url) : -1
   const heroIndex = 0
+  // Image whose credit shows under the primary: the hero for hero layouts,
+  // else the designated thumbnail (falling back to the first image).
+  const primaryImage =
+    variant === 'hero'
+      ? images[heroIndex] ?? null
+      : images[thumbnailIndex >= 0 ? thumbnailIndex : 0] ?? null
 
   if (images.length === 0 && !canEdit) return null
 
@@ -200,7 +212,7 @@ export function EntityImageGallery({
       <div className={`w-full ${heroHeightClass} relative overflow-hidden`}>
         <img
           src={hero.url}
-          alt={hero.caption || entity.name || 'Entity'}
+          alt={imageAltText(hero, entity.name || 'Entity')}
           className="w-full h-full object-cover cursor-pointer"
           onClick={() => setLightboxIndex(heroIndex)}
         />
@@ -211,17 +223,18 @@ export function EntityImageGallery({
     const aspectClass = variant === 'square' ? 'aspect-square' : 'aspect-[3/4]'
     const cropStyles = cropToCssStyles(thumbnail?.crop)
     const primaryIndex = thumbnailIndex >= 0 ? thumbnailIndex : 0
+    const primaryAlt = imageAltText(images[primaryIndex], entity.name || 'Entity')
     primary = (
       <div
         className={`relative w-full ${aspectClass} overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 shadow-md bg-gray-100 dark:bg-gray-800 cursor-pointer group/primary`}
         onClick={() => setLightboxIndex(primaryIndex)}
       >
         {cropStyles ? (
-          <img src={thumbnail!.url} alt={entity.name || 'Entity'} style={cropStyles} draggable={false} />
+          <img src={thumbnail!.url} alt={primaryAlt} style={cropStyles} draggable={false} />
         ) : (
           <img
             src={thumbnail?.url ?? images[0]!.url}
-            alt={entity.name || 'Entity'}
+            alt={primaryAlt}
             className="absolute inset-0 h-full w-full object-cover"
             draggable={false}
           />
@@ -284,6 +297,7 @@ export function EntityImageGallery({
   return (
     <div>
       {primary}
+      <ImageCredit image={primaryImage} className={variant === 'hero' ? 'px-4 pt-1.5' : 'pt-1'} />
       {strip}
 
       {canEdit && (
@@ -303,7 +317,7 @@ export function EntityImageGallery({
           images={images}
           startIndex={lightboxIndex}
           onClose={() => setLightboxIndex(null)}
-          onCaptionChange={canEdit ? handleCaptionChange : undefined}
+          onImageChange={canEdit ? handleImageChange : undefined}
         />
       )}
       {cropOpen && thumbnail && (
@@ -354,7 +368,7 @@ function StripTile({
       onClick={onOpen}
       title={image.caption || undefined}
     >
-      <img src={image.url} alt={image.caption || ''} className="h-full w-full object-cover" draggable={false} />
+      <img src={image.url} alt={imageAltText(image)} className="h-full w-full object-cover" draggable={false} />
       {isThumbnail && (
         <span
           className="absolute left-0.5 top-0.5 rounded bg-blue-600 px-1 text-[9px] font-semibold uppercase leading-3 text-white"

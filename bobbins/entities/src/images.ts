@@ -32,6 +32,12 @@ export const THUMBNAIL_ASPECT = 3 / 4
 export interface EntityImage {
   url: string
   caption?: string
+  /** Accessibility text for the image; falls back to caption when unset. */
+  alt?: string
+  /** "Illustrated by" credit name. */
+  artist?: string
+  /** Optional link for the artist credit — render only via safeArtistUrl(). */
+  artistUrl?: string
 }
 
 /** Crop rect normalized to [0..1] against the image's natural dimensions. */
@@ -57,10 +63,34 @@ function asImage(raw: unknown): EntityImage | null {
   if (typeof raw === 'string') return raw ? { url: raw } : null
   if (raw && typeof raw === 'object' && typeof (raw as any).url === 'string' && (raw as any).url) {
     const img: EntityImage = { url: (raw as any).url }
-    if (typeof (raw as any).caption === 'string' && (raw as any).caption) img.caption = (raw as any).caption
+    for (const key of ['caption', 'alt', 'artist', 'artistUrl'] as const) {
+      const value = (raw as any)[key]
+      if (typeof value === 'string' && value) img[key] = value
+    }
     return img
   }
   return null
+}
+
+/**
+ * Artist-credit link safe to render as an anchor href. Entity data is
+ * unvalidated jsonb that flows to the public reader, so only allow
+ * http(s) URLs — anything else renders as plain text.
+ */
+export function safeArtistUrl(url: string | null | undefined): string | undefined {
+  if (!url) return undefined
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return url
+  } catch {
+    // not a parseable absolute URL
+  }
+  return undefined
+}
+
+/** Alt text for an image: explicit alt, else caption, else the fallback. */
+export function imageAltText(img: EntityImage | null | undefined, fallback?: string): string {
+  return img?.alt || img?.caption || fallback || ''
 }
 
 function asCrop(raw: unknown): ThumbnailCrop | undefined {
