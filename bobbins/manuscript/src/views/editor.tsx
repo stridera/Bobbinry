@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { ConflictError } from '@bobbinry/sdk'
+import { ConflictError, registerShortcuts } from '@bobbinry/sdk'
 import type { BobbinrySDK } from '@bobbinry/sdk'
 import { paletteClasses, isPaletteToken, PALETTE_TOKENS } from '@bobbinry/ui-components'
 import {
@@ -19,6 +19,7 @@ import {
 } from '@bobbinry/types'
 import { useEditor, EditorContent } from '@tiptap/react'
 import type { Editor } from '@tiptap/react'
+import { Extension } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import CharacterCount from '@tiptap/extension-character-count'
@@ -525,6 +526,9 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
 
   // Track the entity that's currently being edited so we can flush on navigate
   const activeEntityRef = useRef<string | null>(null)
+  // Latest createChapterBelow closure, read by the Mod-Enter editor shortcut
+  // (the TipTap extension is created once, at editor init).
+  const createChapterBelowRef = useRef<() => void>(() => {})
   // Monotonic counter — only the latest loadContent call may update UI state
   const loadGenRef = useRef(0)
   // Suppress onUpdate save during programmatic setContent
@@ -847,6 +851,21 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
       EntityHighlight,
       SearchHighlight,
       SmartTypography,
+      // Ctrl/Cmd+Enter: finish this chapter and start the next one. Outranks
+      // StarterKit's HardBreak, which binds Mod-Enter to a line break by
+      // default (Shift+Enter still inserts hard breaks).
+      Extension.create({
+        name: 'finishChapter',
+        priority: 1000,
+        addKeyboardShortcuts() {
+          return {
+            'Mod-Enter': () => {
+              createChapterBelowRef.current()
+              return true
+            },
+          }
+        },
+      }),
     ],
     content: '',
     immediatelyRender: false,
@@ -1316,6 +1335,21 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
     window.addEventListener('bobbinry:editor-replace-text', handleReplace)
     return () => window.removeEventListener('bobbinry:editor-replace-text', handleReplace)
   }, [])
+
+  // Announce this view's shortcuts to the shell's help overlay (?).
+  // Formatting entries mirror TipTap StarterKit's default bindings for the
+  // marks our toolbar exposes.
+  useEffect(() => registerShortcuts('manuscript.editor', [
+    { keys: 'Mod+Enter', description: 'Finish chapter — new chapter below, keep typing', group: 'Editor' },
+    { keys: 'Enter / ↓', description: 'Jump from the title into the prose', group: 'Editor' },
+    { keys: 'Mod+B', description: 'Bold', group: 'Formatting' },
+    { keys: 'Mod+I', description: 'Italic', group: 'Formatting' },
+    { keys: 'Mod+Shift+S', description: 'Strikethrough', group: 'Formatting' },
+    { keys: 'Mod+E', description: 'Inline code', group: 'Formatting' },
+    { keys: 'Shift+Enter', description: 'Line break', group: 'Formatting' },
+    { keys: 'Mod+Z', description: 'Undo', group: 'Formatting' },
+    { keys: 'Mod+Shift+Z', description: 'Redo', group: 'Formatting' },
+  ]), [])
 
   // Focus and select title when creating new content
   useEffect(() => {
@@ -1871,6 +1905,59 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
     serverSave(eid, html, wordCount, { skipVersionCheck: true })
   }
 
+  /**
+   * Ctrl/Cmd+Enter: create a new chapter directly below the one being edited
+   * (the server places it via insert_after) and navigate to it with the title
+   * focused, so finishing a chapter and starting the next needs no mouse.
+   * Any pending debounced save still targets the old entity id, so in-flight
+   * edits aren't lost by the navigation.
+   */
+  async function createChapterBelow() {
+    const eid = activeEntityRef.current
+    if (!eid) return
+    const containerId = loadDraft(eid)?.containerId ?? null
+
+    try {
+      const created = await sdk.entities.create('content', {
+        title: 'New Content',
+        type: 'scene',
+        content_type: 'chapter',
+        ...(containerId ? { container_id: containerId } : {}),
+        insert_after: eid,
+        order: Date.now(),
+        word_count: 0,
+        status: 'draft',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }) as any
+
+      // Tell the navigation panel to reload its tree (if mounted), then open
+      // the new chapter.
+      window.dispatchEvent(
+        new CustomEvent('bobbinry:content-created', {
+          detail: { entityId: created.id, containerId }
+        })
+      )
+      window.dispatchEvent(
+        new CustomEvent('bobbinry:navigate', {
+          detail: {
+            entityType: 'content',
+            entityId: created.id,
+            bobbinId: 'manuscript',
+            metadata: {
+              type: 'scene',
+              parentId: containerId,
+              focusTitle: true
+            }
+          }
+        })
+      )
+    } catch (error) {
+      console.error('[EditorView] Failed to create chapter below:', error)
+    }
+  }
+  createChapterBelowRef.current = createChapterBelow
+
   function handleTitleChange(newTitle: string) {
     setTitle(newTitle)
     if (!entityId) return
@@ -2086,6 +2173,18 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
             type="text"
             value={title}
             onChange={(e) => handleTitleChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                // Ctrl/Cmd+Enter — same "finish chapter" gesture as in the prose
+                e.preventDefault()
+                void createChapterBelow()
+              } else if (e.key === 'Enter' || e.key === 'ArrowDown') {
+                // Enter/down from the title drops the cursor into the prose so
+                // a new chapter can be titled and written without the mouse.
+                e.preventDefault()
+                editor?.commands.focus('start')
+              }
+            }}
             placeholder="Untitled"
             className="w-full font-display text-3xl font-semibold bg-transparent border-none outline-none text-gray-800 dark:text-gray-100 placeholder:text-gray-300 dark:placeholder:text-gray-700 mb-2 leading-tight"
           />

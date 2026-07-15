@@ -55,6 +55,66 @@ export async function getMaxContentOrder(
   return Number(row?.maxOrder ?? 0)
 }
 
+/**
+ * Order value that places a new chapter directly after the chapter `afterId`.
+ * Orders must stay integers (reader/export/publishing queries cast
+ * ->>'order' to bigint), so this uses the integer midpoint between the target
+ * and the next chapter when there's a gap, and shifts every later chapter up
+ * by 100 first when there isn't. Falls back to append-at-end when `afterId`
+ * isn't a content row in this project.
+ */
+export async function getContentOrderAfter(
+  projectId: string,
+  afterId: string,
+): Promise<number> {
+  return db.transaction(async (tx) => {
+    const contentInProject = and(
+      eq(entities.projectId, projectId),
+      eq(entities.collectionName, 'content'),
+    )
+
+    const [target] = await tx
+      .select({ order: sql<string | null>`${entities.entityData}->>'order'` })
+      .from(entities)
+      .where(and(eq(entities.id, afterId), contentInProject))
+
+    if (!target?.order || !/^-?\d+$/.test(target.order)) {
+      return (await getMaxContentOrder(tx, projectId)) + 100
+    }
+    const targetOrder = Number(target.order)
+
+    const [next] = await tx
+      .select({
+        minOrder: sql<string | null>`MIN((${entities.entityData}->>'order')::bigint)::text`,
+      })
+      .from(entities)
+      .where(and(
+        contentInProject,
+        sql`(${entities.entityData}->>'order')::bigint > ${targetOrder}`,
+      ))
+
+    if (next?.minOrder == null) return targetOrder + 100
+    const nextOrder = Number(next.minOrder)
+    if (nextOrder - targetOrder >= 2) {
+      return Math.floor((targetOrder + nextOrder) / 2)
+    }
+
+    // No integer gap left: shift everything after the target up by 100.
+    await tx
+      .update(entities)
+      .set({
+        entityData: sql`jsonb_set(${entities.entityData}, '{order}', to_jsonb((${entities.entityData}->>'order')::bigint + 100))`,
+        version: sql`${entities.version} + 1`,
+        updatedAt: sql`now()`,
+      })
+      .where(and(
+        contentInProject,
+        sql`(${entities.entityData}->>'order')::bigint > ${targetOrder}`,
+      ))
+    return targetOrder + 50
+  })
+}
+
 /** Resolve the contentType column value for a row in the `content` collection.
  * Pulls from `data.content_type` if the caller supplied it; otherwise defaults
  * to 'chapter'. Returns null for non-content collections (the column is only
@@ -405,11 +465,17 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
         data.word_count = countWordsFromHtml(data.body)
       }
 
-      // Always append new chapters at the end of the manuscript, regardless of
-      // any `order` the client supplied. This is the single source of truth for
-      // ordering on create — see getMaxContentOrder.
+      // The server is the single source of truth for chapter ordering on
+      // create — see getMaxContentOrder. By default new chapters append at the
+      // end of the manuscript, regardless of any `order` the client supplied.
+      // A client may instead pass `insert_after: <content id>` (transient, not
+      // stored) to place the new chapter directly after an existing one.
       if (collection === 'content') {
-        data.order = (await getMaxContentOrder(db, projectId)) + 100
+        const insertAfter = typeof data.insert_after === 'string' ? data.insert_after : null
+        delete data.insert_after
+        data.order = insertAfter
+          ? await getContentOrderAfter(projectId, insertAfter)
+          : (await getMaxContentOrder(db, projectId)) + 100
       }
 
       // Set the correct FK based on the resolved scope

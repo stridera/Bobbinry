@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { BobbinrySDK, PanelActions, fuzzyMatch } from '@bobbinry/sdk'
+import { BobbinrySDK, PanelActions, fuzzyMatch, registerShortcuts } from '@bobbinry/sdk'
 import {
   Toast,
   ToastContainer,
@@ -275,6 +275,25 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     }
   }, [selectedNodeId])
 
+  // Reload the tree when the editor creates a chapter (Ctrl+Enter finish-
+  // chapter gesture) so the new node appears in place and gets highlighted.
+  useEffect(() => {
+    function handleContentCreated(e: Event) {
+      const detail = (e as CustomEvent).detail
+      if (detail?.entityId) {
+        selectedNodeIdRef.current = detail.entityId
+        setSelectedNodeId(detail.entityId)
+      }
+      if (detail?.containerId) {
+        setExpandedNodes(prev => new Set(prev).add(detail.containerId))
+      }
+      void loadTree()
+    }
+
+    window.addEventListener('bobbinry:content-created', handleContentCreated)
+    return () => window.removeEventListener('bobbinry:content-created', handleContentCreated)
+  }, [projectId, context?.apiToken])
+
   // Sync sidebar highlight with the actual view the router navigated to.
   useEffect(() => {
     function handleViewContextChange(e: Event) {
@@ -289,36 +308,43 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     return () => window.removeEventListener('bobbinry:view-context-change', handleViewContextChange)
   }, [])
 
-  // Global Alt+N shortcut to create new content
+  // Announce this panel's shortcuts to the shell's help overlay (?).
+  useEffect(() => registerShortcuts('manuscript.navigation', [
+    { keys: 'Alt+N', description: 'New chapter below the selected one', group: 'Manuscript' },
+    { keys: 'Ctrl+Alt+N', description: 'New chapter at the bottom of the container', group: 'Manuscript' },
+  ]), [])
+
+  // Global shortcuts: Alt+N creates content directly below the selection
+  // (or inside a selected container); Ctrl+Alt+N appends at the bottom of the
+  // selection's container. Checks e.code so the binding survives layouts
+  // where Alt+N types a character.
   useEffect(() => {
     function handleGlobalKeyDown(e: KeyboardEvent) {
-      if (e.altKey && !e.ctrlKey && !e.metaKey && e.key === 'n') {
-        // Don't fire while the user is typing in any input/editor
+      // Shift excluded: Alt+Shift+N is Chrome's split-tab shortcut.
+      if (!e.altKey || e.metaKey || e.shiftKey || e.code !== 'KeyN') return
+      // Fires even while typing in the editor — finish a chapter, Alt+N,
+      // keep writing. The exception: layouts where this combo composes a
+      // character (macOS Option+N dead tilde, AltGr+N on some layouts)
+      // report a key other than plain 'n', and there typing wins.
+      if (e.key.toLowerCase() !== 'n') {
         const target = e.target as HTMLElement | null
         if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
-        e.preventDefault()
+      }
+      e.preventDefault()
 
-        // Determine which container to create content in based on selection
-        const selected = selectedNodeIdRef.current
-        if (!selected) {
-          createContent(null)
-          return
-        }
-
-        const node = findNodeInTree(tree, selected)
-        if (!node) {
-          createContent(null)
-          return
-        }
-
-        if (node.nodeType === 'container') {
-          // Selected a container — create content inside it
-          createContent(selected)
-        } else {
-          // Selected content — create sibling in same container
-          const parentId = nodeParentMap.current.get(selected) ?? null
-          createContent(parentId)
-        }
+      const selected = selectedNodeIdRef.current
+      const node = selected ? findNodeInTree(tree, selected) : null
+      if (!node) {
+        createContent(null)
+      } else if (node.nodeType === 'container') {
+        // Selected a container — create content inside it
+        createContent(node.id)
+      } else if (e.ctrlKey) {
+        // Ctrl+Alt+N — sibling at the bottom of the same container
+        createContent(nodeParentMap.current.get(node.id) ?? null)
+      } else {
+        // Alt+N — insert directly below the selected chapter
+        createContentBelow(node.id)
       }
     }
 
@@ -644,13 +670,16 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     }
   }
 
-  async function createContent(containerId: string | null = null) {
+  async function createContent(containerId: string | null = null, insertAfterId?: string) {
     try {
       const newContent = await sdk.entities.create('content', {
         title: 'New Content',
         type: 'scene',
         content_type: 'chapter',
         ...(containerId ? { container_id: containerId } : {}),
+        // The server assigns the real order: append-at-end by default, or
+        // directly after `insert_after` when provided.
+        ...(insertAfterId ? { insert_after: insertAfterId } : {}),
         order: Date.now(),
         word_count: 0,
         status: 'draft',
@@ -686,6 +715,15 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
       console.error('Failed to create content:', error)
       setToast({ message: 'Failed to create content: ' + (error instanceof Error ? error.message : 'Unknown error'), variant: 'danger' })
     }
+  }
+
+  /**
+   * Create a new chapter directly below an existing one, in the same
+   * container, instead of at the bottom of the tree.
+   */
+  async function createContentBelow(targetId: string) {
+    const containerId = nodeParentMap.current.get(targetId) ?? null
+    await createContent(containerId, targetId)
   }
 
   async function handleRename(nodeId: string, nodeType: 'container' | 'content', newTitle: string) {
@@ -1519,6 +1557,17 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
             )}
             {!isContainer && (
               <>
+                <button
+                  onClick={() => {
+                    void createContentBelow(menuNodeId)
+                    closeContextMenu()
+                  }}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-gray-100 flex items-center justify-between gap-2"
+                >
+                  <span>📝 Add Content Below</span>
+                  <span className="text-[10px] text-gray-400">Alt+N</span>
+                </button>
+                <div className="border-t border-gray-200 dark:border-gray-700"></div>
                 <button
                   onClick={() => setContextMenuView('pov')}
                   className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-gray-100 flex items-center justify-between gap-2"
