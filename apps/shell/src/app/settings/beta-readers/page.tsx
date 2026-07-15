@@ -10,6 +10,7 @@ import { SiteNav } from '@/components/SiteNav'
 interface AuthorProject {
   id: string
   title: string
+  shortUrl: string | null
 }
 
 interface BetaReaderEntry {
@@ -79,8 +80,7 @@ export default function BetaReadersPage() {
   const [betaForm, setBetaForm] = useState({
     username: '',
     accessLevel: 'beta' as 'beta' | 'arc' | 'early_access',
-    notes: '',
-    perProject: true
+    notes: ''
   })
   const [lookupResult, setLookupResult] = useState<{ userId: string; displayName: string } | null>(null)
   const [lookupError, setLookupError] = useState<string | null>(null)
@@ -90,8 +90,7 @@ export default function BetaReadersPage() {
   const [inviteForm, setInviteForm] = useState({
     accessLevel: 'beta' as 'beta' | 'arc' | 'early_access',
     maxUses: '',
-    notifyOnUse: true,
-    perProject: true
+    notifyOnUse: true
   })
   const [copiedInviteId, setCopiedInviteId] = useState<string | null>(null)
 
@@ -101,8 +100,7 @@ export default function BetaReadersPage() {
     username: '',
     grantType: 'comp' as 'gift' | 'comp' | 'beta' | 'promotional',
     expiresAt: '',
-    reason: '',
-    perProject: true
+    reason: ''
   })
   const [grantLookupResult, setGrantLookupResult] = useState<{ userId: string; displayName: string } | null>(null)
   const [grantLookupError, setGrantLookupError] = useState<string | null>(null)
@@ -118,7 +116,8 @@ export default function BetaReadersPage() {
         const data = await res.json()
         const projs = (data.projects || []).map((p: any) => ({
           id: p.project.id,
-          title: p.project.name
+          title: p.project.name,
+          shortUrl: p.project.shortUrl || null
         }))
         setProjects(projs)
       }
@@ -194,6 +193,7 @@ export default function BetaReadersPage() {
 
   const addBetaReader = async () => {
     if (!apiToken || !userId || !lookupResult) return
+    if (selectedProjectNotSetUp) return
     setSaving(true)
     setError(null)
     try {
@@ -202,14 +202,14 @@ export default function BetaReadersPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           readerId: lookupResult.userId,
-          projectId: betaForm.perProject && selectedProjectId ? selectedProjectId : undefined,
+          projectId: selectedProjectId || undefined,
           accessLevel: betaForm.accessLevel,
           notes: betaForm.notes || undefined
         })
       })
       if (res.ok) {
         setShowBetaForm(false)
-        setBetaForm({ username: '', accessLevel: 'beta', notes: '', perProject: true })
+        setBetaForm({ username: '', accessLevel: 'beta', notes: '' })
         setLookupResult(null)
         setSuccess('Beta reader added!')
         setTimeout(() => setSuccess(null), 3000)
@@ -257,6 +257,7 @@ export default function BetaReadersPage() {
 
   const createInvite = async () => {
     if (!apiToken || !userId) return
+    if (selectedProjectNotSetUp) return
     setSaving(true)
     setError(null)
     try {
@@ -270,7 +271,7 @@ export default function BetaReadersPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          projectId: inviteForm.perProject && selectedProjectId ? selectedProjectId : undefined,
+          projectId: selectedProjectId || undefined,
           accessLevel: inviteForm.accessLevel,
           maxUses,
           notifyOnUse: inviteForm.notifyOnUse
@@ -278,7 +279,7 @@ export default function BetaReadersPage() {
       })
       if (res.ok) {
         setShowInviteForm(false)
-        setInviteForm({ accessLevel: 'beta', maxUses: '', notifyOnUse: true, perProject: true })
+        setInviteForm({ accessLevel: 'beta', maxUses: '', notifyOnUse: true })
         setSuccess('Invite link created!')
         setTimeout(() => setSuccess(null), 3000)
         await loadData()
@@ -319,6 +320,7 @@ export default function BetaReadersPage() {
 
   const addAccessGrant = async () => {
     if (!apiToken || !userId || !grantLookupResult) return
+    if (selectedProjectNotSetUp) return
     setSaving(true)
     setError(null)
     try {
@@ -327,7 +329,7 @@ export default function BetaReadersPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           grantedTo: grantLookupResult.userId,
-          projectId: grantForm.perProject && selectedProjectId ? selectedProjectId : undefined,
+          projectId: selectedProjectId || undefined,
           grantType: grantForm.grantType,
           expiresAt: grantForm.expiresAt || undefined,
           reason: grantForm.reason || undefined
@@ -335,7 +337,7 @@ export default function BetaReadersPage() {
       })
       if (res.ok) {
         setShowGrantForm(false)
-        setGrantForm({ username: '', grantType: 'comp', expiresAt: '', reason: '', perProject: true })
+        setGrantForm({ username: '', grantType: 'comp', expiresAt: '', reason: '' })
         setGrantLookupResult(null)
         setSuccess('Access grant created!')
         setTimeout(() => setSuccess(null), 3000)
@@ -383,7 +385,11 @@ export default function BetaReadersPage() {
     early_access: 'Early Access'
   }
 
-  const selectedProjectName = projects.find(p => p.id === selectedProjectId)?.title
+  const selectedProject = projects.find(p => p.id === selectedProjectId)
+  const selectedProjectName = selectedProject?.title
+  // Grants/invites on a project with no reader URL are a dead end — the beta
+  // reader would have nothing to open. Block creating new ones until set up.
+  const selectedProjectNotSetUp = !!selectedProject && !selectedProject.shortUrl
 
   const grantTypeLabels: Record<string, string> = {
     gift: 'Gift',
@@ -432,16 +438,33 @@ export default function BetaReadersPage() {
             >
               <option value="">All projects</option>
               {projects.map(p => (
-                <option key={p.id} value={p.id}>{p.title}</option>
+                <option key={p.id} value={p.id}>
+                  {p.title}{p.shortUrl ? '' : ' (publishing not set up)'}
+                </option>
               ))}
             </select>
           </div>
         )}
 
+        {selectedProjectNotSetUp && (
+          <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 px-4 py-3 rounded-lg text-sm flex items-center justify-between gap-3 flex-wrap">
+            <span>
+              Beta readers won&rsquo;t be able to read <em>{selectedProjectName}</em> until publishing
+              is set up (it has no reader URL yet).
+            </span>
+            <Link
+              href={`/publish/${selectedProjectId}`}
+              className="font-medium text-amber-900 dark:text-amber-200 underline hover:no-underline flex-shrink-0"
+            >
+              Set up publishing &rarr;
+            </Link>
+          </div>
+        )}
+
             {/* Beta Readers */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <div className="min-w-0">
                   <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100">Beta Readers</h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                     Beta readers get instant access to all published chapters, regardless of embargo schedules.
@@ -451,7 +474,9 @@ export default function BetaReadersPage() {
                 </div>
                 <button
                   onClick={() => setShowBetaForm(!showBetaForm)}
-                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                  disabled={selectedProjectNotSetUp}
+                  title={selectedProjectNotSetUp ? 'Set up publishing for this project first' : undefined}
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex-shrink-0 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   + Add
                 </button>
@@ -570,21 +595,11 @@ export default function BetaReadersPage() {
                         />
                       </div>
                       <div className="flex items-end">
-                        {selectedProjectId ? (
-                          <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 pb-2">
-                            <input
-                              type="checkbox"
-                              checked={betaForm.perProject}
-                              onChange={e => setBetaForm({ ...betaForm, perProject: e.target.checked })}
-                              className="rounded border-gray-300"
-                            />
-                            Only <em>{selectedProjectName}</em>
-                          </label>
-                        ) : (
-                          <p className="text-sm text-gray-400 dark:text-gray-500 pb-2 italic">
-                            Applies to all your projects
-                          </p>
-                        )}
+                        <p className="text-sm text-gray-400 dark:text-gray-500 pb-2 italic">
+                          {selectedProjectId
+                            ? <>Applies only to <em>{selectedProjectName}</em></>
+                            : 'Applies to all your projects'}
+                        </p>
                       </div>
                     </div>
                     <div className="flex justify-end gap-2">
@@ -604,8 +619,8 @@ export default function BetaReadersPage() {
 
             {/* Invite Links */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <div className="min-w-0">
                   <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100">Invite Links</h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                     Share a link that lets anyone join as a beta reader &mdash; no username lookup needed.
@@ -614,7 +629,9 @@ export default function BetaReadersPage() {
                 </div>
                 <button
                   onClick={() => setShowInviteForm(!showInviteForm)}
-                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                  disabled={selectedProjectNotSetUp}
+                  title={selectedProjectNotSetUp ? 'Set up publishing for this project first' : undefined}
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex-shrink-0 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   + New Link
                 </button>
@@ -711,21 +728,11 @@ export default function BetaReadersPage() {
                         Email me when someone joins
                       </label>
                       <div className="flex items-center">
-                        {selectedProjectId ? (
-                          <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                            <input
-                              type="checkbox"
-                              checked={inviteForm.perProject}
-                              onChange={e => setInviteForm({ ...inviteForm, perProject: e.target.checked })}
-                              className="rounded border-gray-300"
-                            />
-                            Only <em>{selectedProjectName}</em>
-                          </label>
-                        ) : (
-                          <p className="text-sm text-gray-400 dark:text-gray-500 italic">
-                            Applies to all your projects
-                          </p>
-                        )}
+                        <p className="text-sm text-gray-400 dark:text-gray-500 italic">
+                          {selectedProjectId
+                            ? <>Applies only to <em>{selectedProjectName}</em></>
+                            : 'Applies to all your projects'}
+                        </p>
                       </div>
                     </div>
                     <div className="flex justify-end gap-2">
@@ -745,8 +752,8 @@ export default function BetaReadersPage() {
 
             {/* Access Grants */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <div className="min-w-0">
                   <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100">Access Grants</h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                     Grant specific users access to your content. Use for gifts, comps, or promotional access.
@@ -754,7 +761,9 @@ export default function BetaReadersPage() {
                 </div>
                 <button
                   onClick={() => setShowGrantForm(!showGrantForm)}
-                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                  disabled={selectedProjectNotSetUp}
+                  title={selectedProjectNotSetUp ? 'Set up publishing for this project first' : undefined}
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex-shrink-0 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   + Grant Access
                 </button>
@@ -874,21 +883,11 @@ export default function BetaReadersPage() {
                         />
                       </div>
                       <div className="flex items-end">
-                        {selectedProjectId ? (
-                          <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 pb-2">
-                            <input
-                              type="checkbox"
-                              checked={grantForm.perProject}
-                              onChange={e => setGrantForm({ ...grantForm, perProject: e.target.checked })}
-                              className="rounded border-gray-300"
-                            />
-                            Only <em>{selectedProjectName}</em>
-                          </label>
-                        ) : (
-                          <p className="text-sm text-gray-400 dark:text-gray-500 pb-2 italic">
-                            Applies to all your projects
-                          </p>
-                        )}
+                        <p className="text-sm text-gray-400 dark:text-gray-500 pb-2 italic">
+                          {selectedProjectId
+                            ? <>Applies only to <em>{selectedProjectName}</em></>
+                            : 'Applies to all your projects'}
+                        </p>
                       </div>
                     </div>
                     <div className="flex justify-end gap-2">

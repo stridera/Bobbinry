@@ -77,6 +77,7 @@ interface DashboardData {
     projectId: string
     publishingMode: string
     defaultVisibility: string
+    projectVisibility?: string
     autoReleaseEnabled: boolean
     releaseFrequency: string
     releaseDay?: string
@@ -212,6 +213,16 @@ export default function ProjectDashboardPage() {
               {data.publishConfig.publishingMode === 'live' && (
                 <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
                   Live
+                </span>
+              )}
+              {data.publishConfig.publishingMode === 'live' && data.publishConfig.projectVisibility === 'private' && (
+                <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                  Private
+                </span>
+              )}
+              {data.publishConfig.publishingMode === 'live' && data.publishConfig.projectVisibility === 'unlisted' && (
+                <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                  Unlisted
                 </span>
               )}
             </div>

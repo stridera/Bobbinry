@@ -1293,7 +1293,8 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
       const [configs, chapterCounts, authorProfiles] = await Promise.all([
         db.select({
           projectId: projectPublishConfig.projectId,
-          publishingMode: projectPublishConfig.publishingMode
+          publishingMode: projectPublishConfig.publishingMode,
+          projectVisibility: projectPublishConfig.projectVisibility
         })
           .from(projectPublishConfig)
           .where(inArray(projectPublishConfig.projectId, projectIds)),
@@ -1317,6 +1318,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
       ])
 
       const modeByProject = new Map(configs.map(c => [c.projectId, c.publishingMode]))
+      const visibilityByProject = new Map(configs.map(c => [c.projectId, c.projectVisibility]))
       const countByProject = new Map(chapterCounts.map(c => [c.projectId, Number(c.count)]))
       const profileByAuthor = new Map(authorProfiles.map(p => [p.userId, p]))
       const specificGrantByProject = new Map(
@@ -1344,6 +1346,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
           },
           accessLevel: specific?.accessLevel ?? authorWideLevelByAuthor.get(p.ownerId) ?? 'beta',
           isLive: modeByProject.get(p.id) === 'live',
+          visibility: visibilityByProject.get(p.id) ?? 'public',
           publishedChapterCount: countByProject.get(p.id) ?? 0,
           authorWide: !specific
         }

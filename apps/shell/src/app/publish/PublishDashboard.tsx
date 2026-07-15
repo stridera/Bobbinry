@@ -42,6 +42,8 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
   const [slugInputs, setSlugInputs] = useState<Record<string, string>>({})
   const [slugAvailability, setSlugAvailability] = useState<Record<string, boolean | null>>({})
   const [slugChecking, setSlugChecking] = useState<Record<string, boolean>>({})
+  // New setups default to private so authors can verify before anyone else sees it
+  const [visibilityInputs, setVisibilityInputs] = useState<Record<string, string>>({})
   const [username, setUsername] = useState<string>('')
 
   const authorId = username || user.id
@@ -168,7 +170,11 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
       await apiFetch(`/api/projects/${projectId}/publish-config`, apiToken, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ publishingMode: 'live', defaultVisibility: 'public' }),
+        body: JSON.stringify({
+          publishingMode: 'live',
+          defaultVisibility: 'public',
+          projectVisibility: visibilityInputs[projectId] || 'private',
+        }),
       })
 
       router.push(`/publish/${projectId}`)
@@ -394,6 +400,22 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
                               {!checking && availability === false ? (
                                 <span className="text-xs text-red-600 dark:text-red-400">taken</span>
                               ) : null}
+                            </div>
+                            <div className="mt-2 flex items-center gap-2">
+                              <label className="flex-shrink-0 text-xs text-gray-400 dark:text-gray-500">
+                                Visibility
+                              </label>
+                              <select
+                                value={visibilityInputs[project.id] ?? 'private'}
+                                onChange={(event) =>
+                                  setVisibilityInputs((current) => ({ ...current, [project.id]: event.target.value }))
+                                }
+                                className="rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+                              >
+                                <option value="private">Private — only you, beta readers & invitees</option>
+                                <option value="unlisted">Unlisted — anyone with the link</option>
+                                <option value="public">Public — listed on Explore</option>
+                              </select>
                             </div>
                           </div>
 

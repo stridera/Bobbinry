@@ -6,6 +6,7 @@ interface PublishConfig {
   projectId: string
   publishingMode: string
   defaultVisibility: string
+  projectVisibility?: string
   autoReleaseEnabled: boolean
   releaseFrequency: string
   releaseDay?: string
@@ -45,6 +46,16 @@ export function PublishingSettings({ projectId, config, authorUsername, readerSl
           >
             {isLive ? 'Live' : 'Not live'}
           </span>
+          {isLive && config.projectVisibility === 'private' && (
+            <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+              Private
+            </span>
+          )}
+          {isLive && config.projectVisibility === 'unlisted' && (
+            <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+              Unlisted
+            </span>
+          )}
         </div>
         <Link
           href={`/publish/${projectId}`}

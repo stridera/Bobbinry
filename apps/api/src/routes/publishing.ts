@@ -633,6 +633,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
             projectId,
             publishingMode: 'draft',
             defaultVisibility: 'public',
+            projectVisibility: 'public',
             autoReleaseEnabled: false,
             releaseFrequency: 'manual',
             enableComments: true,
@@ -656,6 +657,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
     Body: {
       publishingMode?: string
       defaultVisibility?: string
+      projectVisibility?: string
       autoReleaseEnabled?: boolean
       releaseFrequency?: string
       releaseDay?: string
@@ -677,6 +679,11 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       const updates = request.body
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
       if (!hasAccess) return
+
+      if (updates.projectVisibility !== undefined
+        && !['public', 'unlisted', 'private'].includes(updates.projectVisibility)) {
+        return reply.status(400).send({ error: 'Invalid projectVisibility', correlationId })
+      }
 
       // Check if config exists
       const [existing] = await db

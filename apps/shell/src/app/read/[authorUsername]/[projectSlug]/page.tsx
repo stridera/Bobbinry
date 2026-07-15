@@ -86,7 +86,10 @@ function ProjectReadingContent() {
   const router = useRouter()
   const authorUsername = params.authorUsername as string
   const projectSlug = params.projectSlug as string
-  const { data: session } = useSession()
+  const { data: session, status: sessionStatus } = useSession()
+  // Owner-only "view as" preview; the API ignores it for non-owners.
+  const viewAs = searchParams.get('viewAs') || ''
+  const viewAsQuery = viewAs ? `viewAs=${encodeURIComponent(viewAs)}` : ''
 
   const [project, setProject] = useState<ProjectInfo | null>(null)
   const [author, setAuthor] = useState<AuthorInfo | null>(null)
@@ -298,11 +301,19 @@ function ProjectReadingContent() {
   }, [apiToken])
 
   const loadProject = useCallback(async () => {
+    // Wait for the session to settle: private projects and beta/subscriber
+    // perks need the bearer token on the very first fetch, or an authorized
+    // reader would briefly (or permanently) see a 404/locked view.
+    if (sessionStatus === 'loading') return
     setLoading(true)
     try {
+      const authHeaders: Record<string, string> = {}
+      if (apiToken) authHeaders['Authorization'] = `Bearer ${apiToken}`
+
       // Resolve by author + slug
       const res = await fetch(
-        `${config.apiUrl}/api/public/projects/by-author-and-slug/${encodeURIComponent(authorUsername)}/${encodeURIComponent(projectSlug)}`
+        `${config.apiUrl}/api/public/projects/by-author-and-slug/${encodeURIComponent(authorUsername)}/${encodeURIComponent(projectSlug)}${viewAsQuery ? `?${viewAsQuery}` : ''}`,
+        { headers: authHeaders }
       )
       if (!res.ok) {
         setError(res.status === 404 ? 'Project not found' : 'Failed to load project')
@@ -314,10 +325,10 @@ function ProjectReadingContent() {
       setCollection(data.collection || null)
 
       // Load TOC and tiers in parallel
-      const tocUrl = `${config.apiUrl}/api/public/projects/${data.project.id}/toc${userId ? `?userId=${userId}` : ''}`
+      const tocUrl = `${config.apiUrl}/api/public/projects/${data.project.id}/toc${viewAsQuery ? `?${viewAsQuery}` : ''}`
       const ownerId = data.project.ownerId || data.author?.userId
       const [tocRes, tiersRes] = await Promise.all([
-        fetch(tocUrl),
+        fetch(tocUrl, { headers: authHeaders }),
         ownerId
           ? fetch(`${config.apiUrl}/api/users/${ownerId}/subscription-tiers`)
           : Promise.resolve(null)
@@ -339,7 +350,7 @@ function ProjectReadingContent() {
     } finally {
       setLoading(false)
     }
-  }, [authorUsername, projectSlug, userId])
+  }, [authorUsername, projectSlug, apiToken, sessionStatus, viewAsQuery])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
@@ -440,9 +451,23 @@ function ProjectReadingContent() {
             <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
               {error || 'Project not found'}
             </h1>
-            <Link href="/explore" className="text-blue-600 dark:text-blue-400 hover:underline">
-              Browse Stories
-            </Link>
+            {viewAs ? (
+              <div className="space-y-2">
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  This is what this audience sees — the project isn&rsquo;t visible to them.
+                </p>
+                <Link
+                  href={`/read/${authorUsername}/${projectSlug}`}
+                  className="text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  Exit preview
+                </Link>
+              </div>
+            ) : (
+              <Link href="/explore" className="text-blue-600 dark:text-blue-400 hover:underline">
+                Browse Stories
+              </Link>
+            )}
           </div>
         </div>
       </div>
@@ -586,6 +611,44 @@ function ProjectReadingContent() {
       <div className={`mx-auto px-4 sm:px-6 lg:px-8 py-8 transition-[max-width] ${
         activeTab === 'entities' ? 'max-w-7xl' : 'max-w-3xl'
       }`}>
+
+      {/* Owner-only audience preview bar */}
+      {userId && (project.ownerId === userId || viewAs) && (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50/50 px-4 py-2.5 dark:border-blue-800 dark:bg-blue-950/20">
+          <div className="flex items-center gap-2 text-sm text-blue-800 dark:text-blue-300">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+            <span>This is your project.</span>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-blue-800 dark:text-blue-300">
+            Viewing as
+            <select
+              value={viewAs}
+              onChange={(e) => {
+                const next = new URLSearchParams(searchParams.toString())
+                if (e.target.value) {
+                  next.set('viewAs', e.target.value)
+                } else {
+                  next.delete('viewAs')
+                }
+                router.replace(`/read/${authorUsername}/${projectSlug}${next.toString() ? `?${next.toString()}` : ''}`)
+              }}
+              className="rounded-md border border-blue-200 bg-white px-2 py-1 text-xs text-gray-900 dark:border-blue-800 dark:bg-gray-900 dark:text-gray-100"
+            >
+              <option value="">Yourself</option>
+              <option value="visitor">Visitor</option>
+              <option value="beta">Beta reader</option>
+              {tiers.map((tier) => (
+                <option key={tier.id} value={`tier:${tier.id}`}>
+                  Subscriber — {tier.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
 
       {/* Success banner */}
       {(justSubscribed || searchParams.get('subscribed') === 'true') && (
@@ -840,7 +903,7 @@ function ProjectReadingContent() {
               return (
                 <Link
                   key={chapter.id}
-                  href={`/read/${authorUsername}/${projectSlug}/${chapter.slug ?? chapter.id}`}
+                  href={`/read/${authorUsername}/${projectSlug}/${chapter.slug ?? chapter.id}${viewAsQuery ? `?${viewAsQuery}` : ''}`}
                   className="flex items-center justify-between px-4 py-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-900/30 transition-colors group"
                 >
                   <div className="flex items-center gap-3">

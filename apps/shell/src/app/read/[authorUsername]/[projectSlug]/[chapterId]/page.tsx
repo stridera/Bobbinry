@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { useParams } from 'next/navigation'
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { getSanitizedHtmlProps } from '@bobbinry/sdk'
@@ -19,7 +19,7 @@ import { AnnotationSelectionPopover, type TextAnchor } from '@/components/Annota
 import { AnnotationForm } from '@/components/AnnotationForm'
 import EntityModal from '../EntityModal'
 import EntitySidebar from '../EntitySidebar'
-import type { PublishedEntity, PublishedType } from '../entities-data'
+import { useEntityStack } from '../useEntityStack'
 
 interface ChapterData {
   id: string
@@ -237,13 +237,27 @@ function CommentThread({
 }
 
 export default function ChapterReaderPage() {
+  return (
+    <Suspense>
+      <ChapterReaderContent />
+    </Suspense>
+  )
+}
+
+function ChapterReaderContent() {
   const params = useParams()
-  const { data: session } = useSession()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const { data: session, status: sessionStatus } = useSession()
   const sessionUserId = session?.user?.id
   const authorUsername = params.authorUsername as string
   const projectSlug = params.projectSlug as string
   // Slug, old-slug alias, or legacy UUID — the API resolves all three.
   const chapterParam = params.chapterId as string
+  // Owner-only "view as" preview carried over from the project page; the API
+  // ignores it for non-owners.
+  const viewAs = searchParams.get('viewAs') || ''
+  const viewAsQuery = viewAs ? `viewAs=${encodeURIComponent(viewAs)}` : ''
 
   const basePath = `/read/${authorUsername}/${projectSlug}`
 
@@ -293,10 +307,11 @@ export default function ChapterReaderPage() {
   const showEntitySidebar = entityInfoDisplay === 'sidebar' && isDesktop
   const [showSettings, setShowSettings] = useState(false)
 
-  // Published-entity names + click-to-open modal state
+  // Published-entity names + click-to-open modal state. The stack lets
+  // relation pills inside the open entity navigate in place (no reload).
   const [publishedEntityNames, setPublishedEntityNames] = useState<PublishedEntityName[]>([])
-  const [openEntity, setOpenEntity] = useState<{ type: PublishedType; entity: PublishedEntity } | null>(null)
-  const [openEntityLoading, setOpenEntityLoading] = useState(false)
+  const entityStack = useEntityStack({ projectId: projectId ?? '', apiToken: session?.apiToken })
+  const { navigate: navigateEntity } = entityStack
 
   // Progress tracking
   const contentRef = useRef<HTMLDivElement>(null)
@@ -346,12 +361,20 @@ export default function ChapterReaderPage() {
   }, [bookmarkKey])
 
   const loadChapter = useCallback(async () => {
+    // Wait for the session to settle: private projects and beta/subscriber
+    // perks need the bearer token on the very first fetch.
+    if (sessionStatus === 'loading') return
     setLoading(true)
     setError(null)
     try {
+      const authHeaders: Record<string, string> = {}
+      const apiToken = (session as any)?.apiToken as string | undefined
+      if (apiToken) authHeaders['Authorization'] = `Bearer ${apiToken}`
+
       // Resolve by author + slug
       const slugRes = await fetch(
-        `${config.apiUrl}/api/public/projects/by-author-and-slug/${encodeURIComponent(authorUsername)}/${encodeURIComponent(projectSlug)}`
+        `${config.apiUrl}/api/public/projects/by-author-and-slug/${encodeURIComponent(authorUsername)}/${encodeURIComponent(projectSlug)}${viewAsQuery ? `?${viewAsQuery}` : ''}`,
+        { headers: authHeaders }
       )
       if (!slugRes.ok) {
         setError('Project not found')
@@ -364,9 +387,9 @@ export default function ChapterReaderPage() {
       setAuthorDisplayName(slugData.author?.displayName || slugData.author?.userName || authorUsername)
 
       const userId = sessionUserId
-      const chapterUrl = `${config.apiUrl}/api/public/projects/${projId}/chapters/${encodeURIComponent(chapterParam)}${userId ? `?userId=${userId}` : ''}`
+      const chapterUrl = `${config.apiUrl}/api/public/projects/${projId}/chapters/${encodeURIComponent(chapterParam)}${viewAsQuery ? `?${viewAsQuery}` : ''}`
 
-      const res = await fetch(chapterUrl)
+      const res = await fetch(chapterUrl, { headers: authHeaders })
       if (res.status === 403) {
         const data = await res.json()
         setEmbargoUntil(data.embargoUntil)
@@ -428,7 +451,7 @@ export default function ChapterReaderPage() {
     } finally {
       setLoading(false)
     }
-  }, [authorUsername, projectSlug, chapterParam, sessionUserId, basePath])
+  }, [authorUsername, projectSlug, chapterParam, sessionUserId, sessionStatus, session, basePath, viewAsQuery])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
@@ -778,25 +801,6 @@ export default function ChapterReaderPage() {
     const proseEl = chapterContentRef.current
     if (!proseEl || !projectId) return
 
-    async function openEntityById(entityId: string) {
-      setOpenEntityLoading(true)
-      try {
-        const headers: Record<string, string> = {}
-        if (session?.apiToken) headers['Authorization'] = `Bearer ${session.apiToken}`
-        const res = await fetch(
-          `${config.apiUrl}/api/public/projects/${projectId}/entities/${entityId}`,
-          { headers }
-        )
-        if (!res.ok) return
-        const data = await res.json()
-        setOpenEntity({ type: data.type, entity: data.entity })
-      } catch {
-        // swallow — noisy toast isn't worth it for a tap-to-preview
-      } finally {
-        setOpenEntityLoading(false)
-      }
-    }
-
     function handle(e: Event) {
       const target = (e.target as HTMLElement | null)?.closest('[data-entity-id]') as HTMLElement | null
       if (!target) return
@@ -804,7 +808,9 @@ export default function ChapterReaderPage() {
       if (!idAttr) return
       e.preventDefault()
       const firstId = idAttr.split(',')[0]
-      if (firstId) openEntityById(firstId)
+      // Reset: a fresh tap on the chapter text starts a new browse, it
+      // doesn't stack on whatever the reader was previously looking at.
+      if (firstId) void navigateEntity(firstId, { reset: true })
     }
     function handleKey(e: KeyboardEvent) {
       if (e.key !== 'Enter' && e.key !== ' ') return
@@ -816,7 +822,7 @@ export default function ChapterReaderPage() {
       proseEl.removeEventListener('click', handle)
       proseEl.removeEventListener('keydown', handleKey)
     }
-  }, [projectId, session?.apiToken, loading])
+  }, [projectId, navigateEntity, loading])
 
   const toggleReaction = async (type: string) => {
     if (!session?.user || !chapterId) return
@@ -1277,7 +1283,7 @@ export default function ChapterReaderPage() {
           <div className="mt-8 flex justify-between">
             {nav.previous ? (
               <Link
-                href={`${basePath}/${nav.previous.slug ?? nav.previous.id}`}
+                href={`${basePath}/${nav.previous.slug ?? nav.previous.id}${viewAsQuery ? `?${viewAsQuery}` : ''}`}
                 className={`text-sm ${linkColor} hover:underline`}
               >
                 &larr; Previous Chapter
@@ -1285,7 +1291,7 @@ export default function ChapterReaderPage() {
             ) : <div />}
             {nav.next ? (
               <Link
-                href={`${basePath}/${nav.next.slug ?? nav.next.id}`}
+                href={`${basePath}/${nav.next.slug ?? nav.next.id}${viewAsQuery ? `?${viewAsQuery}` : ''}`}
                 className={`text-sm ${linkColor} hover:underline`}
               >
                 Next Chapter &rarr;
@@ -1398,31 +1404,33 @@ export default function ChapterReaderPage() {
         )}
 
         {/* Entity sidebar — docked beside the text so reading can continue */}
-        {openEntity && projectId && showEntitySidebar && (
+        {entityStack.current && projectId && showEntitySidebar && (
           <EntitySidebar
-            type={openEntity.type}
-            entity={openEntity.entity}
+            entry={entityStack.current}
             projectId={projectId}
             apiToken={session?.apiToken}
-            subpageHref={`/read/${authorUsername}/${projectSlug}/entity/${openEntity.entity.slug ?? openEntity.entity.id}`}
             entityHrefBase={`/read/${authorUsername}/${projectSlug}/entity`}
-            onClose={() => setOpenEntity(null)}
+            onNavigateEntity={id => { void navigateEntity(id) }}
+            onBack={entityStack.canGoBack ? entityStack.back : undefined}
+            onSubscribeNudge={() => router.push(`/read/${authorUsername}/${projectSlug}?tab=support`)}
+            onClose={entityStack.close}
           />
         )}
       </div>
 
-      {openEntity && projectId && !showEntitySidebar && (
+      {entityStack.current && projectId && !showEntitySidebar && (
         <EntityModal
-          type={openEntity.type}
-          entity={openEntity.entity}
+          entry={entityStack.current}
           projectId={projectId}
           apiToken={session?.apiToken}
-          subpageHref={`/read/${authorUsername}/${projectSlug}/entity/${openEntity.entity.slug ?? openEntity.entity.id}`}
           entityHrefBase={`/read/${authorUsername}/${projectSlug}/entity`}
-          onClose={() => setOpenEntity(null)}
+          onNavigateEntity={id => { void navigateEntity(id) }}
+          onBack={entityStack.canGoBack ? entityStack.back : undefined}
+          onSubscribeNudge={() => router.push(`/read/${authorUsername}/${projectSlug}?tab=support`)}
+          onClose={entityStack.close}
         />
       )}
-      {openEntityLoading && !openEntity && (
+      {entityStack.fetching && !entityStack.current && (
         <div className="fixed inset-0 z-40 pointer-events-none flex items-start justify-center p-8">
           <div className="rounded-full bg-black/60 px-3 py-1.5 text-xs font-medium text-white shadow-lg">
             Loading entity…

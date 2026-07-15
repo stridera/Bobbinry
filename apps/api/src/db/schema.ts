@@ -276,6 +276,10 @@ export const projectPublishConfig = pgTable('project_publish_config', {
   projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }).primaryKey(),
   publishingMode: varchar('publishing_mode', { length: 50 }).default('draft').notNull(), // draft, scheduled, live
   defaultVisibility: varchar('default_visibility', { length: 50 }).default('public').notNull(), // public, subscribers_only, private
+  // Discovery/access tier for the whole project (separate from defaultVisibility,
+  // which gates chapter access): public = listed on explore, unlisted = URL-only,
+  // private = URL works only for owner/beta readers/access grantees.
+  projectVisibility: varchar('project_visibility', { length: 20 }).default('public').notNull(), // public, unlisted, private
   autoReleaseEnabled: boolean('auto_release_enabled').default(false).notNull(),
   releaseFrequency: varchar('release_frequency', { length: 50 }).default('manual').notNull(), // manual, daily, weekly, biweekly, monthly
   releaseDay: varchar('release_day', { length: 20 }), // Monday, Tuesday, etc.

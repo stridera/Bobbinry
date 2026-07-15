@@ -29,6 +29,7 @@ interface PublishConfig {
   autoReleaseEnabled: boolean
   releaseFrequency: string
   defaultVisibility: string
+  projectVisibility?: string
   enableComments: boolean
   enableReactions: boolean
   enableAnnotations: boolean
@@ -299,8 +300,29 @@ export function ProjectPublisherDashboard({
                   Reader Experience
                 </h3>
                 <div className="space-y-3">
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Project visibility</span>
+                      <select
+                        value={publishConfig?.projectVisibility || 'public'}
+                        onChange={(e) => void updateReaderExperience('projectVisibility', e.target.value)}
+                        className="rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                      >
+                        <option value="private">Private</option>
+                        <option value="unlisted">Unlisted</option>
+                        <option value="public">Public</option>
+                      </select>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {publishConfig?.projectVisibility === 'private'
+                        ? 'Only you, beta readers, and invitees can open the reader page.'
+                        : publishConfig?.projectVisibility === 'unlisted'
+                          ? 'Anyone with the link can read, but the project is never listed on Explore.'
+                          : 'Listed on Explore and your author page once the first chapter is published.'}
+                    </p>
+                  </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-700 dark:text-gray-300">Visibility</span>
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Chapter access</span>
                     <select
                       value={publishConfig?.defaultVisibility || 'public'}
                       onChange={(e) => void updateVisibility(e.target.value)}
@@ -401,6 +423,8 @@ function SetupPublishing({
   const [checking, setChecking] = useState(false)
   const [enabling, setEnabling] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Default private so authors can set up and verify before anyone else sees it
+  const [visibility, setVisibility] = useState('private')
 
   const slugify = (text: string) =>
     text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
@@ -444,7 +468,11 @@ function SetupPublishing({
       await apiFetch(`/api/projects/${projectId}/publish-config`, apiToken, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ publishingMode: 'live', defaultVisibility: 'public' }),
+        body: JSON.stringify({
+          publishingMode: 'live',
+          defaultVisibility: 'public',
+          projectVisibility: visibility,
+        }),
       })
       onEnabled()
     } catch (err) {
@@ -496,6 +524,37 @@ function SetupPublishing({
               <span className="text-xs text-red-600 dark:text-red-400">taken</span>
             )}
           </div>
+        </div>
+
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Visibility
+          </label>
+          <div className="space-y-2">
+            {[
+              { value: 'private', label: 'Private', hint: 'Only you, beta readers, and invitees can open the reader page.' },
+              { value: 'unlisted', label: 'Unlisted', hint: 'Anyone with the link can read; never listed on Explore.' },
+              { value: 'public', label: 'Public', hint: 'Listed on Explore once the first chapter is published.' },
+            ].map((option) => (
+              <label key={option.value} className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="radio"
+                  name="project-visibility"
+                  value={option.value}
+                  checked={visibility === option.value}
+                  onChange={() => setVisibility(option.value)}
+                  className="mt-0.5 border-gray-300"
+                />
+                <span>
+                  <span className="block text-sm text-gray-900 dark:text-gray-100">{option.label}</span>
+                  <span className="block text-xs text-gray-500 dark:text-gray-400">{option.hint}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+            You can change this any time from the publisher dashboard.
+          </p>
         </div>
 
         <button

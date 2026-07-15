@@ -274,6 +274,13 @@
       "when": 1784020644152,
       "tag": "0039_beta_reader_invites",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1784069500849,
+      "tag": "0040_project_visibility",
+      "breakpoints": true
     }
   ]
 }

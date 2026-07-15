@@ -38,11 +38,15 @@ const discoverPlugin: FastifyPluginAsync = async (fastify) => {
       const limit = Math.min(Math.max(parseInt(limitStr) || 20, 1), 50)
       const offset = Math.max(parseInt(offsetStr) || 0, 0)
 
-      // Build base conditions: only live-published, non-archived, non-deleted projects
+      // Build base conditions: only live-published, publicly visible, non-archived,
+      // non-deleted projects with at least one published chapter (empty projects
+      // don't belong on explore).
       const baseConditions = and(
         eq(projectPublishConfig.publishingMode, 'live'),
+        eq(projectPublishConfig.projectVisibility, 'public'),
         eq(projects.isArchived, false),
-        isNull(projects.deletedAt)
+        isNull(projects.deletedAt),
+        sql`EXISTS (SELECT 1 FROM ${chapterPublications} WHERE ${chapterPublications.projectId} = ${projects.id} AND ${chapterPublications.isPublished} = true)`
       )
 
       // Search condition
@@ -224,15 +228,18 @@ const discoverPlugin: FastifyPluginAsync = async (fastify) => {
       const limit = Math.min(Math.max(parseInt(limitStr) || 20, 1), 50)
       const offset = Math.max(parseInt(offsetStr) || 0, 0)
 
-      // Subquery: authors who have at least one live-published project
+      // Subquery: authors who have at least one live, publicly visible project
+      // with a published chapter
       const publishedAuthorsSq = db
         .selectDistinct({ ownerId: projects.ownerId })
         .from(projects)
         .innerJoin(projectPublishConfig, eq(projectPublishConfig.projectId, projects.id))
         .where(and(
           eq(projectPublishConfig.publishingMode, 'live'),
+          eq(projectPublishConfig.projectVisibility, 'public'),
           eq(projects.isArchived, false),
-          isNull(projects.deletedAt)
+          isNull(projects.deletedAt),
+          sql`EXISTS (SELECT 1 FROM ${chapterPublications} WHERE ${chapterPublications.projectId} = ${projects.id} AND ${chapterPublications.isPublished} = true)`
         ))
         .as('published_authors')
 
@@ -277,8 +284,10 @@ const discoverPlugin: FastifyPluginAsync = async (fastify) => {
         .innerJoin(projectPublishConfig, eq(projectPublishConfig.projectId, projects.id))
         .where(and(
           eq(projectPublishConfig.publishingMode, 'live'),
+          eq(projectPublishConfig.projectVisibility, 'public'),
           eq(projects.isArchived, false),
-          isNull(projects.deletedAt)
+          isNull(projects.deletedAt),
+          sql`EXISTS (SELECT 1 FROM ${chapterPublications} WHERE ${chapterPublications.projectId} = ${projects.id} AND ${chapterPublications.isPublished} = true)`
         ))
         .groupBy(projects.ownerId)
         .as('published_counts')
@@ -379,11 +388,13 @@ const discoverPlugin: FastifyPluginAsync = async (fastify) => {
 
       const limit = Math.min(Math.max(parseInt(limitStr) || 30, 1), 100)
 
-      // Only count tags from live-published projects
+      // Only count tags from live, publicly visible projects with published chapters
       const conditions = and(
         eq(projectPublishConfig.publishingMode, 'live'),
+        eq(projectPublishConfig.projectVisibility, 'public'),
         eq(projects.isArchived, false),
         isNull(projects.deletedAt),
+        sql`EXISTS (SELECT 1 FROM ${chapterPublications} WHERE ${chapterPublications.projectId} = ${projects.id} AND ${chapterPublications.isPublished} = true)`,
         category ? eq(contentTags.tagCategory, category) : undefined
       )
 
@@ -526,6 +537,7 @@ async function enrichProjects(rows: Array<{
         inArray(projectCollectionMemberships.collectionId, collectionIds),
         isNull(projects.deletedAt),
         eq(projectPublishConfig.publishingMode, 'live'),
+        eq(projectPublishConfig.projectVisibility, 'public'),
         sql`EXISTS (SELECT 1 FROM ${chapterPublications} WHERE ${chapterPublications.projectId} = ${projects.id} AND ${chapterPublications.isPublished} = true)`
       ))
       .groupBy(projectCollectionMemberships.collectionId)

@@ -82,6 +82,7 @@ interface BetaReadingItem {
   }
   accessLevel: string
   isLive: boolean
+  visibility: string
   publishedChapterCount: number
   authorWide: boolean
 }
@@ -541,11 +542,19 @@ export default function LibraryPage() {
                       }`}>
                         {accessLabels[item.accessLevel] || item.accessLevel}
                       </span>
-                      {!item.isLive && (
+                      {item.visibility === 'private' ? (
+                        <span className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs rounded flex-shrink-0">
+                          Private
+                        </span>
+                      ) : item.visibility === 'unlisted' ? (
+                        <span className="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-xs rounded flex-shrink-0">
+                          Unlisted
+                        </span>
+                      ) : !item.isLive ? (
                         <span className="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-xs rounded flex-shrink-0">
                           Not publicly published
                         </span>
-                      )}
+                      ) : null}
                     </div>
                     <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
                       {item.author.displayName || (item.author.username ? `@${item.author.username}` : 'Unknown author')}
