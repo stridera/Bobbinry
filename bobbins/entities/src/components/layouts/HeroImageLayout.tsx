@@ -7,6 +7,8 @@
 
 import type { EditorLayout, FieldDefinition } from '../../types'
 import { renderField } from '../FieldRenderers'
+import { EntityImageGallery } from '../EntityImageGallery'
+import { getEntityImages } from '../../images'
 
 interface HeroImageLayoutProps {
   entity: Record<string, any>
@@ -40,49 +42,39 @@ export function HeroImageLayout({
     large: 'h-96'
   }[layout.imageSize] || 'h-64'
 
+  const hasImages = getEntityImages(entity).length > 0
+
   return (
     <div className="max-w-6xl mx-auto bg-white dark:bg-gray-900 rounded-lg shadow-lg overflow-hidden">
-      {/* Hero Image */}
-      {entity.image_url && layout.imagePosition !== 'none' && (
-        <div className={`w-full ${imageHeight} relative overflow-hidden bg-gradient-to-b from-gray-900/50 to-transparent`}>
-          <img
-            src={entity.image_url}
-            alt={entity.name || 'Entity'}
-            className="w-full h-full object-cover"
+      {/* Hero image gallery (strip renders under the hero) */}
+      {layout.imagePosition !== 'none' && (hasImages || !readonly) && (
+        <div className={hasImages ? '' : 'px-4 pt-4 md:px-6'}>
+          <EntityImageGallery
+            entity={entity}
+            readonly={readonly}
+            onFieldChange={onFieldChange}
+            variant="hero"
+            heroHeightClass={imageHeight}
+            overlay={
+              hasImages && layout.headerFields.includes('name') ? (
+                <div className="pointer-events-none absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 @2xl:p-6">
+                  <div className="max-w-4xl mx-auto">
+                    <h1 className="text-3xl @2xl:text-4xl @4xl:text-5xl font-bold text-white drop-shadow-lg">
+                      {entity.name || 'Untitled'}
+                    </h1>
+                  </div>
+                </div>
+              ) : undefined
+            }
           />
-
-          {/* Overlay with entity name */}
-          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6">
-            <div className="max-w-4xl mx-auto">
-              {layout.headerFields.includes('name') && (
-                <h1 className="text-4xl md:text-5xl font-bold text-white drop-shadow-lg">
-                  {entity.name || 'Untitled'}
-                </h1>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Image upload (when no image and in edit mode) */}
-      {layout.imagePosition !== 'none' && !entity.image_url && !readonly && (
-        <div className="px-4 pt-4 md:px-6">
-          <div className="max-w-4xl mx-auto">
-            {renderField(
-              { name: 'image_url', type: 'image', label: '' },
-              entity.image_url,
-              (value) => onFieldChange('image_url', value),
-              false
-            )}
-          </div>
         </div>
       )}
 
       {/* Header Fields (below image) */}
-      <div className="p-6 md:p-8 border-b border-gray-200 dark:border-gray-700">
+      <div className="p-4 @md:p-6 @2xl:p-8 border-b border-gray-200 dark:border-gray-700">
         <div className="max-w-4xl mx-auto">
-          {!entity.image_url && layout.headerFields.includes('name') && (
-            <h1 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-gray-100 mb-4">
+          {!hasImages && layout.headerFields.includes('name') && (
+            <h1 className="text-3xl @2xl:text-4xl @4xl:text-5xl font-bold text-gray-900 dark:text-gray-100 mb-4">
               {renderField(
                 getFieldDef('name')!,
                 entity.name,
@@ -115,7 +107,7 @@ export function HeroImageLayout({
       </div>
 
       {/* Content Sections */}
-      <div className="p-6 md:p-8">
+      <div className="p-4 @md:p-6 @2xl:p-8">
         <div className="max-w-4xl mx-auto space-y-8">
           {layout.sections.map((section, index) => (
             <div key={index}>
@@ -125,7 +117,7 @@ export function HeroImageLayout({
 
               {/* Inline layout */}
               {section.display === 'inline' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 @md:grid-cols-2 @2xl:grid-cols-3 gap-6">
                   {section.fields.map(fieldName => {
                     const fieldDef = getFieldDef(fieldName)
                     if (!fieldDef) return null

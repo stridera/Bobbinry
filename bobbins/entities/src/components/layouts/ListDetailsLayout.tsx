@@ -7,6 +7,8 @@
 
 import type { EditorLayout, FieldDefinition } from '../../types'
 import { renderField } from '../FieldRenderers'
+import { EntityImageGallery } from '../EntityImageGallery'
+import { getEntityImages } from '../../images'
 
 interface ListDetailsLayoutProps {
   entity: Record<string, any>
@@ -36,34 +38,26 @@ export function ListDetailsLayout({
 
   return (
     <div className="max-w-7xl mx-auto bg-white dark:bg-gray-900 rounded-lg shadow-lg overflow-hidden">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-0">
+      <div className="grid grid-cols-1 @3xl:grid-cols-3 gap-0">
         {/* Left Sidebar - Image and Header */}
-        <div className="lg:col-span-1 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700">
-          {/* Image */}
-          {entity.image_url && layout.imagePosition !== 'none' && (
-            <div className="w-full aspect-square overflow-hidden bg-gray-200 dark:bg-gray-700">
-              <img
-                src={entity.image_url}
-                alt={entity.name || 'Entity'}
-                className="w-full h-full object-cover"
-              />
-            </div>
-          )}
-
-          {/* Image upload (when no image and in edit mode) */}
-          {layout.imagePosition !== 'none' && !entity.image_url && !readonly && (
+        <div className="@3xl:col-span-1 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700">
+          {/* Image gallery */}
+          {layout.imagePosition !== 'none' && (getEntityImages(entity).length > 0 || !readonly) && (
             <div className="p-3">
-              {renderField(
-                { name: 'image_url', type: 'image', label: '' },
-                entity.image_url,
-                (value) => onFieldChange('image_url', value),
-                false
-              )}
+              {/* Stacked mode renders the sidebar full width — cap the square image */}
+              <div className="mx-auto max-w-72 @3xl:mx-0 @3xl:max-w-none">
+                <EntityImageGallery
+                  entity={entity}
+                  readonly={readonly}
+                  onFieldChange={onFieldChange}
+                  variant="square"
+                />
+              </div>
             </div>
           )}
 
           {/* Header Info */}
-          <div className="p-6 space-y-4">
+          <div className="p-4 @md:p-6 space-y-4">
             {layout.headerFields.map(fieldName => {
               const fieldDef = getFieldDef(fieldName)
               if (!fieldDef) return null
@@ -96,7 +90,7 @@ export function ListDetailsLayout({
         </div>
 
         {/* Right Content - Sections */}
-        <div className="lg:col-span-2 p-6 md:p-8">
+        <div className="@3xl:col-span-2 p-4 @md:p-6 @2xl:p-8">
           <div className="space-y-8">
             {layout.sections.map((section, index) => (
               <div key={index}>
@@ -106,7 +100,7 @@ export function ListDetailsLayout({
 
                 {/* Inline layout - compact grid */}
                 {section.display === 'inline' && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                  <div className="grid grid-cols-1 @md:grid-cols-2 gap-x-6 gap-y-4">
                     {section.fields.map(fieldName => {
                       const fieldDef = getFieldDef(fieldName)
                       if (!fieldDef) return null

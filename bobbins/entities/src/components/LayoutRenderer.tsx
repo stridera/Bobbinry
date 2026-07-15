@@ -81,50 +81,58 @@ export function LayoutRenderer({
     : { layout: configured, fields: allFields }
 
   // Route to appropriate layout template
-  switch (layout.template) {
-    case 'compact-card':
-      return (
-        <CompactCardLayout
-          entity={entity}
-          layout={layout}
-          fields={fields}
-          onFieldChange={onFieldChange}
-          readonly={readonly}
-        />
-      )
+  function renderTemplate() {
+    switch (layout.template) {
+      case 'compact-card':
+        return (
+          <CompactCardLayout
+            entity={entity}
+            layout={layout}
+            fields={fields}
+            onFieldChange={onFieldChange}
+            readonly={readonly}
+          />
+        )
 
-    case 'hero-image':
-      return (
-        <HeroImageLayout
-          entity={entity}
-          layout={layout}
-          fields={fields}
-          onFieldChange={onFieldChange}
-          readonly={readonly}
-        />
-      )
+      case 'hero-image':
+        return (
+          <HeroImageLayout
+            entity={entity}
+            layout={layout}
+            fields={fields}
+            onFieldChange={onFieldChange}
+            readonly={readonly}
+          />
+        )
 
-    case 'list-details':
-      return (
-        <ListDetailsLayout
-          entity={entity}
-          layout={layout}
-          fields={fields}
-          onFieldChange={onFieldChange}
-          readonly={readonly}
-        />
-      )
+      case 'list-details':
+        return (
+          <ListDetailsLayout
+            entity={entity}
+            layout={layout}
+            fields={fields}
+            onFieldChange={onFieldChange}
+            readonly={readonly}
+          />
+        )
 
-    default:
-      return (
-        <div className="p-6 bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg">
-          <p className="text-red-700 dark:text-red-300 font-medium">
-            Unknown layout template: {layout.template}
-          </p>
-          <p className="text-sm text-red-600 dark:text-red-400 mt-2">
-            Supported templates: compact-card, hero-image, list-details
-          </p>
-        </div>
-      )
+      default:
+        return (
+          <div className="p-6 bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg">
+            <p className="text-red-700 dark:text-red-300 font-medium">
+              Unknown layout template: {layout.template}
+            </p>
+            <p className="text-sm text-red-600 dark:text-red-400 mt-2">
+              Supported templates: compact-card, hero-image, list-details
+            </p>
+          </div>
+        )
+    }
   }
+
+  // Container-query root: layouts render everywhere from a 24rem docked
+  // sidebar to a full-width editor canvas, so section grids and type scale
+  // must respond to THIS box, not the viewport. All @sm/@md/@2xl/... variants
+  // inside the layout templates resolve against this element.
+  return <div className="@container">{renderTemplate()}</div>
 }

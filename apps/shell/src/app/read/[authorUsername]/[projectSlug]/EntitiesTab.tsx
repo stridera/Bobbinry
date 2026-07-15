@@ -12,10 +12,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { htmlToPlainText } from '@bobbinry/sdk'
 import { config } from '@/lib/config'
 import EntityModal from './EntityModal'
-import { resolveCardDescription } from './entities-data'
+import { CroppedImage } from '@/components/CroppedImage'
+import { resolveCardDescription, resolveCardThumbnail } from './entities-data'
 import type { EntitiesPayload, PublishedEntity, PublishedType } from './entities-data'
+import { useEntityStack } from './useEntityStack'
 
-const OVERVIEW_PREVIEW_LIMIT = 6
+const OVERVIEW_PREVIEW_LIMIT = 10
+
+/** Card grid shared by overview and focused sections — portrait cards, 2–5 up. */
+const CARD_GRID_CLASS = 'grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5'
 
 interface EntitiesTabProps {
   projectId: string
@@ -44,8 +49,20 @@ export default function EntitiesTab({
   const [payload, setPayload] = useState<EntitiesPayload | null>(initialPayload ?? null)
   const [loading, setLoading] = useState(!initialPayload)
   const [error, setError] = useState<string | null>(null)
-  const [open, setOpen] = useState<{ type: PublishedType; entity: PublishedEntity } | null>(null)
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({})
+
+  // Relation pills navigate in place: the codex payload already holds every
+  // entity the reader can see, so lookups are local; misses (tier-locked)
+  // fall back to a fetch inside the stack hook.
+  const entityById = useMemo(() => {
+    const map = new Map<string, { type: PublishedType; entity: PublishedEntity }>()
+    for (const t of payload?.types ?? []) {
+      for (const e of t.entities) map.set(e.id, { type: t, entity: e })
+    }
+    return map
+  }, [payload])
+  const resolveLocal = useCallback((id: string) => entityById.get(id) ?? null, [entityById])
+  const stack = useEntityStack({ projectId, apiToken, resolveLocal })
 
   useEffect(() => {
     if (initialPayload) {
@@ -120,7 +137,7 @@ export default function EntitiesTab({
     : null
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
+    <div className="grid gap-8 lg:grid-cols-[230px_minmax(0,1fr)]">
       {/* Sub-nav — same shell for both modes; active item is highlighted in focused mode. */}
       <aside className="lg:sticky lg:top-4 lg:self-start">
         <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900/40">
@@ -173,28 +190,29 @@ export default function EntitiesTab({
         <FocusedSection
           type={focused}
           onBack={() => onGoToSection(null)}
-          onOpen={e => setOpen({ type: focused, entity: e })}
+          onOpen={e => stack.open(focused, e)}
           onSubscribeNudge={onSubscribeNudge}
         />
       ) : (
         <Overview
           payload={payload}
           sectionRefs={sectionRefs}
-          onOpen={(type, entity) => setOpen({ type, entity })}
+          onOpen={(type, entity) => stack.open(type, entity)}
           onViewAll={typeId => onGoToSection(typeId)}
           onSubscribeNudge={onSubscribeNudge}
         />
       )}
 
-      {open && (
+      {stack.current && (
         <EntityModal
-          type={open.type}
-          entity={open.entity}
+          entry={stack.current}
           projectId={projectId}
           apiToken={apiToken}
-          subpageHref={`/read/${authorUsername}/${projectSlug}/entity/${open.entity.slug ?? open.entity.id}`}
           entityHrefBase={`/read/${authorUsername}/${projectSlug}/entity`}
-          onClose={() => setOpen(null)}
+          onNavigateEntity={id => { void stack.navigate(id) }}
+          onBack={stack.canGoBack ? stack.back : undefined}
+          onSubscribeNudge={onSubscribeNudge}
+          onClose={stack.close}
         />
       )}
     </div>
@@ -253,7 +271,7 @@ function Overview({
               </p>
             ) : (
               <>
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <div className={CARD_GRID_CLASS}>
                   {previewEntities.map(e => (
                     <EntityCard key={e.id} type={t} entity={e} onOpen={() => onOpen(t, e)} />
                   ))}
@@ -389,7 +407,7 @@ function FocusedSection({
           Nothing published in this section yet.
         </p>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className={CARD_GRID_CLASS}>
           {filtered.map(e => (
             <EntityCard key={e.id} type={type} entity={e} onOpen={() => onOpen(e)} />
           ))}
@@ -437,26 +455,32 @@ function EntityCard({
   // so `<p></p>` markers don't leak into the line-clamped text.
   const description = htmlToPlainText(resolveCardDescription(entity)) || null
 
+  const thumbnail = resolveCardThumbnail(entity)
+
   return (
     <button
       type="button"
       onClick={onOpen}
       className="group relative flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white text-left transition-all hover:border-blue-300 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-blue-600"
     >
-      {entity.imageUrl && (
-        <div className="aspect-[16/9] w-full overflow-hidden bg-gray-100 dark:bg-gray-900">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={entity.imageUrl}
+      {thumbnail ? (
+        <div className="w-full overflow-hidden transition-transform group-hover:scale-[1.02]">
+          <CroppedImage
+            src={thumbnail.url}
+            crop={thumbnail.crop}
+            variant="thumb"
             alt=""
-            loading="lazy"
-            className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]"
+            className="aspect-[3/4] w-full bg-gray-100 dark:bg-gray-900"
           />
         </div>
+      ) : (
+        // Icon well matches the image aspect so rows of mixed cards align.
+        <div className="flex aspect-[3/4] w-full items-center justify-center bg-gray-100 text-4xl opacity-60 dark:bg-gray-900">
+          {type.icon}
+        </div>
       )}
-      <div className="flex-1 p-3">
+      <div className="flex-1 p-2.5">
         <div className="flex items-start gap-2">
-          {!entity.imageUrl && <span className="text-lg leading-none">{type.icon}</span>}
           <div className="min-w-0 flex-1">
             <div className="truncate font-medium text-gray-900 group-hover:text-blue-600 dark:text-gray-100 dark:group-hover:text-blue-400">
               {displayName ?? 'Untitled'}
@@ -471,7 +495,7 @@ function EntityCard({
         </div>
         {entity.tags.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1">
-            {entity.tags.slice(0, 3).map(tag => (
+            {entity.tags.slice(0, 2).map(tag => (
               <span
                 key={tag}
                 className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600 dark:bg-gray-700 dark:text-gray-300"
@@ -506,7 +530,7 @@ function LockedTeaserCard({
     <button
       type="button"
       onClick={() => onClick(tierLevel)}
-      className="group flex aspect-[3/2] flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-purple-300 bg-gradient-to-br from-purple-50 to-purple-100/50 p-4 text-center transition-all hover:border-purple-400 hover:from-purple-100 dark:border-purple-700 dark:from-purple-950/30 dark:to-purple-900/20 dark:hover:border-purple-600"
+      className="group flex aspect-[3/4] flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-purple-300 bg-gradient-to-br from-purple-50 to-purple-100/50 p-4 text-center transition-all hover:border-purple-400 hover:from-purple-100 dark:border-purple-700 dark:from-purple-950/30 dark:to-purple-900/20 dark:hover:border-purple-600"
       title={`Locked ${typeLabel.toLowerCase().replace(/s$/, '')} — subscribe at Tier ${tierLevel}+ to unlock`}
       aria-label={`Locked — subscribe at Tier ${tierLevel} or higher to reveal`}
     >

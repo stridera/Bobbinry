@@ -150,7 +150,8 @@ async function checkPublicChapterAccess(
   chapterId: string,
   projectId: string,
   userId?: string,
-  defaultVisibility?: string
+  defaultVisibility?: string,
+  simulate?: ViewSimulation
 ): Promise<AccessCheckResult> {
   // Get chapter publication info
   const [chapterPub] = await db
@@ -161,6 +162,28 @@ async function checkPublicChapterAccess(
 
   if (!chapterPub || !chapterPub.isPublished) {
     return { canAccess: false, reason: 'Chapter not published' }
+  }
+
+  // Owner preview ("view as"): replace the real beta/grant/owner/subscription
+  // lookups with the simulated audience.
+  if (simulate) {
+    if (simulate.kind === 'beta') {
+      return { canAccess: true }
+    }
+    // tier: subscriber logic with the tier's early-access window
+    if (chapterPub.publishedAt) {
+      const earlyMs = simulate.earlyAccessDays * 24 * 60 * 60 * 1000
+      const accessDate = new Date(chapterPub.publishedAt.getTime() - earlyMs)
+      if (new Date() >= accessDate) {
+        return { canAccess: true }
+      }
+      return {
+        canAccess: false,
+        reason: 'Chapter not yet available for your tier',
+        embargoUntil: accessDate
+      }
+    }
+    return { canAccess: true }
   }
 
   // Check if user is a beta reader (early access)
@@ -280,7 +303,8 @@ async function checkMultipleChaptersAccess(
   chapters: { chapterId: string; publishedAt: Date | null; publicReleaseDate: Date | null }[],
   projectId: string,
   userId: string | undefined,
-  defaultVisibility: string | undefined
+  defaultVisibility: string | undefined,
+  simulate?: ViewSimulation
 ): Promise<Map<string, AccessCheckResult>> {
   const results = new Map<string, AccessCheckResult>()
   if (chapters.length === 0) return results
@@ -294,7 +318,17 @@ async function checkMultipleChaptersAccess(
   let isOwner = false
   let subscription: { earlyAccessDays: number | null } | null = null
 
-  if (userId) {
+  // Owner preview ("view as"): substitute the simulated audience for the real
+  // beta/grant/owner/subscription lookups.
+  if (simulate) {
+    if (simulate.kind === 'beta') {
+      for (const ch of chapters) {
+        results.set(ch.chapterId, { canAccess: true })
+      }
+      return results
+    }
+    subscription = { earlyAccessDays: simulate.earlyAccessDays }
+  } else if (userId) {
     // Query 1: Beta readers for this project + user
     const [betaReaderRow] = await db
       .select({ readerId: betaReaders.readerId })
@@ -501,6 +535,127 @@ async function canUserAnnotate(
   return false
 }
 
+// ============================================
+// PROJECT VISIBILITY & AUTHOR PREVIEW
+// ============================================
+
+/**
+ * Owner-only "view as" preview. `visitor` is handled upstream by dropping the
+ * userId; `beta` and `tier` replace the real beta/grant/subscription lookups
+ * in the access checks. Only ever downgrades — non-owners can't invoke it.
+ */
+type ViewSimulation =
+  | { kind: 'beta' }
+  | { kind: 'tier'; earlyAccessDays: number }
+
+interface EffectiveViewer {
+  userId?: string | undefined
+  simulate?: ViewSimulation
+}
+
+/**
+ * Resolve the effective viewer for reader endpoints from the session user and
+ * an optional ?viewAs= query param (visitor | beta | tier:<tierId>). The param
+ * is honored only when the session user owns the project; otherwise it is
+ * silently ignored.
+ */
+async function resolveViewAs(
+  projectId: string,
+  userId: string | undefined,
+  viewAsRaw: string | undefined
+): Promise<EffectiveViewer> {
+  if (!viewAsRaw || !userId) return { userId }
+
+  const [project] = await db
+    .select({ ownerId: projects.ownerId })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1)
+  if (!project || project.ownerId !== userId) return { userId }
+
+  if (viewAsRaw === 'visitor') return {}
+  if (viewAsRaw === 'beta') return { userId, simulate: { kind: 'beta' } }
+  if (viewAsRaw.startsWith('tier:')) {
+    const tierId = viewAsRaw.slice('tier:'.length)
+    if (UUID_RE.test(tierId)) {
+      const [tier] = await db
+        .select({ earlyAccessDays: subscriptionTiers.earlyAccessDays })
+        .from(subscriptionTiers)
+        .where(and(
+          eq(subscriptionTiers.id, tierId),
+          eq(subscriptionTiers.authorId, userId)
+        ))
+        .limit(1)
+      if (tier) {
+        return { userId, simulate: { kind: 'tier', earlyAccessDays: tier.earlyAccessDays ?? 0 } }
+      }
+    }
+  }
+  return { userId }
+}
+
+/**
+ * Whether a viewer may see a project at all. Public and unlisted projects are
+ * open to everyone (unlisted just isn't discoverable); private projects admit
+ * only the owner, active beta readers, and active access grantees.
+ */
+async function canViewProject(
+  projectId: string,
+  userId: string | undefined,
+  simulate?: ViewSimulation
+): Promise<boolean> {
+  const [config] = await db
+    .select({ projectVisibility: projectPublishConfig.projectVisibility })
+    .from(projectPublishConfig)
+    .where(eq(projectPublishConfig.projectId, projectId))
+    .limit(1)
+
+  if ((config?.projectVisibility ?? 'public') !== 'private') return true
+  if (!userId) return false
+
+  // Owner previewing as another audience: only a beta reader would get in.
+  if (simulate) return simulate.kind === 'beta'
+
+  const [project] = await db
+    .select({ ownerId: projects.ownerId })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1)
+  if (project?.ownerId === userId) return true
+
+  const [betaReader] = await db
+    .select({ id: betaReaders.id })
+    .from(betaReaders)
+    .where(and(
+      or(eq(betaReaders.projectId, projectId), isNull(betaReaders.projectId)),
+      eq(betaReaders.readerId, userId),
+      eq(betaReaders.isActive, true)
+    ))
+    .limit(1)
+  if (betaReader) return true
+
+  const [grant] = await db
+    .select({ id: accessGrants.id })
+    .from(accessGrants)
+    .where(and(
+      or(eq(accessGrants.projectId, projectId), isNull(accessGrants.projectId)),
+      eq(accessGrants.grantedTo, userId),
+      eq(accessGrants.isActive, true)
+    ))
+    .limit(1)
+  return !!grant
+}
+
+/** Look up the projectId a published chapter belongs to (for chapter-scoped routes). */
+async function getChapterProjectId(chapterId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ projectId: chapterPublications.projectId })
+    .from(chapterPublications)
+    .where(eq(chapterPublications.chapterId, chapterId))
+    .limit(1)
+  return row?.projectId ?? null
+}
+
 /**
  * Pretty reader base URL (`<origin>/read/<author>/<shortUrl>`) for a project,
  * or null when the project has no claimed short URL — callers fall back to
@@ -532,6 +687,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{
     Params: { projectId: string }
+    Querystring: { viewAs?: string }
   }>('/public/projects/:projectId/toc', {
     preHandler: optionalAuth
   }, async (request, reply) => {
@@ -543,7 +699,12 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       // append ?userId=<owner_uuid> and unlock embargoed / subscriber-only
       // chapters because checkPublicChapterAccess grants access when
       // project.ownerId === userId.
-      const userId = request.user?.id
+      const viewer = await resolveViewAs(projectId, request.user?.id, request.query.viewAs)
+      const userId = viewer.userId
+
+      if (!(await canViewProject(projectId, userId, viewer.simulate))) {
+        return reply.status(404).send({ error: 'Project not found', correlationId })
+      }
 
       // Get project visibility setting
       const [publishConfig] = await db
@@ -588,7 +749,8 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         })),
         projectId,
         userId,
-        defaultVisibility
+        defaultVisibility,
+        viewer.simulate
       )
 
       const slugMap = await getSlugsForEntities(projectId, publishedChapters.map(ch => ch.chapterId))
@@ -636,6 +798,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{
     Params: { projectId: string; chapterId: string }
+    Querystring: { viewAs?: string }
   }>('/public/projects/:projectId/chapters/:chapterId', {
     preHandler: optionalAuth
   }, async (request, reply) => {
@@ -644,7 +807,12 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       const { projectId, chapterId: chapterParam } = request.params
       // Identity sourced from authenticated session only — see /toc handler above
       // for why query-string userId would have been an embargo-bypass.
-      const userId = request.user?.id
+      const viewer = await resolveViewAs(projectId, request.user?.id, request.query.viewAs)
+      const userId = viewer.userId
+
+      if (!(await canViewProject(projectId, userId, viewer.simulate))) {
+        return reply.status(404).send({ error: 'Project not found', correlationId })
+      }
 
       // The URL param may be the chapter's slug, an old slug alias, or a UUID.
       const resolved = await resolveSlug(projectId, chapterParam)
@@ -661,7 +829,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         .limit(1)
 
       // Check access
-      const access = await checkPublicChapterAccess(chapterId, projectId, userId, chapterPublishConfig?.defaultVisibility || 'public')
+      const access = await checkPublicChapterAccess(chapterId, projectId, userId, chapterPublishConfig?.defaultVisibility || 'public', viewer.simulate)
       if (!access.canAccess) {
         return reply.status(403).send({
           error: access.reason || 'Access denied',
@@ -793,6 +961,10 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       // to other accounts.
       const userId = request.user?.id
 
+      if (!(await canViewProject(request.params.projectId, userId))) {
+        return reply.status(404).send({ error: 'Project not found', correlationId })
+      }
+
       let viewId: string
       let isNewView = false
 
@@ -898,10 +1070,16 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{
     Params: { projectId: string }
-  }>('/public/projects/:projectId/stats', async (request, reply) => {
+  }>('/public/projects/:projectId/stats', {
+    preHandler: optionalAuth
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId } = request.params
+
+      if (!(await canViewProject(projectId, request.user?.id))) {
+        return reply.status(404).send({ error: 'Project not found', correlationId })
+      }
 
       // Get aggregate stats
       const stats = await db
@@ -936,10 +1114,16 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{
     Params: { projectId: string }
-  }>('/public/projects/:projectId/metadata', async (request, reply) => {
+  }>('/public/projects/:projectId/metadata', {
+    preHandler: optionalAuth
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId } = request.params
+
+      if (!(await canViewProject(projectId, request.user?.id))) {
+        return reply.status(404).send({ error: 'Project not found', correlationId })
+      }
 
       // Project info — projects live in `projects`, not `entities`.
       const [project] = await db
@@ -1038,10 +1222,16 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{
     Params: { projectId: string; chapterId: string }
-  }>('/public/projects/:projectId/chapters/:chapterId/metadata', async (request, reply) => {
+  }>('/public/projects/:projectId/chapters/:chapterId/metadata', {
+    preHandler: optionalAuth
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { projectId, chapterId: chapterParam } = request.params
+
+      if (!(await canViewProject(projectId, request.user?.id))) {
+        return reply.status(404).send({ error: 'Project not found', correlationId })
+      }
 
       const resolved = await resolveSlug(projectId, chapterParam)
       if (!resolved) {
@@ -1162,6 +1352,11 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
     try {
       const { projectId } = request.params
 
+      // Sitemaps are for search engines — only public projects belong in one.
+      if (!(await canViewProject(projectId, undefined))) {
+        return reply.status(404).send({ error: 'Project not found', correlationId })
+      }
+
       // Get all published chapters in reader order.
       const sitemapOrderClauses = await getChapterOrderClauses(projectId)
       const chapters = await db
@@ -1279,6 +1474,12 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         }
       }
 
+      // Private projects only serve feeds to viewers with access (identified
+      // by their RSS reader token — RSS clients can't do bearer auth).
+      if (!(await canViewProject(projectId, readerUserId))) {
+        return reply.status(404).send({ error: 'Project not found', correlationId })
+      }
+
       const [publishConfig] = await db
         .select({ defaultVisibility: projectPublishConfig.defaultVisibility })
         .from(projectPublishConfig)
@@ -1391,7 +1592,9 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{
     Params: { slug: string }
-  }>('/public/projects/by-slug/:slug', async (request, reply) => {
+  }>('/public/projects/by-slug/:slug', {
+    preHandler: optionalAuth
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { slug } = request.params
@@ -1432,6 +1635,10 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           return reply.status(404).send({ error: 'Project not found', correlationId })
         }
 
+        if (!(await canViewProject(configMatch.id, request.user?.id))) {
+          return reply.status(404).send({ error: 'Project not found', correlationId })
+        }
+
         // Get author info
         const [author] = await db
           .select({
@@ -1447,6 +1654,10 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           .limit(1)
 
         return reply.send({ project: configMatch, author: author || null, correlationId })
+      }
+
+      if (!(await canViewProject(project.id, request.user?.id))) {
+        return reply.status(404).send({ error: 'Project not found', correlationId })
       }
 
       // Get author info
@@ -1476,7 +1687,9 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.post<{
     Body: { slugs?: string[] }
-  }>('/public/projects/by-slugs', async (request, reply) => {
+  }>('/public/projects/by-slugs', {
+    preHandler: optionalAuth
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const inputSlugs = request.body?.slugs || []
@@ -1503,7 +1716,31 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         .leftJoin(users, eq(users.id, projects.ownerId))
         .where(and(inArray(projects.shortUrl, slugs), isNull(projects.deletedAt)))
 
-      const results = projectRows
+      if (projectRows.length === 0) {
+        return reply.send({ projects: [], correlationId })
+      }
+
+      // Drop private projects the requester can't view (visibility is checked
+      // per row; only 'private' rows incur the access lookup).
+      const configRows = await db
+        .select({
+          projectId: projectPublishConfig.projectId,
+          projectVisibility: projectPublishConfig.projectVisibility
+        })
+        .from(projectPublishConfig)
+        .where(inArray(projectPublishConfig.projectId, projectRows.map(r => r.projectId)))
+      const visibilityByProject = new Map(configRows.map(c => [c.projectId, c.projectVisibility]))
+
+      const visibleRows: typeof projectRows = []
+      for (const row of projectRows) {
+        if ((visibilityByProject.get(row.projectId) ?? 'public') !== 'private') {
+          visibleRows.push(row)
+        } else if (await canViewProject(row.projectId, request.user?.id)) {
+          visibleRows.push(row)
+        }
+      }
+
+      const results = visibleRows
         .filter((row) => Boolean(row.shortUrl))
         .map((row) => ({
           slug: row.shortUrl!,
@@ -1532,7 +1769,10 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{
     Params: { username: string; projectSlug: string }
-  }>('/public/projects/by-author-and-slug/:username/:projectSlug', async (request, reply) => {
+    Querystring: { viewAs?: string }
+  }>('/public/projects/by-author-and-slug/:username/:projectSlug', {
+    preHandler: optionalAuth
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { username, projectSlug } = request.params
@@ -1565,9 +1805,17 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(404).send({ error: 'Project not found', correlationId })
       }
 
+      const viewer = await resolveViewAs(project.id, request.user?.id, request.query.viewAs)
+      if (!(await canViewProject(project.id, viewer.userId, viewer.simulate))) {
+        return reply.status(404).send({ error: 'Project not found', correlationId })
+      }
+
       // Get project visibility setting
       const [projPublishConfig] = await db
-        .select({ defaultVisibility: projectPublishConfig.defaultVisibility })
+        .select({
+          defaultVisibility: projectPublishConfig.defaultVisibility,
+          projectVisibility: projectPublishConfig.projectVisibility
+        })
         .from(projectPublishConfig)
         .where(eq(projectPublishConfig.projectId, project.id))
         .limit(1)
@@ -1610,6 +1858,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
             eq(projectCollectionMemberships.collectionId, collMatch.id),
             isNull(projects.deletedAt),
             eq(projectPublishConfig.publishingMode, 'live'),
+            eq(projectPublishConfig.projectVisibility, 'public'),
             sql`EXISTS (SELECT 1 FROM ${chapterPublications} WHERE ${chapterPublications.projectId} = ${projects.id} AND ${chapterPublications.isPublished} = true)`
           ))
 
@@ -1620,7 +1869,11 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       }
 
       return reply.send({
-        project: { ...project, defaultVisibility: projPublishConfig?.defaultVisibility || 'public' },
+        project: {
+          ...project,
+          defaultVisibility: projPublishConfig?.defaultVisibility || 'public',
+          projectVisibility: projPublishConfig?.projectVisibility || 'public'
+        },
         author,
         collection: collectionInfo,
         correlationId
@@ -1648,7 +1901,9 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(404).send({ error: 'Author not found', correlationId })
       }
 
-      // Get published projects (those with shortUrl and live publish config)
+      // Get published projects: live, publicly visible, with a shortUrl and at
+      // least one published chapter (empty/unlisted/private projects stay off
+      // the public author page).
       const publishedProjects = await db
         .select({
           id: projects.id,
@@ -1663,8 +1918,10 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         .where(and(
           eq(projects.ownerId, author.userId),
           eq(projectPublishConfig.publishingMode, 'live'),
+          eq(projectPublishConfig.projectVisibility, 'public'),
           sql`${projects.shortUrl} IS NOT NULL`,
-          isNull(projects.deletedAt)
+          isNull(projects.deletedAt),
+          sql`EXISTS (SELECT 1 FROM ${chapterPublications} WHERE ${chapterPublications.projectId} = ${projects.id} AND ${chapterPublications.isPublished} = true)`
         ))
         .orderBy(desc(projects.createdAt))
 
@@ -1794,6 +2051,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           eq(projectCollectionMemberships.collectionId, collection.id),
           isNull(projects.deletedAt),
           eq(projectPublishConfig.publishingMode, 'live'),
+          eq(projectPublishConfig.projectVisibility, 'public'),
           sql`EXISTS (SELECT 1 FROM ${chapterPublications} WHERE ${chapterPublications.projectId} = ${projects.id} AND ${chapterPublications.isPublished} = true)`
         ))
         .orderBy(asc(projectCollectionMemberships.orderIndex))
@@ -1820,11 +2078,18 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { chapterId: string }
     Querystring: { limit?: number; offset?: number }
-  }>('/public/chapters/:chapterId/comments', async (request, reply) => {
+  }>('/public/chapters/:chapterId/comments', {
+    preHandler: optionalAuth
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { chapterId } = request.params
       const { limit = 50, offset = 0 } = request.query
+
+      const commentProjectId = await getChapterProjectId(chapterId)
+      if (commentProjectId && !(await canViewProject(commentProjectId, request.user?.id))) {
+        return reply.status(404).send({ error: 'Chapter not found', correlationId })
+      }
 
       // Fetch all approved comments for this chapter (flat list)
       const allComments = await db
@@ -1935,10 +2200,17 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{
     Params: { chapterId: string }
-  }>('/public/chapters/:chapterId/reactions', async (request, reply) => {
+  }>('/public/chapters/:chapterId/reactions', {
+    preHandler: optionalAuth
+  }, async (request, reply) => {
     const correlationId = randomUUID()
     try {
       const { chapterId } = request.params
+
+      const reactionProjectId = await getChapterProjectId(chapterId)
+      if (reactionProjectId && !(await canViewProject(reactionProjectId, request.user?.id))) {
+        return reply.status(404).send({ error: 'Chapter not found', correlationId })
+      }
 
       const reactionCounts = await db
         .select({
@@ -2100,7 +2372,41 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
     for (const name of versionableBase) {
       if (typeof name === 'string') fields.add(name)
     }
+    // Companion rule: installed type definitions predate the gallery fields,
+    // so `images`/`thumbnail` inherit image_url's versionability. Mirrors
+    // versionableFieldNames in bobbins/entities/src/variants.ts — keep in
+    // lockstep.
+    if (fields.has('image_url')) {
+      fields.add('images')
+      fields.add('thumbnail')
+    }
     return fields
+  }
+
+  /**
+   * Card-thumbnail URL for an entity's (sanitized) data: the designated
+   * `thumbnail` when its url is in the `images` gallery, else the first
+   * gallery image, else the legacy `image_url`. Mirrors getEntityThumbnail
+   * in bobbins/entities/src/images.ts — keep in lockstep.
+   */
+  function deriveThumbnailUrl(data: Record<string, unknown> | null | undefined): string | null {
+    if (!data) return null
+    const rawImages = Array.isArray(data.images) ? data.images : []
+    const urls: string[] = []
+    for (const entry of rawImages) {
+      if (typeof entry === 'string' && entry) urls.push(entry)
+      else if (entry && typeof entry === 'object' && typeof (entry as any).url === 'string' && (entry as any).url) {
+        urls.push((entry as any).url)
+      }
+    }
+    if (urls.length === 0) {
+      return typeof data.image_url === 'string' && data.image_url ? data.image_url : null
+    }
+    const thumb = data.thumbnail
+    if (thumb && typeof thumb === 'object' && typeof (thumb as any).url === 'string' && urls.includes((thumb as any).url)) {
+      return (thumb as any).url
+    }
+    return urls[0] ?? null
   }
 
   /**
@@ -2183,6 +2489,10 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         .limit(1)
 
       if (!project) {
+        return reply.status(404).send({ error: 'Project not found' })
+      }
+
+      if (!(await canViewProject(projectId, request.user?.id))) {
         return reply.status(404).send({ error: 'Project not found' })
       }
 
@@ -2320,7 +2630,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
               typeId,
               name: sanitizedData?.name ?? null,
               description: sanitizedData?.description ?? null,
-              imageUrl: sanitizedData?.image_url ?? null,
+              imageUrl: deriveThumbnailUrl(sanitizedData),
               tags: Array.isArray(sanitizedData?.tags) ? sanitizedData.tags : [],
               entityData: sanitizedData,
               publishOrder: r.publishOrder,
@@ -2380,6 +2690,10 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         .where(eq(projects.id, projectId))
         .limit(1)
       if (!project) return reply.status(404).send({ error: 'Project not found' })
+
+      if (!(await canViewProject(projectId, request.user?.id))) {
+        return reply.status(404).send({ error: 'Project not found' })
+      }
 
       const effective = await getEffectiveBobbins(projectId, project.ownerId)
       const installed = effective.find(b => b.bobbinId === 'entities' && b.enabled)
@@ -2470,7 +2784,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           typeId: entityRow.collectionName,
           name: (sanitizedData?.name as string) ?? null,
           description: (sanitizedData?.description as string) ?? null,
-          imageUrl: (sanitizedData?.image_url as string) ?? null,
+          imageUrl: deriveThumbnailUrl(sanitizedData),
           tags: Array.isArray(sanitizedData?.tags) ? sanitizedData.tags : [],
           entityData: sanitizedData,
           publishOrder: entityRow.publishOrder,
@@ -2508,6 +2822,10 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         .where(eq(projects.id, projectId))
         .limit(1)
       if (!project) return reply.status(404).send({ error: 'Project not found' })
+
+      if (!(await canViewProject(projectId, request.user?.id))) {
+        return reply.status(404).send({ error: 'Project not found' })
+      }
 
       const effective = await getEffectiveBobbins(projectId, project.ownerId)
       const installed = effective.find(b => b.bobbinId === 'entities' && b.enabled)

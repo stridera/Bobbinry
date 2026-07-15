@@ -264,9 +264,9 @@ async function uploadsPlugin(fastify: FastifyInstance) {
 
     const url = getPublicUrl(fileKey)
 
-    // Generate image variants for cover and avatar contexts
+    // Generate image variants for cover, avatar, and entity contexts
     let variants: { thumb: string; medium: string } | undefined
-    if (context === 'cover' || context === 'avatar') {
+    if (context === 'cover' || context === 'avatar' || context === 'entity') {
       try {
         await generateVariants(fileKey)
         variants = {

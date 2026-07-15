@@ -3,10 +3,12 @@
  *
  * Keeps the server response shape (mirrored from /api/public/projects/:id/entities)
  * and the small amount of variant-resolution logic needed to merge overrides
- * onto the base entity for display. The variant helper is intentionally inlined
- * here rather than imported from @bobbinry/entities — the bobbin package doesn't
- * export its helpers, and duplicating ~10 lines is cheaper than wiring exports.
+ * onto the base entity for display. The inlined variant helper mirrors
+ * `bobbins/entities/src/variants.ts` — gallery helpers are imported from
+ * @bobbinry/entities directly.
  */
+
+import { getEntityThumbnail, type EntityThumbnail } from '@bobbinry/entities'
 
 export interface VariantAxis {
   id: string
@@ -90,6 +92,24 @@ export function resolveCardDescription(entity: PublishedEntity): string | null {
     ? entity.entityData._variants?.items?.[firstVariantId]?.overrides?.description
     : undefined
   return typeof override === 'string' ? override : entity.description
+}
+
+/**
+ * Thumbnail (url + optional crop) for card previews. Mirrors the
+ * description fallback above: when the base view isn't published, overlay
+ * the first published variant's gallery overrides so the card matches what
+ * the drawer opens to.
+ */
+export function resolveCardThumbnail(entity: PublishedEntity): EntityThumbnail | null {
+  let data: Record<string, unknown> = entity.entityData
+  if (!entity.publishBase) {
+    const firstVariantId = entity.publishedVariantIds[0]
+    const overrides = firstVariantId
+      ? entity.entityData._variants?.items?.[firstVariantId]?.overrides
+      : undefined
+    if (overrides) data = { ...data, ...overrides }
+  }
+  return getEntityThumbnail(data)
 }
 
 /**

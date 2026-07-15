@@ -584,7 +584,7 @@ function ProjectReadingContent() {
       ]} />
 
       <div className={`mx-auto px-4 sm:px-6 lg:px-8 py-8 transition-[max-width] ${
-        activeTab === 'entities' ? 'max-w-6xl' : 'max-w-3xl'
+        activeTab === 'entities' ? 'max-w-7xl' : 'max-w-3xl'
       }`}>
 
       {/* Success banner */}

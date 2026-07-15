@@ -459,7 +459,7 @@ function ReadonlyJsonDisplay({ schema, value }: { schema: ReturnType<typeof norm
 
   if (schema?.mode === 'object' && typeof value === 'object' && !Array.isArray(value)) {
     return (
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1.5">
+      <div className="grid grid-cols-1 @sm:grid-cols-2 @2xl:grid-cols-3 gap-x-4 gap-y-1.5">
         {Object.entries(schema.fields).map(([key, f]) => (
           <div key={key} className="flex justify-between">
             <span className="text-sm text-gray-500 dark:text-gray-400">{f.label || key}</span>
@@ -1077,7 +1077,9 @@ function RelationReadonlyDisplay({ field, value }: { field: FieldDefinition; val
         ? getLinkProps?.(field.targetEntityType, id) ?? null
         : null
       return (
-        <div key={id} className="flex items-baseline gap-2">
+        // flex-wrap: in narrow containers (docked reader sidebar) the
+        // synopsis drops below the name instead of squeezing beside it.
+        <div key={id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
           {linkProps ? (
             <a
               href={linkProps.href ?? '#'}

@@ -1,6 +1,6 @@
 id: entities
 name: Entities
-version: 1.5.4
+version: 1.6.0
 author: "Bobbins Core"
 description: "Configurable entity system for characters, spells, locations, items, and more"
 tags: [worldbuilding, rpg, entities, configurable]

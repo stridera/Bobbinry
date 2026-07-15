@@ -6,74 +6,10 @@
  * space efficiency is important.
  */
 
-import { useState } from 'react'
 import type { EditorLayout, FieldDefinition } from '../../types'
 import { renderField } from '../FieldRenderers'
-
-function ImagePortrait({ src, alt, readonly, onRemove }: {
-  src: string
-  alt: string
-  readonly: boolean
-  onRemove: () => void
-}) {
-  const [lightboxOpen, setLightboxOpen] = useState(false)
-
-  return (
-    <>
-      <div className="flex-shrink-0 w-44 h-56 rounded-lg overflow-hidden shadow-md border border-gray-200 dark:border-gray-700 relative group cursor-pointer">
-        <img
-          src={src}
-          alt={alt}
-          className="w-full h-full object-cover"
-          onClick={() => setLightboxOpen(true)}
-        />
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-end justify-center pb-2 pointer-events-none">
-          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1.5 pointer-events-auto">
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); setLightboxOpen(true) }}
-              className="px-2.5 py-1 bg-white/90 text-gray-800 rounded text-xs font-medium hover:bg-white cursor-pointer"
-            >
-              View
-            </button>
-            {!readonly && (
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onRemove() }}
-                className="px-2.5 py-1 bg-red-500/90 text-white rounded text-xs font-medium hover:bg-red-500 cursor-pointer"
-              >
-                Remove
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Lightbox */}
-      {lightboxOpen && (
-        <div
-          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-8 cursor-pointer"
-          onClick={() => setLightboxOpen(false)}
-        >
-          <div className="relative max-w-4xl max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-            <img
-              src={src}
-              alt={alt}
-              className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
-            />
-            <button
-              type="button"
-              onClick={() => setLightboxOpen(false)}
-              className="absolute -top-3 -right-3 w-8 h-8 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-full shadow-lg flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer text-lg"
-            >
-              &times;
-            </button>
-          </div>
-        </div>
-      )}
-    </>
-  )
-}
+import { EntityImageGallery } from '../EntityImageGallery'
+import { getEntityImages } from '../../images'
 
 interface CompactCardLayoutProps {
   entity: Record<string, any>
@@ -101,40 +37,36 @@ export function CompactCardLayout({
   const getFieldDef = (fieldName: string) =>
     allFields.find(f => f.name === fieldName)
 
+  const hasImages = getEntityImages(entity).length > 0
+
   return (
     <div className="max-w-4xl mx-auto bg-white dark:bg-gray-900 rounded-lg shadow-lg overflow-hidden">
       {/* Full-width image (when configured as full-width) */}
-      {layout.imagePosition === 'top-full-width' && entity.image_url && (
-        <div className="w-full h-48 overflow-hidden">
-          <img
-            src={entity.image_url}
-            alt={entity.name || 'Entity'}
-            className="w-full h-full object-cover"
+      {layout.imagePosition === 'top-full-width' && (hasImages || !readonly) && (
+        <div className={hasImages ? '' : 'p-6 pb-0'}>
+          <EntityImageGallery
+            entity={entity}
+            readonly={readonly}
+            onFieldChange={onFieldChange}
+            variant="hero"
+            heroHeightClass="h-48"
           />
         </div>
       )}
 
-      {/* Header: image portrait + fields side by side */}
-      <div className={`p-6 ${layout.imagePosition === 'top-right' ? 'flex gap-6' : ''}`}>
-        {/* Portrait image or upload placeholder (top-right mode) */}
-        {layout.imagePosition === 'top-right' && (
-          entity.image_url ? (
-            <ImagePortrait
-              src={entity.image_url}
-              alt={entity.name || 'Entity'}
+      {/* Header: image portrait + fields — stacked in narrow containers
+          (docked sidebar), side by side once the card has room. */}
+      <div className={`p-4 @md:p-6 ${layout.imagePosition === 'top-right' ? 'flex flex-col gap-6 @lg:flex-row' : ''}`}>
+        {/* Portrait gallery or upload placeholder (top-right mode) */}
+        {layout.imagePosition === 'top-right' && (hasImages || !readonly) && (
+          <div className="w-56 max-w-full flex-shrink-0 @lg:w-44">
+            <EntityImageGallery
+              entity={entity}
               readonly={readonly}
-              onRemove={() => onFieldChange('image_url', null)}
+              onFieldChange={onFieldChange}
+              variant="portrait"
             />
-          ) : !readonly ? (
-            <div className="flex-shrink-0 w-44">
-              {renderField(
-                { name: 'image_url', type: 'image', label: '' },
-                entity.image_url,
-                (value) => onFieldChange('image_url', value),
-                false
-              )}
-            </div>
-          ) : null
+          </div>
         )}
 
         <div className="flex-1 min-w-0">
@@ -148,7 +80,7 @@ export function CompactCardLayout({
               return (
                 <div key={fieldName}>
                   {fieldName === 'name' ? (
-                    <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
+                    <h1 className="text-2xl @xl:text-3xl font-bold text-gray-900 dark:text-gray-100">
                       {renderField(
                         fieldDef,
                         entity[fieldName],
@@ -174,17 +106,16 @@ export function CompactCardLayout({
       </div>
 
       {/* Sidebar Image (if configured) */}
-      {layout.imagePosition === 'left-sidebar' && (
+      {layout.imagePosition === 'left-sidebar' && (hasImages || !readonly) && (
         <div className="flex">
-          {entity.image_url && (
-            <div className="w-64 flex-shrink-0">
-              <img
-                src={entity.image_url}
-                alt={entity.name || 'Entity'}
-                className="w-full h-full object-cover"
-              />
-            </div>
-          )}
+          <div className="w-64 flex-shrink-0 p-4">
+            <EntityImageGallery
+              entity={entity}
+              readonly={readonly}
+              onFieldChange={onFieldChange}
+              variant="square"
+            />
+          </div>
           <div className="flex-1">
             {/* Sections will render here */}
           </div>
@@ -192,7 +123,7 @@ export function CompactCardLayout({
       )}
 
       {/* Content Sections */}
-      <div className="p-6 space-y-6">
+      <div className="p-4 @md:p-6 space-y-6">
         {layout.sections.map((section, index) => (
           <div
             key={index}
@@ -204,7 +135,7 @@ export function CompactCardLayout({
 
             {/* Inline layout - fields in a row */}
             {section.display === 'inline' && (
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 @md:grid-cols-2 @2xl:grid-cols-3 gap-4">
                 {section.fields.map(fieldName => {
                   const fieldDef = getFieldDef(fieldName)
                   if (!fieldDef) return null

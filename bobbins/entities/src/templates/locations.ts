@@ -9,13 +9,13 @@ import type { EntityTemplate } from '../types'
 export const locationsTemplate: EntityTemplate = {
   id: 'template-locations',
   shareId: 'official-locations',
-  version: 5,
+  version: 6,
   label: 'Locations',
   icon: '🗺️',
   description: 'Places, regions, and landmarks',
   tags: ['worldbuilding', 'locations', 'geography'],
   baseFields: ['name', 'description', 'image_url', 'tags'],
-  versionableBaseFields: ['description', 'image_url'],
+  versionableBaseFields: ['description', 'image_url', 'images', 'thumbnail'],
   variantAxis: { id: 'era', label: 'Era', kind: 'ordered' },
   customFields: [
     {

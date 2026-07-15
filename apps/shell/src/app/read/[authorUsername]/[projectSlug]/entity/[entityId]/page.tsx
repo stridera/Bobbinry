@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { config } from '@/lib/config'
@@ -25,6 +25,7 @@ export default function EntitySubpage() {
 
 function EntitySubpageContent() {
   const params = useParams()
+  const router = useRouter()
   const authorUsername = params.authorUsername as string
   const projectSlug = params.projectSlug as string
   // Slug, old-slug alias, or legacy UUID — the API resolves all three.
@@ -149,6 +150,7 @@ function EntitySubpageContent() {
           projectId={projectId}
           apiToken={apiToken}
           entityHrefBase={`/read/${authorUsername}/${projectSlug}/entity`}
+          onNavigateEntity={id => router.push(`/read/${authorUsername}/${projectSlug}/entity/${id}`)}
           stickyHeaderTopClass="top-11"
           headerAction={
             <Link

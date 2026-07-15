@@ -8,6 +8,7 @@ import { useState, useEffect, useMemo } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
 import type { EntityTypeDefinition } from '../types'
 import { normalizeTypeConfig } from '../types'
+import { getEntityThumbnail } from '../images'
 
 interface EntityListViewProps {
   projectId: string
@@ -442,6 +443,9 @@ export default function EntityListView({
                   typeof entity.description === 'string' ? entity.description : ''
                 const description = stripHtml(rawDescription)
                 const showDescriptionFallback = !subtitle && description.length > 0
+                // Resolve through the gallery so entities whose data carries
+                // `images` without a synced `image_url` still show a thumb.
+                const thumbUrl = getEntityThumbnail(entity)?.url ?? null
                 return (
                   <div
                     key={entity.id}
@@ -451,9 +455,9 @@ export default function EntityListView({
                     }`}
                   >
                     {displayStyle === 'list' ? (
-                      entity.image_url ? (
+                      thumbUrl ? (
                         <img
-                          src={entity.image_url}
+                          src={thumbUrl}
                           alt={entity.name}
                           className="w-16 h-16 flex-shrink-0 object-cover rounded"
                         />
@@ -463,9 +467,9 @@ export default function EntityListView({
                         </div>
                       )
                     ) : (
-                      entity.image_url && (
+                      thumbUrl && (
                         <img
-                          src={entity.image_url}
+                          src={thumbUrl}
                           alt={entity.name}
                           className="w-full h-48 object-cover rounded mb-4"
                         />

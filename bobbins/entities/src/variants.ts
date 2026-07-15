@@ -63,6 +63,15 @@ export function versionableFieldNames(
   for (const baseName of typeConfig.versionableBaseFields || []) {
     names.add(baseName)
   }
+  // Companion rule: installed type definitions predate the gallery fields
+  // and have `versionableBaseFields` frozen at install time, so the new
+  // gallery fields inherit image_url's versionability rather than requiring
+  // a backfill. Mirrored in apps/api/src/routes/reader.ts
+  // (collectVersionableFields) — keep in lockstep.
+  if (names.has('image_url')) {
+    names.add('images')
+    names.add('thumbnail')
+  }
   return names
 }
 

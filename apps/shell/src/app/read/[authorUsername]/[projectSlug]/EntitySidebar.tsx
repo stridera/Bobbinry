@@ -10,21 +10,25 @@
 import { useEffect } from 'react'
 import EntityView from './EntityView'
 import EntityHeaderActions from './EntityHeaderActions'
-import type { PublishedEntity, PublishedType } from './entities-data'
+import EntityStackFallback from './EntityStackFallback'
+import type { EntityStackEntry } from './useEntityStack'
 
 interface EntitySidebarProps {
-  type: PublishedType
-  entity: PublishedEntity
+  entry: EntityStackEntry
   projectId: string
   apiToken?: string | undefined
   onClose: () => void
-  /** Route to the entity's full subpage. Rendered as an "Open as page" link. */
-  subpageHref: string
-  /** Base for relation-pill links to sibling entities — `${base}/${id}`. */
-  entityHrefBase?: string
+  /** Base for relation-pill links and the "Open as page" link — `${base}/${slug ?? id}`. */
+  entityHrefBase: string
+  /** Navigate in place to another entity (pushes onto the caller's stack). */
+  onNavigateEntity?: ((entityId: string) => void) | undefined
+  /** Pop back to the previously viewed entity; undefined hides the back arrow. */
+  onBack?: (() => void) | undefined
+  /** Jump to the Support tab when a locked entry nudges the reader to subscribe. */
+  onSubscribeNudge?: ((tierLevel?: number) => void) | undefined
 }
 
-export default function EntitySidebar({ type, entity, projectId, apiToken, onClose, subpageHref, entityHrefBase }: EntitySidebarProps) {
+export default function EntitySidebar({ entry, projectId, apiToken, onClose, entityHrefBase, onNavigateEntity, onBack, onSubscribeNudge }: EntitySidebarProps) {
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.defaultPrevented) return
@@ -34,20 +38,41 @@ export default function EntitySidebar({ type, entity, projectId, apiToken, onClo
     return () => window.removeEventListener('keydown', handleKey)
   }, [onClose])
 
+  const ariaLabel =
+    entry.kind === 'entity'
+      ? `${entry.entity.name ?? entry.type.label} details`
+      : 'Entity details'
+
   return (
     <aside
-      className="sticky top-8 hidden max-h-[calc(100vh-4rem)] w-96 flex-shrink-0 flex-col overflow-hidden border-l border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900 lg:flex"
+      className="sticky top-8 hidden max-h-[calc(100vh-4rem)] w-96 flex-shrink-0 flex-col overflow-hidden border-l border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900 lg:flex xl:w-[27rem] 2xl:w-[30rem]"
       role="complementary"
-      aria-label={`${entity.name ?? type.label} details`}
+      aria-label={ariaLabel}
     >
-      <EntityView
-        type={type}
-        entity={entity}
-        projectId={projectId}
-        apiToken={apiToken}
-        headerAction={<EntityHeaderActions subpageHref={subpageHref} onClose={onClose} />}
-        entityHrefBase={entityHrefBase}
-      />
+      {entry.kind === 'entity' ? (
+        <EntityView
+          type={entry.type}
+          entity={entry.entity}
+          projectId={projectId}
+          apiToken={apiToken}
+          headerAction={
+            <EntityHeaderActions
+              subpageHref={`${entityHrefBase}/${entry.entity.slug ?? entry.entity.id}`}
+              onClose={onClose}
+              onBack={onBack}
+            />
+          }
+          entityHrefBase={entityHrefBase}
+          onNavigateEntity={onNavigateEntity}
+        />
+      ) : (
+        <EntityStackFallback
+          entry={entry}
+          onClose={onClose}
+          onBack={onBack}
+          onSubscribeNudge={onSubscribeNudge}
+        />
+      )}
     </aside>
   )
 }

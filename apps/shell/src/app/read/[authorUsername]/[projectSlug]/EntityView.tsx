@@ -31,11 +31,17 @@ interface EntityViewProps {
   headerAction?: React.ReactNode
   /** Route base for linking to other entities from relation pills. E.g. `/read/elena/saga/entity` — id is appended. */
   entityHrefBase?: string | undefined
+  /**
+   * Client-side handler for plain relation-pill clicks. When set, pills keep
+   * their href (middle/cmd-click still opens the full page) but a normal
+   * click calls this instead of triggering a full document navigation.
+   */
+  onNavigateEntity?: ((entityId: string) => void) | undefined
   /** When set, makes the entity header + variant bar stick at this Tailwind top-* class (e.g. `top-11` to sit below a 44px nav). */
   stickyHeaderTopClass?: string | undefined
 }
 
-export default function EntityView({ type, entity, projectId, apiToken, bare = false, headerAction, entityHrefBase, stickyHeaderTopClass }: EntityViewProps) {
+export default function EntityView({ type, entity, projectId, apiToken, bare = false, headerAction, entityHrefBase, onNavigateEntity, stickyHeaderTopClass }: EntityViewProps) {
   const visibleVariantIds = useMemo(() => {
     const ids: Array<string | null> = []
     if (entity.publishBase) ids.push(null)
@@ -63,6 +69,12 @@ export default function EntityView({ type, entity, projectId, apiToken, bare = f
     const names = new Set<string>()
     for (const f of type.customFields) if ((f as any).versionable) names.add(f.name)
     for (const name of type.versionableBaseFields ?? []) names.add(name)
+    // Companion rule for the gallery fields — mirrors versionableFieldNames
+    // in bobbins/entities/src/variants.ts; keep in lockstep.
+    if (names.has('image_url')) {
+      names.add('images')
+      names.add('thumbnail')
+    }
     return names
   }, [type.customFields, type.versionableBaseFields])
 
@@ -194,9 +206,20 @@ export default function EntityView({ type, entity, projectId, apiToken, bare = f
         <ResolvedEntityNamesProvider names={relationNames}>
           <ResolvedEntityDetailsProvider details={relationDetails}>
             <EntityNavProvider
-              getLinkProps={(_entityType, id) =>
-                entityHrefBase ? { href: `${entityHrefBase}/${id}` } : null
-              }
+              getLinkProps={(_entityType, id) => {
+                if (!entityHrefBase) return null
+                const href = `${entityHrefBase}/${id}`
+                if (!onNavigateEntity) return { href }
+                return {
+                  href,
+                  onClick: e => {
+                    // Preserve open-in-new-tab affordances; only intercept plain clicks.
+                    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+                    e.preventDefault()
+                    onNavigateEntity(id)
+                  },
+                }
+              }}
             >
               <LayoutRenderer
                 layout={layout as any}
