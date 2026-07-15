@@ -1110,6 +1110,13 @@ export { fuzzyMatch } from './fuzzy'
 export type { FuzzyMatch } from './fuzzy'
 export { publishBreadcrumb } from './breadcrumb'
 export type { BreadcrumbCrumb } from './breadcrumb'
+export {
+  registerShortcuts,
+  SHORTCUTS_REGISTER_EVENT,
+  SHORTCUTS_UNREGISTER_EVENT,
+  OPEN_SHORTCUTS_HELP_EVENT,
+} from './shortcuts'
+export type { ShortcutEntry } from './shortcuts'
 
 // Convenience exports
 export * from '@bobbinry/types'

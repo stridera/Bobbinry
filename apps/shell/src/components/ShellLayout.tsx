@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { ExtensionSlot } from './ExtensionSlot'
 import { LeftPanelRail, RAIL_WIDTH } from './LeftPanelRail'
 import { QuickOpenPalette } from './QuickOpenPalette'
+import { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp'
 import { Breadcrumbs } from './Breadcrumbs'
 import type { Crumb } from '@/hooks/useBreadcrumb'
 import { UserMenu } from './UserMenu'
@@ -323,6 +324,7 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
               <QuickOpenPalette projectId={projectId} apiToken={shellContext.apiToken} />
             </>
           )}
+          <KeyboardShortcutsHelp />
           <ExtensionSlot
             slotId="shell.topBar"
             context={shellContext}
@@ -333,6 +335,16 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
 
         {/* Right: user, panel toggle */}
         <div className="flex items-center gap-0.5 shrink-0">
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('bobbinry:open-shortcuts-help'))}
+            className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-500 dark:text-gray-400 transition-colors"
+            title="Keyboard shortcuts (?)"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <rect x="3" y="6" width="18" height="12" rx="2" strokeWidth={2} />
+              <path strokeLinecap="round" strokeWidth={2} d="M7 10h.01M11 10h.01M15 10h.01M17 14H7" />
+            </svg>
+          </button>
           {projectId && (
             <BobbinManagerPopover
               projectId={projectId}
