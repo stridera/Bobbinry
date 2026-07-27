@@ -24,14 +24,14 @@
     "@bobbinry/sdk": "workspace:*",
     "@bobbinry/types": "workspace:*",
     "@bobbinry/ui-components": "workspace:*",
-    "@tiptap/core": "^3.27.3",
-    "@tiptap/extension-character-count": "^3.27.3",
-    "@tiptap/extension-image": "^3.27.3",
-    "@tiptap/extension-placeholder": "^3.27.3",
-    "@tiptap/extension-text-align": "^3.27.3",
-    "@tiptap/pm": "^3.27.3",
-    "@tiptap/react": "^3.27.3",
-    "@tiptap/starter-kit": "^3.27.3"
+    "@tiptap/core": "^3.29.0",
+    "@tiptap/extension-character-count": "^3.29.0",
+    "@tiptap/extension-image": "^3.29.0",
+    "@tiptap/extension-placeholder": "^3.29.0",
+    "@tiptap/extension-text-align": "^3.29.0",
+    "@tiptap/pm": "^3.29.0",
+    "@tiptap/react": "^3.29.0",
+    "@tiptap/starter-kit": "^3.29.0"
   },
   "devDependencies": {
     "@jest/globals": "^30.3.0",
