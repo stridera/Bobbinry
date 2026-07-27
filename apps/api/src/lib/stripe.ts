@@ -2,6 +2,7 @@ import StripeSDK from 'stripe'
 // Stripe v22's CJS types don't re-export sub-types (Account, Event, etc.)
 // into the StripeConstructor namespace. Import the full type from the core module.
 import type { Stripe } from 'stripe/cjs/stripe.core.js'
+import { env } from './env'
 
 /**
  * Shared Stripe helpers — single source of truth for account creation,
@@ -16,6 +17,69 @@ export function getStripe(): Stripe | null {
   // but at runtime it is constructable. Cast to get proper typing.
   const StripeClient = StripeSDK as unknown as new (key: string) => Stripe
   return new StripeClient(key)
+}
+
+/**
+ * Every event type the webhook route processes. The Stripe endpoint's
+ * enabled_events must include all of these — keep in sync with the switch
+ * in routes/stripe.ts.
+ */
+export const HANDLED_WEBHOOK_EVENTS = [
+  'checkout.session.completed',
+  'customer.subscription.created',
+  'customer.subscription.updated',
+  'customer.subscription.deleted',
+  'invoice.payment_succeeded',
+  'invoice.payment_failed',
+  'charge.refunded',
+  'account.updated',
+] as const
+
+interface WebhookCheckLogger {
+  info: (obj: unknown, msg?: string) => void
+  warn: (obj: unknown, msg?: string) => void
+  error: (obj: unknown, msg?: string) => void
+}
+
+/**
+ * Guard against config drift in the Stripe dashboard: verify the webhook
+ * endpoint for this API origin subscribes to every event we handle, and
+ * re-add any that are missing. Drift is otherwise completely silent —
+ * Stripe never dispatches unsubscribed events, so nothing errors and
+ * subscriptions just stop landing in the DB.
+ */
+export async function verifyWebhookEndpointConfig(log: WebhookCheckLogger): Promise<void> {
+  const stripe = getStripe()
+  if (!stripe) return
+
+  const webhookUrl = `${env.API_ORIGIN}/api/stripe/webhook`
+  const endpoints = await stripe.webhookEndpoints.list({ limit: 100 })
+  const endpoint = endpoints.data.find((e) => e.url === webhookUrl)
+
+  if (!endpoint) {
+    // Dev/test environments normally have no registered endpoint (the
+    // webhook route skips signature checks in dev). Production must.
+    const level = env.NODE_ENV === 'production' ? 'error' : 'info'
+    log[level]({ webhookUrl }, 'No Stripe webhook endpoint registered for this API origin')
+    return
+  }
+
+  if (endpoint.enabled_events.includes('*')) return
+
+  const missing = HANDLED_WEBHOOK_EVENTS.filter((e) => !endpoint.enabled_events.includes(e))
+  if (missing.length === 0) {
+    log.info({ endpointId: endpoint.id }, 'Stripe webhook endpoint events verified')
+    return
+  }
+
+  const restored = [...new Set([...endpoint.enabled_events, ...HANDLED_WEBHOOK_EVENTS])]
+  await stripe.webhookEndpoints.update(endpoint.id, {
+    enabled_events: restored as NonNullable<Stripe.WebhookEndpointUpdateParams['enabled_events']>,
+  })
+  log.warn(
+    { endpointId: endpoint.id, missing, restored },
+    'Stripe webhook endpoint had drifted — missing handled events re-added'
+  )
 }
 
 /** Extract period dates from a Stripe subscription's first item. */

@@ -640,6 +640,8 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
       const eventObj = event.data.object as any
       const isSiteMembership = eventObj?.metadata?.bobbinry_type === 'site_membership'
 
+      // When adding a case, add the event to HANDLED_WEBHOOK_EVENTS in
+      // lib/stripe.ts or the endpoint config check won't require it.
       switch (event.type) {
         case 'checkout.session.completed':
           if (isSiteMembership) {
