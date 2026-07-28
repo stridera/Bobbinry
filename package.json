@@ -19,6 +19,7 @@
     "db:check-drift": "turbo db:check-drift",
     "verify": "turbo lint db:check-drift typecheck",
     "test": "turbo test",
+    "test:integration": "bun run --cwd apps/api test:integration",
     "start": "./dev-start.sh",
     "stop": "./dev-stop.sh",
     "stop:all": "./dev-stop.sh --containers",

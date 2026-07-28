@@ -29,8 +29,50 @@ jobs:
       - run: ./scripts/check-dockerfile-bobbins.sh
       - run: ./scripts/check-api-bobbin-imports.sh
 
+  test:
+    runs-on: ubuntu-latest
+    # The integration suite is serial and DB-backed; if it ever wedges, fail fast
+    # rather than burning the default 6h job timeout.
+    timeout-minutes: 20
+    services:
+      postgres:
+        # Matches the credentials the test harness falls back to when no
+        # DATABASE_URL is present (apps/api/src/jest-global-setup.ts).
+        image: postgres:18
+        env:
+          POSTGRES_USER: bobbinry
+          POSTGRES_PASSWORD: bobbinry
+          POSTGRES_DB: bobbinry_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # No .env file exists in CI, so everything the suites need is explicit here.
+      # `test` is the only NODE_ENV where env.ts requires just DATABASE_URL.
+      DATABASE_URL: postgres://bobbinry:bobbinry@localhost:5432/bobbinry_test
+      NEXTAUTH_SECRET: ci-test-placeholder
+      INTERNAL_API_AUTH_TOKEN: ci-internal-token
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      # jest runs under real node, not bun's shim — see scripts/jest.sh
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: bun install --frozen-lockfile
+      # Unit suites across every workspace, then the API integration suites.
+      # The integration schema is applied by drizzle-kit push in globalSetup.
+      - run: bun run test
+      - run: bun run test:integration
+
   deploy-api:
-    needs: build
+    needs: [build, test]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     concurrency:
       group: deploy-api

@@ -44,7 +44,14 @@
       "persistent": true
     },
     "test": {
-      "outputs": []
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [],
+      "passThroughEnv": [
+        "DATABASE_URL",
+        "TEST_DATABASE_URL"
+      ]
     }
   }
 }
