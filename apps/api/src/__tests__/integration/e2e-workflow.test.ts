@@ -2,7 +2,7 @@
  * End-to-end Integration Test
  *
  * Chains the full happy-path workflow through the API:
- * signup → verify email → login → create project → install bobbin (DB) →
+ * signup → verify email → login → create project (auto-installs core bobbins) →
  * create entity → publish → create collection → add to collection →
  * follow user → check notifications
  */
@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/globals'
 import { db } from '../../db/connection'
 import { emailVerificationTokens, bobbinsInstalled, users } from '../../db/schema'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { createTestApp, createTestToken, createTestUser, cleanupAllTestData } from '../test-helpers'
 
 /** Poll DB for a verification token (created asynchronously after signup). */
@@ -86,24 +86,17 @@ describe('E2E Workflow', () => {
     const project = JSON.parse(projectRes.payload)
     const projectId = project.id
 
-    // 5. Install manuscript bobbin via DB (bypasses manifest validation)
-    await db.insert(bobbinsInstalled).values({
-      projectId,
-      bobbinId: 'manuscript',
-      version: '1.0.0',
-      manifestJson: {
-        id: 'manuscript',
-        name: 'Manuscript',
-        version: '1.0.0',
-        data: {
-          collections: [
-            { name: 'books', fields: [] },
-            { name: 'chapters', fields: [] },
-            { name: 'scenes', fields: [] }
-          ]
-        }
-      }
-    })
+    // 5. The manuscript bobbin is a core bobbin, auto-installed from its on-disk
+    // manifest when the project is created (projects.ts CORE_BOBBIN_IDS). Inserting
+    // it by hand here would collide with that install.
+    const installed = await db
+      .select()
+      .from(bobbinsInstalled)
+      .where(and(
+        eq(bobbinsInstalled.projectId, projectId),
+        eq(bobbinsInstalled.bobbinId, 'manuscript')
+      ))
+    expect(installed).toHaveLength(1)
 
     // 6. Create entity (chapter)
     const entityRes = await app.inject({

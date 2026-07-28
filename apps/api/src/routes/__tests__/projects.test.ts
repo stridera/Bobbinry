@@ -139,7 +139,7 @@ describe('Projects API', () => {
       expect(response.statusCode).toBe(404)
     })
 
-    it('should return 403 for invalid manifest path', async () => {
+    it('should return 404 for a manifest path that does not resolve', async () => {
       const response = await app.inject({
         method: 'POST',
         url: `/api/projects/${testProject.id}/bobbins/install`,
@@ -149,8 +149,10 @@ describe('Projects API', () => {
         }
       })
 
-      // nonexistent path outside bobbins/ returns 403 (access denied)
-      expect(response.statusCode).toBe(403)
+      // The realpath is resolved before the bobbins/ confinement check, so an
+      // unresolvable path is a 404 — it does not disclose what lives outside
+      // the sandbox. See loadManifestFromBobbinsPath.
+      expect(response.statusCode).toBe(404)
     })
 
     it('should reject external bobbins without declared external permissions', async () => {

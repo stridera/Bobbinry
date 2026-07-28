@@ -96,6 +96,37 @@ describe('Public Reader — Annotations', () => {
       expect(remaining).toHaveLength(0)
     })
 
+    // Regression: the real cause of the production 500. Python's urllib (and other
+    // clients) set Content-Type: application/json even on a bodyless DELETE. The
+    // custom JSON parser in server.ts ran JSON.parse(''), threw, and the resulting
+    // error carried no statusCode — so the global error handler turned it into a 500
+    // before the route handler ever ran.
+    it('deletes normally when the client sends Content-Type: application/json with no body', async () => {
+      const author = await createTestUser()
+      await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, author.id))
+      const project = await createTestProject(author.id)
+      const chapter = await seedChapter(project.id)
+      const annotation = await seedAnnotation(chapter.id, project.id, author.id)
+      const token = await createTestToken(author.id)
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: `/api/public/chapters/${chapter.id}/annotations/${annotation.id}`,
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+        },
+      })
+
+      expect(res.statusCode).toBe(200)
+
+      const remaining = await db
+        .select()
+        .from(chapterAnnotations)
+        .where(eq(chapterAnnotations.id, annotation.id))
+      expect(remaining).toHaveLength(0)
+    })
+
     it('returns 401 when unauthenticated', async () => {
       const author = await createTestUser()
       const project = await createTestProject(author.id)

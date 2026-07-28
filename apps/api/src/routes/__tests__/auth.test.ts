@@ -386,12 +386,24 @@ describe('Auth API', () => {
       expect(enableBody.backupCodes).toBeDefined()
       expect(enableBody.backupCodes.length).toBe(8)
 
-      // 4. Verify TOTP during login
+      // 4. Verify TOTP during login. /auth/totp/verify requires a challengeToken
+      // proving the password step already passed, so TOTP codes cannot be
+      // brute-forced from a userId alone — log in first to obtain one.
+      const loginRes = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { email: 'totp@test.local', password: 'password123' }
+      })
+      expect(loginRes.statusCode).toBe(200)
+      const loginBody = JSON.parse(loginRes.payload)
+      expect(loginBody.requiresTwoFactor).toBe(true)
+      expect(loginBody.challengeToken).toBeDefined()
+
       const verifyCode = totp.generate()
       const verifyRes = await app.inject({
         method: 'POST',
         url: '/api/auth/totp/verify',
-        payload: { userId, code: verifyCode }
+        payload: { userId, code: verifyCode, challengeToken: loginBody.challengeToken }
       })
 
       expect(verifyRes.statusCode).toBe(200)

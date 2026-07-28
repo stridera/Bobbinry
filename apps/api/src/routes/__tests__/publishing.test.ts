@@ -152,9 +152,13 @@ describe('Publishing API', () => {
 
       expect([200, 201]).toContain(publishRes.statusCode)
 
+      // Identity comes from the session, never `?userId=` — the route deliberately
+      // ignores the query string so an owner's UUID can't be used to spoof access.
+      const subscriberToken = await createTestToken(subscriber.id)
       const accessRes = await app.inject({
         method: 'GET',
-        url: `/api/projects/${project.id}/chapters/${chapter.id}/access?userId=${subscriber.id}`
+        url: `/api/projects/${project.id}/chapters/${chapter.id}/access`,
+        headers: { authorization: `Bearer ${subscriberToken}` }
       })
 
       expect(accessRes.statusCode).toBe(200)
@@ -246,10 +250,17 @@ describe('Publishing API', () => {
 
       expect([200, 201]).toContain(publishRes.statusCode)
 
+      // Identity is taken from the session, never `?userId=` — a query-string
+      // identity here would have been an embargo bypass.
+      const earlyReaderToken = await createTestToken(earlyReader.id)
+      const basicReaderToken = await createTestToken(basicReader.id)
+      const publicReaderToken = await createTestToken(publicReader.id)
+
       // Early Access (30d early): accessDate = 14d from now - 30d = 16d ago → CAN access
       const earlyReaderRes = await app.inject({
         method: 'GET',
-        url: `/api/public/projects/${project.id}/chapters/${chapter.id}?userId=${earlyReader.id}`
+        url: `/api/public/projects/${project.id}/chapters/${chapter.id}`,
+        headers: { authorization: `Bearer ${earlyReaderToken}` }
       })
       expect(earlyReaderRes.statusCode).toBe(200)
       expect(JSON.parse(earlyReaderRes.payload).chapter.id).toBe(chapter.id)
@@ -257,7 +268,8 @@ describe('Publishing API', () => {
       // Basic (7d early): accessDate = 14d from now - 7d = 7d from now → BLOCKED
       const basicReaderRes = await app.inject({
         method: 'GET',
-        url: `/api/public/projects/${project.id}/chapters/${chapter.id}?userId=${basicReader.id}`
+        url: `/api/public/projects/${project.id}/chapters/${chapter.id}`,
+        headers: { authorization: `Bearer ${basicReaderToken}` }
       })
       expect(basicReaderRes.statusCode).toBe(403)
       const basicPayload = JSON.parse(basicReaderRes.payload)
@@ -267,7 +279,8 @@ describe('Publishing API', () => {
       // Public reader: publicReleaseDate = 14d from now → BLOCKED
       const publicReaderRes = await app.inject({
         method: 'GET',
-        url: `/api/public/projects/${project.id}/chapters/${chapter.id}?userId=${publicReader.id}`
+        url: `/api/public/projects/${project.id}/chapters/${chapter.id}`,
+        headers: { authorization: `Bearer ${publicReaderToken}` }
       })
       expect(publicReaderRes.statusCode).toBe(403)
       const publicPayload = JSON.parse(publicReaderRes.payload)

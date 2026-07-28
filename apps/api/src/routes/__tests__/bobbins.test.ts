@@ -121,12 +121,28 @@ describe('Bobbins API', () => {
       expect(body.bobbin).toBeDefined()
     })
 
-    it('returns 403 for path outside bobbins/', async () => {
+    it('returns 404 for a path that does not resolve on disk', async () => {
       const res = await app.inject({
         method: 'POST',
         url: `/api/projects/${project.id}/bobbins/install`,
         headers: { authorization: `Bearer ${token}` },
         payload: { manifestPath: 'nonexistent/manifest.yaml' }
+      })
+
+      // loadManifestFromBobbinsPath resolves the realpath before checking
+      // confinement, so an unresolvable path is a 404 and never reveals whether
+      // anything exists outside bobbins/.
+      expect(res.statusCode).toBe(404)
+    })
+
+    it('returns 403 for an existing path outside bobbins/', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/projects/${project.id}/bobbins/install`,
+        headers: { authorization: `Bearer ${token}` },
+        // Exists at the repo root, so realpath succeeds and the confinement
+        // check is the thing that rejects it.
+        payload: { manifestPath: 'package.json' }
       })
 
       expect(res.statusCode).toBe(403)
@@ -167,6 +183,28 @@ describe('Bobbins API', () => {
       const project = await createTestProject(user.id)
       const token = await createTestToken(user.id)
 
+      // Must be a non-core bobbin — core ones are protected, see the test below.
+      await installBobbinViaBD(project.id, 'corkboard')
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: `/api/projects/${project.id}/bobbins/corkboard`,
+        headers: { authorization: `Bearer ${token}` }
+      })
+
+      expect([200, 204]).toContain(res.statusCode)
+
+      // Verify it's removed
+      const rows = await db.select().from(bobbinsInstalled)
+        .where(and(eq(bobbinsInstalled.projectId, project.id), eq(bobbinsInstalled.bobbinId, 'corkboard')))
+      expect(rows.length).toBe(0)
+    })
+
+    it('refuses to uninstall a core bobbin', async () => {
+      const user = await createTestUser()
+      const project = await createTestProject(user.id)
+      const token = await createTestToken(user.id)
+
       await installBobbinViaBD(project.id, 'manuscript')
 
       const res = await app.inject({
@@ -175,12 +213,13 @@ describe('Bobbins API', () => {
         headers: { authorization: `Bearer ${token}` }
       })
 
-      expect([200, 204]).toContain(res.statusCode)
+      // `core: true` in the disk manifest — the UI hides the affordance and the
+      // route guards it server-side.
+      expect(res.statusCode).toBe(400)
 
-      // Verify it's removed
       const rows = await db.select().from(bobbinsInstalled)
         .where(and(eq(bobbinsInstalled.projectId, project.id), eq(bobbinsInstalled.bobbinId, 'manuscript')))
-      expect(rows.length).toBe(0)
+      expect(rows.length).toBe(1)
     })
 
     it('returns 404 for nonexistent bobbin', async () => {

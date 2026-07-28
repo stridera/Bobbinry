@@ -200,16 +200,40 @@ export function build(opts = {}): FastifyInstance {
     runFirst: true,
   })
 
-  // Request size limits — 5MB to accommodate large manuscript chapters
+  // Request size limits — 5MB to accommodate large manuscript chapters.
+  //
+  // This replaces Fastify's built-in JSON parser, so it also has to reproduce the
+  // built-in's error semantics. Two cases matter:
+  //
+  //  1. Empty body with `Content-Type: application/json`. Plenty of clients set the
+  //     header unconditionally on bodyless requests — Python's urllib, several SDKs,
+  //     hand-rolled DELETEs. `JSON.parse('')` throws, and an error without a
+  //     `statusCode` falls through to `500` in the global error handler, so a
+  //     perfectly ordinary DELETE turned into an Internal Server Error. Treat it as
+  //     "no body" and let the route decide.
+  //  2. Genuinely malformed JSON is a client error: tag it `400` so it is not
+  //     reported as a server fault.
   server.addContentTypeParser('application/json', { parseAs: 'string', bodyLimit: 5 * 1024 * 1024 }, (_req, body, done) => {
+    const raw = typeof body === 'string' ? body : ''
+
+    if (raw.trim().length === 0) {
+      done(null, undefined)
+      return
+    }
+
+    if (raw.length > 5 * 1024 * 1024) {
+      const tooLarge = new Error('Request body too large') as Error & { statusCode: number }
+      tooLarge.statusCode = 413
+      done(tooLarge, undefined)
+      return
+    }
+
     try {
-      if (typeof body === 'string' && body.length > 5 * 1024 * 1024) {
-        done(new Error('Request body too large'), undefined)
-        return
-      }
-      done(null, JSON.parse(body as string))
-    } catch (error) {
-      done(error instanceof Error ? error : new Error('Invalid JSON'), undefined)
+      done(null, JSON.parse(raw))
+    } catch {
+      const invalid = new Error('Invalid JSON body') as Error & { statusCode: number }
+      invalid.statusCode = 400
+      done(invalid, undefined)
     }
   })
 
