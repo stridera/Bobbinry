@@ -48,7 +48,7 @@ describe('E2E Workflow', () => {
     const signupRes = await app.inject({
       method: 'POST',
       url: '/api/auth/signup',
-      payload: { email: 'e2e@test.local', password: 'password123', name: 'E2E User' }
+      payload: { email: 'e2e@example.com', password: 'password123', name: 'E2E User' }
     })
     expect(signupRes.statusCode).toBe(201)
     const signupBody = JSON.parse(signupRes.payload)
@@ -68,7 +68,7 @@ describe('E2E Workflow', () => {
     const loginRes = await app.inject({
       method: 'POST',
       url: '/api/auth/login',
-      payload: { email: 'e2e@test.local', password: 'password123' }
+      payload: { email: 'e2e@example.com', password: 'password123' }
     })
     expect(loginRes.statusCode).toBe(200)
 

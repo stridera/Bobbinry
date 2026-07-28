@@ -58,13 +58,13 @@ describe('Auth API', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/auth/signup',
-        payload: { email: 'signup@test.local', password: 'password123', name: 'Signup User' }
+        payload: { email: 'signup@example.com', password: 'password123', name: 'Signup User' }
       })
 
       expect(res.statusCode).toBe(201)
       const body = JSON.parse(res.payload)
       expect(body.id).toBeDefined()
-      expect(body.email).toBe('signup@test.local')
+      expect(body.email).toBe('signup@example.com')
       expect(body.name).toBe('Signup User')
       expect(body.passwordHash).toBeUndefined()
       expect(body.password).toBeUndefined()
@@ -84,13 +84,13 @@ describe('Auth API', () => {
       await app.inject({
         method: 'POST',
         url: '/api/auth/signup',
-        payload: { email: 'dup@test.local', password: 'password123' }
+        payload: { email: 'dup@example.com', password: 'password123' }
       })
 
       const res = await app.inject({
         method: 'POST',
         url: '/api/auth/signup',
-        payload: { email: 'dup@test.local', password: 'password123' }
+        payload: { email: 'dup@example.com', password: 'password123' }
       })
 
       expect(res.statusCode).toBe(409)
@@ -100,7 +100,7 @@ describe('Auth API', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/auth/signup',
-        payload: { email: 'noauth@test.local', password: 'password123' }
+        payload: { email: 'noauth@example.com', password: 'password123' }
       })
 
       expect(res.statusCode).toBe(201)
@@ -116,7 +116,7 @@ describe('Auth API', () => {
       await app.inject({
         method: 'POST',
         url: '/api/auth/signup',
-        payload: { email: 'login@test.local', password: 'password123', name: 'Login User' }
+        payload: { email: 'login@example.com', password: 'password123', name: 'Login User' }
       })
     })
 
@@ -124,12 +124,12 @@ describe('Auth API', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/auth/login',
-        payload: { email: 'login@test.local', password: 'password123' }
+        payload: { email: 'login@example.com', password: 'password123' }
       })
 
       expect(res.statusCode).toBe(200)
       const body = JSON.parse(res.payload)
-      expect(body.email).toBe('login@test.local')
+      expect(body.email).toBe('login@example.com')
       expect(body.name).toBe('Login User')
       expect(body.passwordHash).toBeUndefined()
     })
@@ -138,7 +138,7 @@ describe('Auth API', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/auth/login',
-        payload: { email: 'login@test.local', password: 'wrongpassword' }
+        payload: { email: 'login@example.com', password: 'wrongpassword' }
       })
 
       expect(res.statusCode).toBe(401)
@@ -148,7 +148,7 @@ describe('Auth API', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/auth/login',
-        payload: { email: 'nobody@test.local', password: 'password123' }
+        payload: { email: 'nobody@example.com', password: 'password123' }
       })
 
       expect(res.statusCode).toBe(401)
@@ -164,7 +164,7 @@ describe('Auth API', () => {
       const signupRes = await app.inject({
         method: 'POST',
         url: '/api/auth/signup',
-        payload: { email: 'verify@test.local', password: 'password123' }
+        payload: { email: 'verify@example.com', password: 'password123' }
       })
       const userId = JSON.parse(signupRes.payload).id
 
@@ -195,7 +195,7 @@ describe('Auth API', () => {
       const signupRes = await app.inject({
         method: 'POST',
         url: '/api/auth/signup',
-        payload: { email: 'resend@test.local', password: 'password123' }
+        payload: { email: 'resend@example.com', password: 'password123' }
       })
       const userId = JSON.parse(signupRes.payload).id
       const token = await createTestToken(userId)
@@ -211,7 +211,7 @@ describe('Auth API', () => {
 
     it('returns 400 for already verified user', async () => {
       // Create user via DB and manually verify to avoid async token race
-      const user = await createTestUser({ email: 'already-verified@test.local' })
+      const user = await createTestUser({ email: 'already-verified@example.com' })
       await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, user.id))
 
       const authToken = await createTestToken(user.id)
@@ -266,19 +266,19 @@ describe('Auth API', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/auth/forgot-password',
-        payload: { email: 'nonexistent@test.local' }
+        payload: { email: 'nonexistent@example.com' }
       })
 
       expect(res.statusCode).toBe(200)
     })
 
     it('inserts token in DB for existing user', async () => {
-      const user = await createTestUserWithPassword('password123', { email: 'forgot@test.local' })
+      const user = await createTestUserWithPassword('password123', { email: 'forgot@example.com' })
 
       const forgotRes = await app.inject({
         method: 'POST',
         url: '/api/auth/forgot-password',
-        payload: { email: 'forgot@test.local' }
+        payload: { email: 'forgot@example.com' }
       })
       expect(forgotRes.statusCode).toBe(200)
 
@@ -290,12 +290,12 @@ describe('Auth API', () => {
 
   describe('POST /api/auth/reset-password', () => {
     it('resets password with valid token', async () => {
-      const user = await createTestUserWithPassword('oldpassword123', { email: 'reset@test.local' })
+      const user = await createTestUserWithPassword('oldpassword123', { email: 'reset@example.com' })
 
       await app.inject({
         method: 'POST',
         url: '/api/auth/forgot-password',
-        payload: { email: 'reset@test.local' }
+        payload: { email: 'reset@example.com' }
       })
 
       const tokenValue = await waitForResetToken(user.id)
@@ -312,7 +312,7 @@ describe('Auth API', () => {
       const loginRes = await app.inject({
         method: 'POST',
         url: '/api/auth/login',
-        payload: { email: 'reset@test.local', password: 'newpassword123' }
+        payload: { email: 'reset@example.com', password: 'newpassword123' }
       })
       expect(loginRes.statusCode).toBe(200)
     })
@@ -345,7 +345,7 @@ describe('Auth API', () => {
   describe('TOTP 2FA lifecycle', () => {
     it('setup → enable → verify → disable full lifecycle', async () => {
       // Create user with password hash (TOTP requires password-based account)
-      const user = await createTestUserWithPassword('password123', { email: 'totp@test.local' })
+      const user = await createTestUserWithPassword('password123', { email: 'totp@example.com' })
       const userId = user.id
       const authToken = await createTestToken(userId)
 
@@ -392,7 +392,7 @@ describe('Auth API', () => {
       const loginRes = await app.inject({
         method: 'POST',
         url: '/api/auth/login',
-        payload: { email: 'totp@test.local', password: 'password123' }
+        payload: { email: 'totp@example.com', password: 'password123' }
       })
       expect(loginRes.statusCode).toBe(200)
       const loginBody = JSON.parse(loginRes.payload)

@@ -36,7 +36,7 @@ let userCounter = 0
 export async function createTestUser(overrides: { email?: string; name?: string } = {}) {
   userCounter++
   const [user] = await db.insert(users).values({
-    email: overrides.email ?? `test-${userCounter}-${Date.now()}@test.local`,
+    email: overrides.email ?? `test-${userCounter}-${Date.now()}@example.com`,
     name: overrides.name ?? `Test User ${userCounter}`,
   }).returning()
   return user!
@@ -54,7 +54,7 @@ export async function createTestUserWithPassword(
   const hash = ((await scryptAsync(password, salt, 64)) as Buffer).toString('hex')
   const passwordHash = `${salt}:${hash}`
   const [user] = await db.insert(users).values({
-    email: overrides.email ?? `test-${userCounter}-${Date.now()}@test.local`,
+    email: overrides.email ?? `test-${userCounter}-${Date.now()}@example.com`,
     name: overrides.name ?? `Test User ${userCounter}`,
     passwordHash
   }).returning()

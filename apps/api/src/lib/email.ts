@@ -170,6 +170,18 @@ interface SendEmailOptions {
 }
 
 export async function sendEmail(opts: SendEmailOptions): Promise<boolean> {
+  // Hard stop under test. test-setup.ts loads the real root .env (symlinked into
+  // apps/api/) into process.env, so the production RESEND_API_KEY is present when
+  // the suites run locally — and the auth routes send on signup/verify/reset.
+  // Without this, every local `bun run test` fired ~12 live emails from the
+  // production sending domain at fake addresses that hard-bounced — burning the
+  // daily Resend quota and the domain's bounce reputation. Guard here rather than
+  // per-test: this is the single chokepoint every caller funnels through.
+  if (env.NODE_ENV === 'test') {
+    console.log(`[email] Suppressed in tests: "${opts.subject}" → ${opts.to}`)
+    return false
+  }
+
   const client = getClient()
   if (!client) {
     console.log(`[email] Skipping send (no RESEND_API_KEY): "${opts.subject}" → ${opts.to}`)

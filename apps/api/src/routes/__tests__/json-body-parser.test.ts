@@ -48,7 +48,7 @@ describe('application/json body parser', () => {
       method: 'POST',
       url: '/api/auth/login',
       headers: { 'content-type': 'application/json' },
-      payload: { email: 'nobody@test.local', password: 'wrong-password' },
+      payload: { email: 'nobody@example.com', password: 'wrong-password' },
     })
 
     // Parsed fine — rejected on credentials, not on parsing.
