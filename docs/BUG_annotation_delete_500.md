@@ -105,14 +105,27 @@ annotation'` means the database really did reject the statement; `'Unhandled err
 failure was in the surrounding pipeline (hook, serialization, or reply lifecycle), not the
 query.
 
-## Known diagnosability defect (not yet fixed)
+## Diagnosability defect — fixed
 
-Handlers in `reader.ts` mint a per-handler `randomUUID()` as `correlationId` and return it to
-the client, while the request pipeline logs a *different* id (`request.id`) on every
-request/response line. A `correlationId` handed to a user therefore only appears in the logs
-if the handler's own catch block ran. Unifying these on `request.id` would make every returned
-correlation id greppable. Left alone here because it spans many handlers and is a separate
-change from this bug.
+Handlers used to mint a per-handler `randomUUID()` as `correlationId` and return it to the
+client, while the request pipeline logged a *different* id (`request.id`) as `reqId` on every
+request/response line. A `correlationId` handed to a user therefore appeared in the logs only
+if that handler's own catch block ran — which is exactly the case that did not happen here.
+The global error handler made it worse by preferring a client-supplied `x-correlation-id`,
+a value that appears in no log line at all.
+
+All 61 handler sites across `reader.ts`, `publishing.ts` and `project-tags.ts` now use
+`request.id`, and `server.ts` does the same (recording any client-supplied
+`x-correlation-id` as a separate `clientCorrelationId` field rather than substituting it).
+
+Verified on the dev server: a correlation id returned by this very endpoint now matches two
+log lines (`incoming request` / `request completed`), where before it matched none.
+
+```bash
+curl -sS -X DELETE ".../api/public/chapters/<uuid>/annotations/<uuid>"
+# {"error":"Authentication required","correlationId":"dba58df5-…"}
+pm2 logs bobbins --lines 200 --nostream | grep -c dba58df5-…   # → 2
+```
 
 ## Regression test — added
 

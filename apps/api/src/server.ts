@@ -105,7 +105,13 @@ export function build(opts = {}): FastifyInstance {
 
   // Global error handler
   server.setErrorHandler((error: Error & { code?: string; statusCode?: number }, request, reply) => {
-    const correlationId = (request.headers['x-correlation-id'] as string) || request.id
+    // Always the Fastify request id. That is the value logged as `reqId` on every
+    // request/response line, so a correlation id handed to a client can always be
+    // grepped out of the logs. A client-supplied x-correlation-id is recorded as a
+    // separate field for inbound tracing instead of replacing it — otherwise the id
+    // in the response body matches nothing we logged.
+    const correlationId = request.id
+    const clientCorrelationId = request.headers['x-correlation-id'] as string | undefined
 
     server.log.error({
       error: {
@@ -115,6 +121,7 @@ export function build(opts = {}): FastifyInstance {
         statusCode: error.statusCode
       },
       correlationId,
+      ...(clientCorrelationId && clientCorrelationId !== correlationId && { clientCorrelationId }),
       url: request.url,
       method: request.method
     }, 'Unhandled error')
@@ -222,7 +229,7 @@ export function build(opts = {}): FastifyInstance {
 
   // Health check endpoint with database connectivity
   server.get('/health', async (request, reply) => {
-    const correlationId = (request.headers['x-correlation-id'] as string) || request.id
+    const correlationId = request.id
     const startTime = Date.now()
 
     try {

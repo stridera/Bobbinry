@@ -691,7 +691,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/public/projects/:projectId/toc', {
     preHandler: optionalAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId } = request.params
       // Identity is sourced from the authenticated session — never the query
@@ -802,7 +802,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/public/projects/:projectId/chapters/:chapterId', {
     preHandler: optionalAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId, chapterId: chapterParam } = request.params
       // Identity sourced from authenticated session only — see /toc handler above
@@ -952,7 +952,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/public/projects/:projectId/chapters/:chapterId/view', {
     preHandler: optionalAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { chapterId } = request.params
       const { sessionId, deviceType, referrer, readTime, position } = request.body
@@ -1073,7 +1073,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/public/projects/:projectId/stats', {
     preHandler: optionalAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId } = request.params
 
@@ -1117,7 +1117,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/public/projects/:projectId/metadata', {
     preHandler: optionalAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId } = request.params
 
@@ -1225,7 +1225,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/public/projects/:projectId/chapters/:chapterId/metadata', {
     preHandler: optionalAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId, chapterId: chapterParam } = request.params
 
@@ -1348,7 +1348,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string }
   }>('/public/projects/:projectId/sitemap.xml', async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId } = request.params
 
@@ -1423,7 +1423,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       reader?: string
     }
   }>('/public/projects/:projectId/feed.xml', async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId } = request.params
       const { limit = 20, reader: readerToken } = request.query
@@ -1595,7 +1595,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/public/projects/by-slug/:slug', {
     preHandler: optionalAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { slug } = request.params
 
@@ -1690,7 +1690,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/public/projects/by-slugs', {
     preHandler: optionalAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const inputSlugs = request.body?.slugs || []
       const slugs = [...new Set(inputSlugs.map((slug) => slug.trim()).filter(Boolean))]
@@ -1773,7 +1773,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/public/projects/by-author-and-slug/:username/:projectSlug', {
     preHandler: optionalAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { username, projectSlug } = request.params
 
@@ -1892,7 +1892,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { username: string }
   }>('/public/authors/:username/projects', async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { username } = request.params
 
@@ -1999,7 +1999,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { username: string; collectionId: string }
   }>('/public/collections/by-author/:username/:collectionId', async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { username, collectionId } = request.params
 
@@ -2081,7 +2081,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/public/chapters/:chapterId/comments', {
     preHandler: optionalAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { chapterId } = request.params
       const { limit = 50, offset = 0 } = request.query
@@ -2160,7 +2160,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/public/chapters/:chapterId/comments', {
     preHandler: optionalAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { chapterId } = request.params
       const { content, parentId } = request.body
@@ -2203,7 +2203,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/public/chapters/:chapterId/reactions', {
     preHandler: optionalAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { chapterId } = request.params
 
@@ -2237,7 +2237,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/public/chapters/:chapterId/reactions', {
     preHandler: optionalAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { chapterId } = request.params
       const { reactionType } = request.body
@@ -2287,7 +2287,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/public/chapters/:chapterId/reactions/:reactionType', {
     preHandler: optionalAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { chapterId, reactionType } = request.params
 
@@ -2978,7 +2978,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/public/projects/:projectId/can-annotate', {
     preHandler: optionalAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId } = request.params
       if (!request.user) {
@@ -3012,7 +3012,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/public/chapters/:chapterId/annotations', {
     preHandler: optionalAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { chapterId } = request.params
 
@@ -3073,7 +3073,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/public/chapters/:chapterId/annotations', {
     preHandler: optionalAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { chapterId } = request.params
       const body = request.body
@@ -3156,7 +3156,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/public/chapters/:chapterId/annotations/:annotationId', {
     preHandler: optionalAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { annotationId } = request.params
       const body = request.body
@@ -3218,7 +3218,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/public/chapters/:chapterId/annotations/:annotationId', {
     preHandler: optionalAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { annotationId } = request.params
 
@@ -3261,7 +3261,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/annotations', {
     preHandler: requireAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId } = request.params
       const { status: statusFilter, annotationType, chapterId, limit = 50, offset = 0 } = request.query
@@ -3401,7 +3401,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/annotations/stats', {
     preHandler: requireAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId } = request.params
 
@@ -3454,7 +3454,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/annotations/:annotationId/status', {
     preHandler: requireAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId, annotationId } = request.params
       const { status: newStatus, authorResponse } = request.body
@@ -3519,7 +3519,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/annotations/:annotationId/accept', {
     preHandler: requireAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId, annotationId } = request.params
 

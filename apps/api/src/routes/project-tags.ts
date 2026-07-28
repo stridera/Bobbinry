@@ -14,7 +14,6 @@ import {
   chapterAnnotations
 } from '../db/schema'
 import { eq, and, sql } from 'drizzle-orm'
-import { randomUUID } from 'crypto'
 import { requireAuth, requireProjectOwnership } from '../middleware/auth'
 import { loadDiskManifests } from '../lib/disk-manifests'
 import { getCollectionIdsForProject, buildScopeCondition } from '../lib/effective-bobbins'
@@ -34,7 +33,7 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/tags', {
     preHandler: [requireAuth]
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId } = request.params
 
@@ -65,7 +64,7 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/tags', {
     preHandler: [requireAuth]
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId } = request.params
       const { tagCategory, tagName } = request.body
@@ -128,7 +127,7 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/tags/:tagId', {
     preHandler: [requireAuth]
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId, tagId } = request.params
 
@@ -164,7 +163,7 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/dashboard', {
     preHandler: [requireAuth]
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId } = request.params
       const includeArchived = request.query.includeArchived

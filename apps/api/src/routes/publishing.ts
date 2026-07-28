@@ -214,7 +214,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/chapters/:chapterId/publish', {
     preHandler: [requireAuth, requireVerified]
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId, chapterId } = request.params
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
@@ -349,7 +349,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/chapters/:chapterId/unpublish', {
     preHandler: [requireAuth, requireVerified]
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId, chapterId } = request.params
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
@@ -387,7 +387,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/chapters/:chapterId/complete', {
     preHandler: [requireAuth, requireVerified]
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId, chapterId } = request.params
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
@@ -493,7 +493,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/chapters/:chapterId/revert-to-draft', {
     preHandler: [requireAuth, requireVerified]
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId, chapterId } = request.params
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
@@ -523,7 +523,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/chapters/:chapterId/publication', {
     preHandler: requireAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId, chapterId } = request.params
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
@@ -552,7 +552,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/chapters/:chapterId/next-release-slot', {
     preHandler: requireAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId, chapterId } = request.params
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
@@ -576,7 +576,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/publications', {
     preHandler: requireAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId } = request.params
       const { status } = request.query
@@ -614,7 +614,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/publish-config', {
     preHandler: requireAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId } = request.params
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
@@ -673,7 +673,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/publish-config', {
     preHandler: [requireAuth, requireVerified]
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId } = request.params
       const updates = request.body
@@ -785,7 +785,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/embargoes', {
     preHandler: [requireAuth, requireVerified]
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId } = request.params
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
@@ -817,7 +817,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/chapters/:chapterId/embargo', {
     preHandler: requireAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId, chapterId } = request.params
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
@@ -853,7 +853,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/embargoes/:embargoId', {
     preHandler: [requireAuth, requireVerified]
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { embargoId } = request.params
       const updates = request.body
@@ -901,7 +901,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/embargoes/:embargoId', {
     preHandler: [requireAuth, requireVerified]
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { embargoId } = request.params
 
@@ -935,7 +935,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/destinations', {
     preHandler: requireAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId } = request.params
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
@@ -966,7 +966,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/destinations', {
     preHandler: [requireAuth, requireVerified]
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId } = request.params
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
@@ -1004,7 +1004,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/destinations/:destinationId', {
     preHandler: [requireAuth, requireVerified]
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { destinationId } = request.params
       const updates = request.body
@@ -1043,7 +1043,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/destinations/:destinationId', {
     preHandler: [requireAuth, requireVerified]
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { destinationId } = request.params
 
@@ -1077,7 +1077,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/destinations/:destinationId/sync', {
     preHandler: [requireAuth, requireVerified]
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { destinationId } = request.params
       const { status, error } = request.body
@@ -1125,7 +1125,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/content-warnings', async (request, reply) => {
     // Public read — content warnings are surfaced to readers on the public
     // project/chapter pages, so anonymous GET is intentional. No PII here.
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId } = request.params
 
@@ -1154,7 +1154,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/content-warnings', {
     preHandler: [requireAuth, requireVerified]
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId } = request.params
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
@@ -1186,7 +1186,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/content-warnings/:warningId', {
     preHandler: [requireAuth, requireVerified]
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { warningId } = request.params
 
@@ -1225,7 +1225,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/chapters/:chapterId/views', {
     preHandler: optionalAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { chapterId } = request.params
       const { sessionId, deviceType, referrer } = request.body
@@ -1273,7 +1273,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/chapter-views/:viewId/progress', {
     preHandler: requireAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { viewId } = request.params
       const { lastPositionPercent, readTimeSeconds, completed } = request.body
@@ -1335,7 +1335,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/chapters/:chapterId/analytics', {
     preHandler: requireAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId, chapterId } = request.params
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
@@ -1386,7 +1386,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/chapters/:chapterId/analytics/breakdown', {
     preHandler: requireAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId, chapterId } = request.params
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
@@ -1457,7 +1457,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/analytics/chapters', {
     preHandler: requireAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId } = request.params
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
@@ -1501,7 +1501,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/analytics', {
     preHandler: requireAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId } = request.params
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
@@ -1543,7 +1543,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/chapters/:chapterId/snapshots', {
     preHandler: requireAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId, chapterId } = request.params
       const { limit = 20, offset = 0 } = request.query
@@ -1580,7 +1580,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/snapshots/:snapshotId', {
     preHandler: requireAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId, snapshotId } = request.params
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
@@ -1616,7 +1616,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   }>('/projects/:projectId/chapters/:chapterId/access', {
     preHandler: optionalAuth
   }, async (request, reply) => {
-    const correlationId = randomUUID()
+    const correlationId = request.id
     try {
       const { projectId, chapterId } = request.params
       // Identity for access checks is always sourced from the authenticated
