@@ -68,15 +68,12 @@ describe('sendEmail test-environment guard', () => {
   })
 
   it('still sends outside the test environment, so the guard is not over-broad', async () => {
-    process.env.NODE_ENV = 'production'
+    // 'development' rather than 'production' on purpose: env.ts requires six
+    // vars in production and none in development, so pinning this to production
+    // would couple the email guard's test to the env contract and fail wherever
+    // those vars are absent (as it did in CI, which sets only three).
+    process.env.NODE_ENV = 'development'
     process.env.RESEND_API_KEY = 're_fake_key_for_tests'
-    // env.ts requires the Stripe vars in production; supply placeholders so the
-    // module loads and we are testing the email guard, not env validation.
-    process.env.STRIPE_SECRET_KEY = 'sk_test_placeholder'
-    process.env.STRIPE_WEBHOOK_SECRET = 'whsec_placeholder'
-    process.env.NEXTAUTH_SECRET = 'placeholder'
-    process.env.INTERNAL_API_AUTH_TOKEN = 'placeholder'
-    process.env.DATABASE_URL = 'postgres://u:p@localhost:5432/placeholder'
 
     const { sendEmail } = loadEmailModule()
     const result = await sendEmail({
