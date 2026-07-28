@@ -3447,67 +3447,76 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
 
   /**
    * Update annotation status (author only — acknowledge/resolve/dismiss)
+   *
+   * Answers to both PUT and PATCH. This is a partial update of a single field, so
+   * API clients reach for PATCH naturally — and a wrong method here surfaces as
+   * `Route PATCH:... not found`, which reads as "the annotation doesn't exist"
+   * rather than "wrong verb". Accepting both removes the trap instead of
+   * documenting around it.
    */
-  fastify.put<{
+  fastify.route<{
     Params: { projectId: string; annotationId: string }
     Body: { status: string; authorResponse?: string }
-  }>('/projects/:projectId/annotations/:annotationId/status', {
-    preHandler: requireAuth
-  }, async (request, reply) => {
-    const correlationId = request.id
-    try {
-      const { projectId, annotationId } = request.params
-      const { status: newStatus, authorResponse } = request.body
+  }>({
+    method: ['PUT', 'PATCH'],
+    url: '/projects/:projectId/annotations/:annotationId/status',
+    preHandler: requireAuth,
+    handler: async (request, reply) => {
+      const correlationId = request.id
+      try {
+        const { projectId, annotationId } = request.params
+        const { status: newStatus, authorResponse } = request.body
 
-      const isOwner = await requireProjectOwnership(request, reply, projectId)
-      if (!isOwner) return
+        const isOwner = await requireProjectOwnership(request, reply, projectId)
+        if (!isOwner) return
 
-      const validStatuses = ['open', 'acknowledged', 'resolved', 'dismissed']
-      if (!validStatuses.includes(newStatus)) {
-        return reply.status(400).send({ error: 'Invalid status', correlationId })
+        const validStatuses = ['open', 'acknowledged', 'resolved', 'dismissed']
+        if (!validStatuses.includes(newStatus)) {
+          return reply.status(400).send({ error: 'Invalid status', correlationId })
+        }
+
+        // Verify the annotation belongs to this project
+        const [existing] = await db
+          .select({ id: chapterAnnotations.id })
+          .from(chapterAnnotations)
+          .where(and(
+            eq(chapterAnnotations.id, annotationId),
+            eq(chapterAnnotations.projectId, projectId)
+          ))
+          .limit(1)
+
+        if (!existing) {
+          return reply.status(404).send({ error: 'Annotation not found', correlationId })
+        }
+
+        const updates: Record<string, unknown> = {
+          status: newStatus,
+          updatedAt: new Date()
+        }
+
+        if (authorResponse !== undefined) {
+          updates.authorResponse = authorResponse.trim() || null
+        }
+
+        if (newStatus === 'resolved' || newStatus === 'dismissed') {
+          updates.resolvedAt = new Date()
+          updates.resolvedBy = request.user!.id
+        } else {
+          updates.resolvedAt = null
+          updates.resolvedBy = null
+        }
+
+        const [updated] = await db
+          .update(chapterAnnotations)
+          .set(updates)
+          .where(eq(chapterAnnotations.id, annotationId))
+          .returning()
+
+        return reply.send({ annotation: updated, correlationId })
+      } catch (error) {
+        fastify.log.error({ error, correlationId }, 'Failed to update annotation status')
+        return reply.status(500).send({ error: 'Failed to update annotation status', correlationId })
       }
-
-      // Verify the annotation belongs to this project
-      const [existing] = await db
-        .select({ id: chapterAnnotations.id })
-        .from(chapterAnnotations)
-        .where(and(
-          eq(chapterAnnotations.id, annotationId),
-          eq(chapterAnnotations.projectId, projectId)
-        ))
-        .limit(1)
-
-      if (!existing) {
-        return reply.status(404).send({ error: 'Annotation not found', correlationId })
-      }
-
-      const updates: Record<string, unknown> = {
-        status: newStatus,
-        updatedAt: new Date()
-      }
-
-      if (authorResponse !== undefined) {
-        updates.authorResponse = authorResponse.trim() || null
-      }
-
-      if (newStatus === 'resolved' || newStatus === 'dismissed') {
-        updates.resolvedAt = new Date()
-        updates.resolvedBy = request.user!.id
-      } else {
-        updates.resolvedAt = null
-        updates.resolvedBy = null
-      }
-
-      const [updated] = await db
-        .update(chapterAnnotations)
-        .set(updates)
-        .where(eq(chapterAnnotations.id, annotationId))
-        .returning()
-
-      return reply.send({ annotation: updated, correlationId })
-    } catch (error) {
-      fastify.log.error({ error, correlationId }, 'Failed to update annotation status')
-      return reply.status(500).send({ error: 'Failed to update annotation status', correlationId })
     }
   })
 

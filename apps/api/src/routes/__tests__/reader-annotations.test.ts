@@ -180,4 +180,70 @@ describe('Public Reader — Annotations', () => {
       expect(remaining).toHaveLength(1)
     })
   })
+
+  describe('PUT|PATCH /projects/:projectId/annotations/:annotationId/status', () => {
+    // The route answers to both verbs on purpose: a partial update of one field
+    // invites PATCH, and a wrong method here 404s in a way that looks like a
+    // missing annotation. See docs/BUG_annotation_delete_500.md.
+    it.each(['PUT', 'PATCH'])('accepts %s to update the status', async (method) => {
+      const author = await createTestUser()
+      const project = await createTestProject(author.id)
+      const chapter = await seedChapter(project.id)
+      const annotation = await seedAnnotation(chapter.id, project.id, author.id)
+      const token = await createTestToken(author.id)
+
+      const res = await app.inject({
+        method,
+        url: `/api/projects/${project.id}/annotations/${annotation.id}/status`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { status: 'dismissed', authorResponse: 'not an issue' },
+      })
+
+      expect(res.statusCode).toBe(200)
+      expect(JSON.parse(res.payload).annotation.status).toBe('dismissed')
+
+      const [row] = await db
+        .select()
+        .from(chapterAnnotations)
+        .where(eq(chapterAnnotations.id, annotation.id))
+      expect(row!.status).toBe('dismissed')
+      expect(row!.authorResponse).toBe('not an issue')
+      expect(row!.resolvedBy).toBe(author.id)
+    })
+
+    it('rejects an invalid status', async () => {
+      const author = await createTestUser()
+      const project = await createTestProject(author.id)
+      const chapter = await seedChapter(project.id)
+      const annotation = await seedAnnotation(chapter.id, project.id, author.id)
+      const token = await createTestToken(author.id)
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/projects/${project.id}/annotations/${annotation.id}/status`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { status: 'bogus' },
+      })
+
+      expect(res.statusCode).toBe(400)
+    })
+
+    it('returns 404 for an annotation in another project', async () => {
+      const author = await createTestUser()
+      const project = await createTestProject(author.id)
+      const otherProject = await createTestProject(author.id)
+      const chapter = await seedChapter(project.id)
+      const annotation = await seedAnnotation(chapter.id, project.id, author.id)
+      const token = await createTestToken(author.id)
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/projects/${otherProject.id}/annotations/${annotation.id}/status`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { status: 'resolved' },
+      })
+
+      expect(res.statusCode).toBe(404)
+    })
+  })
 })

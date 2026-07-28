@@ -129,5 +129,11 @@ created while investigating) are deleted. No probe rows remain.
 ## Downstream impact
 
 The Daily-Sync bot (`~/Writing/Daily-Sync`) can retract false-positive proofing annotations
-again. Note the bot also calls `PATCH .../annotations/:id/status`, which 404s — that route is
-registered as `PUT`. Unrelated to this bug, but it will bite the same code path.
+again.
+
+The related `PATCH .../annotations/:id/status` 404 is also fixed: that route was registered
+as `PUT` only, and a wrong verb surfaced as `Route PATCH:... not found`, which reads as a
+missing annotation rather than a wrong method. It now answers to both verbs — a partial
+update of one field invites `PATCH`, and the mismatch had already been papered over with a
+"(PUT, not PATCH)" note in `~/.claude/shared/bobbinry-annotations.md`. Both first-party
+callers (the shell feedback page and the feedback bobbin panel) use `PUT` and are unaffected.
