@@ -9,10 +9,76 @@ import {
   userFollowers,
   contentTags,
   chapterPublications,
+  chapterViews,
+  reactions,
   siteMemberships,
   userBadges,
 } from '../db/schema'
-import { eq, and, or, ilike, sql, desc, asc, count, countDistinct, isNull, inArray } from 'drizzle-orm'
+import { eq, and, or, ilike, sql, desc, asc, count, countDistinct, isNull, inArray, gte } from 'drizzle-orm'
+
+/**
+ * Explore ranking multiplier for active site supporters — the "Boosted explore
+ * ranking" perk on the membership page.
+ *
+ * Deliberately a multiplier rather than the flat bonus this used to be: a
+ * constant is decisive below its own magnitude and invisible above it, so the
+ * same number behaved completely differently for a project with 20 views and
+ * one with 20,000. A multiplier keeps the perk proportional at every scale, and
+ * means a supporter still can't outrank work doing several times the numbers.
+ */
+const SUPPORTER_BOOST = 1.2
+
+type ScoredSort = 'popular' | 'trending' | 'most_liked'
+
+/**
+ * Per-project engagement score, aliased as score_sq(project_id, score).
+ *
+ * `trending` counts rows in chapter_views rather than summing the stored
+ * counters, because that table is the only place a view carries a timestamp —
+ * the counters are all-time totals. The previous implementation filtered on
+ * chapter_publications.published_at instead, which selected recently-*published*
+ * chapters and then summed their all-time views: a chapter published last year
+ * and being read heavily today scored zero.
+ */
+function buildScoreSubquery(sort: ScoredSort) {
+  if (sort === 'trending') {
+    const thirtyDaysAgo = new Date()
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+
+    return db
+      .select({
+        projectId: chapterPublications.projectId,
+        score: sql<number>`COUNT(*)`.as('score')
+      })
+      .from(chapterViews)
+      .innerJoin(chapterPublications, eq(chapterPublications.chapterId, chapterViews.chapterId))
+      .where(gte(chapterViews.startedAt, thirtyDaysAgo))
+      .groupBy(chapterPublications.projectId)
+      .as('score_sq')
+  }
+
+  if (sort === 'most_liked') {
+    return db
+      .select({
+        projectId: chapterPublications.projectId,
+        score: sql<number>`COUNT(*)`.as('score')
+      })
+      .from(reactions)
+      .innerJoin(chapterPublications, eq(chapterPublications.chapterId, reactions.chapterId))
+      .groupBy(chapterPublications.projectId)
+      .as('score_sq')
+  }
+
+  // popular: all-time views
+  return db
+    .select({
+      projectId: chapterPublications.projectId,
+      score: sql<number>`COALESCE(SUM(${chapterPublications.viewCount}), 0)`.as('score')
+    })
+    .from(chapterPublications)
+    .groupBy(chapterPublications.projectId)
+    .as('score_sq')
+}
 
 const discoverPlugin: FastifyPluginAsync = async (fastify) => {
 
@@ -21,7 +87,7 @@ const discoverPlugin: FastifyPluginAsync = async (fastify) => {
     Querystring: {
       q?: string
       genre?: string
-      sort?: 'recent' | 'popular' | 'trending'
+      sort?: 'recent' | 'popular' | 'trending' | 'most_liked'
       limit?: string
       offset?: string
     }
@@ -91,50 +157,10 @@ const discoverPlugin: FastifyPluginAsync = async (fastify) => {
 
       const total = totalResult?.count ?? 0
 
-      // Build sort order and main query
-      if (sort === 'popular') {
-        const rows = await db
-          .select({
-            id: projects.id,
-            name: projects.name,
-            description: projects.description,
-            coverImage: projects.coverImage,
-            shortUrl: projects.shortUrl,
-            updatedAt: projects.updatedAt,
-            ownerId: projects.ownerId,
-            authorUsername: userProfiles.username,
-            authorDisplayName: userProfiles.displayName,
-            authorAvatarUrl: userProfiles.avatarUrl,
-            totalViews: sql<number>`COALESCE(${sql.raw('views_sq.total_views')}, 0)`,
-            defaultVisibility: projectPublishConfig.defaultVisibility
-          })
-          .from(projects)
-          .innerJoin(projectPublishConfig, eq(projectPublishConfig.projectId, projects.id))
-          .leftJoin(userProfiles, eq(userProfiles.userId, projects.ownerId))
-          .leftJoin(
-            db.select({
-              projectId: chapterPublications.projectId,
-              totalViews: sql<number>`COALESCE(SUM(${chapterPublications.uniqueViewCount}), 0)`.as('total_views')
-            })
-            .from(chapterPublications)
-            .groupBy(chapterPublications.projectId)
-            .as('views_sq'),
-            sql`${sql.raw('views_sq.project_id')} = ${projects.id}`
-          )
-          .leftJoin(siteMemberships, eq(siteMemberships.userId, projects.ownerId))
-          .where(whereConditions)
-          .orderBy(sql`COALESCE(${sql.raw('views_sq.total_views')}, 0) + CASE WHEN ${siteMemberships.tier} = 'supporter' AND ${siteMemberships.status} = 'active' THEN 50 ELSE 0 END DESC`)
-          .limit(limit)
-          .offset(offset)
-
-        const projectsWithDetails = await enrichProjects(rows)
-        return reply.send({ projects: projectsWithDetails, total, hasMore: offset + limit < total })
-      }
-
-      if (sort === 'trending') {
-        // Popular in last 30 days
-        const thirtyDaysAgo = new Date()
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+      // Scored sorts all share one query shape — only the engagement subquery
+      // differs — so they run through a single path. `recent` needs no score.
+      if (sort === 'popular' || sort === 'trending' || sort === 'most_liked') {
+        const scoreSq = buildScoreSubquery(sort)
 
         const rows = await db
           .select({
@@ -148,26 +174,25 @@ const discoverPlugin: FastifyPluginAsync = async (fastify) => {
             authorUsername: userProfiles.username,
             authorDisplayName: userProfiles.displayName,
             authorAvatarUrl: userProfiles.avatarUrl,
-            totalViews: sql<number>`COALESCE(${sql.raw('trending_sq.total_views')}, 0)`,
             defaultVisibility: projectPublishConfig.defaultVisibility
           })
           .from(projects)
           .innerJoin(projectPublishConfig, eq(projectPublishConfig.projectId, projects.id))
           .leftJoin(userProfiles, eq(userProfiles.userId, projects.ownerId))
-          .leftJoin(
-            db.select({
-              projectId: chapterPublications.projectId,
-              totalViews: sql<number>`COALESCE(SUM(${chapterPublications.uniqueViewCount}), 0)`.as('total_views')
-            })
-            .from(chapterPublications)
-            .where(sql`${chapterPublications.publishedAt} >= ${thirtyDaysAgo}`)
-            .groupBy(chapterPublications.projectId)
-            .as('trending_sq'),
-            sql`${sql.raw('trending_sq.project_id')} = ${projects.id}`
-          )
+          .leftJoin(scoreSq, sql`${sql.raw('score_sq.project_id')} = ${projects.id}`)
           .leftJoin(siteMemberships, eq(siteMemberships.userId, projects.ownerId))
           .where(whereConditions)
-          .orderBy(sql`COALESCE(${sql.raw('trending_sq.total_views')}, 0) + CASE WHEN ${siteMemberships.tier} = 'supporter' AND ${siteMemberships.status} = 'active' THEN 50 ELSE 0 END DESC`)
+          // updatedAt breaks ties so results are stable rather than arbitrary —
+          // most projects score 0 on a young site, and an unstable ORDER BY
+          // makes pagination drop and repeat rows.
+          // The casts are required: without them Postgres infers the CASE result
+          // type from `ELSE 1` and rejects a fractional boost as an integer.
+          .orderBy(sql`
+            COALESCE(${sql.raw('score_sq.score')}, 0)::numeric
+              * CASE WHEN ${siteMemberships.tier} = 'supporter' AND ${siteMemberships.status} = 'active'
+                     THEN ${SUPPORTER_BOOST}::numeric ELSE 1::numeric END DESC,
+            ${projects.updatedAt} DESC
+          `)
           .limit(limit)
           .offset(offset)
 
@@ -188,7 +213,6 @@ const discoverPlugin: FastifyPluginAsync = async (fastify) => {
           authorUsername: userProfiles.username,
           authorDisplayName: userProfiles.displayName,
           authorAvatarUrl: userProfiles.avatarUrl,
-          totalViews: sql<number>`0`,
           defaultVisibility: projectPublishConfig.defaultVisibility
         })
         .from(projects)
@@ -439,7 +463,6 @@ async function enrichProjects(rows: Array<{
   authorUsername: string | null
   authorDisplayName: string | null
   authorAvatarUrl: string | null
-  totalViews: number
   defaultVisibility: string | null
 }>) {
   if (rows.length === 0) return []
@@ -468,7 +491,10 @@ async function enrichProjects(rows: Array<{
     .select({
       projectId: chapterPublications.projectId,
       chapterCount: count(),
-      totalViews: sql<number>`COALESCE(SUM(${chapterPublications.uniqueViewCount}), 0)`
+      // view_count is the counter reader.ts actually increments; unique_view_count
+      // is never written anywhere, so reading it reported 0 views for every
+      // project on every tab.
+      totalViews: sql<number>`COALESCE(SUM(${chapterPublications.viewCount}), 0)`
     })
     .from(chapterPublications)
     .where(sql`${chapterPublications.projectId} IN (${sql.join(projectIds.map(id => sql`${id}`), sql`, `)})`)

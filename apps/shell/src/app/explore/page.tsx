@@ -52,7 +52,7 @@ interface Tag {
 }
 
 type ActiveTab = 'stories' | 'authors'
-type StorySort = 'recent' | 'popular' | 'trending'
+type StorySort = 'recent' | 'popular' | 'trending' | 'most_liked'
 type AuthorSort = 'popular' | 'recent' | 'alphabetical'
 
 export default function ExplorePage() {
@@ -426,6 +426,7 @@ export default function ExplorePage() {
                 <option value="recent">Recent</option>
                 <option value="popular">Popular</option>
                 <option value="trending">Trending</option>
+                <option value="most_liked">Most liked</option>
               </select>
             ) : (
               <select
