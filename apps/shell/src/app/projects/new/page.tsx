@@ -4,6 +4,7 @@ import React, { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
+import { trackEvent } from '@bobbinry/sdk'
 import { apiFetch } from '@/lib/api'
 import { UserMenu } from '@/components/UserMenu'
 
@@ -142,6 +143,11 @@ function NewProjectContent() {
 
       const project = await projectRes.json()
       const projectId = project.id
+
+      trackEvent('project_created', {
+        projectId,
+        template: selectedTemplate || 'none',
+      })
 
       const template = templates.find(t => t.id === selectedTemplate)
       const failedInstalls: string[] = []

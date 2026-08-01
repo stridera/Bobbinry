@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
-import { getSanitizedHtmlProps } from '@bobbinry/sdk'
+import { getSanitizedHtmlProps, trackEvent } from '@bobbinry/sdk'
 import {
   MANUSCRIPT_DISPLAY_DEFAULTS,
   displaySettingsToClass,
@@ -436,6 +436,12 @@ function ChapterReaderContent() {
         setCommentsList(cData.comments || [])
       }
 
+      trackEvent('chapter_view_started', {
+        projectId: projId,
+        chapterId: canonicalId,
+        signedIn: !!userId,
+      })
+
       // Track view
       fetch(`${config.apiUrl}/api/public/projects/${projId}/chapters/${canonicalId}/view`, {
         method: 'POST',
@@ -530,6 +536,16 @@ function ChapterReaderContent() {
 
   // Keep ref in sync for sendBeacon on unmount
   useEffect(() => { progressRef.current = progress }, [progress])
+
+  // Report a completed read once per chapter. Progress keeps climbing past the
+  // threshold, so without the ref this would fire on every scroll tick.
+  const completionFiredRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!projectId || !chapterId || progress < 95) return
+    if (completionFiredRef.current === chapterId) return
+    completionFiredRef.current = chapterId
+    trackEvent('chapter_completed', { projectId, chapterId })
+  }, [progress, projectId, chapterId])
 
   // Save progress periodically (debounced) and on page leave
   useEffect(() => {
@@ -827,7 +843,7 @@ function ChapterReaderContent() {
   const toggleReaction = async (type: string) => {
     if (!session?.user || !chapterId) return
     try {
-      await fetch(`${config.apiUrl}/api/public/chapters/${chapterId}/reactions`, {
+      const toggleRes = await fetch(`${config.apiUrl}/api/public/chapters/${chapterId}/reactions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -835,6 +851,14 @@ function ChapterReaderContent() {
         },
         body: JSON.stringify({ reactionType: type })
       })
+      // This endpoint toggles, so only count the adds — otherwise removing a
+      // reaction would register as engagement.
+      if (toggleRes.ok) {
+        const { action } = await toggleRes.json().catch(() => ({ action: null }))
+        if (action === 'added') {
+          trackEvent('reaction_added', { projectId, chapterId, reactionType: type })
+        }
+      }
       // Reload reactions
       const res = await fetch(`${config.apiUrl}/api/public/chapters/${chapterId}/reactions`)
       if (res.ok) {
@@ -860,6 +884,7 @@ function ChapterReaderContent() {
         body: JSON.stringify({ content: content.trim(), parentId: parentId || undefined })
       })
       if (res.ok) {
+        trackEvent('comment_posted', { projectId, chapterId, isReply: !!parentId })
         if (parentId) {
           setReplyContent('')
           setReplyingTo(null)

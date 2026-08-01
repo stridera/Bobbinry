@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useSession } from 'next-auth/react'
 import { useSearchParams, redirect } from 'next/navigation'
+import { trackEvent } from '@bobbinry/sdk'
 import { apiFetch } from '@/lib/api'
 import { SiteNav } from '@/components/SiteNav'
 import { UserBadges } from '@/components/UserBadges'
@@ -115,7 +116,10 @@ function MembershipContent() {
       })
       if (res.ok) {
         const { checkoutUrl } = await res.json()
-        if (checkoutUrl) window.location.href = checkoutUrl
+        if (checkoutUrl) {
+          trackEvent('checkout_started', { kind: 'membership', billingPeriod })
+          window.location.href = checkoutUrl
+        }
       } else {
         const data = await res.json().catch(() => ({}))
         showError(data.error || 'Failed to start checkout')

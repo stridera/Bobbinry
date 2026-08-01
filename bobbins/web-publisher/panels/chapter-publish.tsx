@@ -12,6 +12,7 @@ import {
   PanelMessage,
   PanelPill,
   PanelSectionTitle,
+  trackEvent,
 } from '@bobbinry/sdk'
 import { formatReadTime } from '../lib/format'
 import {
@@ -286,6 +287,11 @@ export default function ChapterPublishPanel(props: ChapterPublishProps) {
       if (!response.ok) {
         throw new Error('Failed to publish chapter')
       }
+      trackEvent('chapter_published', {
+        projectId,
+        chapterId: entityId,
+        earlyRelease: isEarlyRelease,
+      })
       setShowScheduleEditor(false)
       await loadData()
       onChanged?.()

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
+import { trackEvent } from '@bobbinry/sdk'
 import { config } from '@/lib/config'
 import { apiFetch } from '@/lib/api'
 import { ReaderNav } from '@/components/ReaderNav'
@@ -407,6 +408,7 @@ function ProjectReadingContent() {
       } else {
         const res = await apiFetch(`/api/projects/${project.id}/follow`, apiToken, { method: 'POST' })
         if (res.ok) {
+          trackEvent('project_followed', { projectId: project.id })
           setIsFollowingProject(true)
           setFollowerCount(c => c + 1)
         }
@@ -546,6 +548,7 @@ function ProjectReadingContent() {
             return
           }
           if (data.checkoutUrl) {
+            trackEvent('checkout_started', { kind: 'author_subscription', tierId, billingPeriod })
             // eslint-disable-next-line react-hooks/immutability -- external redirect, not React state
             window.location.href = data.checkoutUrl
             return

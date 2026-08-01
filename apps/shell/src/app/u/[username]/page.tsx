@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
+import { trackEvent } from '@bobbinry/sdk'
 import { config } from '@/lib/config'
 import { apiFetch } from '@/lib/api'
 import { SiteNav } from '@/components/SiteNav'
@@ -347,6 +348,7 @@ function PublicProfileContent() {
         if (res.ok) {
           const data = await res.json()
           if (data.checkoutUrl) {
+            trackEvent('checkout_started', { kind: 'author_subscription', tierId, billingPeriod })
             // eslint-disable-next-line react-hooks/immutability -- external redirect, not React state
             window.location.href = data.checkoutUrl
             return

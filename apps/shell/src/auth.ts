@@ -78,9 +78,12 @@ interface BobbinryUser {
 
 /**
  * Find or create a user in the API database for OAuth logins.
- * Returns the API user record so we can store the API-side ID in the JWT.
+ * Returns the API user record so we can store the API-side ID in the JWT, plus
+ * whether we just provisioned it — OAuth redirects away from the signup page,
+ * so this is the only point at which a Google signup is distinguishable from a
+ * Google login. Analytics needs that to count signups correctly.
  */
-async function findOrCreateOAuthUser(email: string, name: string | null, emailVerified: boolean): Promise<BobbinryUser | null> {
+async function findOrCreateOAuthUser(email: string, name: string | null, emailVerified: boolean): Promise<{ user: BobbinryUser; created: boolean } | null> {
   try {
     const lookupUrl = `${config.apiUrl}/api/users/by-email?email=${encodeURIComponent(email)}`
     const lookupHeaders = await buildInternalSignedHeaders('GET', lookupUrl)
@@ -91,7 +94,7 @@ async function findOrCreateOAuthUser(email: string, name: string | null, emailVe
       signal: AbortSignal.timeout(5000)
     })
     if (lookupRes.ok) {
-      return await lookupRes.json()
+      return { user: await lookupRes.json(), created: false }
     }
 
     // User doesn't exist — create without a password.
@@ -109,7 +112,7 @@ async function findOrCreateOAuthUser(email: string, name: string | null, emailVe
     })
 
     if (createRes.ok) {
-      return await createRes.json()
+      return { user: await createRes.json(), created: true }
     }
 
     console.error('[auth] Failed to provision OAuth user:', createRes.status)
@@ -225,13 +228,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         // Trust email_verified only from providers that actually assert it
         // (Google does; some others do not). Falsy values stay falsy on the API.
         const providerVerified = (profile as { email_verified?: unknown })?.email_verified === true
-        const apiUser = await findOrCreateOAuthUser(user.email, user.name ?? null, providerVerified)
-        if (!apiUser) {
+        const provisioned = await findOrCreateOAuthUser(user.email, user.name ?? null, providerVerified)
+        if (!provisioned) {
           return false // Deny sign-in if we can't provision
         }
+        const apiUser = provisioned.user
         // Store the API-side user ID so the jwt callback can pick it up
         user.id = apiUser.id;
         (user as any).emailVerified = apiUser.emailVerified || new Date()
+        user.isNewUser = provisioned.created
       }
       return true
     },
@@ -240,6 +245,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.id = user.id
         token.apiToken = await signApiToken(user.id)
         token.emailVerified = !!(user as any).emailVerified
+        token.isNewUser = !!user.isNewUser
         // Use profile displayName as the canonical display name
         try {
           const profileRes = await fetch(`${config.apiUrl}/api/users/${user.id}/profile`, {
@@ -306,6 +312,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.user.badges = (token.badges as string[]) || []
         ;(session.user as any).emailVerified = !!token.emailVerified
         session.user.hasPassword = !!token.hasPassword
+        session.user.isNewUser = !!token.isNewUser
       }
       session.apiToken = token.apiToken as string
       return session

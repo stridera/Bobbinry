@@ -4,6 +4,7 @@ import { useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { signIn } from 'next-auth/react'
+import { trackEvent } from '@bobbinry/sdk'
 import { config } from '@/lib/config'
 import { GoogleOAuthButton } from '@/components/GoogleOAuthButton'
 
@@ -47,6 +48,7 @@ function SignupForm() {
       if (result?.error) {
         setError('Account created but login failed. Please try logging in.')
       } else if (result?.ok) {
+        trackEvent('signup_completed', { method: 'credentials' })
         router.push(callbackUrl || '/verify-email')
         router.refresh()
       }

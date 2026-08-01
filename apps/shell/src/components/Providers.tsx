@@ -2,6 +2,7 @@
 
 import { ReactNode } from 'react'
 import { SessionProvider } from 'next-auth/react'
+import { AnalyticsProvider } from './AnalyticsProvider'
 import { ExtensionProvider } from './ExtensionProvider'
 import { OfflineProvider } from './OfflineProvider'
 import { SessionValidator } from './SessionValidator'
@@ -16,6 +17,7 @@ export function Providers({ children }: ProvidersProps) {
   return (
     <SessionProvider>
       <SessionValidator />
+      <AnalyticsProvider />
       <ThemeProvider>
         <ToastProvider>
           <ExtensionProvider>

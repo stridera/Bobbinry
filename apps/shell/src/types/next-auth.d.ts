@@ -20,6 +20,8 @@ declare module '@auth/core/types' {
       badges: string[]
       emailVerified: boolean
       hasPassword: boolean
+      /** True only on the request that provisioned this OAuth account. */
+      isNewUser?: boolean
     }
     apiToken: string
   }
@@ -28,6 +30,7 @@ declare module '@auth/core/types' {
     id: string
     email: string
     name?: string | null
+    isNewUser?: boolean
   }
 }
 
@@ -42,6 +45,8 @@ declare module 'next-auth' {
       badges: string[]
       emailVerified: boolean
       hasPassword: boolean
+      /** True only on the request that provisioned this OAuth account. */
+      isNewUser?: boolean
     }
     apiToken: string
   }
@@ -50,6 +55,7 @@ declare module 'next-auth' {
     id: string
     email: string
     name?: string | null
+    isNewUser?: boolean
   }
 }
 
@@ -61,5 +67,6 @@ declare module 'next-auth/jwt' {
     badges: string[]
     emailVerified: boolean
     hasPassword: boolean
+    isNewUser?: boolean
   }
 }

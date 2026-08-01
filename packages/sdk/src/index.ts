@@ -1110,6 +1110,8 @@ export { fuzzyMatch } from './fuzzy'
 export type { FuzzyMatch } from './fuzzy'
 export { publishBreadcrumb } from './breadcrumb'
 export type { BreadcrumbCrumb } from './breadcrumb'
+export { setAnalyticsSink, trackEvent } from './analytics'
+export type { AnalyticsEvent, AnalyticsProps, AnalyticsSink } from './analytics'
 export {
   registerShortcuts,
   SHORTCUTS_REGISTER_EVENT,
