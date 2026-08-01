@@ -14,6 +14,7 @@ import {
   chapterAnnotations
 } from '../db/schema'
 import { eq, and, sql } from 'drizzle-orm'
+import { chapterViewStats } from '../lib/chapter-view-stats'
 import { requireAuth, requireProjectOwnership } from '../middleware/auth'
 import { loadDiskManifests } from '../lib/disk-manifests'
 import { getCollectionIdsForProject, buildScopeCondition } from '../lib/effective-bobbins'
@@ -234,14 +235,22 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
             publishStatus: chapterPublications.publishStatus,
             publishedAt: chapterPublications.publishedAt,
             viewCount: chapterPublications.viewCount,
-            uniqueViewCount: chapterPublications.uniqueViewCount,
-            completionCount: chapterPublications.completionCount,
-            avgReadTimeSeconds: chapterPublications.avgReadTimeSeconds
+            // Derived from chapter_views rather than the stored counters of the
+            // same name: unique_view_count and avg_read_time_seconds are never
+            // written, and completion_count is only maintained by the legacy
+            // PATCH /views/:viewId endpoint the reader does not call.
+            uniqueViewCount: sql<number>`COALESCE(${sql.raw('view_stats.unique_viewers')}, 0)`,
+            completionCount: sql<number>`COALESCE(${sql.raw('view_stats.completions')}, 0)`,
+            avgReadTimeSeconds: sql<number>`COALESCE(${sql.raw('view_stats.avg_read_seconds')}, 0)`
           })
           .from(entities)
           .leftJoin(
             chapterPublications,
             eq(chapterPublications.chapterId, entities.id)
+          )
+          .leftJoin(
+            chapterViewStats,
+            sql`${sql.raw('view_stats.chapter_id')} = ${entities.id}`
           )
           .where(and(
             eq(entities.projectId, projectId),
@@ -399,9 +408,11 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
             publishStatus: ch.publishStatus,
             publishedAt: ch.publishedAt,
             viewCount: ch.viewCount,
-            uniqueViewCount: ch.uniqueViewCount,
-            completionCount: ch.completionCount,
-            avgReadTimeSeconds: ch.avgReadTimeSeconds
+            // Coerced because the derived aggregates come back from postgres as
+            // strings, and consumers type these as numbers.
+            uniqueViewCount: Number(ch.uniqueViewCount ?? 0),
+            completionCount: Number(ch.completionCount ?? 0),
+            avgReadTimeSeconds: Number(ch.avgReadTimeSeconds ?? 0)
           } : null
         }
       }).sort((a, b) => a.order - b.order)

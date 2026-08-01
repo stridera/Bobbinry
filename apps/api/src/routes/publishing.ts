@@ -17,6 +17,7 @@ import {
 } from '../db/schema'
 import { eq, and, desc, sql } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
+import { chapterViewStats } from '../lib/chapter-view-stats'
 import { serverEventBus, contentPublished, contentStatusChange } from '../lib/event-bus'
 import { ensureCurrentSlug, getSlugsForEntities } from '../lib/slugs'
 import {
@@ -1463,18 +1464,21 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
       if (!hasAccess) return
 
+      // The stored counters of these names are unmaintained; see
+      // lib/chapter-view-stats.ts. Derive from chapter_views instead.
       const rows = await db
         .select({
           chapterId: chapterPublications.chapterId,
           title: sql<string>`${entities.entityData}->>'title'`,
           order: sql<number>`(${entities.entityData}->>'order')::int`,
           viewCount: chapterPublications.viewCount,
-          uniqueViewCount: chapterPublications.uniqueViewCount,
-          completionCount: chapterPublications.completionCount,
-          avgReadTimeSeconds: chapterPublications.avgReadTimeSeconds,
+          uniqueViewCount: sql<number>`COALESCE(${sql.raw('view_stats.unique_viewers')}, 0)`,
+          completionCount: sql<number>`COALESCE(${sql.raw('view_stats.completions')}, 0)`,
+          avgReadTimeSeconds: sql<number>`COALESCE(${sql.raw('view_stats.avg_read_seconds')}, 0)`,
         })
         .from(chapterPublications)
         .innerJoin(entities, eq(entities.id, chapterPublications.chapterId))
+        .leftJoin(chapterViewStats, sql`${sql.raw('view_stats.chapter_id')} = ${chapterPublications.chapterId}`)
         .where(eq(chapterPublications.projectId, projectId))
         .orderBy(sql`(${entities.entityData}->>'order')::int`)
 
