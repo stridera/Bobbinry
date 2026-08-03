@@ -5,6 +5,13 @@ on:
     - cron: '0 8 * * *' # Runs daily at midnight PST (us-west-2)
   workflow_dispatch: # Allow manual trigger
 
+# `issues: write` is required — the failure handler opens an issue with
+# `gh issue create` using github.token. Dropping to contents-only would leave
+# a failed backup silent whenever no webhook is configured.
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   backup:
     runs-on: ubuntu-latest

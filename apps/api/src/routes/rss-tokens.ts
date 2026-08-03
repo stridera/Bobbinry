@@ -8,22 +8,14 @@
  */
 
 import { FastifyInstance } from 'fastify'
-import { createHash, randomBytes } from 'crypto'
+import { createHash } from 'crypto'
 import { db } from '../db/connection'
 import { rssFeedTokens } from '../db/schema'
 import { eq, and, isNull, desc, sql } from 'drizzle-orm'
 import { requireAuth, requireVerified, denyApiKeyAuth } from '../middleware/auth'
+import { randomBase62 } from '../lib/random-token'
 
 const RSS_TOKEN_LIMIT_PER_USER = 10
-const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
-
-function toBase62(bytes: Buffer): string {
-  let result = ''
-  for (const byte of bytes) {
-    result += BASE62[byte % 62]
-  }
-  return result
-}
 
 export function hashRssToken(token: string): string {
   return createHash('sha256').update(token).digest('hex')
@@ -58,8 +50,7 @@ export default async function rssTokensPlugin(fastify: FastifyInstance) {
       })
     }
 
-    const rawBytes = randomBytes(32)
-    const token = 'bby_rss_' + toBase62(rawBytes)
+    const token = 'bby_rss_' + randomBase62(32)
     const tokenHash = hashRssToken(token)
 
     const [row] = await db

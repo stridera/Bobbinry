@@ -6,13 +6,13 @@
  */
 
 import { FastifyInstance } from 'fastify'
-import { randomBytes } from 'crypto'
 import { db } from '../db/connection'
 import { apiKeys, projects } from '../db/schema'
 import { eq, and, isNull } from 'drizzle-orm'
 import { sql } from 'drizzle-orm'
 import { requireAuth, requireVerified, denyApiKeyAuth, requireProjectOwnership, hashApiKey, clearApiKeyCache } from '../middleware/auth'
 import { getUserMembershipTier } from '../lib/membership'
+import { randomBase62 } from '../lib/random-token'
 
 const VALID_SCOPES = [
   'projects:read',
@@ -26,17 +26,6 @@ const VALID_SCOPES = [
 ] as const
 const FREE_KEY_LIMIT = 5
 const SUPPORTER_KEY_LIMIT = 10
-
-// Base62 alphabet for key generation
-const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
-
-function toBase62(bytes: Buffer): string {
-  let result = ''
-  for (const byte of bytes) {
-    result += BASE62[byte % 62]
-  }
-  return result
-}
 
 export default async function apiKeysPlugin(fastify: FastifyInstance) {
   /**
@@ -111,9 +100,8 @@ export default async function apiKeysPlugin(fastify: FastifyInstance) {
         })
       }
 
-      // Generate the key: bby_ + base62(32 random bytes)
-      const rawBytes = randomBytes(32)
-      const fullKey = 'bby_' + toBase62(rawBytes)
+      // Generate the key: bby_ + 32 random base62 characters
+      const fullKey = 'bby_' + randomBase62(32)
       const keyPrefix = fullKey.slice(0, 8) // "bby_Ab3x"
       const keyHash = hashApiKey(fullKey)
 
