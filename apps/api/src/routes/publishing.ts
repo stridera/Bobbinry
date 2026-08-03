@@ -1307,20 +1307,12 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       const updateData: any = {}
       if (lastPositionPercent) updateData.lastPositionPercent = lastPositionPercent
       if (readTimeSeconds) updateData.readTimeSeconds = readTimeSeconds
-      if (completed) {
-        updateData.completedAt = new Date()
-
-        // Increment completion count
-        const [view] = await db.select().from(chapterViews).where(eq(chapterViews.id, viewId)).limit(1)
-        if (view) {
-          await db
-            .update(chapterPublications)
-            .set({
-              completionCount: sql`CAST(${chapterPublications.completionCount} AS INTEGER) + 1`
-            })
-            .where(eq(chapterPublications.chapterId, view.chapterId))
-        }
-      }
+      // completed_at is the source of truth for completions — everything that
+      // reports them counts these rows. The stored completion_count column on
+      // chapter_publications used to be incremented here too, but nothing reads
+      // it any more, and maintaining a counter no one consumes only invites the
+      // next reader to trust it.
+      if (completed) updateData.completedAt = new Date()
 
       const [updated] = await db
         .update(chapterViews)
