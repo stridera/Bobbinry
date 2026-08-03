@@ -14,7 +14,7 @@ import {
   chapterAnnotations
 } from '../db/schema'
 import { eq, and, sql } from 'drizzle-orm'
-import { chapterViewStats } from '../lib/chapter-view-stats'
+import { chapterViewStats, getChapterViewStats } from '../lib/chapter-view-stats'
 import { requireAuth, requireProjectOwnership } from '../middleware/auth'
 import { loadDiskManifests } from '../lib/disk-manifests'
 import { getCollectionIdsForProject, buildScopeCondition } from '../lib/effective-bobbins'
@@ -375,7 +375,10 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
 
       // Compute analytics from publications
       const totalViews = publicationsResult.reduce((sum, p) => sum + (p.viewCount ?? 0), 0)
-      const totalCompletions = publicationsResult.reduce((sum, p) => sum + (p.completionCount ?? 0), 0)
+      // completion_count on the row is unmaintained; count from chapter_views.
+      const publicationViewStats = await getChapterViewStats(publicationsResult.map(p => p.chapterId))
+      const totalCompletions = publicationsResult.reduce(
+        (sum, p) => sum + (publicationViewStats.get(p.chapterId)?.completionCount ?? 0), 0)
       const publishedCount = publicationsResult.filter(p => p.publishStatus === 'published').length
 
       // Build lookup maps for comment/reaction/annotation counts

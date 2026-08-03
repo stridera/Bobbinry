@@ -17,7 +17,7 @@
  * it on each new view) and is fine to read directly.
  */
 
-import { sql } from 'drizzle-orm'
+import { inArray, sql } from 'drizzle-orm'
 import { db } from '../db/connection'
 import { chapterViews } from '../db/schema'
 
@@ -46,3 +46,50 @@ export const chapterViewStats = db
   .from(chapterViews)
   .groupBy(chapterViews.chapterId)
   .as('view_stats')
+
+export interface ChapterViewStat {
+  uniqueViewCount: number
+  completionCount: number
+  avgReadTimeSeconds: number
+}
+
+export const EMPTY_CHAPTER_VIEW_STAT: ChapterViewStat = {
+  uniqueViewCount: 0,
+  completionCount: 0,
+  avgReadTimeSeconds: 0,
+}
+
+/**
+ * Same statistics as the subquery above, keyed by chapter id, for callers that
+ * already have their rows in hand and merge in JS rather than joining — several
+ * endpoints do a bare `.select()` on chapter_publications and spread the row,
+ * where swapping in a join would change the response shape.
+ *
+ * Returns an empty map for an empty input rather than issuing `IN ()`.
+ */
+export async function getChapterViewStats(chapterIds: string[]): Promise<Map<string, ChapterViewStat>> {
+  const stats = new Map<string, ChapterViewStat>()
+  if (chapterIds.length === 0) return stats
+
+  const rows = await db
+    .select({
+      chapterId: chapterViews.chapterId,
+      uniqueViewers: sql<number>`COUNT(DISTINCT COALESCE(${chapterViews.readerId}::text, ${chapterViews.sessionId}))`,
+      completions: sql<number>`COUNT(${chapterViews.completedAt})`,
+      avgReadSeconds: sql<number>`COALESCE(ROUND(AVG(${chapterViews.readTimeSeconds})), 0)`,
+    })
+    .from(chapterViews)
+    .where(inArray(chapterViews.chapterId, [...new Set(chapterIds)]))
+    .groupBy(chapterViews.chapterId)
+
+  for (const row of rows) {
+    // Aggregates come back from postgres as strings; consumers expect numbers.
+    stats.set(row.chapterId, {
+      uniqueViewCount: Number(row.uniqueViewers ?? 0),
+      completionCount: Number(row.completions ?? 0),
+      avgReadTimeSeconds: Number(row.avgReadSeconds ?? 0),
+    })
+  }
+
+  return stats
+}

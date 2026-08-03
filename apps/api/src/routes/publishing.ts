@@ -17,7 +17,7 @@ import {
 } from '../db/schema'
 import { eq, and, desc, sql } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
-import { chapterViewStats } from '../lib/chapter-view-stats'
+import { chapterViewStats, getChapterViewStats, EMPTY_CHAPTER_VIEW_STAT } from '../lib/chapter-view-stats'
 import { serverEventBus, contentPublished, contentStatusChange } from '../lib/event-bus'
 import { ensureCurrentSlug, getSlugsForEntities } from '../lib/slugs'
 import {
@@ -596,7 +596,16 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
 
       // Reader-URL slugs so author dashboards can show/link the pretty URL.
       const slugMap = await getSlugsForEntities(projectId, publications.map(p => p.chapterId))
-      const withSlugs = publications.map(p => ({ ...p, slug: slugMap.get(p.chapterId) ?? null }))
+      // The spread above carries the stored unique_view_count / completion_count /
+      // avg_read_time_seconds columns, which are unmaintained — see
+      // lib/chapter-view-stats.ts. Override them with values derived from
+      // chapter_views so the Publish Manager panel stops showing zeros.
+      const viewStats = await getChapterViewStats(publications.map(p => p.chapterId))
+      const withSlugs = publications.map(p => ({
+        ...p,
+        ...(viewStats.get(p.chapterId) ?? EMPTY_CHAPTER_VIEW_STAT),
+        slug: slugMap.get(p.chapterId) ?? null,
+      }))
 
       return reply.send({ publications: withSlugs, count: withSlugs.length, correlationId })
     } catch (error) {
@@ -1517,7 +1526,10 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
         .where(eq(chapterPublications.projectId, projectId))
 
       const totalViews = publications.reduce((sum, p) => sum + (p.viewCount || 0), 0)
-      const totalCompletions = publications.reduce((sum, p) => sum + (p.completionCount || 0), 0)
+      // completion_count on the row is unmaintained; count from chapter_views.
+      const viewStats = await getChapterViewStats(publications.map(p => p.chapterId))
+      const totalCompletions = publications.reduce(
+        (sum, p) => sum + (viewStats.get(p.chapterId)?.completionCount ?? 0), 0)
       const publishedCount = publications.filter((p) => p.publishStatus === 'published').length
 
       return reply.send({
