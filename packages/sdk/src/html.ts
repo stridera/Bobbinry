@@ -33,12 +33,28 @@ function isSafeUrl(rawValue: string): boolean {
   }
 }
 
+/**
+ * No-DOM fallback for `sanitizeHtml`, used wherever `DOMParser` is absent —
+ * Node (which has never shipped it), SSR and Server Components, route
+ * handlers, Web Workers, and edge runtimes.
+ *
+ * This deliberately degrades to inert plain text rather than attempting to
+ * sanitize markup, because sanitizing HTML with regexes does not work. The
+ * previous implementation tried, and leaked in at least two ways: it only
+ * stripped *quoted* handler values, so `<img src=x onerror=alert(1)>` passed
+ * straight through, and its `<script>` pattern required a closing tag, so
+ * `<script>alert(1)` survived intact.
+ *
+ * Nothing renders sanitized HTML outside the browser today, so this changes no
+ * current output. It exists so that if something ever does, the result is
+ * visibly stripped of formatting — and, under React, a loud hydration mismatch
+ * — instead of silently unsafe. If server-side rich text is ever genuinely
+ * needed, add a real sanitizer here; do not reintroduce regexes.
+ */
 function sanitizeHtmlFallback(input: string): string {
-  return input
-    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, '')
-    .replace(/\son[a-z]+\s*=\s*(['"]).*?\1/gi, '')
-    .replace(/\s(?:href|src|xlink:href|formaction)\s*=\s*(['"])\s*javascript:[\s\S]*?\1/gi, '')
+  // Strip tags to readable text, then escape so anything the strip missed is
+  // rendered as literal characters rather than markup.
+  return escapeHtml(htmlToPlainText(input))
 }
 
 export function sanitizeHtml(html: string | null | undefined): string {
