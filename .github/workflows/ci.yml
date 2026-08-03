@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [ main ]
 
+# Every job here only reads the repo — the Fly deploy authenticates with
+# FLY_API_TOKEN, not GITHUB_TOKEN. Granting the token nothing else limits the
+# blast radius if any action in the chain is ever compromised.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
