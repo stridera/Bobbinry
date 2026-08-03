@@ -10,7 +10,8 @@ on:
     paths:
       - '**/package.json'
 
-# The push uses a PAT, not GITHUB_TOKEN, so nothing here needs write access.
+# The push uses a GitHub App installation token, not GITHUB_TOKEN, so nothing
+# here needs write access.
 permissions:
   contents: read
 
@@ -23,16 +24,31 @@ jobs:
     if: github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
-      - name: Verify PAT is configured
+      # On a Dependabot-authored pull_request, `secrets.*` resolves to the
+      # repo's *Dependabot* secrets, never its Actions secrets. Both values
+      # below must therefore live under Settings -> Secrets and variables ->
+      # Dependabot. See .github/dependabot-lockfile-setup.md.
+      - name: Verify App credentials are configured
         env:
-          PAT: ${{ secrets.DEPENDABOT_PAT }}
+          APP_ID: ${{ secrets.LOCKFILE_APP_ID }}
+          APP_KEY: ${{ secrets.LOCKFILE_APP_PRIVATE_KEY }}
         run: |
-          if [ -z "$PAT" ]; then
-            echo "::error::DEPENDABOT_PAT is not set. Add a fine-grained PAT with" \
-                 "Contents: read/write under Settings -> Secrets and variables ->" \
-                 "Dependabot (NOT Actions — Dependabot PRs only see Dependabot secrets)."
+          if [ -z "$APP_ID" ] || [ -z "$APP_KEY" ]; then
+            echo "::error::LOCKFILE_APP_ID / LOCKFILE_APP_PRIVATE_KEY are not set." \
+                 "Add them under Settings -> Secrets and variables -> Dependabot" \
+                 "(NOT Actions — Dependabot PRs only see Dependabot secrets)." \
+                 "Setup steps: .github/dependabot-lockfile-setup.md"
             exit 1
           fi
+
+      # Mints an installation access token that expires in ~1h and is revoked
+      # when the job ends, so no long-lived push credential sits in secrets.
+      - name: Create App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.LOCKFILE_APP_ID }}
+          private-key: ${{ secrets.LOCKFILE_APP_PRIVATE_KEY }}
 
       - uses: actions/checkout@v7
         with:
@@ -41,8 +57,9 @@ jobs:
           ref: ${{ github.head_ref }}
           # Pushes made with GITHUB_TOKEN deliberately do not trigger workflow
           # runs, which would leave the fixed commit sitting with stale checks
-          # forever. A PAT re-triggers CI so the PR can go green on its own.
-          token: ${{ secrets.DEPENDABOT_PAT }}
+          # forever. An App installation token does re-trigger CI, so the PR
+          # can go green on its own.
+          token: ${{ steps.app-token.outputs.token }}
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -70,6 +87,10 @@ jobs:
       - name: Commit and push lockfile
         if: steps.check.outputs.changed == 'true'
         run: |
+          # Committer stays github-actions[bot] rather than the App's own bot
+          # identity: deriving that needs an extra API lookup for the bot's user
+          # id, and what re-triggers CI is the token used to push, not the
+          # author. Attribution here is cosmetic.
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "build(deps): regenerate bun.lock" bun.lock
