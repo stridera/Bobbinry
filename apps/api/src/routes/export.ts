@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
-import type { ExportSnapshot } from '@bobbinry/types'
+import type { ExportSnapshot, ExportFormat, ExportMode } from '@bobbinry/types'
+import { EXPORT_FORMATS, EXPORT_MODES } from '@bobbinry/types'
 import { requireAuth, requireProjectOwnership, assertEntityScope } from '../middleware/auth'
 import { db } from '../db/connection'
 import { entities, projects } from '../db/schema'
@@ -10,12 +11,23 @@ import {
   chapterToMarkdown,
   generatePdf,
   generateEpub,
+  generateDocx,
   generateChaptersZip,
+  generateOutline,
   createTurndown,
 } from '../lib/export-converters'
 
-const VALID_FORMATS = ['pdf', 'epub', 'txt', 'markdown'] as const
-type ExportFormat = (typeof VALID_FORMATS)[number]
+const DOCX_MIME =
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
+/** Per-format download metadata, keyed by the shared ExportFormat union. */
+const FORMAT_META: Record<ExportFormat, { ext: string; contentType: string }> = {
+  pdf: { ext: 'pdf', contentType: 'application/pdf' },
+  epub: { ext: 'epub', contentType: 'application/epub+zip' },
+  docx: { ext: 'docx', contentType: DOCX_MIME },
+  markdown: { ext: 'md', contentType: 'text/markdown; charset=utf-8' },
+  txt: { ext: 'txt', contentType: 'text/plain; charset=utf-8' },
+}
 
 // Simple concurrency guard — one export per project at a time
 const activeExports = new Set<string>()
@@ -144,17 +156,17 @@ const exportPlugin: FastifyPluginAsync = async (fastify) => {
     const hasAccess = await requireProjectOwnership(request, reply, projectId)
     if (!hasAccess) return
 
-    if (!VALID_FORMATS.includes(format as ExportFormat)) {
+    if (!EXPORT_FORMATS.includes(format as ExportFormat)) {
       return reply.status(400).send({
-        error: `Invalid format "${format}". Supported: ${VALID_FORMATS.join(', ')}`,
+        error: `Invalid format "${format}". Supported: ${EXPORT_FORMATS.join(', ')}`,
       })
     }
     const exportFormat = format as ExportFormat
 
-    const mode = (request.query.mode || 'full') as 'full' | 'chapters'
-    if (mode !== 'full' && mode !== 'chapters') {
+    const mode = (request.query.mode || 'full') as ExportMode
+    if (!EXPORT_MODES.includes(mode)) {
       return reply.status(400).send({
-        error: 'Invalid mode. Supported: full, chapters',
+        error: `Invalid mode. Supported: ${EXPORT_MODES.join(', ')}`,
       })
     }
 
@@ -179,6 +191,17 @@ const exportPlugin: FastifyPluginAsync = async (fastify) => {
 
       const safeName = projectName.replace(/[^a-zA-Z0-9_\- ]/g, '').trim() || 'export'
       const turndown = createTurndown()
+      const { ext, contentType } = FORMAT_META[exportFormat]
+
+      // --- OUTLINE MODE: chapter numbers and titles only ---
+      // Checked before `chapters` because outline is a mode-level choice that
+      // applies across every format.
+      if (mode === 'outline') {
+        const outline = await generateOutline(projectName, chapters, exportFormat)
+        reply.header('Content-Type', contentType)
+        reply.header('Content-Disposition', `attachment; filename="${safeName}-outline.${ext}"`)
+        return reply.send(outline)
+      }
 
       // --- CHAPTERS MODE: ZIP of individual files ---
       if (mode === 'chapters') {
@@ -189,33 +212,24 @@ const exportPlugin: FastifyPluginAsync = async (fastify) => {
       }
 
       // --- FULL MODE: single file ---
+      reply.header('Content-Type', contentType)
+      reply.header('Content-Disposition', `attachment; filename="${safeName}.${ext}"`)
+
       switch (exportFormat) {
-        case 'pdf': {
-          const pdf = await generatePdf(projectName, chapters)
-          reply.header('Content-Type', 'application/pdf')
-          reply.header('Content-Disposition', `attachment; filename="${safeName}.pdf"`)
-          return reply.send(pdf)
-        }
-        case 'epub': {
-          const epub = await generateEpub(projectName, chapters)
-          reply.header('Content-Type', 'application/epub+zip')
-          reply.header('Content-Disposition', `attachment; filename="${safeName}.epub"`)
-          return reply.send(epub)
-        }
-        case 'txt': {
-          const parts = chapters.map((ch) => chapterToPlainText(ch))
-          const fullText = parts.join('\n\n---\n\n')
-          reply.header('Content-Type', 'text/plain; charset=utf-8')
-          reply.header('Content-Disposition', `attachment; filename="${safeName}.txt"`)
-          return reply.send(fullText)
-        }
-        case 'markdown': {
-          const parts = chapters.map((ch) => chapterToMarkdown(ch, turndown))
-          const fullMd = parts.join('\n\n---\n\n')
-          reply.header('Content-Type', 'text/markdown; charset=utf-8')
-          reply.header('Content-Disposition', `attachment; filename="${safeName}.md"`)
-          return reply.send(fullMd)
-        }
+        case 'pdf':
+          return reply.send(await generatePdf(projectName, chapters))
+        case 'epub':
+          return reply.send(await generateEpub(projectName, chapters))
+        case 'docx':
+          return reply.send(await generateDocx(projectName, chapters))
+        case 'txt':
+          return reply.send(
+            chapters.map((ch) => chapterToPlainText(ch)).join('\n\n---\n\n')
+          )
+        case 'markdown':
+          return reply.send(
+            chapters.map((ch) => chapterToMarkdown(ch, turndown)).join('\n\n---\n\n')
+          )
       }
     } finally {
       activeExports.delete(projectId)

@@ -318,9 +318,9 @@ export class BobbinryClient {
 
   // ── Export ────────────────────────────────────────────────
 
-  async exportProject(projectId: string, format: string): Promise<Response> {
+  async exportProject(projectId: string, format: string, mode = 'full'): Promise<Response> {
     this.requireAuth()
-    const url = `${this.apiUrl}/api/export/${projectId}?format=${format}`
+    const url = `${this.apiUrl}/api/projects/${encodeURIComponent(projectId)}/export/${encodeURIComponent(format)}?mode=${encodeURIComponent(mode)}`
     const res = await fetch(url, { headers: this.headers() })
     if (!res.ok) {
       const text = await res.text()

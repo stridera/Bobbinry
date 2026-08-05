@@ -1,4 +1,5 @@
 import { describe, it, expect } from '@jest/globals'
+import JSZip from 'jszip'
 import {
   type Chapter,
   chapterToPlainText,
@@ -7,7 +8,13 @@ import {
   escapeHtml,
   generatePdf,
   generateEpub,
+  generateDocx,
   generateChaptersZip,
+  buildOutline,
+  outlineToPlainText,
+  outlineToMarkdown,
+  outlineToHtml,
+  generateOutline,
   createTurndown,
 } from '../../lib/export-converters'
 
@@ -208,6 +215,60 @@ describe('generateEpub', () => {
 })
 
 // ──────────────────────────────────────────
+// generateDocx
+// ──────────────────────────────────────────
+
+/** DOCX is a ZIP — pull out the main document part for assertions. */
+async function readDocxXml(docx: Buffer): Promise<string> {
+  const zip = await JSZip.loadAsync(docx)
+  const doc = zip.file('word/document.xml')
+  expect(doc).not.toBeNull()
+  return doc!.async('string')
+}
+
+describe('generateDocx', () => {
+  it('produces a valid DOCX buffer containing word/document.xml', async () => {
+    const docx = await generateDocx('Test Novel', makeChapters())
+
+    expect(Buffer.isBuffer(docx)).toBe(true)
+    expect(docx.length).toBeGreaterThan(0)
+    // DOCX is a ZIP — PK magic bytes
+    expect(docx[0]).toBe(0x50)
+    expect(docx[1]).toBe(0x4b)
+
+    const xml = await readDocxXml(docx)
+    expect(xml).toContain('Prologue')
+    expect(xml).toContain('It was a dark night.')
+  })
+
+  it('preserves emphasis instead of flattening to plain text', async () => {
+    // This is what separates DOCX from the PDF path, which runs everything
+    // through htmlToText and silently drops italics.
+    const docx = await generateDocx('Emphasis', [
+      makeChapter('One', '<p>She was <em>certain</em> and <strong>ready</strong>.</p>'),
+    ])
+    const xml = await readDocxXml(docx)
+
+    expect(xml).toContain('<w:i')  // italic run from <em>
+    expect(xml).toContain('<w:b')  // bold run from <strong>
+    expect(xml).toContain('certain')
+  })
+
+  it('starts each chapter on a new page', async () => {
+    const xml = await readDocxXml(await generateDocx('Breaks', makeChapters()))
+
+    expect(xml).toContain('<w:pageBreakBefore')
+  })
+
+  it('handles single chapter', async () => {
+    const docx = await generateDocx('Short', [makeChapter('One', '<p>Only chapter</p>')])
+
+    expect(docx[0]).toBe(0x50)
+    expect(docx[1]).toBe(0x4b)
+  })
+})
+
+// ──────────────────────────────────────────
 // generateChaptersZip
 // ──────────────────────────────────────────
 
@@ -252,6 +313,128 @@ describe('generateChaptersZip', () => {
 
     expect(zip[0]).toBe(0x50)
     expect(zip[1]).toBe(0x4b)
+  })
+
+  it('produces a ZIP with one .docx per chapter', async () => {
+    const zip = await generateChaptersZip(makeChapters(), 'docx', turndown)
+
+    expect(zip[0]).toBe(0x50)
+    expect(zip[1]).toBe(0x4b)
+
+    const names = Object.keys((await JSZip.loadAsync(zip)).files)
+    expect(names).toEqual([
+      '01-Prologue.docx',
+      '02-Chapter One.docx',
+      '03-Chapter Two.docx',
+    ])
+  })
+})
+
+// ──────────────────────────────────────────
+// Outline
+// ──────────────────────────────────────────
+
+describe('buildOutline', () => {
+  it('numbers chapters 1-based in list order', () => {
+    expect(buildOutline(makeChapters())).toEqual([
+      { number: 1, title: 'Prologue' },
+      { number: 2, title: 'Chapter One' },
+      { number: 3, title: 'Chapter Two' },
+    ])
+  })
+
+  it('falls back to Untitled for blank titles', () => {
+    expect(buildOutline([makeChapter('', '<p>x</p>')])).toEqual([
+      { number: 1, title: 'Untitled' },
+    ])
+  })
+
+  it('returns an empty list for no chapters', () => {
+    expect(buildOutline([])).toEqual([])
+  })
+})
+
+describe('outlineToPlainText', () => {
+  it('lists numbered titles under the project name', () => {
+    const text = outlineToPlainText('Test Novel', makeChapters())
+
+    expect(text).toContain('TEST NOVEL')
+    expect(text).toContain('1.  Prologue')
+    expect(text).toContain('2.  Chapter One')
+    expect(text).toContain('3.  Chapter Two')
+  })
+
+  it('omits body prose entirely', () => {
+    const text = outlineToPlainText('Test Novel', makeChapters())
+
+    expect(text).not.toContain('It was a dark night')
+    expect(text).not.toContain('The hero arrived')
+    expect(text).not.toContain('loomed')
+  })
+
+  it('right-aligns numbers once the count reaches double digits', () => {
+    const many = Array.from({ length: 10 }, (_, i) =>
+      makeChapter(`Chapter ${i + 1}`, '<p>body</p>')
+    )
+    const text = outlineToPlainText('Long', many)
+
+    expect(text).toContain(' 1.  Chapter 1')
+    expect(text).toContain('10.  Chapter 10')
+  })
+})
+
+describe('outlineToMarkdown', () => {
+  it('renders an ordered list under an ATX heading', () => {
+    const md = outlineToMarkdown('Test Novel', makeChapters())
+
+    expect(md).toContain('# Test Novel')
+    expect(md).toContain('1. Prologue')
+    expect(md).toContain('2. Chapter One')
+    expect(md).toContain('3. Chapter Two')
+    expect(md).not.toContain('It was a dark night')
+  })
+})
+
+describe('outlineToHtml', () => {
+  it('escapes titles', () => {
+    const html = outlineToHtml('Novel', [makeChapter('<script>', '<p>x</p>')])
+
+    expect(html).toContain('&lt;script&gt;')
+    expect(html).not.toContain('<script>')
+  })
+})
+
+describe('generateOutline', () => {
+  it('returns text for txt and markdown', async () => {
+    const chapters = makeChapters()
+
+    expect(await generateOutline('Novel', chapters, 'txt')).toContain('1.  Prologue')
+    expect(await generateOutline('Novel', chapters, 'markdown')).toContain('1. Prologue')
+  })
+
+  it('returns a valid PDF buffer', async () => {
+    const pdf = await generateOutline('Novel', makeChapters(), 'pdf')
+
+    expect(Buffer.isBuffer(pdf)).toBe(true)
+    expect((pdf as Buffer).subarray(0, 4).toString()).toBe('%PDF')
+  })
+
+  it('returns a DOCX with titles but no prose', async () => {
+    const docx = (await generateOutline('Novel', makeChapters(), 'docx')) as Buffer
+
+    expect(docx[0]).toBe(0x50)
+    expect(docx[1]).toBe(0x4b)
+
+    const xml = await readDocxXml(docx)
+    expect(xml).toContain('Prologue')
+    expect(xml).not.toContain('It was a dark night')
+  })
+
+  it('returns a valid EPUB buffer', async () => {
+    const epub = (await generateOutline('Novel', makeChapters(), 'epub')) as Buffer
+
+    expect(epub[0]).toBe(0x50)
+    expect(epub[1]).toBe(0x4b)
   })
 })
 

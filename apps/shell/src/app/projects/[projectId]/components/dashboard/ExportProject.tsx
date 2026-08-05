@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { apiFetch } from '@/lib/api'
+import type { ExportFormat, ExportMode } from '@bobbinry/types'
 import { CollapsibleCard } from './CollapsibleCard'
 
 interface ExportProjectProps {
@@ -11,8 +12,23 @@ interface ExportProjectProps {
   totalChapters: number
 }
 
-type ExportFormat = 'pdf' | 'epub' | 'markdown' | 'txt'
-type ExportMode = 'full' | 'chapters'
+const MODE_OPTIONS: { id: ExportMode; label: string; caption: string }[] = [
+  {
+    id: 'full',
+    label: 'Complete manuscript',
+    caption: 'One file containing every chapter.',
+  },
+  {
+    id: 'chapters',
+    label: 'Individual chapters (ZIP)',
+    caption: 'A ZIP archive with one file per chapter.',
+  },
+  {
+    id: 'outline',
+    label: 'Outline only',
+    caption: 'Chapter numbers and titles only — no prose.',
+  },
+]
 
 interface FormatOption {
   id: ExportFormat
@@ -31,6 +47,17 @@ const FORMAT_OPTIONS: FormatOption[] = [
     icon: (
       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+      </svg>
+    ),
+  },
+  {
+    id: 'docx',
+    name: 'Word',
+    description: 'Formatted .docx for agents, editors, and beta readers — keeps italics and bold',
+    extension: '.docx',
+    icon: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8.25 6.75h7.5M8.25 12h7.5m-7.5 5.25h4.5M6.75 21h10.5a2.25 2.25 0 002.25-2.25V5.25A2.25 2.25 0 0017.25 3H6.75A2.25 2.25 0 004.5 5.25v13.5A2.25 2.25 0 006.75 21z" />
       </svg>
     ),
   },
@@ -140,28 +167,27 @@ export function ExportProject({ projectId, projectName, totalChapters }: ExportP
       {hasContent && (
         <>
           {/* Mode toggle */}
-          <div className="mt-5 flex items-center gap-1 p-1 bg-gray-100 dark:bg-gray-900/50 rounded-lg w-fit">
-              <button
-                onClick={() => setMode('full')}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors cursor-pointer ${
-                  mode === 'full'
-                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-                }`}
-              >
-                Complete manuscript
-              </button>
-              <button
-                onClick={() => setMode('chapters')}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors cursor-pointer ${
-                  mode === 'chapters'
-                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-                }`}
-              >
-                Individual chapters (ZIP)
-              </button>
+          <div className="mt-5 flex flex-wrap items-center gap-1 p-1 bg-gray-100 dark:bg-gray-900/50 rounded-lg w-fit">
+              {MODE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  onClick={() => setMode(opt.id)}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors cursor-pointer ${
+                    mode === opt.id
+                      ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
+
+            {/* What the selected mode produces — the per-format descriptions
+                below describe the full manuscript and read wrong otherwise. */}
+            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              {MODE_OPTIONS.find((o) => o.id === mode)?.caption}
+            </p>
 
             {/* Format grid */}
             <div className="mt-5 grid gap-3 md:grid-cols-2">

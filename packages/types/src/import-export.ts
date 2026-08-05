@@ -52,6 +52,24 @@ export interface ImportCommitResult {
   entities: Array<{ id: string; title: string; order: number }>
 }
 
+/**
+ * Canonical list of download formats served by
+ * GET /projects/:projectId/export/:format. The single source of truth — the
+ * API route, the converters, the shell export card, and the CLI all read this
+ * so the list cannot drift apart again.
+ */
+export const EXPORT_FORMATS = ['pdf', 'epub', 'docx', 'markdown', 'txt'] as const
+export type ExportFormat = (typeof EXPORT_FORMATS)[number]
+
+/**
+ * What slice of the manuscript to export:
+ * - `full`     — one file containing every chapter
+ * - `chapters` — a ZIP with one file per chapter
+ * - `outline`  — chapter numbers and titles only, no prose
+ */
+export const EXPORT_MODES = ['full', 'chapters', 'outline'] as const
+export type ExportMode = (typeof EXPORT_MODES)[number]
+
 export interface ExportSnapshotContainer {
   id: string
   title: string
