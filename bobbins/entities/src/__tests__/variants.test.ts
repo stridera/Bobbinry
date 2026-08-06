@@ -42,6 +42,30 @@ const entity = {
   },
 }
 
+// Gallery fields ride along on image_url's versionability (see the companion
+// rule in versionableFieldNames). `era-2` carries the empty-override shape the
+// editor used to write when an author cleared a variant's gallery.
+const galleryType = makeType([], ['image_url'])
+const galleryEntity = {
+  name: 'Rebekah',
+  images: [{ url: 'base.jpg' }],
+  thumbnail: { url: 'base.jpg' },
+  image_url: 'base.jpg',
+  [VARIANTS_KEY]: {
+    order: ['era-1', 'era-2'],
+    items: {
+      'era-1': {
+        label: 'Era 1',
+        overrides: { images: [{ url: 'era1.jpg' }], thumbnail: { url: 'era1.jpg' }, image_url: 'era1.jpg' },
+      },
+      'era-2': {
+        label: 'Era 2',
+        overrides: { images: [], thumbnail: null, image_url: null },
+      },
+    },
+  },
+}
+
 describe('versionableFieldNames', () => {
   it('returns only fields flagged versionable', () => {
     const names = versionableFieldNames(typeConfig)
@@ -171,6 +195,29 @@ describe('resolveEntityForVariant', () => {
     const resolved = resolveEntityForVariant(e, typeConfig, 'a')
     expect(resolved.strength).toBe(5)
   })
+
+  it('inherits base images when a variant has an emptied gallery override', () => {
+    const resolved = resolveEntityForVariant(galleryEntity, galleryType, 'era-2')
+    expect(resolved.images).toEqual([{ url: 'base.jpg' }])
+    expect(resolved.thumbnail).toEqual({ url: 'base.jpg' })
+    expect(resolved.image_url).toBe('base.jpg')
+  })
+
+  it('still applies a non-empty gallery override', () => {
+    const resolved = resolveEntityForVariant(galleryEntity, galleryType, 'era-1')
+    expect(resolved.images).toEqual([{ url: 'era1.jpg' }])
+    expect(resolved.image_url).toBe('era1.jpg')
+  })
+
+  it('leaves non-gallery fields alone when their override is empty', () => {
+    const e = {
+      name: 'x',
+      description: 'A ranger',
+      [VARIANTS_KEY]: { order: ['a'], items: { a: { label: 'A', overrides: { description: '' } } } },
+    }
+    const resolved = resolveEntityForVariant(e, typeConfig, 'a')
+    expect(resolved.description).toBe('') // an emptied text field is still an override
+  })
 })
 
 describe('setFieldOnEntity', () => {
@@ -235,6 +282,23 @@ describe('setFieldOnEntity', () => {
   it('falls back to base write when variant id is unknown', () => {
     const next = setFieldOnEntity(entity, typeConfig, 'ghost', 'strength', 7)
     expect(next.strength).toBe(7)
+  })
+
+  it('drops the override instead of storing an emptied gallery', () => {
+    let next = setFieldOnEntity(galleryEntity, galleryType, 'era-1', 'images', [])
+    next = setFieldOnEntity(next, galleryType, 'era-1', 'thumbnail', null)
+    next = setFieldOnEntity(next, galleryType, 'era-1', 'image_url', null)
+    const overrides = next[VARIANTS_KEY].items['era-1'].overrides
+    expect('images' in overrides).toBe(false)
+    expect('thumbnail' in overrides).toBe(false)
+    expect('image_url' in overrides).toBe(false)
+    // …so the variant is back to inheriting the base gallery.
+    expect(resolveEntityForVariant(next, galleryType, 'era-1').image_url).toBe('base.jpg')
+  })
+
+  it('leaves the base gallery alone when a variant gallery is emptied', () => {
+    const next = setFieldOnEntity(galleryEntity, galleryType, 'era-1', 'images', [])
+    expect(next.images).toEqual([{ url: 'base.jpg' }])
   })
 })
 

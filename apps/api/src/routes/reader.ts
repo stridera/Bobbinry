@@ -2384,6 +2384,19 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }
 
   /**
+   * True when a variant override on a gallery field carries no image. Such an
+   * override means "inherit the base images", so it doesn't count as covering
+   * the base value below. Mirrors isEmptyGalleryOverride in
+   * bobbins/entities/src/variants.ts — keep in lockstep.
+   */
+  const GALLERY_OVERRIDE_FIELDS = new Set(['images', 'thumbnail', 'image_url'])
+  function isEmptyGalleryOverride(fieldName: string, value: unknown): boolean {
+    if (!GALLERY_OVERRIDE_FIELDS.has(fieldName)) return false
+    if (value === null || value === undefined || value === '') return true
+    return Array.isArray(value) && value.length === 0
+  }
+
+  /**
    * Card-thumbnail URL for an entity's (sanitized) data: the designated
    * `thumbnail` when its url is in the `images` gallery, else the first
    * gallery image, else the legacy `image_url`. Mirrors getEntityThumbnail
@@ -2420,7 +2433,9 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
    * can still render them (variants only override versionable fields and fall
    * back to the base value otherwise). A versionable field's base value is
    * dropped when the base is hidden and every visible variant overrides it —
-   * that value is never rendered through any visible view.
+   * that value is never rendered through any visible view. An empty gallery
+   * override doesn't count as overriding: those variants inherit the base
+   * images, so the base value is still rendered.
    */
   function sanitizeEntityDataForReader(
     data: Record<string, unknown>,
@@ -2448,9 +2463,11 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
     const sanitized: Record<string, unknown> = { ...base }
     if (!visibleBase) {
       for (const field of versionableFields) {
-        const renderedNowhere = visibleVariantIds.every(vid =>
-          visibleItems[vid] ? field in (visibleItems[vid].overrides ?? {}) : false
-        )
+        const renderedNowhere = visibleVariantIds.every(vid => {
+          const overrides = visibleItems[vid]?.overrides
+          if (!overrides || !(field in overrides)) return false
+          return !isEmptyGalleryOverride(field, overrides[field])
+        })
         if (renderedNowhere) delete sanitized[field]
       }
     }

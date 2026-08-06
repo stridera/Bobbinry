@@ -139,21 +139,51 @@ export function getEntityThumbnail(data: Record<string, any> | null | undefined)
   return { url: images[0]!.url }
 }
 
+export interface CropStyles {
+  /** Goes on a `<div>` wrapping the `<img>`, inside the caller's frame. */
+  box: CSSProperties
+  /** Goes on the `<img>` itself. */
+  image: CSSProperties
+}
+
 /**
- * Styles that render a crop of an image inside an `overflow-hidden`
- * container of THUMBNAIL_ASPECT: apply the wrapper styles to a
- * `position: relative` container and the image styles to the `<img>`.
- * Returns null when there's no crop — render the image `object-cover`.
+ * Styles that render a crop inside a `position: relative; overflow: hidden`
+ * frame of *any* aspect. Returns null when there's no crop — render the image
+ * `object-cover` instead.
+ *
+ * The stored rect is always THUMBNAIL_ASPECT in rendered pixels (the crop
+ * picker locks it there), so the crop is drawn into a 3:4 box centered in the
+ * caller's frame: an exact fit for 3:4 frames, and cover-with-centered-clipping
+ * for anything wider. Sizing the image off the frame's own height instead —
+ * what this used to do — stretched the crop horizontally by frame_aspect ÷ 3:4
+ * whenever the frame wasn't 3:4 (square sidebars were 33% too wide).
+ *
+ * The `<img>` gets a width but `height: auto`, so it always keeps its natural
+ * aspect — distortion isn't expressible. Its offset uses `transform`, whose
+ * percentages resolve against the image's own box (unlike `top`, which would
+ * resolve against the box's height).
  */
-export function cropToCssStyles(crop: ThumbnailCrop | null | undefined): CSSProperties | null {
+export function cropToCssStyles(crop: ThumbnailCrop | null | undefined): CropStyles | null {
   if (!crop) return null
   return {
-    position: 'absolute',
-    width: `${100 / crop.w}%`,
-    height: `${100 / crop.h}%`,
-    left: `${(-crop.x / crop.w) * 100}%`,
-    top: `${(-crop.y / crop.h) * 100}%`,
-    maxWidth: 'none',
+    box: {
+      position: 'absolute',
+      left: '50%',
+      top: '50%',
+      width: '100%',
+      aspectRatio: String(THUMBNAIL_ASPECT),
+      overflow: 'hidden',
+      transform: 'translate(-50%, -50%)',
+    },
+    image: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      width: `${100 / crop.w}%`,
+      height: 'auto',
+      maxWidth: 'none',
+      transform: `translate(${-crop.x * 100}%, ${-crop.y * 100}%)`,
+    },
   }
 }
 

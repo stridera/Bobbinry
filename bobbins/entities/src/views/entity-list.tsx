@@ -8,7 +8,7 @@ import { useState, useEffect, useMemo } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
 import type { EntityTypeDefinition } from '../types'
 import { normalizeTypeConfig } from '../types'
-import { getEntityThumbnail } from '../images'
+import { cropToCssStyles, getEntityThumbnail, type EntityThumbnail } from '../images'
 
 interface EntityListViewProps {
   projectId: string
@@ -19,6 +19,39 @@ interface EntityListViewProps {
 }
 
 const ITEMS_PER_PAGE = 20
+
+/**
+ * Card thumbnail honouring the author's crop rect, so the editor's list
+ * matches the reader cards (which render through CroppedImage). Falls back to
+ * object-cover for entities with no crop.
+ */
+function CardThumb({
+  thumbnail,
+  alt,
+  className,
+}: {
+  thumbnail: EntityThumbnail
+  alt: string
+  className: string
+}) {
+  const cropStyles = cropToCssStyles(thumbnail.crop)
+  return (
+    <div className={`relative overflow-hidden bg-gray-100 dark:bg-gray-700 ${className}`}>
+      {cropStyles ? (
+        <div style={cropStyles.box}>
+          <img src={thumbnail.url} alt={alt} style={cropStyles.image} draggable={false} />
+        </div>
+      ) : (
+        <img
+          src={thumbnail.url}
+          alt={alt}
+          className="absolute inset-0 h-full w-full object-cover"
+          draggable={false}
+        />
+      )}
+    </div>
+  )
+}
 
 export default function EntityListView({
   sdk,
@@ -445,7 +478,7 @@ export default function EntityListView({
                 const showDescriptionFallback = !subtitle && description.length > 0
                 // Resolve through the gallery so entities whose data carries
                 // `images` without a synced `image_url` still show a thumb.
-                const thumbUrl = getEntityThumbnail(entity)?.url ?? null
+                const thumbnail = getEntityThumbnail(entity)
                 return (
                   <div
                     key={entity.id}
@@ -455,11 +488,11 @@ export default function EntityListView({
                     }`}
                   >
                     {displayStyle === 'list' ? (
-                      thumbUrl ? (
-                        <img
-                          src={thumbUrl}
+                      thumbnail ? (
+                        <CardThumb
+                          thumbnail={thumbnail}
                           alt={entity.name}
-                          className="w-16 h-16 flex-shrink-0 object-cover rounded"
+                          className="w-16 h-16 flex-shrink-0 rounded"
                         />
                       ) : (
                         <div className="w-16 h-16 flex-shrink-0 flex items-center justify-center rounded bg-gray-100 dark:bg-gray-700 text-3xl">
@@ -467,11 +500,11 @@ export default function EntityListView({
                         </div>
                       )
                     ) : (
-                      thumbUrl && (
-                        <img
-                          src={thumbUrl}
+                      thumbnail && (
+                        <CardThumb
+                          thumbnail={thumbnail}
                           alt={entity.name}
-                          className="w-full h-48 object-cover rounded mb-4"
+                          className="w-full h-48 rounded mb-4"
                         />
                       )
                     )}

@@ -230,7 +230,9 @@ export function EntityImageGallery({
         onClick={() => setLightboxIndex(primaryIndex)}
       >
         {cropStyles ? (
-          <img src={thumbnail!.url} alt={primaryAlt} style={cropStyles} draggable={false} />
+          <div style={cropStyles.box}>
+            <img src={thumbnail!.url} alt={primaryAlt} style={cropStyles.image} draggable={false} />
+          </div>
         ) : (
           <img
             src={thumbnail?.url ?? images[0]!.url}

@@ -12,6 +12,32 @@ import type { EntityTypeDefinition, EntityVariants, FieldDefinition, VariantItem
 
 export const VARIANTS_KEY = '_variants'
 
+/**
+ * The image-gallery fields, which move as a unit (see the companion rule in
+ * `versionableFieldNames`). Declared here rather than in `images.ts` because
+ * `images.ts` imports from this module.
+ */
+const GALLERY_OVERRIDE_FIELDS = new Set(['images', 'thumbnail', 'image_url'])
+
+/**
+ * True when a variant override on a gallery field carries no image.
+ *
+ * An empty gallery override means "inherit the base images", not "this variant
+ * has no images" — authors reach for a shared base portrait far more often
+ * than for a deliberately image-less variant, and the old behaviour silently
+ * blanked a variant the moment its last image was removed. Read paths skip
+ * such overrides; write paths delete them rather than storing them.
+ *
+ * Mirrored in apps/api/src/routes/reader.ts and
+ * apps/shell/src/app/read/[authorUsername]/[projectSlug]/entities-data.ts —
+ * keep them in lockstep.
+ */
+export function isEmptyGalleryOverride(fieldName: string, value: unknown): boolean {
+  if (!GALLERY_OVERRIDE_FIELDS.has(fieldName)) return false
+  if (value === null || value === undefined || value === '') return true
+  return Array.isArray(value) && value.length === 0
+}
+
 /** Turn a human label into a kebab-case variant id. Falls back to a timestamped id for non-ascii labels. */
 export function slugifyVariantId(label: string): string {
   const base = label.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
@@ -104,7 +130,10 @@ export function resolveEntityForVariant(
   const result: Record<string, any> = { ...base }
   for (const [key, value] of Object.entries(item.overrides || {})) {
     // Defensive: only apply overrides for fields declared versionable.
-    if (versionable.has(key)) result[key] = value
+    if (!versionable.has(key)) continue
+    // An emptied gallery falls back to the base images.
+    if (isEmptyGalleryOverride(key, value)) continue
+    result[key] = value
   }
   return result
 }
@@ -118,6 +147,8 @@ export function resolveEntityForVariant(
  *   variant's `overrides`.
  * - If `variantId` is set but the field is NOT versionable → writes to the
  *   base (since the field is shared across all variants).
+ * - If `variantId` is set and the value empties a gallery field → drops the
+ *   override entirely so the variant inherits the base images again.
  */
 export function setFieldOnEntity(
   entity: Record<string, any>,
@@ -133,6 +164,9 @@ export function setFieldOnEntity(
   const variants = getVariants(entity)
   if (!variants || !variants.items[variantId]) {
     return { ...entity, [fieldName]: value }
+  }
+  if (isEmptyGalleryOverride(fieldName, value)) {
+    return clearVariantOverride(entity, variantId, fieldName)
   }
   const item = variants.items[variantId]
   const nextItem: VariantItem = {

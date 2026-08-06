@@ -299,6 +299,24 @@ export default function EntityEditorView({
     }
   }
 
+  /** Back to this type's entity list — the editor's only in-page way out. */
+  function navigateToList() {
+    if (typeof window === 'undefined' || !entityType) return
+    window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
+      detail: {
+        entityType,
+        entityId: 'list',
+        bobbinId: 'entities',
+        metadata: {
+          view: 'entity-list',
+          typeId: entityType,
+          typeLabel: typeConfig?.label,
+          typeIcon: typeConfig?.icon
+        }
+      }
+    }))
+  }
+
   async function deleteEntity() {
     if (!entityType || !entityId || isNewEntity) return
 
@@ -316,22 +334,7 @@ export default function EntityEditorView({
         }))
       }
 
-      // Navigate back to list
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
-          detail: {
-            entityType,
-            entityId: 'list',
-            bobbinId: 'entities',
-            metadata: {
-              view: 'entity-list',
-              typeId: entityType,
-              typeLabel: typeConfig?.label,
-              typeIcon: typeConfig?.icon
-            }
-          }
-        }))
-      }
+      navigateToList()
     } catch (err: any) {
       console.error('[EntityEditor] Failed to delete:', err)
       setError(err.message || 'Failed to delete entity')
@@ -545,9 +548,16 @@ export default function EntityEditorView({
             <h1 className="mb-2 text-3xl font-bold text-gray-900 dark:text-gray-100">
               {entity.name || 'New ' + typeConfig.label}
             </h1>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              {typeConfig.label}
-              {isNewEntity && ' (unsaved)'}
+            <p className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400">
+              <button
+                type="button"
+                onClick={navigateToList}
+                title={`Back to ${typeConfig.label}`}
+                className="cursor-pointer hover:text-gray-900 hover:underline dark:hover:text-gray-100"
+              >
+                &lsaquo; {typeConfig.label}
+              </button>
+              {isNewEntity && <span>(unsaved)</span>}
             </p>
           </div>
         </div>

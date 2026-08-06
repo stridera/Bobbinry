@@ -8,7 +8,13 @@
  * @bobbinry/entities directly.
  */
 
-import { getEntityImages, getEntityThumbnail, imageAltText, type EntityThumbnail } from '@bobbinry/entities'
+import {
+  getEntityImages,
+  getEntityThumbnail,
+  imageAltText,
+  isEmptyGalleryOverride,
+  type EntityThumbnail,
+} from '@bobbinry/entities'
 
 export interface VariantAxis {
   id: string
@@ -109,7 +115,15 @@ export function resolveCardThumbnail(
     const overrides = firstVariantId
       ? entity.entityData._variants?.items?.[firstVariantId]?.overrides
       : undefined
-    if (overrides) data = { ...data, ...overrides }
+    if (overrides) {
+      const applied = { ...data }
+      for (const [key, value] of Object.entries(overrides)) {
+        // An emptied variant gallery inherits the base images.
+        if (isEmptyGalleryOverride(key, value)) continue
+        applied[key] = value
+      }
+      data = applied
+    }
   }
   const thumbnail = getEntityThumbnail(data)
   if (!thumbnail) return null
@@ -136,7 +150,10 @@ export function resolveEntityForVariant(
   if (!item || !item.overrides) return base
   const result: Record<string, any> = { ...base }
   for (const [key, value] of Object.entries(item.overrides)) {
-    if (versionableFieldSet.has(key)) result[key] = value
+    if (!versionableFieldSet.has(key)) continue
+    // An emptied variant gallery inherits the base images.
+    if (isEmptyGalleryOverride(key, value)) continue
+    result[key] = value
   }
   return result
 }

@@ -1,4 +1,5 @@
 import {
+  THUMBNAIL_ASPECT,
   cropToCssStyles,
   getEntityImages,
   getEntityThumbnail,
@@ -71,12 +72,25 @@ describe('cropToCssStyles', () => {
     expect(cropToCssStyles(undefined)).toBeNull()
   })
 
-  it('scales and offsets so the rect fills the container', () => {
-    const styles = cropToCssStyles({ x: 0.25, y: 0.1, w: 0.5, h: 0.5 })!
-    expect(styles.width).toBe('200%')
-    expect(styles.height).toBe('200%')
-    expect(styles.left).toBe('-50%')
-    expect(styles.top).toBe('-20%')
+  it('scales and offsets so the rect fills a 3:4 box', () => {
+    const { box, image } = cropToCssStyles({ x: 0.25, y: 0.1, w: 0.5, h: 0.5 })!
+    // The box is a 3:4 frame centered in whatever container the caller gives it.
+    expect(box.aspectRatio).toBe(String(THUMBNAIL_ASPECT))
+    expect(box.width).toBe('100%')
+    expect(box.transform).toBe('translate(-50%, -50%)')
+    // The image is scaled off the box width only; `height: auto` keeps its
+    // natural aspect, so the crop can never render distorted.
+    expect(image.width).toBe('200%')
+    expect(image.height).toBe('auto')
+    expect(image.transform).toBe('translate(-25%, -10%)')
+  })
+
+  it('offsets independently of the crop rect height', () => {
+    // Two crops with the same origin but different heights must land at the
+    // same offset — the old percentage-of-container-height form did not.
+    const a = cropToCssStyles({ x: 0.2, y: 0.3, w: 0.5, h: 0.5 })!
+    const b = cropToCssStyles({ x: 0.2, y: 0.3, w: 0.5, h: 0.25 })!
+    expect(a.image.transform).toBe(b.image.transform)
   })
 })
 
@@ -133,6 +147,31 @@ describe('setGalleryOnEntity', () => {
     expect(overrides.images).toEqual([{ url: 'older.png' }])
     expect(overrides.thumbnail).toEqual({ url: 'older.png' })
     expect(overrides.image_url).toBe('older.png')
+  })
+
+  it('drops the variant override when that era’s gallery is emptied', () => {
+    const entity = {
+      name: 'Clint',
+      images: [{ url: 'base.png' }],
+      thumbnail: { url: 'base.png' },
+      image_url: 'base.png',
+      _variants: {
+        axis_id: 'era',
+        active: null,
+        order: ['book2'],
+        items: {
+          book2: {
+            label: 'Book 2',
+            overrides: { images: [{ url: 'older.png' }], thumbnail: { url: 'older.png' }, image_url: 'older.png' },
+          },
+        },
+      },
+    }
+    const next = setGalleryOnEntity(entity, typeConfig, 'book2', { images: [], thumbnail: null })
+    expect(next._variants.items.book2.overrides).toEqual({})
+    // Base gallery survives, so the era inherits it again.
+    expect(next.images).toEqual([{ url: 'base.png' }])
+    expect(next.image_url).toBe('base.png')
   })
 })
 

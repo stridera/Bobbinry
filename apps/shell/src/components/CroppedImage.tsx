@@ -31,20 +31,36 @@ export function CroppedImage({ src, crop, variant, alt, className, imgClassName 
 
   const cropStyles = cropToCssStyles(crop)
 
+  const handleError = () => {
+    if (currentSrc !== src) setCurrentSrc(src)
+  }
+
   return (
     <div className={`relative overflow-hidden ${className ?? ''}`}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={currentSrc}
-        alt={alt}
-        loading="lazy"
-        draggable={false}
-        style={cropStyles ?? undefined}
-        className={cropStyles ? imgClassName : `absolute inset-0 h-full w-full object-cover ${imgClassName ?? ''}`}
-        onError={() => {
-          if (currentSrc !== src) setCurrentSrc(src)
-        }}
-      />
+      {cropStyles ? (
+        <div style={cropStyles.box}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={currentSrc}
+            alt={alt}
+            loading="lazy"
+            draggable={false}
+            style={cropStyles.image}
+            className={imgClassName}
+            onError={handleError}
+          />
+        </div>
+      ) : (
+        /* eslint-disable-next-line @next/next/no-img-element */
+        <img
+          src={currentSrc}
+          alt={alt}
+          loading="lazy"
+          draggable={false}
+          className={`absolute inset-0 h-full w-full object-cover ${imgClassName ?? ''}`}
+          onError={handleError}
+        />
+      )}
     </div>
   )
 }

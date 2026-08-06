@@ -178,7 +178,23 @@ export function useBreadcrumb(
         }
         return [
           projectCrumb(projectName, bobbinId),
-          { id: entityType, label: metadata?.typeLabel || entityType },
+          {
+            id: entityType,
+            label: metadata?.typeLabel || entityType,
+            // Back to the type's entity list — same nav detail the entities
+            // bobbin dispatches from its Types view and after a delete.
+            navDetail: {
+              entityType,
+              entityId: 'list',
+              bobbinId: 'entities',
+              metadata: {
+                view: 'entity-list',
+                typeId: entityType,
+                typeLabel: metadata?.typeLabel,
+                typeIcon: metadata?.typeIcon,
+              },
+            },
+          },
           { id: entityId, label: name },
         ]
       }

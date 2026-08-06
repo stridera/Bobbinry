@@ -160,7 +160,11 @@ export function ThumbnailCropModal({ imageUrl, initialCrop, onSave, onClose }: T
           </button>
         </div>
 
-        <div className="relative select-none overflow-hidden rounded-lg bg-gray-950/40">
+        {/* w-fit/self-center keep this box exactly the image's size — the crop
+            rect is positioned in percentages against it, so a wrapper wider
+            than the image (flex stretch, when the header is the widest child)
+            would skew every saved crop. */}
+        <div className="relative w-fit select-none self-center overflow-hidden rounded-lg bg-gray-950/40">
           <img
             ref={imgRef}
             src={imageUrl}
