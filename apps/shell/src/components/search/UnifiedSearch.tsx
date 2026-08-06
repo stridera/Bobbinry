@@ -38,7 +38,8 @@ function dispatchFindStep(dir: 1 | -1) {
  * Shortcuts: Ctrl/Cmd+F focuses the input (replacing browser find inside the
  * workspace); Ctrl/Cmd+Shift+H opens it with the replace row expanded. In a
  * manuscript editor the input behaves like browser find: matches highlight as
- * you type, Enter / Shift+Enter cycle through them, Esc clears.
+ * you type, Enter / Shift+Enter cycle through them, Esc clears — as does the
+ * × button, for dropping the highlights without reaching for the keyboard.
  */
 export function UnifiedSearch({ projectId, shellContext }: UnifiedSearchProps) {
   const apiToken = shellContext.apiToken as string | undefined
@@ -211,6 +212,20 @@ export function UnifiedSearch({ projectId, shellContext }: UnifiedSearchProps) {
     }
   }
 
+  // Same end state as emptying the input by hand: query gone, highlights
+  // dropped, dropdown closed, caret back in the box ready to retype.
+  const clearQuery = () => {
+    setQuery('')
+    // Refocusing fires onFocus synchronously, before React re-renders — so
+    // point the ref at the new value first or the handler reads the old query
+    // and re-opens the panel we just closed.
+    queryRef.current = ''
+    setFindState(null)
+    setOpen(false)
+    dispatchFindClear()
+    inputRef.current?.focus()
+  }
+
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== 'Enter' || !query.trim()) return
     e.preventDefault()
@@ -283,76 +298,95 @@ export function UnifiedSearch({ projectId, shellContext }: UnifiedSearchProps) {
           onChange={e => handleInputChange(e.target.value)}
           onKeyDown={handleInputKeyDown}
           onFocus={() => {
-            if (provider.searchTrigger === 'live' && query.trim() && !inChapterFind) setOpen(true)
+            if (provider.searchTrigger === 'live' && queryRef.current.trim() && !inChapterFind) setOpen(true)
           }}
           placeholder={provider.placeholder}
           aria-label={provider.placeholder}
-          className={`h-8 w-56 focus:w-80 transition-[width] duration-200 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 pl-8 ${showFindCounter ? 'pr-28' : 'pr-14'} text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 dark:focus:border-blue-400 focus:bg-white dark:focus:bg-gray-800`}
+          className={`h-8 w-56 focus:w-80 transition-[width] duration-200 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 pl-8 ${showFindCounter ? 'pr-32' : 'pr-14'} text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 dark:focus:border-blue-400 focus:bg-white dark:focus:bg-gray-800`}
         />
-        {showFindCounter && findState ? (
-          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
-            <span
-              className={`px-1 text-[11px] font-mono tabular-nums ${
-                findState.total === 0
-                  ? 'text-red-500 dark:text-red-400'
-                  : 'text-gray-500 dark:text-gray-400'
-              }`}
-              aria-live="polite"
-              aria-label={`Match ${findState.total === 0 ? 0 : findState.activeIndex + 1} of ${findState.total} in this chapter`}
-            >
-              {findState.total === 0
-                ? '0 / 0'
-                : `${findState.activeIndex + 1} / ${findState.capped ? `${findState.total}+` : findState.total}`}
-            </span>
+        <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+          {showFindCounter && findState && (
+            <>
+              <span
+                className={`px-1 text-[11px] font-mono tabular-nums ${
+                  findState.total === 0
+                    ? 'text-red-500 dark:text-red-400'
+                    : 'text-gray-500 dark:text-gray-400'
+                }`}
+                aria-live="polite"
+                aria-label={`Match ${findState.total === 0 ? 0 : findState.activeIndex + 1} of ${findState.total} in this chapter`}
+              >
+                {findState.total === 0
+                  ? '0 / 0'
+                  : `${findState.activeIndex + 1} / ${findState.capped ? `${findState.total}+` : findState.total}`}
+              </span>
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={() => dispatchFindStep(-1)}
+                disabled={findState.total === 0}
+                title="Previous match (Shift+Enter)"
+                aria-label="Previous match"
+                className="p-0.5 rounded text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={() => dispatchFindStep(1)}
+                disabled={findState.total === 0}
+                title="Next match (Enter)"
+                aria-label="Next match"
+                className="p-0.5 rounded text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={() => setOpen(v => !v)}
+                title={open ? 'Hide project results (Alt+Enter)' : 'Show project results (Alt+Enter)'}
+                aria-label={open ? 'Hide project results' : 'Show project results'}
+                aria-pressed={open}
+                className={`ml-0.5 p-0.5 rounded transition-colors ${
+                  open
+                    ? 'text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/50'
+                    : 'text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
+                </svg>
+              </button>
+            </>
+          )}
+          {/* Clear: the one-click way to drop the editor highlights without
+              selecting the text and deleting it (Esc does the same). The
+              shortcut hint only earns its space while the box is empty. */}
+          {query ? (
             <button
               type="button"
               tabIndex={-1}
-              onClick={() => dispatchFindStep(-1)}
-              disabled={findState.total === 0}
-              title="Previous match (Shift+Enter)"
-              aria-label="Previous match"
-              className="p-0.5 rounded text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+              onClick={clearQuery}
+              title="Clear search (Esc)"
+              aria-label="Clear search"
+              className="ml-0.5 p-0.5 rounded text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
             >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
-            <button
-              type="button"
-              tabIndex={-1}
-              onClick={() => dispatchFindStep(1)}
-              disabled={findState.total === 0}
-              title="Next match (Enter)"
-              aria-label="Next match"
-              className="p-0.5 rounded text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:pointer-events-none transition-colors"
-            >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              tabIndex={-1}
-              onClick={() => setOpen(v => !v)}
-              title={open ? 'Hide project results (Alt+Enter)' : 'Show project results (Alt+Enter)'}
-              aria-label={open ? 'Hide project results' : 'Show project results'}
-              aria-pressed={open}
-              className={`ml-0.5 p-0.5 rounded transition-colors ${
-                open
-                  ? 'text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/50'
-                  : 'text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
-              }`}
-            >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
-              </svg>
-            </button>
-          </div>
-        ) : (
-          <kbd className="absolute right-2 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-[10px] font-mono text-gray-400 dark:text-gray-500 pointer-events-none group-focus-within:hidden">
-          {isMac ? '⌘F' : 'Ctrl F'}
-        </kbd>
-        )}
+          ) : (
+            <kbd className="px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-[10px] font-mono text-gray-400 dark:text-gray-500 pointer-events-none group-focus-within:hidden">
+              {isMac ? '⌘F' : 'Ctrl F'}
+            </kbd>
+          )}
+        </div>
       </div>
 
       {/* With a chapter open, the panel stays mounted (it drives the in-editor
