@@ -1043,7 +1043,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
             {variantAxis.kind === 'ordered' && (
               <div>
                 <div className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  When a {variantAxis.label.toLowerCase()} doesn&apos;t set a field
+                  When a {variantAxis.label.toLowerCase()}{' '}doesn&apos;t set a field
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
                   Fall back to the shared base value, or carry the previous{' '}
