@@ -30,6 +30,7 @@ import { ApiError, ValidationError, NotFoundError } from '../lib/errors'
 import { countWordsFromHtml } from '../lib/text'
 import { autoDeleteAt, TRASH_RETENTION_MS } from '../lib/entity-scope'
 import { randomUUID } from 'crypto'
+import { actorKeyFor, captureRevisionSafe, touchesRestorableField } from '../lib/entity-revisions'
 
 /**
  * Highest `order` value among the project's `content` rows (0 if none).
@@ -685,6 +686,25 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
           wordCountBefore: diff.wordCountBefore,
           wordCountAfter: diff.wordCountAfter,
         })])
+
+        // Restore point for this writing session. Gated on the diff the feed
+        // already computed, so reorders, archive toggles, publish-flag flips
+        // and updated_at-only saves cost nothing here.
+        //
+        // Snapshots `currentEntity.entityData` — the state *before* this save.
+        // See lib/entity-revisions.ts for why that direction matters.
+        if (touchesRestorableField(diff.fieldsChanged)) {
+          await captureRevisionSafe(db, {
+            projectId,
+            entityId,
+            collection,
+            contentType: updated.contentType,
+            snapshot: currentEntity.entityData as Record<string, unknown>,
+            entityVersion: currentEntity.version,
+            entityVersionEnd: newVersion,
+            actorKey: actorKeyFor(request),
+          })
+        }
 
         // Renaming a published entity moves its reader-URL slug (in every
         // project it's visible from); the old slug stays behind as a

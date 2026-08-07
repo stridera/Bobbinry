@@ -50,20 +50,20 @@ export function clearUserCache(userId: string): void {
 // propagates to peer instances within a few seconds (clearApiKeyCache only
 // clears the local Map).
 const API_KEY_CACHE_TTL_MS = 5_000
-const apiKeyCache = new Map<string, { userId: string; scopes: string[]; projectId: string | null; tier: MembershipTier; expiresAt: number }>()
+const apiKeyCache = new Map<string, { keyId: string; userId: string; scopes: string[]; projectId: string | null; tier: MembershipTier; expiresAt: number }>()
 
-function getCachedApiKey(keyHash: string): { userId: string; scopes: string[]; projectId: string | null; tier: MembershipTier } | null {
+function getCachedApiKey(keyHash: string): { keyId: string; userId: string; scopes: string[]; projectId: string | null; tier: MembershipTier } | null {
   const entry = apiKeyCache.get(keyHash)
   if (!entry) return null
   if (Date.now() > entry.expiresAt) {
     apiKeyCache.delete(keyHash)
     return null
   }
-  return { userId: entry.userId, scopes: entry.scopes, projectId: entry.projectId, tier: entry.tier }
+  return { keyId: entry.keyId, userId: entry.userId, scopes: entry.scopes, projectId: entry.projectId, tier: entry.tier }
 }
 
-function cacheApiKey(keyHash: string, userId: string, scopes: string[], projectId: string | null, tier: MembershipTier): void {
-  apiKeyCache.set(keyHash, { userId, scopes, projectId, tier, expiresAt: Date.now() + API_KEY_CACHE_TTL_MS })
+function cacheApiKey(keyHash: string, keyId: string, userId: string, scopes: string[], projectId: string | null, tier: MembershipTier): void {
+  apiKeyCache.set(keyHash, { keyId, userId, scopes, projectId, tier, expiresAt: Date.now() + API_KEY_CACHE_TTL_MS })
 }
 
 /** Clear cached API key entry (e.g. on revocation) */
@@ -87,6 +87,11 @@ declare module 'fastify' {
   interface FastifyRequest {
     user?: AuthenticatedUser
     apiKeyAuth?: boolean
+    // Which key, not just which user. Revision capture buckets a writing
+    // session per actor: without this, a sync bot's writes would fold into the
+    // human's open session and destroy the pre-bot snapshot — the single most
+    // valuable restore point in that scenario.
+    apiKeyId?: string
     apiKeyScopes?: string[]
     // When set, the API key is restricted to a single project.
     apiKeyProjectId?: string | null
@@ -168,7 +173,7 @@ async function verifyToken(token: string): Promise<{ id: string; email?: string;
  * Resolve an API key token to a user and scopes.
  * Returns null if the token is not a valid API key.
  */
-async function resolveApiKey(token: string): Promise<{ user: AuthenticatedUser; scopes: string[]; projectId: string | null } | null> {
+async function resolveApiKey(token: string): Promise<{ user: AuthenticatedUser; keyId: string; scopes: string[]; projectId: string | null } | null> {
   if (!token.startsWith('bby_')) return null
 
   const keyHash = hashApiKey(token)
@@ -180,7 +185,7 @@ async function resolveApiKey(token: string): Promise<{ user: AuthenticatedUser; 
     if (user) {
       // Fire-and-forget lastUsedAt update
       db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.keyHash, keyHash)).catch(() => {})
-      return { user, scopes: cached.scopes, projectId: cached.projectId }
+      return { user, keyId: cached.keyId, scopes: cached.scopes, projectId: cached.projectId }
     }
   }
 
@@ -221,12 +226,12 @@ async function resolveApiKey(token: string): Promise<{ user: AuthenticatedUser; 
 
   // Cache both the key and user
   cacheUser(user)
-  cacheApiKey(keyHash, user.id, key.scopes, key.projectId, tier)
+  cacheApiKey(keyHash, key.id, user.id, key.scopes, key.projectId, tier)
 
   // Fire-and-forget lastUsedAt update
   db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.keyHash, keyHash)).catch(() => {})
 
-  return { user, scopes: key.scopes, projectId: key.projectId }
+  return { user, keyId: key.id, scopes: key.scopes, projectId: key.projectId }
 }
 
 /**
@@ -242,6 +247,7 @@ async function authenticateRequest(request: FastifyRequest): Promise<{ user: Aut
     const result = await resolveApiKey(token)
     if (!result) return null
     request.apiKeyAuth = true
+    request.apiKeyId = result.keyId
     request.apiKeyScopes = result.scopes
     request.apiKeyProjectId = result.projectId
     return { user: result.user }

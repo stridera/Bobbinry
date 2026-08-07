@@ -68,6 +68,31 @@ export function getProjectLimit(tier: MembershipTier): number {
 }
 
 /**
+ * Revision-history retention, in days.
+ *
+ * Both tiers keep every restore point for the first 30 days — the "I broke it
+ * this morning" case is a safety net, not a perk. Past that, free thins down to
+ * labeled checkpoints while supporters keep one per day out to a year and one
+ * per week beyond. Labeled checkpoints (publish / import / search-replace /
+ * pre-restore / manual) are never thinned for either tier.
+ */
+export const REVISION_KEEP_ALL_DAYS = 30
+export const SUPPORTER_REVISION_DAILY_DAYS = 365
+export const FREE_REVISION_CAP = 100
+export const SUPPORTER_REVISION_CAP = 1000
+/** Labeled checkpoints are never thinned by age, but still need a ceiling —
+ *  a publish loop or a scripted search-replace would otherwise grow one
+ *  entity's history without bound. */
+export const LABELED_REVISION_CAP = 50
+
+/**
+ * Grace period before a lapsed supporter's history is thinned to free-tier
+ * depth. Without it, letting a subscription expire silently destroys a year of
+ * restore points on the next nightly run.
+ */
+export const REVISION_DOWNGRADE_GRACE_DAYS = 30
+
+/**
  * Get size limits for uploads, applying multiplier for supporters.
  */
 export function getSizeLimits(tier: MembershipTier): Record<string, number> {

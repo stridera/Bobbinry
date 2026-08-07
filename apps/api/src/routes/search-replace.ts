@@ -18,6 +18,7 @@ import {
 } from '../lib/search-replace'
 
 import { countWordsFromHtml } from '../lib/text'
+import { actorKeyFor, captureRevision } from '../lib/entity-revisions'
 
 const ScopeSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('project') }),
@@ -280,6 +281,22 @@ const searchReplacePlugin: FastifyPluginAsync = async (fastify) => {
           }
 
           applied.push(entityId)
+
+          // A bulk find-and-replace can rewrite an entire manuscript in one
+          // click, so each touched entity gets its own labeled checkpoint —
+          // never coalesced into a session bucket, never thinned.
+          await captureRevision(tx, {
+            projectId,
+            entityId,
+            collection: row.collectionName,
+            contentType: row.contentType,
+            snapshot: data,
+            entityVersion: row.version,
+            entityVersionEnd: row.version + 1,
+            actorKey: actorKeyFor(request),
+            label: 'search_replace',
+          })
+
           for (const [field, indices] of selections) {
             for (const idx of indices) {
               appliedMatchIds.push(`${entityId}:${field}:${idx}`)

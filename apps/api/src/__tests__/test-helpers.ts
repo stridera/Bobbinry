@@ -80,6 +80,10 @@ const ALL_TABLES = [
   'password_reset_tokens',
   'provenance_events',
   'entity_changes',
+  'entity_revisions',
+  // Cron claim rows are per-run state: leaving them behind makes a job that
+  // self-gates on cron_runs silently skip its work in a later test.
+  'cron_runs',
   'uploads',
   'entities',
   'publish_targets',

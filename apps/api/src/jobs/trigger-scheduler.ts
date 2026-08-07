@@ -13,6 +13,7 @@ import { bobbinsInstalled, entities, projectDestinations, chapterPublications } 
 import { eq, and, gt, lte, isNull } from 'drizzle-orm'
 import { processEmbargoReleases, initTierDispatch } from './tier-dispatch'
 import { processTrashPurge } from './trash-purge'
+import { processRevisionThinning } from './revision-thinning'
 import { processSubscriptionExpiration } from './subscription-expiration'
 import { processAdminDailyReport } from './admin-daily-report'
 import { createActionRuntime, type ActionHandler, type ActionModule } from '@bobbinry/action-runtime'
@@ -378,6 +379,13 @@ export function startTriggerScheduler(): void {
 
       // Admin daily report self-gates on the cron_runs row — safe to call every tick
       tasks.push(processAdminDailyReport())
+
+      // Revision thinning likewise self-gates on cron_runs. Heavy scan, run
+      // off-peak: claiming only happens once per UTC day regardless, but
+      // starting it in the small hours keeps it away from writing traffic.
+      if (new Date().getUTCHours() === 4) {
+        tasks.push(processRevisionThinning())
+      }
 
       await Promise.allSettled(tasks)
     } catch (err) {

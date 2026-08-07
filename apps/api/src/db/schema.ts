@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, jsonb, boolean, varchar, integer, bigint, bigserial, decimal, index, uniqueIndex, primaryKey } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, text, timestamp, jsonb, boolean, varchar, integer, bigint, bigserial, decimal, index, uniqueIndex, primaryKey, check } from 'drizzle-orm/pg-core'
 import { relations, sql } from 'drizzle-orm'
 
 // Users table - authentication and user management
@@ -936,6 +936,79 @@ export const entityChanges = pgTable('entity_changes', {
 }, (table) => ({
   projectSeqIdx: index('entity_changes_project_seq_idx').on(table.projectId, table.seq),
   projectEntitySeqIdx: index('entity_changes_project_entity_seq_idx').on(table.projectId, table.entityId, table.seq),
+}))
+
+/**
+ * Entity revisions — restore points for chapter content.
+ *
+ * Each row holds the entity_data as it was *before* a writing session, not
+ * after. That inversion is load-bearing in three ways:
+ *  - The expensive ~10KB toasted write happens once per session window; every
+ *    other autosave in that window is a ~100-byte update to non-indexed inline
+ *    columns, so the TOAST pointer is carried forward untouched.
+ *  - The first save an entity ever receives records its pre-edit state, so
+ *    there is no unrecoverable first session.
+ *  - diff(revision -> live) is exactly "what changed since then", with nothing
+ *    to reconstruct.
+ *
+ * `session_bucket` is a wall-clock bucket (date_bin, computed in SQL so clock
+ * drift between machines can't split one session in two). Saves inside the same
+ * bucket by the same actor collapse onto one row via the partial unique index.
+ * A time-relative index predicate would be illegal — partial index predicates
+ * must be IMMUTABLE and now() is only STABLE — which is why the window is a
+ * stored value rather than a query.
+ *
+ * Labeled checkpoints carry a null bucket, so they fall outside the unique
+ * index and always insert. The CHECK constraint enforces that in the schema
+ * rather than trusting every call site.
+ */
+export const entityRevisions = pgTable('entity_revisions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  // Nullable, mirroring entities.project_id — user- and collection-scoped
+  // entities have no project.
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+  // Unlike entity_changes (which deliberately has no FK so events outlive the
+  // entity), a revision of a purged entity is dead weight. Cascade is correct.
+  entityId: uuid('entity_id').references((): any => entities.id, { onDelete: 'cascade' }).notNull(),
+  collection: varchar('collection', { length: 255 }).notNull(),
+  contentType: varchar('content_type', { length: 32 }),
+
+  // Full entity_data before the session. Stored whole for forensics and so the
+  // restorable field set can widen later without a backfill; restore itself
+  // goes through an allowlist so reverting text can't also move the chapter.
+  snapshot: jsonb('snapshot').notNull(),
+  // sha256 over the restorable subset only — hashing the whole blob would
+  // include updated_at and never match.
+  contentHash: varchar('content_hash', { length: 64 }).notNull(),
+  wordCount: integer('word_count'),
+  entityVersion: integer('entity_version').notNull(),
+  entityVersionEnd: integer('entity_version_end').notNull(),
+
+  label: varchar('label', { length: 24 }),
+  labelNote: text('label_note'),
+  isPinned: boolean('is_pinned').default(false).notNull(),
+
+  actorKey: text('actor_key').notNull(), // user:<id> | apikey:<id> | system:<job>
+  sessionBucket: timestamp('session_bucket', { withTimezone: true }),
+  sessionStartedAt: timestamp('session_started_at', { withTimezone: true }).defaultNow().notNull(),
+
+  // Mutated on every save inside the window. Deliberately NOT indexed: an index
+  // on either would break HOT-update eligibility and bloat at roughly one write
+  // per second per active writer. All retention and timeline windowing uses
+  // session_started_at, which is fixed at insert.
+  capturedAt: timestamp('captured_at', { withTimezone: true }).defaultNow().notNull(),
+  saveCount: integer('save_count').default(1).notNull(),
+}, (table) => ({
+  sessionUidx: uniqueIndex('entity_revisions_session_uidx')
+    .on(table.entityId, table.actorKey, table.sessionBucket)
+    .where(sql`${table.sessionBucket} IS NOT NULL`),
+  entityStartedIdx: index('entity_revisions_entity_started_idx').on(table.entityId, table.sessionStartedAt),
+  thinIdx: index('entity_revisions_thin_idx')
+    .on(table.entityId, table.sessionStartedAt)
+    .where(sql`${table.label} IS NULL AND ${table.isPinned} = false`),
+  projectStartedIdx: index('entity_revisions_project_started_idx').on(table.projectId, table.sessionStartedAt),
+  labelChk: check('entity_revisions_label_chk', sql`${table.label} IS NULL OR ${table.label} IN ('publish','import','search_replace','pre_restore','manual','system')`),
+  bucketChk: check('entity_revisions_bucket_chk', sql`(${table.label} IS NULL) = (${table.sessionBucket} IS NOT NULL)`),
 }))
 
 // Public reader URL slugs for entities (chapters + codex entities).

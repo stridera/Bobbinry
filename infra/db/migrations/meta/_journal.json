@@ -288,6 +288,13 @@
       "when": 1786079791168,
       "tag": "0041_entity_soft_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1786080640468,
+      "tag": "0042_entity_revisions",
+      "breakpoints": true
     }
   ]
 }

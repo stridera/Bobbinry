@@ -29,6 +29,7 @@ import {
   upsertScheduledChapterPublication
 } from '../lib/release-schedule'
 import { liveProjectEntity, notDeleted } from '../lib/entity-scope'
+import { actorKeyFor, captureRevisionSafe } from '../lib/entity-revisions'
 
 // ============================================
 // ACCESS CONTROL HELPERS
@@ -302,7 +303,25 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
         publication = created
         isNew = true
 
-        // Create snapshot
+        // Publish checkpoint. Labeled, so it always inserts and is never
+        // thinned — this is the row an author reaches for when they want the
+        // text as it was when readers first saw it.
+        await captureRevisionSafe(db, {
+          projectId,
+          entityId: chapterId,
+          collection: 'content',
+          contentType: chapter.contentType ?? null,
+          snapshot: chapter.entityData as Record<string, unknown>,
+          entityVersion: chapter.version,
+          entityVersionEnd: chapter.version,
+          actorKey: actorKeyFor(request),
+          label: 'publish',
+          labelNote: `Published as ${version}`,
+        })
+
+        // Legacy publish snapshot. Superseded by entity_revisions above — this
+        // table only ever recorded the *first* publish and has no restore path.
+        // Kept for the existing read endpoints pending a backfill.
         if (chapter.lastEditedBy) {
           await db.insert(publishSnapshots).values({
             projectId,
