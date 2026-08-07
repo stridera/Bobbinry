@@ -12,6 +12,7 @@ import { eq, and, sql, desc, or } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { requireAuth, optionalAuth } from '../middleware/auth'
 import { userBadges } from '../db/schema'
+import { notDeleted } from '../lib/entity-scope'
 
 const COLLECTION = 'shared_templates'
 const BOBBIN_ID = 'entities'
@@ -45,7 +46,8 @@ const templatesPlugin: FastifyPluginAsync = async (fastify) => {
         eq(entities.collectionName, COLLECTION),
         eq(entities.bobbinId, BOBBIN_ID),
         eq(entities.scope, SCOPE),
-        // Exclude hidden (soft-deleted) templates
+        notDeleted(),
+        // Exclude hidden (author-retracted) templates
         or(
           sql`(${entities.entityData}->>'hidden')::boolean IS NOT TRUE`,
           sql`${entities.entityData}->>'hidden' IS NULL`
@@ -132,7 +134,8 @@ const templatesPlugin: FastifyPluginAsync = async (fastify) => {
         .where(and(
           eq(entities.collectionName, COLLECTION),
           eq(entities.bobbinId, BOBBIN_ID),
-          sql`${entities.entityData}->>'share_id' = ${shareId}`
+          sql`${entities.entityData}->>'share_id' = ${shareId}`,
+          notDeleted()
         ))
         .limit(1)
 
@@ -247,7 +250,8 @@ const templatesPlugin: FastifyPluginAsync = async (fastify) => {
         .where(and(
           eq(entities.collectionName, COLLECTION),
           eq(entities.bobbinId, BOBBIN_ID),
-          sql`${entities.entityData}->>'share_id' = ${shareId}`
+          sql`${entities.entityData}->>'share_id' = ${shareId}`,
+          notDeleted()
         ))
         .limit(1)
 

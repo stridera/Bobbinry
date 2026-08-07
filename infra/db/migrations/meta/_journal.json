@@ -281,6 +281,13 @@
       "when": 1784069500849,
       "tag": "0040_project_visibility",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1786079791168,
+      "tag": "0041_entity_soft_delete",
+      "breakpoints": true
     }
   ]
 }

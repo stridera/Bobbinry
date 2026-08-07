@@ -16,6 +16,7 @@ import {
   unpinSlug,
   UUID_RE,
 } from '../lib/slugs'
+import { liveEntity } from '../lib/entity-scope'
 
 const entitySlugsPlugin: FastifyPluginAsync = async (fastify) => {
   /**
@@ -78,7 +79,7 @@ const entitySlugsPlugin: FastifyPluginAsync = async (fastify) => {
       const [entityRow] = await db
         .select({ id: entities.id })
         .from(entities)
-        .where(eq(entities.id, entityId))
+        .where(liveEntity(entityId))
         .limit(1)
       if (!entityRow) {
         return reply.status(404).send({ error: 'Entity not found' })

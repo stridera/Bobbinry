@@ -129,6 +129,7 @@ const entityChangesPlugin: FastifyPluginAsync = async (fastify) => {
             contentType: row.contentType,
             title: row.title,
             action: row.action,
+            lifecycle: row.lifecycle,
             fieldsChanged: row.fieldsChanged ?? [],
             wordCountBefore: row.wordCountBefore,
             wordCountAfter: row.wordCountAfter,

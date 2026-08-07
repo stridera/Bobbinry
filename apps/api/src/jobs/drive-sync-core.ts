@@ -14,6 +14,7 @@
 import { eq, and } from 'drizzle-orm'
 import { db } from '../db/connection'
 import { entities, projectDestinations, projects, userBobbinsInstalled } from '../db/schema'
+import { notDeleted } from '../lib/entity-scope'
 
 /** Projects with a sync currently in flight (mutual exclusion across all paths). */
 const syncingProjects = new Set<string>()
@@ -150,7 +151,8 @@ export async function runProjectSync(
       config: { ...userConfig, folderId: subfolderId },
     }
 
-    let rows = await db.select().from(entities).where(eq(entities.projectId, projectId))
+    let rows = await db.select().from(entities)
+      .where(and(eq(entities.projectId, projectId), notDeleted()))
     if (opts?.entityIds) {
       const wanted = new Set(opts.entityIds)
       rows = rows.filter((e) => wanted.has(e.id))

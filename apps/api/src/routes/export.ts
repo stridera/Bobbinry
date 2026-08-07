@@ -16,6 +16,7 @@ import {
   generateOutline,
   createTurndown,
 } from '../lib/export-converters'
+import { notDeleted } from '../lib/entity-scope'
 
 const DOCX_MIME =
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -68,7 +69,8 @@ async function getSnapshot(projectId: string): Promise<ExportSnapshot> {
         and(
           eq(entities.projectId, projectId),
           eq(entities.bobbinId, 'manuscript'),
-          eq(entities.collectionName, 'containers')
+          eq(entities.collectionName, 'containers'),
+          notDeleted()
         )
       )
       .orderBy(sql`COALESCE((${entities.entityData}->>'order')::bigint, 0) ASC`),
@@ -86,7 +88,8 @@ async function getSnapshot(projectId: string): Promise<ExportSnapshot> {
       .where(
         and(
           eq(entities.projectId, projectId),
-          eq(entities.collectionName, 'content')
+          eq(entities.collectionName, 'content'),
+          notDeleted()
         )
       )
       .orderBy(sql`COALESCE((${entities.entityData}->>'order')::bigint, 0) ASC`),

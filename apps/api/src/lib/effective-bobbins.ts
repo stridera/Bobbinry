@@ -11,7 +11,7 @@
 
 import { db } from '../db/connection'
 import { bobbinsInstalled, projectCollectionMemberships, entities } from '../db/schema'
-import { eq, and, inArray, or, type SQL } from 'drizzle-orm'
+import { eq, and, inArray, isNull, or, type SQL } from 'drizzle-orm'
 
 export interface EffectiveBobbin {
   bobbinId: string
@@ -114,12 +114,21 @@ export async function getEffectiveBobbins(
 
 /**
  * Build a Drizzle SQL condition that matches entities visible from a project context:
- * project-scoped OR collection-scoped OR global-scoped.
+ * project-scoped OR collection-scoped OR global-scoped — and not trashed.
+ *
+ * The `deleted_at IS NULL` term is ANDed *around* the scope disjunction, not
+ * pushed into it: pushing it in would OR, which makes every trashed entity in
+ * the database visible. This is the chokepoint for the ~23 scoped query sites;
+ * paths that don't build a scope condition use `notDeleted()` from
+ * lib/entity-scope.ts instead.
+ *
+ * Pass `includeDeleted: true` only from trash-management endpoints.
  */
 export function buildScopeCondition(
   projectId: string,
   collectionIds: string[],
-  userId: string
+  userId: string,
+  options?: { includeDeleted?: boolean }
 ): SQL {
   const conditions: SQL[] = [
     eq(entities.projectId, projectId),
@@ -131,5 +140,7 @@ export function buildScopeCondition(
 
   conditions.push(eq(entities.userId, userId))
 
-  return or(...conditions)!
+  const scope = or(...conditions)!
+  if (options?.includeDeleted) return scope
+  return and(scope, isNull(entities.deletedAt))!
 }

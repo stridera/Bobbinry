@@ -8,6 +8,7 @@
 import { serverEventBus, type DomainEvent } from '../lib/event-bus'
 import { db } from '../db/connection'
 import { projects, entities, users, userProfiles, projectDestinations, embargoSchedules } from '../db/schema'
+import { liveEntity } from '../lib/entity-scope'
 import { eq, and } from 'drizzle-orm'
 import { sendWebhook, buildChapterEmbed } from '../lib/discord-api'
 
@@ -41,7 +42,7 @@ async function sendToMatchingDestinations(
     db.select({
       id: entities.id,
       entityData: entities.entityData,
-    }).from(entities).where(eq(entities.id, chapterId)).limit(1),
+    }).from(entities).where(liveEntity(chapterId)).limit(1),
   ])
 
   if (!project || !chapter) return

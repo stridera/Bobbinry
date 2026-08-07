@@ -44,6 +44,7 @@ import {
   importCommitCompleted,
   importCommitFailed,
 } from '../lib/event-bus'
+import { notDeleted } from '../lib/entity-scope'
 
 const PARSE_PAYLOAD_CAP_BYTES = 10 * 1024 * 1024 // 10 MB JSON response cap
 const COMMIT_MAX_SEGMENTS = 500
@@ -321,6 +322,7 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
             eq(entities.projectId, projectId),
             eq(entities.bobbinId, 'manuscript'),
             eq(entities.collectionName, 'containers'),
+            notDeleted(),
           ))
           .limit(1)
 

@@ -37,6 +37,7 @@ import {
 import { eq, and, sql, count, gt, isNull, notInArray } from 'drizzle-orm'
 import { sendEmail, buildAdminDailyReportHtml, buildAdminDailyReportText } from '../lib/email'
 import { env } from '../lib/env'
+import { notDeleted } from '../lib/entity-scope'
 
 const JOB_NAME = 'admin_daily_report'
 const FIRE_HOUR_UTC = 14
@@ -165,7 +166,7 @@ export async function gatherReportData(cutoff: Date): Promise<AdminDailyReport> 
     db.select({ count: count() }).from(chapterAnnotations)
       .where(gt(chapterAnnotations.createdAt, cutoff)),
     db.select({ count: count() }).from(entities)
-      .where(gt(entities.lastEditedAt, cutoff)),
+      .where(and(gt(entities.lastEditedAt, cutoff), notDeleted())),
     db.select({ count: count() }).from(subscriptionPayments)
       .where(and(eq(subscriptionPayments.status, 'failed'), gt(subscriptionPayments.createdAt, cutoff))),
     db.select({ count: count() }).from(projectDestinations)

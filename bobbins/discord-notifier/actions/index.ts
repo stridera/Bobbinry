@@ -3,8 +3,8 @@ import type { ActionContext, ActionResult, ActionRuntimeHost } from '@bobbinry/a
 async function createDbCallbacks() {
   const { db } = await import('../../../apps/api/src/db/connection')
   const { projectDestinations } = await import('../../../apps/api/src/db/schema')
-  const { eq, and } = await import('drizzle-orm')
-  return { db, projectDestinations, eq, and }
+  const { eq, and, isNull } = await import('drizzle-orm')
+  return { db, projectDestinations, eq, and, isNull }
 }
 
 export async function testWebhook(
@@ -36,7 +36,7 @@ export async function sendNotification(
   runtime: ActionRuntimeHost
 ): Promise<ActionResult> {
   try {
-    const { db, projectDestinations, eq, and } = await createDbCallbacks()
+    const { db, projectDestinations, eq, and, isNull } = await createDbCallbacks()
     const { entities, projects, users } = await import('../../../apps/api/src/db/schema')
     const { sendWebhook, buildChapterEmbed } = await import('../../../apps/api/src/lib/discord-api')
 
@@ -45,7 +45,7 @@ export async function sendNotification(
       db.select({ id: projects.id, name: projects.name, ownerId: projects.ownerId, shortUrl: projects.shortUrl })
         .from(projects).where(eq(projects.id, params.projectId)).limit(1),
       db.select({ id: entities.id, entityData: entities.entityData })
-        .from(entities).where(eq(entities.id, params.entityId)).limit(1),
+        .from(entities).where(and(eq(entities.id, params.entityId), isNull(entities.deletedAt))).limit(1),
     ])
 
     if (!project || !chapter) {

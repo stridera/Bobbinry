@@ -15,6 +15,7 @@ import { requireAuth } from '../middleware/auth'
 import { slugifyName } from '../lib/slugs'
 import { ManifestCompiler } from '@bobbinry/compiler'
 import { loadDiskManifests, getManifestScopes, loadManifestFromBobbinsPath } from '../lib/disk-manifests'
+import { notDeleted } from '../lib/entity-scope'
 
 /** Internal helper for collection ownership checks. */
 async function checkCollectionOwnership(
@@ -388,7 +389,7 @@ const collectionsPlugin: FastifyPluginAsync = async (fastify) => {
         const [row] = await db
           .select({ count: sql<number>`count(*)::int` })
           .from(entities)
-          .where(inArray(entities.projectId, projectIds))
+          .where(and(inArray(entities.projectId, projectIds), notDeleted()))
         entityCount = row?.count ?? 0
       }
 

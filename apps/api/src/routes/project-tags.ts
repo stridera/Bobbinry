@@ -13,13 +13,14 @@ import {
   reactions,
   chapterAnnotations
 } from '../db/schema'
-import { eq, and, sql } from 'drizzle-orm'
+import { eq, and, sql, isNotNull } from 'drizzle-orm'
 import { chapterViewStats, getChapterViewStats } from '../lib/chapter-view-stats'
 import { requireAuth, requireProjectOwnership } from '../middleware/auth'
 import { loadDiskManifests } from '../lib/disk-manifests'
 import { getCollectionIdsForProject, buildScopeCondition } from '../lib/effective-bobbins'
 import { getSlugsForEntities } from '../lib/slugs'
 import { countsTowardWordCount, type ContentType } from '@bobbinry/types'
+import { notDeleted, TRASH_RETENTION_MS } from '../lib/entity-scope'
 
 const VALID_TAG_CATEGORIES = ['genre', 'theme', 'trope', 'setting', 'custom'] as const
 
@@ -160,7 +161,10 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
 
   fastify.get<{
     Params: { projectId: string }
-    Querystring: { includeArchived?: 'archived-only' | 'all' }
+    Querystring: {
+      includeArchived?: 'archived-only' | 'all'
+      includeDeleted?: 'deleted-only' | 'all'
+    }
   }>('/projects/:projectId/dashboard', {
     preHandler: [requireAuth]
   }, async (request, reply) => {
@@ -168,6 +172,15 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
     try {
       const { projectId } = request.params
       const includeArchived = request.query.includeArchived
+      const includeDeleted = request.query.includeDeleted
+
+      // Trash is filtered in SQL, not in JS like archive is: this select pulls
+      // full entity_data, so a client-side filter would ship every trashed
+      // chapter's body to the browser on every dashboard load.
+      const deletedFilter =
+        includeDeleted === 'deleted-only' ? isNotNull(entities.deletedAt)
+        : includeDeleted === 'all' ? undefined
+        : notDeleted()
 
       const isOwner = await requireProjectOwnership(request, reply, projectId)
       if (!isOwner) return
@@ -180,16 +193,21 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
       const scopeCollectionIds = await getCollectionIdsForProject(projectId)
       const entityScopeFilter = buildScopeCondition(projectId, scopeCollectionIds, scopeUserId)
 
-      // We always fetch every chapter (active + archived) and partition in JS
-      // before returning. Project chapter counts are small enough that this is
-      // simpler than two queries and lets us return an accurate `archivedCount`
-      // alongside any filter view (`active` / `archived-only` / `all`).
+      // We always fetch every *live* chapter (active + archived) and partition
+      // in JS before returning. Project chapter counts are small enough that
+      // this is simpler than two queries and lets us return an accurate
+      // `archivedCount` alongside any filter view.
+      //
+      // Trash is the exception — see `deletedFilter` above. It is excluded in
+      // SQL and counted separately, because these rows carry full entity_data
+      // and the default dashboard load must not ship deleted bodies.
 
       const [
         projectResult,
         tagsResult,
         publicationsResult,
         chaptersResult,
+        trashCountResult,
         scheduledResult,
         configResult,
         bobbinsResult,
@@ -231,6 +249,8 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
             collectionName: entities.collectionName,
             contentType: entities.contentType,
             archivedAt: entities.archivedAt,
+            deletedAt: entities.deletedAt,
+            deletedBatchId: entities.deletedBatchId,
             pubId: chapterPublications.id,
             publishStatus: chapterPublications.publishStatus,
             publishedAt: chapterPublications.publishedAt,
@@ -254,7 +274,19 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
           )
           .where(and(
             eq(entities.projectId, projectId),
-            eq(entities.collectionName, 'content')
+            eq(entities.collectionName, 'content'),
+            deletedFilter
+          )),
+
+        // 4b. Trash count — a separate count so the Trash chip can show a
+        // number without the default view having to fetch trashed bodies.
+        db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(entities)
+          .where(and(
+            eq(entities.projectId, projectId),
+            eq(entities.collectionName, 'content'),
+            isNotNull(entities.deletedAt)
           )),
 
         // 5. Scheduled releases
@@ -310,7 +342,7 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
             count: sql<number>`count(*)::int`.as('count')
           })
           .from(comments)
-          .innerJoin(entities, eq(entities.id, comments.chapterId))
+          .innerJoin(entities, and(eq(entities.id, comments.chapterId), notDeleted()))
           .where(and(
             eq(entities.projectId, projectId),
             eq(comments.moderationStatus, 'approved')
@@ -324,7 +356,7 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
             count: sql<number>`count(*)::int`.as('count')
           })
           .from(reactions)
-          .innerJoin(entities, eq(entities.id, reactions.chapterId))
+          .innerJoin(entities, and(eq(entities.id, reactions.chapterId), notDeleted()))
           .where(eq(entities.projectId, projectId))
           .groupBy(reactions.chapterId),
 
@@ -403,6 +435,12 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
           collectionName: ch.collectionName,
           contentType,
           archivedAt: ch.archivedAt ? ch.archivedAt.toISOString() : null,
+          deletedAt: ch.deletedAt ? ch.deletedAt.toISOString() : null,
+          deletedBatchId: ch.deletedBatchId,
+          // When this row is purged for good, so the trash view can count down.
+          autoDeleteAt: ch.deletedAt
+            ? new Date(ch.deletedAt.getTime() + TRASH_RETENTION_MS).toISOString()
+            : null,
           wordCount,
           commentCount: commentCountMap.get(ch.id) ?? 0,
           reactionCount: reactionCountMap.get(ch.id) ?? 0,
@@ -431,6 +469,10 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
         (n, ch) => (ch.archivedAt ? n + 1 : n),
         0,
       )
+
+      // Counted in SQL, not from allChapters — the default view never fetches
+      // trashed rows, so it has nothing to count.
+      const trashedCount = trashCountResult[0]?.count ?? 0
 
       // Apply the includeArchived view filter for what we ship back as `chapters`.
       const chapters =
@@ -529,7 +571,8 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
           totalCompletions,
           avgViewsPerChapter: publicationsResult.length > 0 ? Math.round(totalViews / publicationsResult.length) : 0,
           narrativeWordCount,
-          archivedCount
+          archivedCount,
+          trashedCount
         },
         chapters,
         scheduledReleases,

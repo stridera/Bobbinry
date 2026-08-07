@@ -16,6 +16,7 @@ import { env } from '../lib/env'
 import { ApiError, UnauthorizedError } from '../lib/errors'
 import { encryptSecret, decryptSecret } from '../lib/secret-storage'
 import { runProjectSync } from '../jobs/drive-sync-core'
+import { notDeleted } from '../lib/entity-scope'
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
@@ -303,7 +304,7 @@ const googleDrivePlugin: FastifyPluginAsync = async (fastify) => {
               count: sql<number>`count(*)::int`,
             })
             .from(entities)
-            .where(sql`${entities.projectId} IN ${projectIds}`)
+            .where(and(sql`${entities.projectId} IN ${projectIds}`, notDeleted()))
             .groupBy(entities.projectId)
         : []
       const countMap = new Map(chapterCounts.map(c => [c.projectId, c.count]))
@@ -583,7 +584,7 @@ const googleDrivePlugin: FastifyPluginAsync = async (fastify) => {
         const chapters = await db
           .select()
           .from(entities)
-          .where(eq(entities.projectId, project.id))
+          .where(and(eq(entities.projectId, project.id), notDeleted()))
 
         totalChapters += chapters.length
 

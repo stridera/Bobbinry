@@ -19,6 +19,7 @@ import { createActionRuntime, type ActionHandler, type ActionModule } from '@bob
 import { loadDiskManifests } from '../lib/disk-manifests'
 import { getDeclaredCustomAction } from '../lib/bobbin-actions'
 import { serverEventBus, contentPublished } from '../lib/event-bus'
+import { notDeleted } from '../lib/entity-scope'
 
 /** Sync frequency to milliseconds lookup for backup bobbins */
 const SYNC_FREQUENCY_MS: Record<string, number> = {
@@ -266,7 +267,8 @@ export async function processBackupSync(
         .from(entities)
         .where(and(
           eq(entities.projectId, bobbin.projectId),
-          gt(entities.lastEditedAt!, sinceDate)
+          gt(entities.lastEditedAt!, sinceDate),
+          notDeleted()
         ))
         .limit(1) // Just check if any exist
 

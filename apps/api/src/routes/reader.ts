@@ -45,6 +45,7 @@ import { env } from '../lib/env'
 import { optionalAuth, requireAuth, requireProjectOwnership } from '../middleware/auth'
 import { hashRssToken } from './rss-tokens'
 import { countWordsFromHtml } from '../lib/text'
+import { liveEntity, notDeleted } from '../lib/entity-scope'
 import { changeEventFromRow, extractWordCount, recordEntityChangesSafe } from '../lib/entity-changes'
 import {
   getEffectiveBobbins,
@@ -736,7 +737,8 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         .innerJoin(entities, eq(entities.id, chapterPublications.chapterId))
         .where(and(
           eq(chapterPublications.projectId, projectId),
-          eq(chapterPublications.isPublished, true)
+          eq(chapterPublications.isPublished, true),
+          notDeleted()
         ))
         .orderBy(...orderClauses)
 
@@ -864,7 +866,8 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         .innerJoin(projects, eq(projects.id, entities.projectId))
         .where(and(
           eq(entities.id, chapterId),
-          eq(entities.projectId, projectId)
+          eq(entities.projectId, projectId),
+          notDeleted()
         ))
         .limit(1)
 
@@ -907,7 +910,8 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         .innerJoin(chapterPublications, eq(chapterPublications.chapterId, entities.id))
         .where(and(
           eq(entities.projectId, projectId),
-          eq(chapterPublications.isPublished, true)
+          eq(chapterPublications.isPublished, true),
+          notDeleted()
         ))
         .orderBy(...navOrderClauses)
 
@@ -1259,7 +1263,8 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         .where(and(
           eq(entities.id, chapterId),
           eq(entities.projectId, projectId),
-          eq(chapterPublications.isPublished, true)
+          eq(chapterPublications.isPublished, true),
+          notDeleted()
         ))
         .limit(1)
 
@@ -1375,7 +1380,8 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         .innerJoin(chapterPublications, eq(chapterPublications.chapterId, entities.id))
         .where(and(
           eq(entities.projectId, projectId),
-          eq(chapterPublications.isPublished, true)
+          eq(chapterPublications.isPublished, true),
+          notDeleted()
         ))
         .orderBy(...sitemapOrderClauses)
 
@@ -1507,7 +1513,8 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         .innerJoin(chapterPublications, eq(chapterPublications.chapterId, entities.id))
         .where(and(
           eq(entities.projectId, projectId),
-          eq(chapterPublications.isPublished, true)
+          eq(chapterPublications.isPublished, true),
+          notDeleted()
         ))
         .orderBy(desc(chapterPublications.publishedAt))
         .limit(limit * 2) // over-fetch so filtering still has enough for `limit`
@@ -3314,7 +3321,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         })
         .from(chapterAnnotations)
         .innerJoin(users, eq(users.id, chapterAnnotations.authorId))
-        .leftJoin(entities, eq(entities.id, chapterAnnotations.chapterId))
+        .leftJoin(entities, and(eq(entities.id, chapterAnnotations.chapterId), notDeleted()))
         .where(and(...conditions))
         .orderBy(desc(chapterAnnotations.createdAt))
         .limit(limit)
@@ -3330,7 +3337,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
             body: sql<string>`(${entities.entityData}->>'body')`
           })
           .from(entities)
-          .where(inArray(entities.id, chapterIds))
+          .where(and(inArray(entities.id, chapterIds), notDeleted()))
 
         for (const row of bodyRows) {
           if (row.body) chapterBodies.set(row.id, row.body)
@@ -3376,7 +3383,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           count: count()
         })
         .from(chapterAnnotations)
-        .leftJoin(entities, eq(entities.id, chapterAnnotations.chapterId))
+        .leftJoin(entities, and(eq(entities.id, chapterAnnotations.chapterId), notDeleted()))
         .where(eq(chapterAnnotations.projectId, projectId))
         .groupBy(chapterAnnotations.chapterId, sql`(${entities.entityData}->>'title')`)
 
@@ -3582,7 +3589,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
             contentType: entities.contentType,
           })
           .from(entities)
-          .where(eq(entities.id, annotation.chapterId))
+          .where(liveEntity(annotation.chapterId))
           .limit(1)
 
         if (chapter) {

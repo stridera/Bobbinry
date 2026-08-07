@@ -93,14 +93,14 @@ export async function syncToDrive(
   try {
     const { db, projectDestinations, eq, persistToken, deactivateDestination } = await createDbCallbacks()
     const { entities } = await import('../../../apps/api/src/db/schema')
-    const { and } = await import('drizzle-orm')
+    const { and, isNull } = await import('drizzle-orm')
 
     const { chapterId, destinationId, force } = params
 
     const [chapter] = await db
       .select()
       .from(entities)
-      .where(and(eq(entities.id, chapterId), eq(entities.projectId, context.projectId)))
+      .where(and(eq(entities.id, chapterId), eq(entities.projectId, context.projectId), isNull(entities.deletedAt)))
       .limit(1)
 
     if (!chapter) {
@@ -193,7 +193,7 @@ export async function syncAllChapters(
   try {
     const { db, projectDestinations, eq, persistToken, deactivateDestination } = await createDbCallbacks()
     const { entities } = await import('../../../apps/api/src/db/schema')
-    const { and } = await import('drizzle-orm')
+    const { and, isNull } = await import('drizzle-orm')
 
     const { destinationId, collection } = params
 
@@ -214,7 +214,7 @@ export async function syncAllChapters(
     let chaptersQuery = db
       .select()
       .from(entities)
-      .where(eq(entities.projectId, context.projectId))
+      .where(and(eq(entities.projectId, context.projectId), isNull(entities.deletedAt)))
 
     if (collection) {
       chaptersQuery = chaptersQuery.where(

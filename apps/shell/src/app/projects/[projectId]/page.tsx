@@ -45,6 +45,7 @@ interface DashboardData {
     avgViewsPerChapter: number
     narrativeWordCount: number
     archivedCount: number
+    trashedCount: number
   }
   chapters: Array<{
     id: string
@@ -299,6 +300,7 @@ export default function ProjectDashboardPage() {
 
         <ChapterOverview
           chapters={data.chapters}
+          trashedCount={data.analytics.trashedCount}
           projectId={projectId}
           readerBaseUrl={data.authorUsername && data.project.shortUrl
             ? `/read/${data.authorUsername}/${data.project.shortUrl}`

@@ -24,7 +24,7 @@ export async function publishChapter(
   try {
     const { db } = await import('../../../apps/api/src/db/connection')
     const { entities, chapterPublications } = await import('../../../apps/api/src/db/schema')
-    const { eq, and } = await import('drizzle-orm')
+    const { eq, and, isNull } = await import('drizzle-orm')
 
     const { chapterId, accessLevel = 'public', embargoUntil, previewParagraphs = 0 } = params
 
@@ -32,7 +32,7 @@ export async function publishChapter(
     const [chapter] = await db
       .select()
       .from(entities)
-      .where(and(eq(entities.id, chapterId), eq(entities.projectId, context.projectId)))
+      .where(and(eq(entities.id, chapterId), eq(entities.projectId, context.projectId), isNull(entities.deletedAt)))
       .limit(1)
 
     if (!chapter) {

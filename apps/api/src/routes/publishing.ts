@@ -28,6 +28,7 @@ import {
   shiftFollowingScheduledChaptersUp,
   upsertScheduledChapterPublication
 } from '../lib/release-schedule'
+import { liveProjectEntity, notDeleted } from '../lib/entity-scope'
 
 // ============================================
 // ACCESS CONTROL HELPERS
@@ -226,7 +227,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       const [chapter] = await db
         .select()
         .from(entities)
-        .where(and(eq(entities.id, chapterId), eq(entities.projectId, projectId)))
+        .where(liveProjectEntity(projectId, chapterId))
         .limit(1)
 
       if (!chapter) {
@@ -398,7 +399,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       const [chapter] = await db
         .select()
         .from(entities)
-        .where(and(eq(entities.id, chapterId), eq(entities.projectId, projectId)))
+        .where(liveProjectEntity(projectId, chapterId))
         .limit(1)
 
       if (!chapter) {
@@ -1478,7 +1479,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
           avgReadTimeSeconds: sql<number>`COALESCE(${sql.raw('view_stats.avg_read_seconds')}, 0)`,
         })
         .from(chapterPublications)
-        .innerJoin(entities, eq(entities.id, chapterPublications.chapterId))
+        .innerJoin(entities, and(eq(entities.id, chapterPublications.chapterId), notDeleted()))
         .leftJoin(chapterViewStats, sql`${sql.raw('view_stats.chapter_id')} = ${chapterPublications.chapterId}`)
         .where(eq(chapterPublications.projectId, projectId))
         .orderBy(sql`(${entities.entityData}->>'order')::int`)

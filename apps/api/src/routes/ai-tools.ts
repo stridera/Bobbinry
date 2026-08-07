@@ -10,6 +10,7 @@ import { FastifyPluginAsync } from 'fastify'
 import { eq, and } from 'drizzle-orm'
 import { db } from '../db/connection'
 import { entities, userBobbinsInstalled, provenanceEvents } from '../db/schema'
+import { liveProjectEntity } from '../lib/entity-scope'
 import { requireAuth, requireProjectOwnership } from '../middleware/auth'
 import { ApiError } from '../lib/errors'
 import { encryptSecret, decryptSecret } from '../lib/secret-storage'
@@ -450,7 +451,7 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
       const [entity] = await db
         .select()
         .from(entities)
-        .where(and(eq(entities.id, entityId), eq(entities.projectId, projectId)))
+        .where(liveProjectEntity(projectId, entityId))
         .limit(1)
 
       if (!entity) {
@@ -516,7 +517,7 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
       const [entity] = await db
         .select()
         .from(entities)
-        .where(and(eq(entities.id, entityId), eq(entities.projectId, projectId)))
+        .where(liveProjectEntity(projectId, entityId))
         .limit(1)
 
       if (!entity) {
@@ -587,7 +588,7 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
       const [entity] = await db
         .select()
         .from(entities)
-        .where(and(eq(entities.id, entityId), eq(entities.projectId, projectId)))
+        .where(liveProjectEntity(projectId, entityId))
         .limit(1)
 
       if (!entity) {
@@ -618,7 +619,7 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
         const [freshEntity] = await db
           .select()
           .from(entities)
-          .where(and(eq(entities.id, entityId), eq(entities.projectId, projectId)))
+          .where(liveProjectEntity(projectId, entityId))
           .limit(1)
 
         if (freshEntity) {
@@ -705,7 +706,7 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
       const [entity] = await db
         .select()
         .from(entities)
-        .where(and(eq(entities.id, entityId), eq(entities.projectId, projectId)))
+        .where(liveProjectEntity(projectId, entityId))
         .limit(1)
 
       if (!entity) {
@@ -756,7 +757,7 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
       const [entity] = await db
         .select()
         .from(entities)
-        .where(and(eq(entities.id, entityId), eq(entities.projectId, projectId)))
+        .where(liveProjectEntity(projectId, entityId))
         .limit(1)
 
       if (!entity) {
@@ -826,7 +827,7 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
       const [entity] = await db
         .select()
         .from(entities)
-        .where(and(eq(entities.id, entityId), eq(entities.projectId, projectId)))
+        .where(liveProjectEntity(projectId, entityId))
         .limit(1)
 
       if (!entity) {
@@ -895,7 +896,7 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
       const [entity] = await db
         .select()
         .from(entities)
-        .where(and(eq(entities.id, entityId), eq(entities.projectId, projectId)))
+        .where(liveProjectEntity(projectId, entityId))
         .limit(1)
 
       if (!entity) {

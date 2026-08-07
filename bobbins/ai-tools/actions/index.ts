@@ -22,9 +22,9 @@ async function createDbCallbacks() {
   const { entities, userBobbinsInstalled, provenanceEvents } = await import(
     '../../../apps/api/src/db/schema'
   )
-  const { eq, and } = await import('drizzle-orm')
+  const { eq, and, isNull } = await import('drizzle-orm')
 
-  return { db, entities, userBobbinsInstalled, provenanceEvents, eq, and }
+  return { db, entities, userBobbinsInstalled, provenanceEvents, eq, and, isNull }
 }
 
 /** Fetch the user's AI config from user_bobbins_installed */
@@ -71,11 +71,11 @@ export async function generateSynopsis(
       return { success: false, error: 'AI tools not configured — add your API key in settings' }
     }
 
-    const { db, entities, eq } = await createDbCallbacks()
+    const { db, entities, eq, and, isNull } = await createDbCallbacks()
     const [entity] = await db
       .select()
       .from(entities)
-      .where(eq(entities.id, params.entityId))
+      .where(and(eq(entities.id, params.entityId), isNull(entities.deletedAt)))
       .limit(1)
 
     if (!entity) {
@@ -124,11 +124,11 @@ export async function generateReview(
       return { success: false, error: 'AI tools not configured — add your API key in settings' }
     }
 
-    const { db, entities, eq } = await createDbCallbacks()
+    const { db, entities, eq, and, isNull } = await createDbCallbacks()
     const [entity] = await db
       .select()
       .from(entities)
-      .where(eq(entities.id, params.entityId))
+      .where(and(eq(entities.id, params.entityId), isNull(entities.deletedAt)))
       .limit(1)
 
     if (!entity) {
@@ -159,7 +159,7 @@ export async function generateReview(
     const [freshEntity] = await db
       .select()
       .from(entities)
-      .where(eq(entities.id, params.entityId))
+      .where(and(eq(entities.id, params.entityId), isNull(entities.deletedAt)))
       .limit(1)
 
     if (freshEntity) {
@@ -178,7 +178,7 @@ export async function generateReview(
           },
           updatedAt: new Date(),
         })
-        .where(eq(entities.id, params.entityId))
+        .where(and(eq(entities.id, params.entityId), isNull(entities.deletedAt)))
 
       await db.insert(provenanceEvents).values({
         projectId: params.projectId,
@@ -222,11 +222,11 @@ export async function generateNames(
       return { success: false, error: 'AI tools not configured — add your API key in settings' }
     }
 
-    const { db, entities, eq } = await createDbCallbacks()
+    const { db, entities, eq, and, isNull } = await createDbCallbacks()
     const [entity] = await db
       .select()
       .from(entities)
-      .where(eq(entities.id, params.entityId))
+      .where(and(eq(entities.id, params.entityId), isNull(entities.deletedAt)))
       .limit(1)
 
     if (!entity) {
@@ -271,11 +271,11 @@ export async function generateBrainstorm(
       return { success: false, error: 'AI tools not configured — add your API key in settings' }
     }
 
-    const { db, entities, eq } = await createDbCallbacks()
+    const { db, entities, eq, and, isNull } = await createDbCallbacks()
     const [entity] = await db
       .select()
       .from(entities)
-      .where(eq(entities.id, params.entityId))
+      .where(and(eq(entities.id, params.entityId), isNull(entities.deletedAt)))
       .limit(1)
 
     if (!entity) {
@@ -319,11 +319,11 @@ export async function generateFleshOut(
       return { success: false, error: 'AI tools not configured — add your API key in settings' }
     }
 
-    const { db, entities, eq } = await createDbCallbacks()
+    const { db, entities, eq, and, isNull } = await createDbCallbacks()
     const [entity] = await db
       .select()
       .from(entities)
-      .where(eq(entities.id, params.entityId))
+      .where(and(eq(entities.id, params.entityId), isNull(entities.deletedAt)))
       .limit(1)
 
     if (!entity) {

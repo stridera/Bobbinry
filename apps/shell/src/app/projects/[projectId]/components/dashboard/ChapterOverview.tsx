@@ -53,12 +53,30 @@ interface Chapter {
 
 interface ChapterOverviewProps {
   chapters: Chapter[]
+  /** From the dashboard analytics — trashed rows are not in `chapters`. */
+  trashedCount: number
   projectId: string
   readerBaseUrl: string | null
   onStatusChange?: () => void
 }
 
-type FilterKey = 'all' | 'manuscript' | 'outlines' | 'reference' | 'archived'
+/**
+ * A row in the trash. Deliberately not a `Chapter`: the trash endpoint returns
+ * metadata only, because trashed rows carry full chapter bodies and there is no
+ * reason to ship those to the browser just to list them.
+ */
+interface TrashedItem {
+  id: string
+  collection: string
+  contentType: string | null
+  title: string
+  wordCount: number
+  deletedAt: string | null
+  batchId: string | null
+  autoDeleteAt: string | null
+}
+
+type FilterKey = 'all' | 'manuscript' | 'outlines' | 'reference' | 'archived' | 'trash'
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
@@ -99,21 +117,32 @@ const WORDS_HINT =
   'Epilogue, Interlude. Outline and Supporting Doc are tracked but excluded.'
 
 function matchesFilter(c: Chapter, filter: FilterKey): boolean {
+  // Trash is fetched separately and never appears in `chapters`.
+  if (filter === 'trash') return false
   if (filter === 'archived') return c.archivedAt !== null
   if (c.archivedAt !== null) return false
   if (filter === 'all') return true
   return CONTENT_TYPE_GROUPS[c.contentType] === filter
 }
 
-export function ChapterOverview({ chapters, projectId, readerBaseUrl, onStatusChange }: ChapterOverviewProps) {
+/** Whole days until `iso`, floored at 0. */
+function daysUntil(iso: string | null): number {
+  if (!iso) return 0
+  return Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000))
+}
+
+export function ChapterOverview({ chapters, trashedCount, projectId, readerBaseUrl, onStatusChange }: ChapterOverviewProps) {
   const { data: session } = useSession()
   const token = session?.apiToken
 
   const [filter, setFilter] = useState<FilterKey>('all')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [actionInProgress, setActionInProgress] = useState<string | null>(null)
-  const [bulkAction, setBulkAction] = useState<'archive' | 'restore' | 'delete' | null>(null)
+  const [bulkAction, setBulkAction] = useState<'archive' | 'restore' | 'delete' | 'untrash' | 'purge' | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmPurge, setConfirmPurge] = useState(false)
+  const [trashItems, setTrashItems] = useState<TrashedItem[] | null>(null)
+  const [trashLoading, setTrashLoading] = useState(false)
   const [openTypeMenu, setOpenTypeMenu] = useState<string | null>(null)
 
   // Local copy so DnD reorder is optimistic — parent re-fetches asynchronously
@@ -124,7 +153,24 @@ export function ChapterOverview({ chapters, projectId, readerBaseUrl, onStatusCh
     setLocalChapters(chapters)
     setSelectedIds(new Set())
     setConfirmDelete(false)
+    setConfirmPurge(false)
   }, [chapters])
+
+  // Fetched only when the Trash view is opened — the default dashboard load
+  // must not pay for rows the author has already thrown away.
+  const loadTrash = useCallback(async () => {
+    if (!token) return
+    setTrashLoading(true)
+    try {
+      const res = await apiFetch(`/api/projects/${projectId}/trash`, token)
+      if (res.ok) setTrashItems((await res.json()).items ?? [])
+      else console.error('Failed to load trash', await res.text())
+    } catch (err) {
+      console.error('Failed to load trash', err)
+    } finally {
+      setTrashLoading(false)
+    }
+  }, [token, projectId])
 
   const counts = useMemo(() => {
     let manuscript = 0, outlines = 0, reference = 0, archived = 0, all = 0
@@ -156,20 +202,25 @@ export function ChapterOverview({ chapters, projectId, readerBaseUrl, onStatusCh
   )
 
   const showingArchived = filter === 'archived'
-  const allFilteredSelected = filtered.length > 0 && filtered.every(c => selectedIds.has(c.id))
-  const someFilteredSelected = filtered.some(c => selectedIds.has(c.id))
+  const showingTrash = filter === 'trash'
+  const trashRows = trashItems ?? []
+  // The trash view selects over its own rows, which are not in `filtered`.
+  const selectable: Array<{ id: string }> = showingTrash ? trashRows : filtered
+
+  const allFilteredSelected = selectable.length > 0 && selectable.every(c => selectedIds.has(c.id))
+  const someFilteredSelected = selectable.some(c => selectedIds.has(c.id))
 
   const toggleSelectAll = () => {
     if (allFilteredSelected) {
       setSelectedIds(prev => {
         const next = new Set(prev)
-        for (const c of filtered) next.delete(c.id)
+        for (const c of selectable) next.delete(c.id)
         return next
       })
     } else {
       setSelectedIds(prev => {
         const next = new Set(prev)
-        for (const c of filtered) next.add(c.id)
+        for (const c of selectable) next.add(c.id)
         return next
       })
     }
@@ -200,15 +251,20 @@ export function ChapterOverview({ chapters, projectId, readerBaseUrl, onStatusCh
     }
   }
 
-  const runBulk = async (action: 'archive' | 'restore' | 'delete') => {
+  const BULK_PATHS: Record<NonNullable<typeof bulkAction>, string> = {
+    archive: '/api/entities/bulk-archive',
+    restore: '/api/entities/bulk-restore',
+    // "Delete" moves to the trash; only `purge` actually destroys anything.
+    delete: '/api/entities/bulk-delete',
+    untrash: '/api/entities/bulk-untrash',
+    purge: '/api/entities/bulk-delete-permanent',
+  }
+
+  const runBulk = async (action: NonNullable<typeof bulkAction>) => {
     if (!token || selectedIds.size === 0) return
-    const path =
-      action === 'archive' ? '/api/entities/bulk-archive'
-      : action === 'restore' ? '/api/entities/bulk-restore'
-      : '/api/entities/bulk-delete'
     setBulkAction(action)
     try {
-      const res = await apiFetch(path, token, {
+      const res = await apiFetch(BULK_PATHS[action], token, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId, ids: Array.from(selectedIds) }),
@@ -216,6 +272,10 @@ export function ChapterOverview({ chapters, projectId, readerBaseUrl, onStatusCh
       if (res.ok) {
         setSelectedIds(new Set())
         setConfirmDelete(false)
+        setConfirmPurge(false)
+        // Restoring a container brings its chapters back too, so the trash
+        // list has to be re-read rather than patched locally.
+        if (action === 'untrash' || action === 'purge') await loadTrash()
         onStatusChange?.()
       } else {
         console.error('Bulk action failed', action, await res.text())
@@ -294,7 +354,10 @@ export function ChapterOverview({ chapters, projectId, readerBaseUrl, onStatusCh
     }
   }, [filtered, dndEnabled, homogeneousType, token, projectId, chapters, onStatusChange])
 
-  if (chapters.length === 0) {
+  // Only bail out when there is genuinely nothing to show. Deleting your last
+  // chapter must not take the Trash view down with it — that is exactly the
+  // moment you need it.
+  if (chapters.length === 0 && trashedCount === 0) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 animate-fade-in">
         <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Content</h2>
@@ -306,7 +369,15 @@ export function ChapterOverview({ chapters, projectId, readerBaseUrl, onStatusCh
   const chip = (key: FilterKey, label: string, count: number) => (
     <button
       key={key}
-      onClick={() => { setFilter(key); setSelectedIds(new Set()); setConfirmDelete(false) }}
+      onClick={() => {
+      setFilter(key)
+      setSelectedIds(new Set())
+      setConfirmDelete(false)
+      setConfirmPurge(false)
+      // Trashed rows aren't in `chapters` — opening the view is what fetches
+      // them, so the default dashboard load never pays for them.
+      if (key === 'trash') void loadTrash()
+    }}
       className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
         filter === key
           ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
@@ -328,6 +399,7 @@ export function ChapterOverview({ chapters, projectId, readerBaseUrl, onStatusCh
           {chip('outlines', 'Outlines', counts.outlines)}
           {chip('reference', 'Reference', counts.reference)}
           {chip('archived', 'Archived', counts.archived)}
+          {trashedCount > 0 && chip('trash', 'Trash', trashedCount)}
         </div>
       </div>
 
@@ -345,12 +417,86 @@ export function ChapterOverview({ chapters, projectId, readerBaseUrl, onStatusCh
         <span className="text-gray-400 dark:text-gray-500"> badge.</span>
       </p>
 
-      {!dndEnabled && filtered.length > 1 && !showingArchived && (
+      {!dndEnabled && filtered.length > 1 && !showingArchived && !showingTrash && (
         <p className="text-xs text-gray-400 dark:text-gray-500 mb-2 italic">
           Filter to a single content type to drag-reorder.
         </p>
       )}
 
+      {!showingTrash && filtered.length === 0 ? (
+        <p className="text-sm text-gray-500 dark:text-gray-400 italic py-4">
+          {trashedCount > 0
+            ? 'Nothing here \u2014 open Trash to restore deleted content.'
+            : 'Nothing matches this filter.'}
+        </p>
+      ) : showingTrash ? (
+        <div className="overflow-x-auto -mx-6 px-6">
+          <p className="text-[12px] text-gray-500 dark:text-gray-400 mb-3">
+            Deleted content is kept for 30 days, then removed permanently. Restoring
+            an act or folder also restores everything that was inside it.
+          </p>
+          {trashLoading && trashRows.length === 0 ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400 italic py-4">Loading trash…</p>
+          ) : trashRows.length === 0 ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400 italic py-4">Trash is empty.</p>
+          ) : (
+            <table className="w-full text-sm border-separate border-spacing-0">
+              <thead>
+                <tr className="border-b border-gray-200 dark:border-gray-700 text-[11px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-medium">
+                  <th className="py-2.5 pl-1 pr-1 w-9 align-middle border-b border-gray-200 dark:border-gray-700">
+                    <span className="flex items-center justify-center">
+                      <Checkbox
+                        checked={allFilteredSelected}
+                        indeterminate={!allFilteredSelected && someFilteredSelected}
+                        onChange={toggleSelectAll}
+                        ariaLabel="Select all trashed"
+                      />
+                    </span>
+                  </th>
+                  <th className="py-2.5 pr-4 text-left align-middle border-b border-gray-200 dark:border-gray-700">Title</th>
+                  <th className="py-2.5 pr-4 text-left align-middle border-b border-gray-200 dark:border-gray-700">Type</th>
+                  <th className="py-2.5 pr-4 text-right align-middle border-b border-gray-200 dark:border-gray-700">Words</th>
+                  <th className="py-2.5 pr-4 text-left align-middle border-b border-gray-200 dark:border-gray-700">Deleted</th>
+                  <th className="py-2.5 text-right align-middle border-b border-gray-200 dark:border-gray-700">Purges in</th>
+                </tr>
+              </thead>
+              <tbody>
+                {trashRows.map(item => {
+                  const days = daysUntil(item.autoDeleteAt)
+                  return (
+                    <tr key={item.id} className="border-b border-gray-100 dark:border-gray-700/50">
+                      <td className="py-2.5 pl-1 pr-1 align-middle">
+                        <span className="flex items-center justify-center">
+                          <Checkbox
+                            checked={selectedIds.has(item.id)}
+                            onChange={() => toggleOne(item.id)}
+                            ariaLabel={`Select ${item.title}`}
+                          />
+                        </span>
+                      </td>
+                      <td className="py-2.5 pr-4 align-middle text-gray-700 dark:text-gray-300">{item.title}</td>
+                      <td className="py-2.5 pr-4 align-middle text-gray-500 dark:text-gray-400 text-xs">
+                        {item.collection === 'containers' ? 'Folder' : (item.contentType ?? item.collection)}
+                      </td>
+                      <td className="py-2.5 pr-4 align-middle text-right tabular-nums text-gray-500 dark:text-gray-400">
+                        {item.wordCount.toLocaleString()}
+                      </td>
+                      <td className="py-2.5 pr-4 align-middle text-gray-500 dark:text-gray-400 text-xs">
+                        {item.deletedAt ? new Date(item.deletedAt).toLocaleDateString() : '—'}
+                      </td>
+                      <td className={`py-2.5 align-middle text-right tabular-nums text-xs ${
+                        days <= 3 ? 'text-red-600 dark:text-red-400 font-medium' : 'text-gray-500 dark:text-gray-400'
+                      }`}>
+                        {days === 0 ? 'today' : `${days}d`}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      ) : (
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <div className="overflow-x-auto -mx-6 px-6">
           <table className="w-full text-sm border-separate border-spacing-0">
@@ -411,50 +557,84 @@ export function ChapterOverview({ chapters, projectId, readerBaseUrl, onStatusCh
           </table>
         </div>
       </DndContext>
+      )}
 
       {selectedIds.size > 0 && (
         <div className="sticky bottom-4 mt-4 mx-auto max-w-2xl bg-gray-900 dark:bg-gray-700 text-white rounded-lg shadow-lg px-4 py-2.5 flex items-center justify-between gap-3">
           <span className="text-sm font-medium tabular-nums">{selectedIds.size} selected</span>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => { setSelectedIds(new Set()); setConfirmDelete(false) }}
+              onClick={() => { setSelectedIds(new Set()); setConfirmDelete(false); setConfirmPurge(false) }}
               className="text-xs text-gray-300 hover:text-white px-2 py-1 rounded"
             >
               Clear
             </button>
-            {showingArchived ? (
-              <button
-                onClick={() => runBulk('restore')}
-                disabled={bulkAction !== null}
-                className="text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-3 py-1 rounded-md font-medium"
-              >
-                {bulkAction === 'restore' ? 'Restoring…' : `Restore (${selectedIds.size})`}
-              </button>
+            {showingTrash ? (
+              <>
+                <button
+                  onClick={() => runBulk('untrash')}
+                  disabled={bulkAction !== null}
+                  className="text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-3 py-1 rounded-md font-medium"
+                >
+                  {bulkAction === 'untrash' ? 'Restoring…' : `Restore (${selectedIds.size})`}
+                </button>
+                {/* The only button in this component that destroys anything,
+                    so it is the only one behind a confirm step here. */}
+                {confirmPurge ? (
+                  <button
+                    onClick={() => runBulk('purge')}
+                    disabled={bulkAction !== null}
+                    className="text-xs bg-red-600 hover:bg-red-500 disabled:opacity-50 px-3 py-1 rounded-md font-medium ring-2 ring-red-300"
+                  >
+                    {bulkAction === 'purge' ? 'Deleting…' : `Permanently delete ${selectedIds.size}? This cannot be undone`}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setConfirmPurge(true)}
+                    disabled={bulkAction !== null}
+                    className="text-xs bg-red-700/80 hover:bg-red-600 disabled:opacity-50 px-3 py-1 rounded-md font-medium"
+                  >
+                    Delete forever
+                  </button>
+                )}
+              </>
             ) : (
-              <button
-                onClick={() => runBulk('archive')}
-                disabled={bulkAction !== null}
-                className="text-xs bg-amber-600 hover:bg-amber-500 disabled:opacity-50 px-3 py-1 rounded-md font-medium"
-              >
-                {bulkAction === 'archive' ? 'Archiving…' : `Archive (${selectedIds.size})`}
-              </button>
-            )}
-            {confirmDelete ? (
-              <button
-                onClick={() => runBulk('delete')}
-                disabled={bulkAction !== null}
-                className="text-xs bg-red-600 hover:bg-red-500 disabled:opacity-50 px-3 py-1 rounded-md font-medium ring-2 ring-red-300"
-              >
-                {bulkAction === 'delete' ? 'Deleting…' : `Confirm delete (${selectedIds.size})?`}
-              </button>
-            ) : (
-              <button
-                onClick={() => setConfirmDelete(true)}
-                disabled={bulkAction !== null}
-                className="text-xs bg-red-700/80 hover:bg-red-600 disabled:opacity-50 px-3 py-1 rounded-md font-medium"
-              >
-                Delete{showingArchived ? ' permanently' : ''}
-              </button>
+              <>
+                {showingArchived ? (
+                  <button
+                    onClick={() => runBulk('restore')}
+                    disabled={bulkAction !== null}
+                    className="text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-3 py-1 rounded-md font-medium"
+                  >
+                    {bulkAction === 'restore' ? 'Restoring…' : `Unarchive (${selectedIds.size})`}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => runBulk('archive')}
+                    disabled={bulkAction !== null}
+                    className="text-xs bg-amber-600 hover:bg-amber-500 disabled:opacity-50 px-3 py-1 rounded-md font-medium"
+                  >
+                    {bulkAction === 'archive' ? 'Archiving…' : `Archive (${selectedIds.size})`}
+                  </button>
+                )}
+                {confirmDelete ? (
+                  <button
+                    onClick={() => runBulk('delete')}
+                    disabled={bulkAction !== null}
+                    className="text-xs bg-red-600 hover:bg-red-500 disabled:opacity-50 px-3 py-1 rounded-md font-medium ring-2 ring-red-300"
+                  >
+                    {bulkAction === 'delete' ? 'Deleting…' : `Move ${selectedIds.size} to trash?`}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setConfirmDelete(true)}
+                    disabled={bulkAction !== null}
+                    className="text-xs bg-red-700/80 hover:bg-red-600 disabled:opacity-50 px-3 py-1 rounded-md font-medium"
+                  >
+                    Delete
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>

@@ -28,6 +28,7 @@ import { cleanupOldAvatarUploads } from '../lib/upload-cleanup'
 import { getStripe, createExpressAccount, createOnboardingLink } from '../lib/stripe'
 import { verifyUnsubscribeToken, sendBetaReaderJoinedEmail } from '../lib/email'
 import { randomBytes } from 'crypto'
+import { liveEntity, notDeleted } from '../lib/entity-scope'
 
 function escapeHtml(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -330,6 +331,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
         .where(and(
           or(...conditions),
           eq(entities.isPublished, true),
+          notDeleted(),
         ))
 
       // Bucket entities + variants by their effective tier level.
@@ -1925,7 +1927,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
             const [entity] = await db
               .select({ entityData: entities.entityData })
               .from(entities)
-              .where(eq(entities.id, item.chapterId))
+              .where(liveEntity(item.chapterId))
               .limit(1)
             if (entity) {
               chapterTitle = (entity.entityData as any)?.title || 'Untitled'
@@ -1990,7 +1992,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
           authorId: projects.ownerId
         })
         .from(chapterViews)
-        .innerJoin(entities, eq(entities.id, chapterViews.chapterId))
+        .innerJoin(entities, and(eq(entities.id, chapterViews.chapterId), notDeleted()))
         .innerJoin(projects, eq(projects.id, entities.projectId))
         .where(and(
           eq(chapterViews.readerId, userId),
@@ -2158,7 +2160,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
             chapterCount: sql<number>`COUNT(*)::int`,
           })
           .from(chapterPublications)
-          .innerJoin(entities, eq(entities.id, chapterPublications.chapterId))
+          .innerJoin(entities, and(eq(entities.id, chapterPublications.chapterId), notDeleted()))
           .where(and(
             inArray(chapterPublications.projectId, projectIds),
             eq(chapterPublications.isPublished, true),

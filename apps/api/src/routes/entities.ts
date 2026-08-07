@@ -2,7 +2,7 @@ import { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/connection'
 import { entities, chapterPublications } from '../db/schema'
-import { eq, and, sql, or, inArray, isNull } from 'drizzle-orm'
+import { eq, and, sql, or, inArray, isNull, isNotNull, desc } from 'drizzle-orm'
 import {
   CONTENT_TYPES,
   isContentType,
@@ -28,6 +28,8 @@ import { findBobbinForCollectionAcrossScopes } from '../lib/disk-manifests'
 import { getEffectiveBobbins, getCollectionIdsForProject, buildScopeCondition } from '../lib/effective-bobbins'
 import { ApiError, ValidationError, NotFoundError } from '../lib/errors'
 import { countWordsFromHtml } from '../lib/text'
+import { autoDeleteAt, TRASH_RETENTION_MS } from '../lib/entity-scope'
+import { randomUUID } from 'crypto'
 
 /**
  * Highest `order` value among the project's `content` rows (0 if none).
@@ -742,34 +744,57 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // Recursive helper function to delete container and all its children.
-  // Collects a `deleted` change-feed event for every removed row into
-  // `events` — the top-level caller records them once (atomic, same tx).
-  async function deleteContainerCascade(projectId: string, containerId: string, tx: any, actor: string | undefined, events: EntityChangeEvent[]) {
-    // Find all child containers - check both camelCase and snake_case field names
+  /**
+   * Recursively move a container and everything under it to the trash.
+   *
+   * Every row touched by one request shares a `deletedBatchId`, so restoring
+   * the container later brings its chapters back with it — without that, an
+   * author who deleted an act would have to hunt down and restore each chapter
+   * one at a time, in a list that no longer shows their parent.
+   *
+   * Already-trashed rows are skipped rather than re-stamped: a chapter trashed
+   * on its own last week keeps its own batch and its own 30-day clock, instead
+   * of being silently adopted into this one.
+   *
+   * Collects a `deleted`/`trashed` change-feed event per row into `events`; the
+   * top-level caller records them once, atomically, in the same tx.
+   */
+  async function trashContainerCascade(
+    projectId: string,
+    containerId: string,
+    tx: any,
+    actor: string | undefined,
+    batchId: string,
+    events: EntityChangeEvent[],
+  ) {
+    const now = new Date()
+    const stamp = { deletedAt: now, deletedBatchId: batchId, deletedBy: actor ?? null, updatedAt: now }
+
+    // Child containers first — check both camelCase and snake_case field names.
     const childContainers = await tx
       .select()
       .from(entities)
       .where(and(
         eq(entities.projectId, projectId),
         eq(entities.collectionName, 'containers'),
+        isNull(entities.deletedAt),
         or(
           sql`${entities.entityData}->>'parent_id' = ${containerId}`,
           sql`${entities.entityData}->>'parentId' = ${containerId}`
         )
       ))
 
-    // Recursively delete child containers
     for (const child of childContainers) {
-      await deleteContainerCascade(projectId, child.id, tx, actor, events)
+      await trashContainerCascade(projectId, child.id, tx, actor, batchId, events)
     }
 
-    // Delete all content in this container - check both camelCase and snake_case
-    const deletedContent = await tx
-      .delete(entities)
+    const trashedContent = await tx
+      .update(entities)
+      .set(stamp)
       .where(and(
         eq(entities.projectId, projectId),
         eq(entities.collectionName, 'content'),
+        isNull(entities.deletedAt),
         or(
           sql`${entities.entityData}->>'container_id' = ${containerId}`,
           sql`${entities.entityData}->>'containerId' = ${containerId}`
@@ -777,22 +802,58 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       ))
       .returning({ id: entities.id, contentType: entities.contentType, entityData: entities.entityData })
 
-    // Delete the container itself
-    const deletedContainer = await tx
-      .delete(entities)
+    const trashedContainer = await tx
+      .update(entities)
+      .set(stamp)
       .where(and(
         eq(entities.id, containerId),
         eq(entities.projectId, projectId),
-        eq(entities.collectionName, 'containers')
+        eq(entities.collectionName, 'containers'),
+        isNull(entities.deletedAt),
       ))
       .returning({ id: entities.id, entityData: entities.entityData })
 
-    for (const row of deletedContent) {
-      events.push(changeEventFromRow('deleted', { projectId, actor }, { ...row, collectionName: 'content' }))
+    for (const row of trashedContent) {
+      events.push(changeEventFromRow('deleted', { projectId, actor }, { ...row, collectionName: 'content' }, { lifecycle: 'trashed' }))
     }
-    for (const row of deletedContainer) {
-      events.push(changeEventFromRow('deleted', { projectId, actor }, { ...row, collectionName: 'containers' }))
+    for (const row of trashedContainer) {
+      events.push(changeEventFromRow('deleted', { projectId, actor }, { ...row, collectionName: 'containers' }, { lifecycle: 'trashed' }))
     }
+  }
+
+  /**
+   * Permanently remove already-trashed rows. Used by the "delete forever"
+   * endpoints and by the purge job — never by an ordinary delete.
+   *
+   * Scoped to `deleted_at IS NOT NULL` so a bug in a caller cannot destroy a
+   * live chapter: everything must pass through the trash first.
+   */
+  async function purgeTrashedEntities(
+    projectId: string,
+    ids: string[],
+    tx: any,
+    actor: string | undefined,
+    events: EntityChangeEvent[],
+  ): Promise<string[]> {
+    if (ids.length === 0) return []
+    const purged = await tx
+      .delete(entities)
+      .where(and(
+        eq(entities.projectId, projectId),
+        inArray(entities.id, ids),
+        isNotNull(entities.deletedAt),
+      ))
+      .returning({
+        id: entities.id,
+        collectionName: entities.collectionName,
+        contentType: entities.contentType,
+        entityData: entities.entityData,
+      })
+
+    for (const row of purged) {
+      events.push(changeEventFromRow('deleted', { projectId, actor }, row, { lifecycle: 'purged' }))
+    }
+    return purged.map((r: { id: string }) => r.id)
   }
 
   // Delete entity (requires project ownership)
@@ -824,21 +885,27 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       const collectionIds = await getCollectionIdsForProject(projectId)
       const scopeFilter = buildScopeCondition(projectId, collectionIds, userId)
 
-      // If deleting a container, use cascade delete in a transaction
-      // (containers are always project-scoped — manuscript is project-only)
+      // Deleting moves to the trash; it does not remove the row. The entity
+      // keeps its comments, annotations, publications and slug for 30 days so
+      // a restore brings all of it back, and the purge job clears it after.
+      const batchId = randomUUID()
+
+      // Containers cascade in a transaction (containers are always
+      // project-scoped — manuscript is project-only).
       if (collection === 'containers') {
         await db.transaction(async (tx) => {
           const events: EntityChangeEvent[] = []
-          await deleteContainerCascade(projectId, entityId, tx, userId, events)
+          await trashContainerCascade(projectId, entityId, tx, userId, batchId, events)
           await recordEntityChanges(tx, events)
         })
 
-        return { success: true, id: entityId }
+        return { success: true, id: entityId, trashed: true, batchId }
       }
 
-      // For non-container entities, simple delete
+      const now = new Date()
       const result = await db
-        .delete(entities)
+        .update(entities)
+        .set({ deletedAt: now, deletedBatchId: batchId, deletedBy: userId, updatedAt: now })
         .where(and(
           eq(entities.id, entityId),
           scopeFilter,
@@ -851,10 +918,10 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       }
 
       await recordEntityChangesSafe(db, [
-        changeEventFromRow('deleted', { projectId, actor: userId }, { ...result[0]!, collectionName: collection }),
+        changeEventFromRow('deleted', { projectId, actor: userId }, { ...result[0]!, collectionName: collection }, { lifecycle: 'trashed' }),
       ])
 
-      return { success: true, id: entityId }
+      return { success: true, id: entityId, trashed: true, batchId }
 
     } catch (error) {
       fastify.log.error(error)
@@ -1028,6 +1095,9 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       const results = await db.transaction(async (tx) => {
         const opResults = []
         const changeEvents: EntityChangeEvent[] = []
+        // One trash batch for the whole batch-ops request, so a set of deletes
+        // submitted together restores together.
+        const batchOpTrashId = randomUUID()
 
         // Prefetch the old entityData of every update target in one query so
         // the feed can report field-level deltas without a per-op SELECT.
@@ -1149,13 +1219,16 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
                   throw new ValidationError('Delete operation requires id')
                 }
 
-                // Use cascade delete for containers (always project-scoped)
+                // Moves to the trash, like every other delete path — batch ops
+                // must not be a back door around the 30-day window.
                 if (collection === 'containers') {
-                  await deleteContainerCascade(projectId, id, tx, userId, changeEvents)
-                  result = { deleted: true, id }
+                  await trashContainerCascade(projectId, id, tx, userId, batchOpTrashId, changeEvents)
+                  result = { deleted: true, id, trashed: true }
                 } else {
+                  const now = new Date()
                   const deleted = await tx
-                    .delete(entities)
+                    .update(entities)
+                    .set({ deletedAt: now, deletedBatchId: batchOpTrashId, deletedBy: userId, updatedAt: now })
                     .where(and(
                       eq(entities.id, id),
                       scopeFilter,
@@ -1167,9 +1240,9 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
                     throw new NotFoundError('Entity', id)
                   }
 
-                  changeEvents.push(changeEventFromRow('deleted', { projectId, actor: userId }, { ...deleted[0]!, collectionName: collection }))
+                  changeEvents.push(changeEventFromRow('deleted', { projectId, actor: userId }, { ...deleted[0]!, collectionName: collection }, { lifecycle: 'trashed' }))
 
-                  result = { deleted: true, id }
+                  result = { deleted: true, id, trashed: true }
                 }
                 break
 
@@ -1363,11 +1436,12 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
             eq(entities.projectId, projectId),
             inArray(entities.id, ids),
             isNull(entities.archivedAt),
+            isNull(entities.deletedAt),
           ))
           .returning({ id: entities.id, collectionName: entities.collectionName, contentType: entities.contentType, entityData: entities.entityData })
 
         await recordEntityChangesSafe(db, updated.map(row =>
-          changeEventFromRow('updated', { projectId, actor: request.user!.id }, row, { fieldsChanged: ['archived'] })
+          changeEventFromRow('updated', { projectId, actor: request.user!.id }, row, { fieldsChanged: ['archived'], lifecycle: 'archived' })
         ))
 
         return { archived: updated.length, ids: updated.map(r => r.id) }
@@ -1401,11 +1475,12 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
           .where(and(
             eq(entities.projectId, projectId),
             inArray(entities.id, ids),
+            isNull(entities.deletedAt),
           ))
           .returning({ id: entities.id, collectionName: entities.collectionName, contentType: entities.contentType, entityData: entities.entityData })
 
         await recordEntityChangesSafe(db, updated.map(row =>
-          changeEventFromRow('updated', { projectId, actor: request.user!.id }, row, { fieldsChanged: ['archived'] })
+          changeEventFromRow('updated', { projectId, actor: request.user!.id }, row, { fieldsChanged: ['archived'], lifecycle: 'unarchived' })
         ))
 
         return { restored: updated.length, ids: updated.map(r => r.id) }
@@ -1422,7 +1497,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
     }
   )
 
-  /** Hard-delete entities, cascading container children where applicable. */
+  /** Move entities to the trash, cascading container children where applicable. */
   fastify.post<{ Body: { projectId: string; ids: string[] } }>(
     '/entities/bulk-delete',
     { preHandler: [requireAuth] },
@@ -1433,6 +1508,10 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
         const hasAccess = await requireProjectOwnership(request, reply, projectId)
         if (!hasAccess) return
 
+        // One batch per request: everything deleted together comes back
+        // together, including chapters pulled in by a container cascade.
+        const batchId = randomUUID()
+
         const deleted = await db.transaction(async (tx) => {
           // Need each row's collectionName so we can cascade containers.
           const rows = await tx
@@ -1441,23 +1520,27 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
             .where(and(
               eq(entities.projectId, projectId),
               inArray(entities.id, ids),
+              isNull(entities.deletedAt),
             ))
 
           const removed: string[] = []
           const events: EntityChangeEvent[] = []
+          const now = new Date()
           for (const row of rows) {
             if (row.collectionName === 'containers') {
-              await deleteContainerCascade(projectId, row.id, tx, request.user!.id, events)
+              await trashContainerCascade(projectId, row.id, tx, request.user!.id, batchId, events)
             } else {
-              const deletedRows = await tx
-                .delete(entities)
+              const trashedRows = await tx
+                .update(entities)
+                .set({ deletedAt: now, deletedBatchId: batchId, deletedBy: request.user!.id, updatedAt: now })
                 .where(and(
                   eq(entities.id, row.id),
                   eq(entities.projectId, projectId),
+                  isNull(entities.deletedAt),
                 ))
                 .returning({ id: entities.id, contentType: entities.contentType, entityData: entities.entityData })
-              if (deletedRows[0]) {
-                events.push(changeEventFromRow('deleted', { projectId, actor: request.user!.id }, { ...deletedRows[0], collectionName: row.collectionName }))
+              if (trashedRows[0]) {
+                events.push(changeEventFromRow('deleted', { projectId, actor: request.user!.id }, { ...trashedRows[0], collectionName: row.collectionName }, { lifecycle: 'trashed' }))
               }
             }
             removed.push(row.id)
@@ -1466,7 +1549,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
           return removed
         })
 
-        return { deleted: deleted.length, ids: deleted }
+        return { deleted: deleted.length, ids: deleted, trashed: true, batchId }
       } catch (error) {
         if (error instanceof z.ZodError) {
           return reply.status(400).send({ error: 'Validation failed', issues: error.issues })
@@ -1474,6 +1557,176 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
         fastify.log.error(error)
         return reply.status(500).send({
           error: 'Failed to delete entities',
+          details: error instanceof Error ? error.message : 'Unknown error',
+        })
+      }
+    }
+  )
+
+  /**
+   * Restore trashed entities.
+   *
+   * Restoring any row also restores everything trashed alongside it — deleting
+   * an act and restoring it must bring its chapters back, not leave the author
+   * with an empty container. Rows already restored individually are skipped
+   * (the `deleted_at IS NOT NULL` guard), so a batch can't be restored twice.
+   */
+  fastify.post<{ Body: { projectId: string; ids: string[] } }>(
+    '/entities/bulk-untrash',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      try {
+        const { projectId, ids } = BulkIdsSchema.parse(request.body)
+
+        const hasAccess = await requireProjectOwnership(request, reply, projectId)
+        if (!hasAccess) return
+
+        const restored = await db.transaction(async (tx) => {
+          const targets = await tx
+            .select({ id: entities.id, deletedBatchId: entities.deletedBatchId })
+            .from(entities)
+            .where(and(
+              eq(entities.projectId, projectId),
+              inArray(entities.id, ids),
+              isNotNull(entities.deletedAt),
+            ))
+
+          if (targets.length === 0) return []
+
+          // Expand to whole batches. A row trashed before batches existed has
+          // a null batch id and restores on its own.
+          const batchIds = [...new Set(
+            targets.map((t: { deletedBatchId: string | null }) => t.deletedBatchId).filter((b: string | null): b is string => b !== null)
+          )]
+          const directIds = targets.map((t: { id: string }) => t.id)
+
+          const rows = await tx
+            .update(entities)
+            .set({ deletedAt: null, deletedBatchId: null, deletedBy: null, updatedAt: new Date() })
+            .where(and(
+              eq(entities.projectId, projectId),
+              isNotNull(entities.deletedAt),
+              batchIds.length > 0
+                ? or(inArray(entities.id, directIds), inArray(entities.deletedBatchId, batchIds))
+                : inArray(entities.id, directIds),
+            ))
+            .returning({
+              id: entities.id,
+              collectionName: entities.collectionName,
+              contentType: entities.contentType,
+              entityData: entities.entityData,
+            })
+
+          // `created` rather than `updated`: to a feed consumer that dropped
+          // this entity when it was trashed, it is reappearing.
+          await recordEntityChanges(tx, rows.map((row: any) =>
+            changeEventFromRow('created', { projectId, actor: request.user!.id }, row, {
+              lifecycle: 'untrashed',
+              wordCountAfter: extractWordCount(row.entityData as Record<string, unknown>),
+            })
+          ))
+
+          return rows.map((r: { id: string }) => r.id)
+        })
+
+        return { restored: restored.length, ids: restored }
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return reply.status(400).send({ error: 'Validation failed', issues: error.issues })
+        }
+        fastify.log.error(error)
+        return reply.status(500).send({
+          error: 'Failed to restore entities',
+          details: error instanceof Error ? error.message : 'Unknown error',
+        })
+      }
+    }
+  )
+
+  /**
+   * Delete trashed entities for good. Only touches rows already in the trash,
+   * so there is no path from "live" to "gone" that skips the 30-day window.
+   */
+  fastify.post<{ Body: { projectId: string; ids: string[] } }>(
+    '/entities/bulk-delete-permanent',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      try {
+        const { projectId, ids } = BulkIdsSchema.parse(request.body)
+
+        const hasAccess = await requireProjectOwnership(request, reply, projectId)
+        if (!hasAccess) return
+
+        const purged = await db.transaction(async (tx) => {
+          const events: EntityChangeEvent[] = []
+          const removed = await purgeTrashedEntities(projectId, ids, tx, request.user!.id, events)
+          await recordEntityChanges(tx, events)
+          return removed
+        })
+
+        return { deleted: purged.length, ids: purged }
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return reply.status(400).send({ error: 'Validation failed', issues: error.issues })
+        }
+        fastify.log.error(error)
+        return reply.status(500).send({
+          error: 'Failed to permanently delete entities',
+          details: error instanceof Error ? error.message : 'Unknown error',
+        })
+      }
+    }
+  )
+
+  /**
+   * List a project's trash. Returns metadata only — never `entity_data`, which
+   * carries full chapter bodies and would make this response enormous.
+   */
+  fastify.get<{ Params: { projectId: string } }>(
+    '/projects/:projectId/trash',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      try {
+        const { projectId } = request.params
+
+        const hasAccess = await requireProjectOwnership(request, reply, projectId)
+        if (!hasAccess) return
+
+        const rows = await db
+          .select({
+            id: entities.id,
+            collectionName: entities.collectionName,
+            contentType: entities.contentType,
+            title: sql<string | null>`${entities.entityData}->>'title'`,
+            name: sql<string | null>`${entities.entityData}->>'name'`,
+            wordCount: sql<number | null>`(${entities.entityData}->>'word_count')::int`,
+            deletedAt: entities.deletedAt,
+            deletedBatchId: entities.deletedBatchId,
+          })
+          .from(entities)
+          .where(and(
+            eq(entities.projectId, projectId),
+            isNotNull(entities.deletedAt),
+          ))
+          .orderBy(desc(entities.deletedAt))
+
+        return {
+          items: rows.map(r => ({
+            id: r.id,
+            collection: r.collectionName,
+            contentType: r.contentType,
+            title: r.title ?? r.name ?? 'Untitled',
+            wordCount: r.wordCount ?? 0,
+            deletedAt: r.deletedAt?.toISOString() ?? null,
+            batchId: r.deletedBatchId,
+            autoDeleteAt: r.deletedAt ? autoDeleteAt(r.deletedAt).toISOString() : null,
+          })),
+          retentionDays: Math.round(TRASH_RETENTION_MS / (24 * 60 * 60 * 1000)),
+        }
+      } catch (error) {
+        fastify.log.error(error)
+        return reply.status(500).send({
+          error: 'Failed to list trash',
           details: error instanceof Error ? error.message : 'Unknown error',
         })
       }

@@ -22,6 +22,7 @@ import {
   embargoSchedules,
   subscriptions,
 } from '../db/schema'
+import { liveEntity } from '../lib/entity-scope'
 import { eq, and } from 'drizzle-orm'
 import { serverEventBus, DomainEvent } from '../lib/event-bus'
 import { sendNewChapterEmail } from '../lib/email'
@@ -45,7 +46,7 @@ async function handleContentPublished(event: DomainEvent): Promise<void> {
     db.select({
       id: entities.id,
       entityData: entities.entityData,
-    }).from(entities).where(eq(entities.id, chapterId)).limit(1),
+    }).from(entities).where(liveEntity(chapterId)).limit(1),
   ])
 
   if (!project || !chapter) return
@@ -187,7 +188,7 @@ async function handleContentAvailable(event: DomainEvent): Promise<void> {
     db.select({
       id: entities.id,
       entityData: entities.entityData,
-    }).from(entities).where(eq(entities.id, chapterId)).limit(1),
+    }).from(entities).where(liveEntity(chapterId)).limit(1),
   ])
 
   if (!project || !chapter) return

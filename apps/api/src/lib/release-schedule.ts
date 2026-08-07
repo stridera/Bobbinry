@@ -1,6 +1,7 @@
 import { and, eq, isNotNull, inArray, sql } from 'drizzle-orm'
 import { db } from '../db/connection'
 import { chapterPublications, entities, projectPublishConfig, projects, subscriptionTiers } from '../db/schema'
+import { liveEntity, notDeleted } from './entity-scope'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const DEFAULT_RELEASE_TIME = '12:00'
@@ -320,7 +321,7 @@ export async function reorderScheduleByEntityOrder(projectId: string): Promise<v
       entityOrder: sql<number>`COALESCE((${entities.entityData}->>'order')::bigint, 999999)`,
     })
     .from(chapterPublications)
-    .innerJoin(entities, eq(entities.id, chapterPublications.chapterId))
+    .innerJoin(entities, and(eq(entities.id, chapterPublications.chapterId), notDeleted()))
     .where(and(
       eq(chapterPublications.projectId, projectId),
       eq(chapterPublications.publishStatus, 'scheduled'),
@@ -389,7 +390,7 @@ export async function shouldAutoPublishAsGapFill(
       entityOrder: sql<number>`COALESCE((${entities.entityData}->>'order')::bigint, 999999)`,
     })
     .from(entities)
-    .where(eq(entities.id, chapterId))
+    .where(liveEntity(chapterId))
     .limit(1)
 
   if (!thisEntity) return false
@@ -403,7 +404,7 @@ export async function shouldAutoPublishAsGapFill(
       entityOrder: sql<number>`COALESCE((${entities.entityData}->>'order')::bigint, 999999)`,
     })
     .from(chapterPublications)
-    .innerJoin(entities, eq(entities.id, chapterPublications.chapterId))
+    .innerJoin(entities, and(eq(entities.id, chapterPublications.chapterId), notDeleted()))
     .where(and(
       eq(chapterPublications.projectId, projectId),
       inArray(chapterPublications.publishStatus, pipelineStatuses)

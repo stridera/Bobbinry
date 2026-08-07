@@ -38,6 +38,24 @@ type Executor = Pick<typeof db, 'insert'>
 
 export type EntityChangeAction = 'created' | 'updated' | 'deleted'
 
+/**
+ * Lifecycle transitions, reported alongside `action` rather than as new action
+ * values.
+ *
+ * Consumers branch exhaustively on the three action values, so introducing a
+ * fourth would silently drop events on every existing bot. Instead trash maps
+ * onto `deleted` and untrash onto `created` — which is what those consumers
+ * should do with them anyway (drop the chapter, then re-add it) — and this
+ * column carries the detail for anyone who wants it. It also finally
+ * distinguishes archive from unarchive, which are byte-identical today.
+ */
+export type EntityLifecycle =
+  | 'trashed'
+  | 'untrashed'
+  | 'purged'
+  | 'archived'
+  | 'unarchived'
+
 export interface EntityChangeEvent {
   projectId: string
   entityId: string
@@ -45,6 +63,7 @@ export interface EntityChangeEvent {
   contentType?: string | null | undefined
   title?: string | null | undefined
   action: EntityChangeAction
+  lifecycle?: EntityLifecycle | null | undefined
   fieldsChanged?: string[] | undefined
   wordCountBefore?: number | null | undefined
   wordCountAfter?: number | null | undefined
@@ -150,6 +169,7 @@ export async function recordEntityChanges(executor: Executor, events: EntityChan
     contentType: e.contentType ?? null,
     title: e.title ?? null,
     action: e.action,
+    lifecycle: e.lifecycle ?? null,
     fieldsChanged: e.fieldsChanged ?? [],
     wordCountBefore: e.wordCountBefore ?? null,
     wordCountAfter: e.wordCountAfter ?? null,
@@ -178,6 +198,7 @@ export interface RawChangeRow {
   contentType: string | null
   title: string | null
   action: string
+  lifecycle: string | null
   fieldsChanged: string[] | null
   wordCountBefore: number | null
   wordCountAfter: number | null
@@ -190,6 +211,8 @@ export interface CoalescedChange {
   contentType: string | null
   title: string | null
   action: EntityChangeAction
+  /** Net lifecycle transition over the window, or null for ordinary edits. */
+  lifecycle: EntityLifecycle | null
   fieldsChanged: string[]
   wordCountBefore: number | null
   wordCountAfter: number | null
@@ -207,7 +230,7 @@ export interface CoalescedChange {
  * deleted event anywhere in the window wins.
  */
 export function coalesceChanges(rows: RawChangeRow[]): CoalescedChange[] {
-  const byEntity = new Map<string, CoalescedChange & { createdInWindow: boolean }>()
+  const byEntity = new Map<string, CoalescedChange & { createdInWindow: boolean; reversiblyDeleted: boolean }>()
 
   for (const row of rows) {
     const existing = byEntity.get(row.entityId)
@@ -218,6 +241,7 @@ export function coalesceChanges(rows: RawChangeRow[]): CoalescedChange[] {
         contentType: row.contentType,
         title: row.title,
         action: row.action as EntityChangeAction,
+        lifecycle: (row.lifecycle ?? null) as EntityLifecycle | null,
         fieldsChanged: [...(row.fieldsChanged ?? [])],
         wordCountBefore: row.wordCountBefore,
         wordCountAfter: row.wordCountAfter,
@@ -226,6 +250,7 @@ export function coalesceChanges(rows: RawChangeRow[]): CoalescedChange[] {
         firstAt: row.occurredAt,
         lastAt: row.occurredAt,
         createdInWindow: row.action === 'created',
+        reversiblyDeleted: row.action === 'deleted' && row.lifecycle === 'trashed',
       })
       continue
     }
@@ -235,6 +260,9 @@ export function coalesceChanges(rows: RawChangeRow[]): CoalescedChange[] {
     existing.collection = row.collection
     if (row.contentType !== null) existing.contentType = row.contentType
     if (row.title !== null) existing.title = row.title
+    // Last transition wins: trash-then-untrash within one window nets out to
+    // 'untrashed', which is the state the entity is actually left in.
+    if (row.lifecycle !== null) existing.lifecycle = row.lifecycle as EntityLifecycle
     for (const f of row.fieldsChanged ?? []) {
       if (!existing.fieldsChanged.includes(f)) existing.fieldsChanged.push(f)
     }
@@ -248,6 +276,19 @@ export function coalesceChanges(rows: RawChangeRow[]): CoalescedChange[] {
 
     if (row.action === 'deleted') {
       existing.action = 'deleted'
+      // Trash is reversible, a purge or hard delete is not. Only the former
+      // may be undone by a later event in this window.
+      existing.reversiblyDeleted = row.lifecycle === 'trashed'
+    } else if (
+      existing.action === 'deleted' &&
+      existing.reversiblyDeleted &&
+      row.lifecycle === 'untrashed'
+    ) {
+      // Trashed and restored inside one window: the entity is still there, so
+      // it must not coalesce to `deleted` — a consumer would drop a chapter
+      // that still exists and never hear about it again.
+      existing.action = existing.createdInWindow ? 'created' : 'updated'
+      existing.reversiblyDeleted = false
     } else if (existing.action !== 'deleted') {
       existing.action = existing.createdInWindow ? 'created' : 'updated'
     }
@@ -255,7 +296,7 @@ export function coalesceChanges(rows: RawChangeRow[]): CoalescedChange[] {
 
   const out: CoalescedChange[] = []
   for (const change of byEntity.values()) {
-    const { createdInWindow, ...rest } = change
+    const { createdInWindow, reversiblyDeleted: _reversiblyDeleted, ...rest } = change
     rest.fieldsChanged.sort()
 
     if (rest.action === 'deleted') {

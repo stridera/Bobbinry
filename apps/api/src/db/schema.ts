@@ -807,8 +807,20 @@ export const entities = pgTable('entities', {
   // Narrative types count toward project word count; outline/supporting_doc do not.
   contentType: varchar('content_type', { length: 32 }),
   // Soft archive: null = active, set = hidden from default dashboard list but
-  // recoverable. Hard delete is a separate operation.
+  // recoverable. Deliberate shelving by the author — distinct from deletion.
   archivedAt: timestamp('archived_at'),
+  // Soft delete (trash): null = live, set = deleted and hidden everywhere,
+  // purged after 30 days. A third state, not a rename of archivedAt — an
+  // archived row is one the author chose to keep, a trashed row is one they
+  // chose to throw away and can still take back.
+  //
+  // Every read path must filter `deleted_at IS NULL`. buildScopeCondition()
+  // does it for the scoped paths; lib/entity-scope.ts covers the rest.
+  deletedAt: timestamp('deleted_at'),
+  // Groups the rows trashed by one request, so deleting a container and
+  // restoring it later brings its children back as a unit.
+  deletedBatchId: uuid('deleted_batch_id'),
+  deletedBy: uuid('deleted_by').references(() => users.id),
   lastEditedAt: timestamp('last_edited_at').defaultNow(),
   lastEditedBy: uuid('last_edited_by').references(() => users.id),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -822,7 +834,11 @@ export const entities = pgTable('entities', {
   publicIdx: index('entities_public_idx').on(table.projectId, table.collectionName, table.isPublished, table.publishOrder),
   lastEditedIdx: index('entities_last_edited_idx').on(table.lastEditedAt),
   projectEditedIdx: index('entities_project_edited_idx').on(table.projectId, table.lastEditedAt),
-  projectArchivedIdx: index('entities_project_archived_idx').on(table.projectId, table.collectionName, table.archivedAt)
+  projectArchivedIdx: index('entities_project_archived_idx').on(table.projectId, table.collectionName, table.archivedAt),
+  projectDeletedIdx: index('entities_project_deleted_idx').on(table.projectId, table.deletedAt),
+  // Partial: only trashed rows carry a batch id, and this index exists solely
+  // to expand one restored row to its whole batch.
+  deletedBatchIdx: index('entities_deleted_batch_idx').on(table.deletedBatchId).where(sql`${table.deletedBatchId} IS NOT NULL`)
 }))
 
 // Uploads - audit trail for file uploads
@@ -904,6 +920,14 @@ export const entityChanges = pgTable('entity_changes', {
   contentType: varchar('content_type', { length: 32 }), // snapshot at event time
   title: text('title'), // snapshot (after) so the feed is self-contained
   action: varchar('action', { length: 20 }).notNull(), // created | updated | deleted
+  // Which lifecycle transition produced this event, when it was one:
+  // trashed | untrashed | purged | archived | unarchived. Null for ordinary
+  // edits. Kept separate from `action` on purpose — consumers branch
+  // exhaustively on the three action values, so trash maps onto `deleted` and
+  // untrash onto `created` and existing bots keep working unchanged, while new
+  // consumers can finally tell an archive from a restore (today the two are
+  // byte-identical in the feed).
+  lifecycle: varchar('lifecycle', { length: 20 }),
   fieldsChanged: text('fields_changed').array().notNull().default(sql`'{}'::text[]`),
   wordCountBefore: integer('word_count_before'), // null for non-content entities
   wordCountAfter: integer('word_count_after'),

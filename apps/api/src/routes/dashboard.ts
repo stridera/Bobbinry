@@ -16,6 +16,7 @@ import {
 import { eq, and, ne, desc, sql, inArray, isNull, isNotNull } from 'drizzle-orm'
 import { randomBytes } from 'crypto'
 import { requireAuth, requireProjectOwnership, requireDeletedProjectOwnership, requireScope } from '../middleware/auth'
+import { autoDeleteAt, notDeleted } from '../lib/entity-scope'
 
 const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
   /**
@@ -173,7 +174,8 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
         .innerJoin(projects, eq(entities.projectId, projects.id))
         .where(and(
           inArray(entities.projectId, projectIds),
-          ne(entities.collectionName, 'entity_type_definitions')
+          ne(entities.collectionName, 'entity_type_definitions'),
+          notDeleted()
         ))
         .orderBy(desc(entities.lastEditedAt))
         .limit(parseInt(limit))
@@ -247,7 +249,7 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
             total: sql<string>`COUNT(*)::text`
           })
           .from(entities)
-          .where(inArray(entities.projectId, projectIds))
+          .where(and(inArray(entities.projectId, projectIds), notDeleted()))
         
         if (stats) {
           entityStats = stats
@@ -627,18 +629,17 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
           .orderBy(desc(projectCollections.deletedAt))
       ])
 
-      const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
 
       return reply.send({
         projects: trashedProjects.map(p => ({
           ...p,
           type: 'project' as const,
-          autoDeleteAt: new Date(p.deletedAt!.getTime() + THIRTY_DAYS_MS)
+          autoDeleteAt: autoDeleteAt(p.deletedAt!)
         })),
         collections: trashedCollections.map(c => ({
           ...c,
           type: 'collection' as const,
-          autoDeleteAt: new Date(c.deletedAt!.getTime() + THIRTY_DAYS_MS)
+          autoDeleteAt: autoDeleteAt(c.deletedAt!)
         }))
       })
     } catch (error) {
