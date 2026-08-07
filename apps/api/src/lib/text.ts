@@ -148,6 +148,48 @@ export function tokenizeHtml(html: string | null | undefined): { text: string; w
   return { text, words, count: words.length }
 }
 
+/**
+ * Words added and removed between two token lists, by multiset difference.
+ *
+ * Deliberately *not* a diff library. Three reasons, in order of importance:
+ *
+ *  1. It satisfies `added - removed === after.length - before.length` by
+ *     construction, so the change feed's deltas always reconcile with the
+ *     stored word_count. jsdiff's `diffWords` tokenizes on its own punctuation
+ *     rules and would not, and consumers would file the mismatch as a bug.
+ *  2. It is O(n) with no pathological case. A search-replace or import rewrites
+ *     the whole body, which is exactly the input that drives Myers' algorithm
+ *     to O(n·d) — on the same event loop as the DB health check that restarts
+ *     the process on stalls.
+ *  3. It answers the real question better. Being order-insensitive, a moved
+ *     paragraph reports ~0/0 instead of "N added, N removed", so "did the
+ *     author write today" stays honest.
+ *
+ * Its blind spot: rewording a sentence with the same words shows nothing. The
+ * pull-based diff endpoint covers that case, where the cost is affordable.
+ */
+export function wordDelta(before: readonly string[], after: readonly string[]): { added: number; removed: number } {
+  const freq = new Map<string, number>()
+  for (const w of before) freq.set(w, (freq.get(w) ?? 0) + 1)
+
+  let added = 0
+  for (const w of after) {
+    const n = freq.get(w) ?? 0
+    if (n > 0) freq.set(w, n - 1)
+    else added++
+  }
+
+  let removed = 0
+  for (const n of freq.values()) removed += n
+
+  return { added, removed }
+}
+
+/** Word delta between two HTML bodies. */
+export function htmlWordDelta(before: string | null | undefined, after: string | null | undefined) {
+  return wordDelta(tokenizeHtml(before).words, tokenizeHtml(after).words)
+}
+
 /** Plain-text paragraphs of an HTML body, blanks dropped. */
 export function htmlToParagraphs(html: string | null | undefined): string[] {
   const paragraphs: string[] = []

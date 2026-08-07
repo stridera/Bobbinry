@@ -27,10 +27,18 @@ import { renameSlug, resolveSlugProjects } from '../lib/slugs'
 import { findBobbinForCollectionAcrossScopes } from '../lib/disk-manifests'
 import { getEffectiveBobbins, getCollectionIdsForProject, buildScopeCondition } from '../lib/effective-bobbins'
 import { ApiError, ValidationError, NotFoundError } from '../lib/errors'
-import { countWordsFromHtml } from '../lib/text'
+import { countWordsFromHtml, tokenizeHtml, wordDelta } from '../lib/text'
 import { autoDeleteAt, TRASH_RETENTION_MS } from '../lib/entity-scope'
 import { randomUUID } from 'crypto'
 import { actorKeyFor, captureRevisionSafe, touchesRestorableField } from '../lib/entity-revisions'
+
+/**
+ * Above this body size the change feed emits null deltas instead of computing
+ * them. The multiset pass is O(n) and cheap, but this runs on the editor's
+ * autosave path — which shares an event loop with the DB health check that
+ * restarts the process on stalls — so it gets a ceiling rather than trust.
+ */
+const MAX_DELTA_BODY_CHARS = 400_000
 
 /**
  * Highest `order` value among the project's `content` rows (0 if none).
@@ -681,20 +689,16 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
         mergedData as Record<string, unknown>
       )
       if (hasChanges(diff)) {
-        await recordEntityChangesSafe(db, [changeEventFromRow('updated', { projectId, actor: userId }, updated, {
-          fieldsChanged: diff.fieldsChanged,
-          wordCountBefore: diff.wordCountBefore,
-          wordCountAfter: diff.wordCountAfter,
-        })])
-
         // Restore point for this writing session. Gated on the diff the feed
         // already computed, so reorders, archive toggles, publish-flag flips
         // and updated_at-only saves cost nothing here.
         //
         // Snapshots `currentEntity.entityData` — the state *before* this save.
-        // See lib/entity-revisions.ts for why that direction matters.
+        // See lib/entity-revisions.ts for why that direction matters. Captured
+        // before the feed write so the event can point at it.
+        let revisionId: string | null = null
         if (touchesRestorableField(diff.fieldsChanged)) {
-          await captureRevisionSafe(db, {
+          revisionId = await captureRevisionSafe(db, {
             projectId,
             entityId,
             collection,
@@ -705,6 +709,41 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
             actorKey: actorKeyFor(request),
           })
         }
+
+        // Churn, so a sync bot can tell a revision pass from new writing
+        // without a second uncoalesced poll. Only for content bodies, and only
+        // when the body actually changed — a title-only save emits nulls.
+        // Capped: past ~20k words the multiset pass stops being free, and this
+        // runs on the autosave path.
+        const oldBody = (currentEntity.entityData as Record<string, unknown>)['body']
+        const newBody = mergedData['body']
+        const canDelta =
+          collection === 'content' &&
+          diff.fieldsChanged.includes('body') &&
+          typeof newBody === 'string' &&
+          newBody.length < MAX_DELTA_BODY_CHARS &&
+          (typeof oldBody !== 'string' || oldBody.length < MAX_DELTA_BODY_CHARS)
+
+        // Tokenize both bodies once and take the counts *and* the delta from
+        // the same pass. Consumers rely on
+        // `wordsAdded - wordsRemoved === wordCountDelta`, and reading
+        // wordCountBefore from the stored `word_count` would break that
+        // whenever the stored value had drifted from the body it describes —
+        // an imported row, a direct DB write, or anything written before the
+        // tokenizer was unified. Recomputing makes the invariant hold
+        // unconditionally instead of depending on stored state being right.
+        const before = canDelta ? tokenizeHtml(typeof oldBody === 'string' ? oldBody : '') : null
+        const after = canDelta ? tokenizeHtml(newBody as string) : null
+        const delta = before && after ? wordDelta(before.words, after.words) : null
+
+        await recordEntityChangesSafe(db, [changeEventFromRow('updated', { projectId, actor: userId }, updated, {
+          fieldsChanged: diff.fieldsChanged,
+          wordCountBefore: before?.count ?? diff.wordCountBefore,
+          wordCountAfter: after?.count ?? diff.wordCountAfter,
+          wordsAdded: delta?.added ?? null,
+          wordsRemoved: delta?.removed ?? null,
+          revisionId,
+        })])
 
         // Renaming a published entity moves its reader-URL slug (in every
         // project it's visible from); the old slug stays behind as a

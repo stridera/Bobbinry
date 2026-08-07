@@ -142,7 +142,7 @@ export interface CaptureRevisionInput {
  * always insert. One statement either way — no read-before-write, and the
  * uniqueness guarantee lives in the index rather than in a check-then-act race.
  */
-export async function captureRevision(executor: Executor, input: CaptureRevisionInput): Promise<void> {
+export async function captureRevision(executor: Executor, input: CaptureRevisionInput): Promise<string | null> {
   const labeled = input.label != null
   const windowMs = revisionWindowMs()
 
@@ -154,7 +154,7 @@ export async function captureRevision(executor: Executor, input: CaptureRevision
     ? sql`NULL`
     : sql`date_bin(${`${Math.max(1, Math.round(windowMs / 1000))} seconds`}::interval, now(), timestamptz 'epoch')`
 
-  await executor
+  const [row] = await executor
     .insert(entityRevisions)
     .values({
       projectId: input.projectId,
@@ -184,6 +184,12 @@ export async function captureRevision(executor: Executor, input: CaptureRevision
         // updates cheap.
       },
     })
+    // The id of the row this save belongs to — the same row for every save in
+    // the window, which is exactly the "state before this window" handle a
+    // feed consumer needs to ask what changed.
+    .returning({ id: entityRevisions.id })
+
+  return row?.id ?? null
 }
 
 /**
@@ -192,11 +198,12 @@ export async function captureRevision(executor: Executor, input: CaptureRevision
  * Same discipline as recordEntityChangesSafe — losing a restore point is bad,
  * losing the author's save because we failed to record one is worse.
  */
-export async function captureRevisionSafe(executor: Executor, input: CaptureRevisionInput): Promise<void> {
+export async function captureRevisionSafe(executor: Executor, input: CaptureRevisionInput): Promise<string | null> {
   try {
-    await captureRevision(executor, input)
+    return await captureRevision(executor, input)
   } catch (err) {
     console.error('[entity-revisions] Failed to capture revision:', err)
+    return null
   }
 }
 

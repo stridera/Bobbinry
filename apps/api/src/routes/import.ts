@@ -415,6 +415,7 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
             contentType: insertValues.contentType,
             title: seg.title,
             action: 'created',
+            source: 'import' as const,
             fieldsChanged: diffEntityData(null, data).fieldsChanged,
             wordCountAfter: extractWordCount(data),
             actor: user.id,

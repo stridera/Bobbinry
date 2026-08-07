@@ -17,7 +17,7 @@ import {
   type EntityMatch,
 } from '../lib/search-replace'
 
-import { countWordsFromHtml } from '../lib/text'
+import { countWordsFromHtml, htmlWordDelta } from '../lib/text'
 import { actorKeyFor, captureRevision } from '../lib/entity-revisions'
 
 const ScopeSchema = z.discriminatedUnion('type', [
@@ -314,6 +314,11 @@ const searchReplacePlugin: FastifyPluginAsync = async (fastify) => {
             fieldsChanged: diff.fieldsChanged.length > 0 ? diff.fieldsChanged : touchedFields,
             wordCountBefore: diff.wordCountBefore,
             wordCountAfter: diff.wordCountAfter,
+            ...(typeof data.body === 'string' && typeof nextData.body === 'string'
+              ? (({ added, removed }) => ({ wordsAdded: added, wordsRemoved: removed }))(
+                  htmlWordDelta(data.body as string, nextData.body as string))
+              : {}),
+            source: 'search_replace' as const,
             actor: userId,
           })
 

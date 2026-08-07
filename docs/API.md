@@ -165,6 +165,93 @@ All routes are prefixed with `/api` unless noted. Authentication is JWT-based (s
 
 **Common collection names**: `content` (chapters/scenes), `containers` (folders/parts), `characters`, `locations`, `items`, `lore`, `entity_type_definitions` (custom types).
 
+**Deleting is reversible.** `DELETE /entities/:id` and `POST /entities/bulk-delete` move rows to the trash rather than removing them; they are purged after 30 days. Deleting a container trashes everything inside it under one `batchId`, and restoring any member restores the whole batch. Comments, annotations, publications and reader slugs survive the window and come back on restore.
+
+### Trash (`entities.ts`)
+
+| Method | Path | Auth | Scope | Description |
+|--------|------|------|-------|-------------|
+| GET | `/projects/:projectId/trash` | Owner | `projects:read` | Trashed entities (metadata only) with `autoDeleteAt` |
+| POST | `/entities/bulk-untrash` | Owner | `projects:write` | Restore; expands to whole batches |
+| POST | `/entities/bulk-delete-permanent` | Owner | `projects:write` | Delete forever. Only touches already-trashed rows |
+
+### Change Feed (`entity-changes.ts`)
+
+`GET /projects/:projectId/changes` — cursor-based feed of everything that changed, recorded at write time. Poll this instead of reconstructing changes from `updatedAt`.
+
+| Query | Default | Description |
+|-------|---------|-------------|
+| `since` | — | Cursor from the previous poll. **Omit for bootstrap**: returns the current cursor and no changes |
+| `collection` | all | Restrict to one collection, e.g. `content` |
+| `coalesce` | `true` | `true` → one entry per entity (`changes`); `false` → raw event rows (`events`) |
+| `limit` | 5000 | Raw rows scanned per page, before coalescing |
+
+Coalesced entry:
+
+```json
+{
+  "entityId": "…", "title": "The Succubus", "action": "updated",
+  "lifecycle": null,
+  "fieldsChanged": ["body"],
+  "wordCountBefore": 3000, "wordCountAfter": 3010, "wordCountDelta": 10,
+  "wordsAdded": 340, "wordsRemoved": 330,
+  "revisionIdFirst": "…", "sources": [],
+  "eventCount": 3, "firstAt": "…", "lastAt": "…"
+}
+```
+
+- **`wordsAdded` / `wordsRemoved` are churn.** They deliberately double-count a write-then-cut, because that is what separates "spent an hour rewriting" from "did nothing" — `wordCountDelta` alone cannot. Do not graph them as productivity. The invariant `wordsAdded − wordsRemoved === wordCountDelta` always holds, including across creates and deletes, and because they are additive you may also sum them across pages.
+- **`0` and `null` differ**: `0` means computed-and-unchanged, `null` means not computed (non-content entity, oversized body, or a row predating this feature). Historical rows are permanently `null`.
+- **`lifecycle`** is `trashed | untrashed | purged | archived | unarchived`, or `null` for an ordinary edit. `action` stays `created | updated | deleted` so existing consumers keep working: a trash arrives as `deleted`, a restore as `created`. A trash and a restore inside one window net out to the entity still existing, not to `deleted`.
+- **`sources`** lists non-edit origins seen in the window (`restore`, `import`, `search_replace`, `publish`, `system`). Without it a restore looks identical to a large paste.
+- **`revisionIdFirst`** is the restore point holding the state at the *start* of the window — the `from` for the diff endpoint below.
+
+Cursor safety: `seq` is a bigserial allocated before commit, so the high-water mark is held back by a short horizon (15s) and the feed does not serve the last few seconds of activity. Persist the cursor only after you have finished processing a page.
+
+### Revisions & Diff (`entity-revisions.ts`)
+
+Restore points for chapter content, captured once per ~15-minute writing session. Each revision holds the state **before** the session it names, so `diff(revision → live)` is exactly "what changed since then".
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/entities/:entityId/revisions` | Owner | Timeline, metadata only (`limit`, `before`) |
+| GET | `/entities/:entityId/revisions/:revisionId` | Owner | One snapshot's restorable fields |
+| POST | `/entities/:entityId/revisions` | Owner | Pin a manual checkpoint (`{ note? }`) |
+| POST | `/entities/:entityId/revisions/:revisionId/restore` | Owner | Restore (`{ expectedVersion? }`) |
+| GET | `/entities/:entityId/diff` | Owner | `?from=<revisionId>&to=<revisionId\|live>&maxHunks=` |
+
+Restore is an ordinary edit: it moves `version` **forward** through the same optimistic-lock CAS the editor uses, checkpoints the current state first (so it is itself undoable), and merges through an allowlist (`body`, `title`, `notes`, `synopsis`) — reverting text never moves a chapter or reverts its publish state. The response includes `_meta.version`; an editor **must** adopt it, or its in-flight autosave will overwrite the restore.
+
+Diff response:
+
+```json
+{
+  "stats": { "wordsAdded": 6, "wordsRemoved": 7,
+             "paragraphs": { "added": 0, "removed": 0, "modified": 1 } },
+  "hunks": [{ "type": "replace", "index": 0,
+              "before": "Garron drew his blade and lunged at the succubus.",
+              "after":  "Garron leaned in and kissed the succubus." }],
+  "truncated": false
+}
+```
+
+`truncated: true` means output was capped (oversized body, too many hunks, or the diff timed out) — `stats` stays exact regardless. A pruned restore point returns 404 with `code: "REVISION_PRUNED"`, distinct from a missing entity.
+
+Retention: both tiers keep every restore point for 30 days. Past that, free keeps labeled checkpoints only (cap 100/entity); supporters keep one per day to a year and one per week beyond (cap 1000). Labeled checkpoints — publish, import, search-replace, pre-restore, manual — are never thinned. A lapsed supporter keeps supporter depth for a further 30 days.
+
+**Typical consumer flow** — detect a revision pass and report what changed:
+
+```bash
+# 1. What changed since the last poll
+curl -H "Authorization: Bearer $KEY" \
+  "$API/api/projects/$PID/changes?since=$CURSOR&collection=content"
+# 2. Classify: wordsAdded >> wordsRemoved -> new writing;
+#    both large with delta ~0 -> revision pass; sources contains 'restore' -> rollback
+# 3. For the ones that qualify, ask what the prose change actually was
+curl -H "Authorization: Bearer $KEY" \
+  "$API/api/entities/$EID/diff?from=$REVISION_ID_FIRST&to=live"
+```
+
 ### Entity Types (`entity-types.ts`)
 
 First-class CRUD for custom entity type definitions (schemas like "characters", "spells"). These are the schemas that define what fields an entity of a given type has. Under the hood they're stored in the `entity_type_definitions` collection.

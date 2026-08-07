@@ -931,6 +931,21 @@ export const entityChanges = pgTable('entity_changes', {
   fieldsChanged: text('fields_changed').array().notNull().default(sql`'{}'::text[]`),
   wordCountBefore: integer('word_count_before'), // null for non-content entities
   wordCountAfter: integer('word_count_after'),
+  // Churn, so a consumer can tell a revision pass from new writing without
+  // polling the feed twice and summing abs(after - before).
+  //
+  // 0 and null differ and the distinction is load-bearing: 0 means "computed,
+  // nothing changed"; null means "not computed" — a non-content entity, a body
+  // over the size cap, or a row written before this shipped. Historical rows
+  // stay null forever; the before-bodies they would need are gone.
+  wordsAdded: integer('words_added'),
+  wordsRemoved: integer('words_removed'),
+  // The restore point holding the pre-edit state for this event, so a consumer
+  // can ask the diff endpoint what actually changed.
+  revisionId: uuid('revision_id'),
+  // What produced the edit. Without it a restore is an `updated` event with
+  // fieldsChanged ['body'] and a large delta — indistinguishable from a paste.
+  source: varchar('source', { length: 16 }),
   actor: varchar('actor', { length: 255 }),
   occurredAt: timestamp('occurred_at').defaultNow().notNull()
 }, (table) => ({

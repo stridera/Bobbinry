@@ -56,6 +56,14 @@ export type EntityLifecycle =
   | 'archived'
   | 'unarchived'
 
+/** What produced an edit. `edit` is the default and is stored as null. */
+export type EntityChangeSource =
+  | 'restore'
+  | 'import'
+  | 'search_replace'
+  | 'publish'
+  | 'system'
+
 export interface EntityChangeEvent {
   projectId: string
   entityId: string
@@ -67,6 +75,11 @@ export interface EntityChangeEvent {
   fieldsChanged?: string[] | undefined
   wordCountBefore?: number | null | undefined
   wordCountAfter?: number | null | undefined
+  /** Churn. 0 means computed-and-unchanged; null means not computed. */
+  wordsAdded?: number | null | undefined
+  wordsRemoved?: number | null | undefined
+  revisionId?: string | null | undefined
+  source?: EntityChangeSource | null | undefined
   actor?: string | null | undefined
 }
 
@@ -145,6 +158,16 @@ export function changeEventFromRow(
   extras?: Partial<EntityChangeEvent>
 ): EntityChangeEvent {
   const data = (row.entityData ?? null) as Record<string, unknown> | null
+  const words = extractWordCount(data)
+
+  // Creates and deletes carry deltas too. Without them
+  // `sum(wordsAdded - wordsRemoved)` would disagree with `wordCountDelta` for
+  // any window containing one, and neither number could be trusted.
+  const lifecycleDeltas =
+    action === 'deleted' ? { wordCountBefore: words, wordsAdded: 0, wordsRemoved: words ?? 0 }
+    : action === 'created' ? { wordsAdded: words ?? 0, wordsRemoved: 0 }
+    : {}
+
   return {
     projectId: ctx.projectId,
     entityId: row.id,
@@ -152,7 +175,7 @@ export function changeEventFromRow(
     contentType: row.contentType ?? null,
     title: extractTitle(data),
     action,
-    ...(action === 'deleted' ? { wordCountBefore: extractWordCount(data) } : {}),
+    ...lifecycleDeltas,
     actor: ctx.actor,
     ...extras,
   }
@@ -173,6 +196,10 @@ export async function recordEntityChanges(executor: Executor, events: EntityChan
     fieldsChanged: e.fieldsChanged ?? [],
     wordCountBefore: e.wordCountBefore ?? null,
     wordCountAfter: e.wordCountAfter ?? null,
+    wordsAdded: e.wordsAdded ?? null,
+    wordsRemoved: e.wordsRemoved ?? null,
+    revisionId: e.revisionId ?? null,
+    source: e.source ?? null,
     actor: e.actor ?? null,
   })))
 }
@@ -202,6 +229,10 @@ export interface RawChangeRow {
   fieldsChanged: string[] | null
   wordCountBefore: number | null
   wordCountAfter: number | null
+  wordsAdded: number | null
+  wordsRemoved: number | null
+  revisionId: string | null
+  source: string | null
   occurredAt: Date
 }
 
@@ -217,6 +248,22 @@ export interface CoalescedChange {
   wordCountBefore: number | null
   wordCountAfter: number | null
   wordCountDelta: number | null
+  /**
+   * Churn over the window: words added and removed, summed.
+   *
+   * Deliberately double-counts a write-then-cut — 100 words written and cut
+   * inside one window reports added 100, removed 100, delta 0. That is the
+   * point: it separates "spent an hour rewriting" from "did nothing", which
+   * wordCountDelta alone cannot. It is not net growth; do not graph it as
+   * productivity.
+   */
+  wordsAdded: number | null
+  wordsRemoved: number | null
+  /** Oldest pre-state restore point in the window — the handle for
+   *  GET /entities/:id/diff?from=…&to=live. */
+  revisionIdFirst: string | null
+  /** Non-edit sources seen in the window (restore, import, search_replace…). */
+  sources: string[]
   eventCount: number
   firstAt: Date
   lastAt: Date
@@ -246,6 +293,10 @@ export function coalesceChanges(rows: RawChangeRow[]): CoalescedChange[] {
         wordCountBefore: row.wordCountBefore,
         wordCountAfter: row.wordCountAfter,
         wordCountDelta: null,
+        wordsAdded: row.wordsAdded,
+        wordsRemoved: row.wordsRemoved,
+        revisionIdFirst: row.revisionId,
+        sources: row.source ? [row.source] : [],
         eventCount: 1,
         firstAt: row.occurredAt,
         lastAt: row.occurredAt,
@@ -273,6 +324,16 @@ export function coalesceChanges(rows: RawChangeRow[]): CoalescedChange[] {
       existing.wordCountBefore = row.wordCountBefore
     }
     if (row.wordCountAfter !== null) existing.wordCountAfter = row.wordCountAfter
+
+    // Additive, unlike the union-merge for fieldsChanged and the first/last
+    // merge for word counts. Null-preserving: stay null only if no row in the
+    // window carried a value — a partial sum beats discarding information, and
+    // because these are additive a consumer can also sum them across pages.
+    if (row.wordsAdded !== null) existing.wordsAdded = (existing.wordsAdded ?? 0) + row.wordsAdded
+    if (row.wordsRemoved !== null) existing.wordsRemoved = (existing.wordsRemoved ?? 0) + row.wordsRemoved
+    // Oldest wins: this is the diff's starting point for the whole window.
+    if (existing.revisionIdFirst === null && row.revisionId !== null) existing.revisionIdFirst = row.revisionId
+    if (row.source && !existing.sources.includes(row.source)) existing.sources.push(row.source)
 
     if (row.action === 'deleted') {
       existing.action = 'deleted'

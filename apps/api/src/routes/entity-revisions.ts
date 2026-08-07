@@ -28,10 +28,26 @@ import {
   diffEntityData,
   recordEntityChanges,
 } from '../lib/entity-changes'
-import { countWordsFromHtml } from '../lib/text'
+import { countWordsFromHtml, htmlWordDelta } from '../lib/text'
 import { notDeleted } from '../lib/entity-scope'
+import { diffHtmlBodies } from '../lib/entity-diff'
+
+/** Word delta between two possibly-absent bodies, as change-event fields. */
+function htmlWordDeltaFor(before: unknown, after: unknown) {
+  if (typeof after !== 'string') return {}
+  const { added, removed } = htmlWordDelta(typeof before === 'string' ? before : '', after)
+  return { wordsAdded: added, wordsRemoved: removed }
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+const DiffQuerySchema = z.object({
+  from: z.string().uuid(),
+  // 'live' (default) diffs against the current entity; a revision id diffs
+  // between two restore points.
+  to: z.string().optional(),
+  maxHunks: z.coerce.number().int().min(1).max(500).default(100),
+})
 
 const ListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
@@ -169,6 +185,90 @@ const entityRevisionsPlugin: FastifyPluginAsync = async (fastify) => {
       } catch (error) {
         fastify.log.error(error)
         return reply.status(500).send({ error: 'Failed to load revision' })
+      }
+    }
+  )
+
+  /**
+   * What actually changed, in prose.
+   *
+   *   GET /entities/:id/diff?from=<revisionId>&to=<revisionId|live>
+   *
+   * This is the endpoint a daily-report bot calls after the change feed tells
+   * it a chapter had a revision pass. Because revisions snapshot the state
+   * *before* their session, `from=<revisionIdFirst>&to=live` is exactly "what
+   * changed since you last looked" with nothing to reconstruct.
+   *
+   * Pull-based on purpose: the Myers diff behind it is far too expensive to run
+   * on every autosave, and a feed carrying prose hunks for thousands of events
+   * would be enormous. Here it runs for one chapter, on request.
+   */
+  fastify.get<{
+    Params: { entityId: string }
+    Querystring: { from: string; to?: string; maxHunks?: number }
+  }>(
+    '/entities/:entityId/diff',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      try {
+        const entity = await loadOwnedEntity(request, reply, request.params.entityId)
+        if (!entity) return
+        if (!assertEntityScope(request, reply, entity.collectionName, 'read')) return
+
+        const query = DiffQuerySchema.parse(request.query)
+
+        const from = await revisionById(db, entity.id, query.from)
+        if (!from) {
+          return reply.status(404).send({
+            error: 'Restore point not found. It may have been removed by retention.',
+            code: 'REVISION_PRUNED',
+          })
+        }
+
+        const liveData = entity.entityData as Record<string, unknown>
+        let afterBody: unknown = liveData['body']
+        let toMeta: Record<string, unknown> = { live: true, version: entity.version }
+
+        if (query.to && query.to !== 'live') {
+          const to = await revisionById(db, entity.id, query.to)
+          if (!to) {
+            return reply.status(404).send({
+              error: 'Restore point not found. It may have been removed by retention.',
+              code: 'REVISION_PRUNED',
+            })
+          }
+          afterBody = (to.snapshot as Record<string, unknown>)['body']
+          toMeta = {
+            live: false,
+            revisionId: to.id,
+            sessionStartedAt: to.sessionStartedAt.toISOString(),
+          }
+        }
+
+        const beforeBody = (from.snapshot as Record<string, unknown>)['body']
+        const diff = diffHtmlBodies(
+          typeof beforeBody === 'string' ? beforeBody : '',
+          typeof afterBody === 'string' ? afterBody : '',
+          { maxHunks: query.maxHunks },
+        )
+
+        return {
+          entityId: entity.id,
+          title: (liveData['title'] as string) ?? null,
+          from: {
+            revisionId: from.id,
+            sessionStartedAt: from.sessionStartedAt.toISOString(),
+            label: from.label,
+          },
+          to: toMeta,
+          ...diff,
+        }
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return reply.status(400).send({ error: 'Invalid query', issues: error.issues })
+        }
+        fastify.log.error(error)
+        return reply.status(500).send({ error: 'Failed to diff revisions' })
       }
     }
   )
@@ -319,6 +419,10 @@ const entityRevisionsPlugin: FastifyPluginAsync = async (fastify) => {
               fieldsChanged: diff.fieldsChanged,
               wordCountBefore: diff.wordCountBefore,
               wordCountAfter: diff.wordCountAfter,
+              ...htmlWordDeltaFor(liveData['body'], merged['body']),
+              // Without this a restore is an `updated` with fieldsChanged
+              // ['body'] and a large delta — indistinguishable from a paste.
+              source: 'restore',
             }),
           ])
 
