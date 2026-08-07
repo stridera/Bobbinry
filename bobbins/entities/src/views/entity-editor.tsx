@@ -16,6 +16,8 @@ import type { BobbinrySDK } from '@bobbinry/sdk'
 import type { EntityTypeDefinition, EntityVariants, FieldDefinition, VariantItem } from '../types'
 import { normalizeTypeConfig, normalizeJsonSchema, createDefaultJsonValue } from '../types'
 import {
+  GALLERY_INHERIT_KEY,
+  GALLERY_OVERRIDE_FIELDS,
   VARIANTS_KEY,
   ensureUniqueVariantId,
   getVariants,
@@ -526,6 +528,9 @@ export default function EntityEditorView({
     if (!activeVariantId) return [] as Array<{ field: string; fromLabel: string }>
     const out: Array<{ field: string; fromLabel: string }> = []
     for (const field of versionableFieldNames(typeConfig)) {
+      // The gallery triple moves as a unit, so report it once under its
+      // canonical key — otherwise one inherited gallery reads as "3 fields".
+      if (GALLERY_OVERRIDE_FIELDS.includes(field) && field !== GALLERY_INHERIT_KEY) continue
       const source = variantFieldSource(entity, typeConfig, activeVariantId, field)
       if (source.kind === 'inherited') out.push({ field, fromLabel: source.fromLabel })
     }
