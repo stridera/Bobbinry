@@ -27,6 +27,7 @@ import type {
   ParserResult,
 } from './index'
 import { sanitizeImportedHtml } from '../sanitize-html'
+import { countWords } from '../text'
 import { uploadImportImage } from './images'
 import { assertSafeZip } from './zip-safe'
 
@@ -240,10 +241,6 @@ function mimeFromName(name: string): string {
   }
 }
 
-function countWordsFromText(text: string): number {
-  return text.split(/\s+/).filter(w => w.length > 0).length
-}
-
 function firstSnippet(text: string): string {
   const t = text.replace(/\s+/g, ' ').trim()
   return t.length > FIRST_LINE_LIMIT ? t.slice(0, FIRST_LINE_LIMIT) + '…' : t
@@ -382,7 +379,7 @@ export async function parseOdt(
       tempId: randomUUID(),
       suggestedTitle: extractTitle(sanitized, `Chapter ${i + 1}`),
       html: sanitized,
-      wordCount: countWordsFromText(fullText),
+      wordCount: countWords(fullText),
       firstLine: firstSnippet(firstLineSource),
     })
   }

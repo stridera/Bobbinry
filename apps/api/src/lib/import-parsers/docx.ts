@@ -42,6 +42,7 @@ import type {
   ParserResult,
 } from './index'
 import { sanitizeImportedHtml } from '../sanitize-html'
+import { countWords } from '../text'
 import { uploadImportImage } from './images'
 
 const PAGE_BREAK_MARKER = '☃___bbnr_pb_marker___☃'
@@ -252,10 +253,6 @@ function injectMarkersByText(html: string, breakTexts: string[]): { html: string
   }
 
   return { html: root.html() ?? html, matched }
-}
-
-function countWordsFromText(text: string): number {
-  return text.split(/\s+/).filter(w => w.length > 0).length
 }
 
 function firstSnippet(text: string, limit = FIRST_LINE_LIMIT): string {
@@ -699,7 +696,7 @@ export async function parseDocx(
       tempId: randomUUID(),
       suggestedTitle: detection.title,
       html: sanitized,
-      wordCount: countWordsFromText(plainAll),
+      wordCount: countWords(plainAll),
       firstLine: firstSnippet(firstLineSource),
       ...(detection.structure ? { titleStructure: detection.structure } : {}),
       ...(detection.htmlWithoutTitle ? { htmlWithoutTitle: detection.htmlWithoutTitle } : {}),

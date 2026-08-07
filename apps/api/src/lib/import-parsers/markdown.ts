@@ -18,13 +18,10 @@ import type {
   ParserResult,
 } from './index'
 import { sanitizeImportedHtml } from '../sanitize-html'
+import { countWords } from '../text'
 
 const ATX_HEADING_PATTERN = /^(#{1,2})\s+(.+?)\s*#*\s*$/
 const FIRST_LINE_LIMIT = 140
-
-function countWords(text: string): number {
-  return text.split(/\s+/).filter(w => w.length > 0).length
-}
 
 function htmlToPlain(html: string): string {
   return html

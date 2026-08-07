@@ -16,6 +16,7 @@ import type {
   ParserResult,
 } from './index'
 import { sanitizeImportedHtml } from '../sanitize-html'
+import { countWords } from '../text'
 
 const CHAPTER_PATTERN = /^\s*(chapter|prologue|epilogue|part|book)\b.*$/i
 const FIRST_LINE_LIMIT = 140
@@ -42,10 +43,6 @@ function paragraphize(bodyLines: string[]): string {
   }
   if (buf.length) paragraphs.push(buf.join(' '))
   return paragraphs.map(p => `<p>${escapeHtml(p)}</p>`).join('\n')
-}
-
-function countWords(text: string): number {
-  return text.split(/\s+/).filter(w => w.length > 0).length
 }
 
 function firstNonEmptyLine(lines: string[]): string {

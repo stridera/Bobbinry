@@ -25,6 +25,7 @@ import type {
   ParserResult,
 } from './index'
 import { sanitizeImportedHtml } from '../sanitize-html'
+import { countWords } from '../text'
 
 const FIRST_LINE_LIMIT = 140
 const TITLE_FALLBACK_LIMIT = 80
@@ -202,10 +203,6 @@ function splitByH1(html: string): string[] {
   return sawH1 ? segs : [html]
 }
 
-function countWordsFromText(text: string): number {
-  return text.split(/\s+/).filter(w => w.length > 0).length
-}
-
 function firstSnippet(text: string): string {
   const t = text.replace(/\s+/g, ' ').trim()
   return t.length > FIRST_LINE_LIMIT ? t.slice(0, FIRST_LINE_LIMIT) + '…' : t
@@ -314,7 +311,7 @@ export async function parsePdf(
       tempId: randomUUID(),
       suggestedTitle: extractTitle(sanitized, `Chapter ${i + 1}`),
       html: sanitized,
-      wordCount: countWordsFromText(fullText),
+      wordCount: countWords(fullText),
       firstLine: firstSnippet(firstLineSource),
     })
   }

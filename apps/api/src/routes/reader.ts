@@ -44,7 +44,7 @@ import { randomUUID } from 'crypto'
 import { env } from '../lib/env'
 import { optionalAuth, requireAuth, requireProjectOwnership } from '../middleware/auth'
 import { hashRssToken } from './rss-tokens'
-import { countWordsFromHtml } from './entities'
+import { countWordsFromHtml } from '../lib/text'
 import { changeEventFromRow, extractWordCount, recordEntityChangesSafe } from '../lib/entity-changes'
 import {
   getEffectiveBobbins,

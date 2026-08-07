@@ -25,6 +25,7 @@ import {
   findBobbinForCollectionAcrossScopes,
 } from '../lib/disk-manifests'
 import { getEffectiveBobbins } from '../lib/effective-bobbins'
+import { countWordsFromHtml } from '../lib/text'
 import { getMaxContentOrder, resolveContentTypeColumn } from './entities'
 import {
   formatFromMime,
@@ -75,15 +76,6 @@ async function streamToBuffer(stream: NodeJS.ReadableStream | ReadableStream): P
     chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : Buffer.from(chunk as Uint8Array))
   }
   return Buffer.concat(chunks)
-}
-
-function countWordsFromHtml(html: string): number {
-  return html
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/&[a-z]+;/gi, ' ')
-    .split(/\s+/)
-    .filter(w => w.length > 0)
-    .length
 }
 
 const importPlugin: FastifyPluginAsync = async (fastify) => {

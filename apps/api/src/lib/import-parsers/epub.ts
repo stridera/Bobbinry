@@ -22,6 +22,7 @@ import type {
   ParserResult,
 } from './index'
 import { sanitizeImportedHtml } from '../sanitize-html'
+import { countWords } from '../text'
 import { uploadImportImage } from './images'
 import { assertSafeZip, ZipBombError } from './zip-safe'
 
@@ -144,10 +145,6 @@ function getBodyHtml($: cheerio.CheerioAPI): string {
   const body = $('body')
   if (body.length > 0) return body.html() ?? ''
   return $.root().html() ?? ''
-}
-
-function countWordsFromText(text: string): number {
-  return text.split(/\s+/).filter(w => w.length > 0).length
 }
 
 function firstSnippet(text: string): string {
@@ -327,7 +324,7 @@ export async function parseEpub(
       tempId: randomUUID(),
       suggestedTitle: detectedTitle ?? `Chapter ${chapterIndex}`,
       html: sanitized,
-      wordCount: countWordsFromText(fullText),
+      wordCount: countWords(fullText),
       firstLine: firstSnippet(firstLineSource),
     })
   }

@@ -17,13 +17,7 @@ import {
   type EntityMatch,
 } from '../lib/search-replace'
 
-/** Mirror of the helper in routes/entities.ts. Strip tags, split on whitespace.
- * Kept inline rather than imported so we don't introduce a cyclic dependency. */
-function countWordsFromHtml(html: string): number {
-  const text = html.replace(/<[^>]*>/g, ' ').replace(/&[a-z]+;/gi, ' ')
-  const words = text.split(/\s+/).filter(w => w.length > 0)
-  return words.length
-}
+import { countWordsFromHtml } from '../lib/text'
 
 const ScopeSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('project') }),

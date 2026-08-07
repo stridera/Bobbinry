@@ -27,13 +27,7 @@ import { renameSlug, resolveSlugProjects } from '../lib/slugs'
 import { findBobbinForCollectionAcrossScopes } from '../lib/disk-manifests'
 import { getEffectiveBobbins, getCollectionIdsForProject, buildScopeCondition } from '../lib/effective-bobbins'
 import { ApiError, ValidationError, NotFoundError } from '../lib/errors'
-
-/** Strip HTML tags and count words in plain text. */
-export function countWordsFromHtml(html: string): number {
-  const text = html.replace(/<[^>]*>/g, ' ').replace(/&[a-z]+;/gi, ' ')
-  const words = text.split(/\s+/).filter(w => w.length > 0)
-  return words.length
-}
+import { countWordsFromHtml } from '../lib/text'
 
 /**
  * Highest `order` value among the project's `content` rows (0 if none).
