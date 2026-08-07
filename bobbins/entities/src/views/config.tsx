@@ -68,6 +68,13 @@ function inheritableFieldNames(
   return Array.from(new Set(names))
 }
 
+/**
+ * The icon a type gets when nobody picked one. Treated as "unset" on template
+ * sync: a type seeded with the generic clipboard never chose it, so adopting
+ * the template's real icon is a fix, not an overwrite of the author's choice.
+ */
+const DEFAULT_TYPE_ICON = '📋'
+
 /** Check if an entity type needs syncing with its source template (version-based) */
 function typeNeedsTemplateSync(type: EntityTypeDefinition, apiTemplates: any[]): boolean {
   const templateId = type.templateId
@@ -461,7 +468,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
       const data = {
         type_id: getTypeId(type),
         label: type.label,
-        icon: type.icon || template.icon,
+        icon: type.icon && type.icon !== DEFAULT_TYPE_ICON ? type.icon : template.icon,
         template_id: template.shareId || templateId,
         template_version: template.version || 1,
         base_fields: template.baseFields,
@@ -743,9 +750,13 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
 
         {/* Official Templates */}
         <div>
-          <h3 className="text-lg font-medium mb-4 text-gray-900 dark:text-gray-100">
-            Templates
+          <h3 className="text-lg font-medium mb-1 text-gray-900 dark:text-gray-100">
+            Start from a template
           </h3>
+          <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+            Starting points for a new type — these aren&apos;t your types, so their
+            icons and fields are only what you&apos;d get if you used one.
+          </p>
           <div className="grid grid-cols-2 gap-6">
             {(apiTemplates.filter(t => t.official).length > 0
               ? apiTemplates.filter(t => t.official).map(t => apiTemplateToEntityTemplate(t))
@@ -756,8 +767,11 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
                 className="p-6 border-2 border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-400 dark:hover:border-blue-600 bg-gray-800"
               >
                 <div className="flex items-start gap-4 mb-3">
-                  <span className="text-4xl">{template.icon}</span>
+                  <span className="text-4xl opacity-80">{template.icon}</span>
                   <div className="flex-1">
+                    <span className="mb-1 inline-block rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                      Template
+                    </span>
                     <h4 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
                       {template.label}
                     </h4>

@@ -221,6 +221,34 @@ describe('GET /api/projects/:projectId/changes', () => {
     expect(res.changes).toBeUndefined()
   })
 
+  it('stamps last_edited_at and last_edited_by on a content edit', async () => {
+    // Seeded rows get last_edited_at from the column default (now()), so age it
+    // to prove the update writes it rather than just inheriting the default.
+    const chapter = await seedChapter()
+    const stale = new Date('2020-01-01T00:00:00Z')
+    await db.update(entities)
+      .set({ lastEditedAt: stale, lastEditedBy: null })
+      .where(eq(entities.id, chapter.id))
+
+    const putRes = await app.inject({
+      method: 'PUT',
+      url: `/api/entities/${chapter.id}`,
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      payload: {
+        collection: 'content',
+        projectId: project.id,
+        data: { title: 'Chapter 1', body: '<p>edited</p>' },
+      },
+    })
+    expect(putRes.statusCode).toBe(200)
+
+    const [row] = await db.select().from(entities).where(eq(entities.id, chapter.id))
+    // Without this, the dashboard's recently-edited list, the trigger scheduler
+    // and the daily report all key off creation time instead of edit time.
+    expect(row!.lastEditedAt!.getTime()).toBeGreaterThan(stale.getTime())
+    expect(row!.lastEditedBy).toBe(user.id)
+  })
+
   it('records a feed event on entity update and returns it coalesced', async () => {
     const chapter = await seedChapter()
 

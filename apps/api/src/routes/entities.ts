@@ -648,7 +648,13 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
         .set({
           entityData: mergedData,
           version: newVersion,
-          updatedAt: new Date()
+          updatedAt: new Date(),
+          // `updatedAt` moves for housekeeping writes too (archive, reorder,
+          // content-type changes); `lastEditedAt` means "someone edited the
+          // content", which is what the dashboard's recently-edited list, the
+          // trigger scheduler and the daily report all actually want.
+          lastEditedAt: new Date(),
+          lastEditedBy: request.user!.id
         })
         .where(and(
           eq(entities.id, entityId),
@@ -1112,7 +1118,9 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
                   .update(entities)
                   .set({
                     entityData: data,
-                    updatedAt: new Date()
+                    updatedAt: new Date(),
+                    lastEditedAt: new Date(),
+                    lastEditedBy: userId
                   })
                   .where(and(
                     eq(entities.id, id),
