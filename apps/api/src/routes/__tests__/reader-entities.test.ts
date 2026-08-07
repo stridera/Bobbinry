@@ -442,6 +442,191 @@ describe('Public Reader — Entities', () => {
       expect(res.payload).not.toContain('SPOILER')
     })
 
+    /**
+     * Forward inheritance: on an ordered axis a field may declare that an era
+     * with no override of its own inherits from the nearest *earlier* era
+     * rather than falling back to base. The drop rule and the card projection
+     * both have to agree with that, and the fill must never reach through an
+     * era the caller can't see.
+     */
+    describe('forward-era inheritance', () => {
+      async function seedForwardType(projectId: string, inheritance: Record<string, string>) {
+        await db.insert(entities).values({
+          id: crypto.randomUUID(),
+          projectId,
+          scope: 'project',
+          bobbinId: 'entities',
+          collectionName: TYPE_COLLECTION,
+          entityData: {
+            type_id: 'characters',
+            label: 'Characters',
+            icon: '👤',
+            custom_fields: [{ name: 'backstory', type: 'text', versionable: true }],
+            variant_axis: { id: 'era', label: 'Era', kind: 'ordered' },
+            variant_inheritance: inheritance,
+            list_layout: { display: 'grid', showFields: ['name'] },
+            editor_layout: { template: 'compact-card', imagePosition: 'top-right', imageSize: 'medium', headerFields: ['name'], sections: [] },
+          },
+          isPublished: true,
+        })
+      }
+
+      /** book1 (1) sets backstory, book3 (3) sets it, book5 (5) sets nothing. */
+      async function seedForwardEntity(
+        projectId: string,
+        opts: { publishBase: boolean; published: string[]; access?: Record<string, number> }
+      ) {
+        await db.insert(entities).values({
+          id: crypto.randomUUID(),
+          projectId,
+          scope: 'project',
+          bobbinId: 'entities',
+          collectionName: 'characters',
+          entityData: {
+            name: 'Velka',
+            backstory: 'BASEVALUE original backstory',
+            _variants: {
+              axis_id: 'era',
+              // Deliberately out of axis order — resolution must sort by axis_value.
+              order: ['book5', 'book1', 'book3'],
+              items: {
+                book1: { label: 'Book 1', axis_value: 1, overrides: { backstory: 'a squire' } },
+                book3: { label: 'Book 3', axis_value: 3, overrides: { backstory: 'EARLYACCESS a knight' } },
+                book5: { label: 'Book 5', axis_value: 5, overrides: {} },
+              },
+            },
+          },
+          isPublished: true,
+          publishBase: opts.publishBase,
+          publishedVariantIds: opts.published,
+          variantAccessLevels: opts.access ?? {},
+        })
+      }
+
+      it('drops the base value when the earliest visible era covers a forward field', async () => {
+        const author = await createTestUser()
+        await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, author.id))
+        const project = await createTestProject(author.id)
+        await installEntitiesBobbin(project.id)
+        await seedForwardType(project.id, { backstory: 'forward' })
+        await seedForwardEntity(project.id, { publishBase: false, published: ['book1', 'book3', 'book5'] })
+
+        const res = await app.inject({ method: 'GET', url: `/api/public/projects/${project.id}/entities` })
+        expect(res.statusCode).toBe(200)
+        const velka = JSON.parse(res.payload).types[0].entities[0]
+        // book5 inherits book3, book3 and book1 have their own — nothing renders
+        // the base value, so it must not ship.
+        expect(velka.entityData.backstory).toBeUndefined()
+        expect(res.payload).not.toContain('BASEVALUE')
+      })
+
+      it('keeps the base value when the earliest visible era does not cover it', async () => {
+        const author = await createTestUser()
+        await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, author.id))
+        const project = await createTestProject(author.id)
+        await installEntitiesBobbin(project.id)
+        await seedForwardType(project.id, { backstory: 'forward' })
+        // Only book5 published: it has no override and nothing earlier is
+        // visible, so it renders the base value — which must still ship.
+        await seedForwardEntity(project.id, { publishBase: false, published: ['book5'] })
+
+        const res = await app.inject({ method: 'GET', url: `/api/public/projects/${project.id}/entities` })
+        const velka = JSON.parse(res.payload).types[0].entities[0]
+        expect(velka.entityData.backstory).toBe('BASEVALUE original backstory')
+      })
+
+      it('never inherits through an era gated above the caller tier', async () => {
+        const author = await createTestUser()
+        await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, author.id))
+        const project = await createTestProject(author.id)
+        await installEntitiesBobbin(project.id)
+        await seedForwardType(project.id, { backstory: 'forward' })
+        // book3 is early-access (tier 2). A tier-0 reader viewing book5 must
+        // fall back to book1's text, never read the paywalled era's.
+        await seedForwardEntity(project.id, {
+          publishBase: false,
+          published: ['book1', 'book3', 'book5'],
+          access: { book3: 2 },
+        })
+
+        const res = await app.inject({ method: 'GET', url: `/api/public/projects/${project.id}/entities` })
+        expect(res.statusCode).toBe(200)
+        const velka = JSON.parse(res.payload).types[0].entities[0]
+        expect(velka.publishedVariantIds).toEqual(['book1', 'book5'])
+        expect(res.payload).not.toContain('EARLYACCESS')
+        // book1 still covers the whole visible chain, so base stays dropped.
+        expect(velka.entityData.backstory).toBeUndefined()
+      })
+
+      it('leaves base-mode fields falling back to base', async () => {
+        const author = await createTestUser()
+        await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, author.id))
+        const project = await createTestProject(author.id)
+        await installEntitiesBobbin(project.id)
+        await seedForwardType(project.id, {}) // backstory defaults to 'base'
+        await seedForwardEntity(project.id, { publishBase: false, published: ['book1', 'book3', 'book5'] })
+
+        const res = await app.inject({ method: 'GET', url: `/api/public/projects/${project.id}/entities` })
+        const velka = JSON.parse(res.payload).types[0].entities[0]
+        // book5 has no override and doesn't inherit, so it renders base —
+        // exactly the pre-feature behaviour.
+        expect(velka.entityData.backstory).toBe('BASEVALUE original backstory')
+      })
+
+      it('projects the card name from the first era in axis order, not toggle order', async () => {
+        const author = await createTestUser()
+        await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, author.id))
+        const project = await createTestProject(author.id)
+        await installEntitiesBobbin(project.id)
+        await db.insert(entities).values({
+          id: crypto.randomUUID(),
+          projectId: project.id,
+          scope: 'project',
+          bobbinId: 'entities',
+          collectionName: TYPE_COLLECTION,
+          entityData: {
+            type_id: 'characters',
+            label: 'Characters',
+            icon: '👤',
+            custom_fields: [],
+            versionable_base_fields: ['name'],
+            variant_axis: { id: 'era', label: 'Era', kind: 'ordered' },
+            list_layout: { display: 'grid', showFields: ['name'] },
+            editor_layout: { template: 'compact-card', imagePosition: 'top-right', imageSize: 'medium', headerFields: ['name'], sections: [] },
+          },
+          isPublished: true,
+        })
+        await db.insert(entities).values({
+          id: crypto.randomUUID(),
+          projectId: project.id,
+          scope: 'project',
+          bobbinId: 'entities',
+          collectionName: 'characters',
+          entityData: {
+            name: 'BASEVALUE',
+            _variants: {
+              axis_id: 'era',
+              order: ['book1', 'book5'],
+              items: {
+                book1: { label: 'Book 1', axis_value: 1, overrides: { name: 'Squire Velka' } },
+                book5: { label: 'Book 5', axis_value: 5, overrides: { name: 'Queen Velka' } },
+              },
+            },
+          },
+          isPublished: true,
+          publishBase: false,
+          // Stored in toggle order — the later era first. Indexing this array
+          // directly would title the card "Queen Velka" and spoil book 5.
+          publishedVariantIds: ['book5', 'book1'],
+        })
+
+        const res = await app.inject({ method: 'GET', url: `/api/public/projects/${project.id}/entities` })
+        expect(res.statusCode).toBe(200)
+        const velka = JSON.parse(res.payload).types[0].entities[0]
+        expect(velka.name).toBe('Squire Velka')
+      })
+    })
+
     it('returns an empty entityData when no view of the entity is visible', async () => {
       const author = await createTestUser()
       await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, author.id))

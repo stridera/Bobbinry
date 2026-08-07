@@ -18,10 +18,55 @@ import { useClickOutside } from '@bobbinry/sdk'
 import { Toast, ToastContainer } from '@bobbinry/ui-components'
 import { templates } from '../templates'
 import { getTypeId, normalizeTypeConfig } from '../types'
-import type { EntityTemplate, EntityTypeDefinition, FieldDefinition, FieldType, EditorLayout, ListLayout, VariantAxis } from '../types'
+import type { EntityTemplate, EntityTypeDefinition, FieldDefinition, FieldType, EditorLayout, ListLayout, VariantAxis, VariantInherit } from '../types'
+import { GALLERY_INHERIT_KEY, inheritModeFor } from '../variants'
 import { TemplatePreviewModal } from '../components/TemplatePreviewModal'
 import { FieldBuilder } from '../components/FieldBuilder'
 import { LayoutDesigner } from '../components/LayoutDesigner'
+
+/**
+ * Pin the current effective inheritance for every versionable field.
+ *
+ * Read paths treat a missing key as "use the default", and the gallery's
+ * default is `forward`. Writing the map dense means the defaults in force when
+ * the author last looked at this type are frozen in — a later change to what
+ * the default *is* can never silently move a type someone has already
+ * configured. Keys for fields that are no longer versionable are pruned.
+ */
+function denseInheritance(
+  current: Record<string, VariantInherit>,
+  versionableBaseFields: string[],
+  customFields: FieldDefinition[],
+  variantAxis: VariantAxis | null
+): Record<string, VariantInherit> {
+  if (variantAxis?.kind !== 'ordered') return {}
+  const config = { versionableBaseFields, customFields, variantAxis, variantInheritance: current }
+  const out: Record<string, VariantInherit> = {}
+  for (const name of inheritableFieldNames(versionableBaseFields, customFields)) {
+    out[name] = inheritModeFor(config, name)
+  }
+  return out
+}
+
+/**
+ * Field names that get an inheritance control: versionable base fields and
+ * versionable custom fields, with the gallery triple collapsed to its one
+ * canonical key.
+ */
+function inheritableFieldNames(
+  versionableBaseFields: string[],
+  customFields: FieldDefinition[]
+): string[] {
+  const names: string[] = []
+  for (const name of versionableBaseFields) {
+    // image_url stands in for the whole gallery, under its canonical key.
+    names.push(name === 'image_url' ? GALLERY_INHERIT_KEY : name)
+  }
+  for (const f of customFields) {
+    if (f.versionable) names.push(f.name)
+  }
+  return Array.from(new Set(names))
+}
 
 /** Check if an entity type needs syncing with its source template (version-based) */
 function typeNeedsTemplateSync(type: EntityTypeDefinition, apiTemplates: any[]): boolean {
@@ -123,6 +168,11 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
   })
   const [variantAxis, setVariantAxis] = useState<VariantAxis | null>(null)
   const [versionableBaseFields, setVersionableBaseFields] = useState<string[]>([])
+  // Per-field `base` | `forward`, keyed by field name; the gallery triple shares
+  // the canonical key `images`. Stored sparse on read, dense on save (see
+  // `denseInheritance`), so a default can never silently shift under a type
+  // the author has already touched.
+  const [variantInheritance, setVariantInheritance] = useState<Record<string, VariantInherit>>({})
 
   useEffect(() => {
     loadEntityTypes()
@@ -325,6 +375,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
     setListLayout({ ...template.listLayout })
     setVariantAxis(template.variantAxis ? { ...template.variantAxis } : null)
     setVersionableBaseFields([...(template.versionableBaseFields ?? [])])
+    setVariantInheritance({ ...(template.variantInheritance ?? {}) })
     setShowTemplateSelector(false)
   }
 
@@ -337,6 +388,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
     setListLayout({ display: 'grid', cardSize: 'medium', showFields: ['name', 'description'] })
     setVariantAxis(null)
     setVersionableBaseFields([])
+    setVariantInheritance({})
     setSelectedTemplate(null)
     setShowTemplateSelector(false)
   }
@@ -351,6 +403,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
     setListLayout({ ...normalized.listLayout })
     setVariantAxis(normalized.variantAxis ?? null)
     setVersionableBaseFields([...(normalized.versionableBaseFields ?? [])])
+    setVariantInheritance({ ...(normalized.variantInheritance ?? {}) })
     setSelectedTemplate(null)
     setShowTemplateSelector(false)
   }
@@ -423,6 +476,9 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
         // ordered/unordered); fall back to the template default when they haven't
         // configured one yet.
         variant_axis: type.variantAxis ?? template.variantAxis ?? null,
+        // The user's explicit choices win over the template's defaults — a
+        // template sync shouldn't silently move a field's fallback.
+        variant_inheritance: { ...(template.variantInheritance ?? {}), ...(type.variantInheritance ?? {}) },
         custom_fields: mergedFields,
         editor_layout: template.editorLayout,
         list_layout: template.listLayout,
@@ -533,6 +589,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
         subtitle_fields: selectedTemplate?.subtitleFields || [],
         allow_duplicates: true,
         variant_axis: variantAxis,
+        variant_inheritance: denseInheritance(variantInheritance, versionableBaseFields, customFields, variantAxis),
         schema_version: schemaVersion,
         _field_history: fieldHistory,
       }
@@ -967,6 +1024,59 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
                 ))}
               </div>
             </div>
+
+            {/* Per-field fallback — only meaningful when "later" is defined. */}
+            {variantAxis.kind === 'ordered' && (
+              <div>
+                <div className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  When a {variantAxis.label.toLowerCase()} doesn&apos;t set a field
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                  Fall back to the shared base value, or carry the previous{' '}
+                  {variantAxis.label.toLowerCase()}&apos;s value forward. Illustrations carry
+                  forward by default — a portrait set at one point stays current until a
+                  new one supersedes it.
+                </p>
+                {inheritableFieldNames(versionableBaseFields, customFields).length === 0 ? (
+                  <p className="text-xs text-gray-400 dark:text-gray-500 italic">
+                    No versionable fields yet — check one above, or mark a custom field
+                    versionable.
+                  </p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {inheritableFieldNames(versionableBaseFields, customFields).map(field => {
+                      const mode = inheritModeFor(
+                        { versionableBaseFields, customFields, variantAxis, variantInheritance },
+                        field
+                      )
+                      return (
+                        <div key={field} className="flex items-center gap-3">
+                          <span className="w-40 shrink-0 truncate font-mono text-sm text-gray-700 dark:text-gray-300">
+                            {field === GALLERY_INHERIT_KEY ? 'images (gallery)' : field}
+                          </span>
+                          <div className="flex rounded-md border border-gray-300 dark:border-gray-600 overflow-hidden">
+                            {(['base', 'forward'] as const).map(option => (
+                              <button
+                                key={option}
+                                type="button"
+                                onClick={() => setVariantInheritance({ ...variantInheritance, [field]: option })}
+                                className={`px-3 py-1 text-xs font-medium cursor-pointer transition-colors ${
+                                  mode === option
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                }`}
+                              >
+                                {option === 'base' ? 'Base' : `Previous ${variantAxis.label.toLowerCase()}`}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

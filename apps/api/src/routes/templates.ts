@@ -163,6 +163,8 @@ const templatesPlugin: FastifyPluginAsync = async (fastify) => {
       subtitle_fields: string[]
       base_fields?: string[]
       versionable_base_fields?: string[]
+      variant_axis?: { id: string; label: string; kind: 'ordered' | 'unordered' } | null
+      variant_inheritance?: Record<string, 'base' | 'forward'>
     }
   }>('/templates', { preHandler: requireAuth }, async (request, reply) => {
     try {
@@ -196,6 +198,11 @@ const templatesPlugin: FastifyPluginAsync = async (fastify) => {
         author_name: authorName,
         base_fields: body.base_fields || ['name', 'description', 'image_url', 'tags'],
         versionable_base_fields: body.versionable_base_fields || [],
+        // The axis and its inheritance map travel together — an inheritance
+        // setting is meaningless without the ordered axis it keys off, and a
+        // template that declares eras is useless if publishing drops them.
+        variant_axis: body.variant_axis ?? null,
+        variant_inheritance: body.variant_inheritance || {},
         custom_fields: body.custom_fields,
         editor_layout: body.editor_layout,
         list_layout: body.list_layout,

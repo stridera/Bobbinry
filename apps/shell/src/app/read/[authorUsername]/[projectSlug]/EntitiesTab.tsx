@@ -13,7 +13,7 @@ import { htmlToPlainText } from '@bobbinry/sdk'
 import { config } from '@/lib/config'
 import EntityModal from './EntityModal'
 import { CroppedImage } from '@/components/CroppedImage'
-import { resolveCardDescription, resolveCardThumbnail } from './entities-data'
+import { resolveCardDescription, resolveCardThumbnail, resolveCardView } from './entities-data'
 import type { EntitiesPayload, PublishedEntity, PublishedType } from './entities-data'
 import { useEntityStack } from './useEntityStack'
 
@@ -31,7 +31,7 @@ const COMPACT_GRID_CLASS = 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3'
  * instead of rows of tall empty icon wells.
  */
 function typeHasArt(type: PublishedType): boolean {
-  return type.entities.some(e => resolveCardThumbnail(e) !== null)
+  return type.entities.some(e => resolveCardThumbnail(e, type) !== null)
 }
 
 interface EntitiesTabProps {
@@ -351,14 +351,14 @@ function FocusedSection({
     return type.entities.filter(e => {
       const haystack = [
         e.name ?? '',
-        htmlToPlainText(resolveCardDescription(e)),
+        htmlToPlainText(resolveCardDescription(e, type)),
         ...(Array.isArray(e.tags) ? e.tags : []),
       ]
         .join(' ')
         .toLowerCase()
       return haystack.includes(normalized)
     })
-  }, [type.entities, normalized])
+  }, [type, normalized])
 
   return (
     <div className="min-w-0 space-y-4">
@@ -460,21 +460,19 @@ function EntityCard({
   compact?: boolean
   onOpen: () => void
 }) {
-  // Prefer the first published variant's name override when base isn't shown
-  // so card titles match what the reader will see in the drawer.
+  // Prefer the first visible era's name override when base isn't shown so
+  // card titles match what the reader will see in the drawer.
   const displayName = useMemo(() => {
     if (entity.publishBase) return entity.name
-    const firstVariantId = entity.publishedVariantIds[0]
-    if (!firstVariantId) return entity.name
-    const override = entity.entityData._variants?.items?.[firstVariantId]?.overrides?.name
+    const override = resolveCardView(entity, type).name
     return typeof override === 'string' ? override : entity.name
-  }, [entity])
+  }, [entity, type])
 
   // Descriptions are stored as rich-text HTML; strip tags for the card preview
   // so `<p></p>` markers don't leak into the line-clamped text.
-  const description = htmlToPlainText(resolveCardDescription(entity)) || null
+  const description = htmlToPlainText(resolveCardDescription(entity, type)) || null
 
-  const thumbnail = resolveCardThumbnail(entity)
+  const thumbnail = resolveCardThumbnail(entity, type)
 
   if (compact) {
     return (

@@ -3,6 +3,7 @@ import { createClient, getGlobalOpts } from '../cli.js'
 import { output, formatTable, timeAgo, shortId } from '../lib/output.js'
 import { handleError, CliError } from '../lib/errors.js'
 import { loadConfig } from '../lib/config.js'
+import { getVariantsBlock } from '@bobbinry/types'
 
 function resolveProjectId(cmdProject?: string): string {
   if (cmdProject) return cmdProject
@@ -260,16 +261,9 @@ interface Variants {
 }
 
 function getVariants(entity: Record<string, any>): Variants {
-  const raw = entity?._variants
-  if (!raw || typeof raw !== 'object' || !raw.items) {
-    return { axis_id: null, active: null, order: [], items: {} }
-  }
-  return {
-    axis_id: typeof raw.axis_id === 'string' ? raw.axis_id : null,
-    active: typeof raw.active === 'string' ? raw.active : null,
-    order: Array.isArray(raw.order) ? raw.order.filter((x: unknown) => typeof x === 'string') : Object.keys(raw.items),
-    items: raw.items,
-  }
+  const block = getVariantsBlock(entity)
+  if (!block) return { axis_id: null, active: null, order: [], items: {} }
+  return block as Variants
 }
 
 function slugifyVariantId(label: string): string {
@@ -293,7 +287,11 @@ async function mutateVariants(
 ): Promise<any> {
   const entity = await client.getEntity(params.entityId, { projectId: params.projectId, collection: params.collection })
   const source = entity.entity || entity
-  const nextVariants = mutate(getVariants(source))
+  // Spread the raw block so top-level keys this CLI doesn't model (anything
+  // added to `_variants` after this code was written) survive the round-trip
+  // instead of being silently dropped on every variant mutation.
+  const rawBlock = source?._variants && typeof source._variants === 'object' ? source._variants : {}
+  const nextVariants = { ...rawBlock, ...mutate(getVariants(source)) }
   return client.updateEntity(params.entityId, {
     projectId: params.projectId,
     collection: params.collection,

@@ -16,6 +16,8 @@ interface LayoutRendererProps {
   entity: Record<string, any>
   onFieldChange: (fieldName: string, value: any) => void
   readonly?: boolean
+  /** Label of the earlier era the gallery is carried forward from, if any. */
+  inheritedGalleryFrom?: string | null
 }
 
 /** Type definitions created without an editor layout still need to render. */
@@ -73,7 +75,8 @@ export function LayoutRenderer({
   fields: allFields,
   entity,
   onFieldChange,
-  readonly = false
+  readonly = false,
+  inheritedGalleryFrom = null
 }: LayoutRendererProps) {
   const configured = configuredLayout ?? defaultLayout(allFields)
   const { layout, fields } = readonly
@@ -91,6 +94,7 @@ export function LayoutRenderer({
             fields={fields}
             onFieldChange={onFieldChange}
             readonly={readonly}
+            inheritedGalleryFrom={inheritedGalleryFrom}
           />
         )
 
@@ -102,6 +106,7 @@ export function LayoutRenderer({
             fields={fields}
             onFieldChange={onFieldChange}
             readonly={readonly}
+            inheritedGalleryFrom={inheritedGalleryFrom}
           />
         )
 
@@ -113,6 +118,7 @@ export function LayoutRenderer({
             fields={fields}
             onFieldChange={onFieldChange}
             readonly={readonly}
+            inheritedGalleryFrom={inheritedGalleryFrom}
           />
         )
 

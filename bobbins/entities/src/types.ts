@@ -132,6 +132,9 @@ export interface ListLayout {
   showFields: string[]  // Which fields to display in cards/list items
 }
 
+export type { VariantInherit } from '@bobbinry/types'
+import type { VariantInherit } from '@bobbinry/types'
+
 export interface EntityTemplate {
   id: string  // e.g., 'template-characters'
   shareId: string  // Stable shareable ID (e.g., 'official-characters')
@@ -146,6 +149,8 @@ export interface EntityTemplate {
   /** Default variant axis — when set, entities of this type have variants enabled by default.
    * Users can rename the axis label or switch ordered/unordered in the type editor. */
   variantAxis?: VariantAxis
+  /** Default per-field inheritance shipped with the template. */
+  variantInheritance?: Record<string, VariantInherit>
   customFields: FieldDefinition[]
   editorLayout: EditorLayout
   listLayout: ListLayout
@@ -218,6 +223,10 @@ export interface EntityTypeDefinition {
   subtitleFields: string[]
   allowDuplicates: boolean
   variantAxis?: VariantAxis | null
+  /** Per-field `base` | `forward` inheritance, keyed by field name; the gallery
+   * triple shares the canonical key `images`. Only consulted on ordered axes.
+   * Absent keys take the default: base everywhere except the gallery. */
+  variantInheritance?: Record<string, VariantInherit>
   createdAt: Date
   updatedAt: Date
 }
@@ -241,6 +250,7 @@ export function normalizeTypeConfig(config: any): EntityTypeDefinition {
     subtitleFields: config.subtitleFields || config.subtitle_fields || [],
     allowDuplicates: config.allowDuplicates ?? config.allow_duplicates ?? true,
     variantAxis: config.variantAxis ?? config.variant_axis ?? null,
+    variantInheritance: config.variantInheritance ?? config.variant_inheritance ?? {},
   }
 }
 

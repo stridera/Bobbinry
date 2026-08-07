@@ -43,6 +43,34 @@ export const EntityProvider = SdkProvider
 export const useEntityContext = useSdkContext
 
 /**
+ * The host editor's auto-save state, so deep UI that covers the header's
+ * save pill (notably the full-screen image lightbox) can echo it rather than
+ * leaving the author guessing whether their typing stuck. Absent outside the
+ * editor — read-only surfaces render no indicator.
+ */
+export type EntitySaveStatus = 'saved' | 'saving' | 'unsaved'
+
+const SaveStatusContext = createContext<EntitySaveStatus | null>(null)
+
+export function SaveStatusProvider({
+  status,
+  children,
+}: {
+  status: EntitySaveStatus
+  children: React.ReactNode
+}) {
+  return (
+    <SaveStatusContext.Provider value={status}>
+      {children}
+    </SaveStatusContext.Provider>
+  )
+}
+
+export function useSaveStatus(): EntitySaveStatus | null {
+  return useContext(SaveStatusContext)
+}
+
+/**
  * Synchronous map of entity ID → display name, for consumers that pre-fetch
  * a names table (e.g. the public reader) and don't have an SDK available
  * for per-ID lookups.

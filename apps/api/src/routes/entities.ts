@@ -3,7 +3,14 @@ import { z } from 'zod'
 import { db } from '../db/connection'
 import { entities, chapterPublications } from '../db/schema'
 import { eq, and, sql, or, inArray, isNull } from 'drizzle-orm'
-import { CONTENT_TYPES, isContentType, type ContentType } from '@bobbinry/types'
+import {
+  CONTENT_TYPES,
+  isContentType,
+  resolveEntityForVariant,
+  variantConfigFromTypeData,
+  type ContentType,
+  type VariantResolutionConfig
+} from '@bobbinry/types'
 import { requireAuth, requireProjectOwnership, assertEntityScope } from '../middleware/auth'
 import { serverEventBus, contentEdited } from '../lib/event-bus'
 import {
@@ -208,26 +215,30 @@ function formatEntityResponse(row: typeof entities.$inferSelect, fields?: Set<st
 }
 
 /**
- * Resolve an entity to the view at a specific variant id.
+ * The variant-resolution config for a collection's type definition.
  *
- * Strips the `_variants` block and overlays that variant's overrides on
- * the base data. Kept in-module (the shell & plugin share similar logic
- * in bobbins/entities/src/variants.ts) because the API package doesn't
- * depend on the bobbin.
+ * This route used to resolve variants with a bare `{...base, ...overrides}`,
+ * which had drifted from every other resolver: it applied overrides for
+ * non-versionable fields and honoured an emptied gallery override as "blank
+ * this era" rather than "inherit". Loading the type row costs one query and
+ * puts it on the shared implementation.
  */
-function resolveVariantOnData(
-  data: Record<string, unknown>,
-  variantId: string
-): Record<string, unknown> {
-  const { _variants, ...base } = data as Record<string, any>
-  if (!_variants || typeof _variants !== 'object' || !_variants.items || typeof _variants.items !== 'object') {
-    return base
-  }
-  const item = _variants.items[variantId]
-  if (!item || typeof item !== 'object' || !item.overrides || typeof item.overrides !== 'object') {
-    return base
-  }
-  return { ...base, ...item.overrides }
+async function loadVariantConfig(
+  projectId: string,
+  collectionIds: string[],
+  userId: string,
+  collection: string
+): Promise<VariantResolutionConfig> {
+  const [typeRow] = await db
+    .select({ data: entities.entityData })
+    .from(entities)
+    .where(and(
+      buildScopeCondition(projectId, collectionIds, userId),
+      eq(entities.collectionName, 'entity_type_definitions'),
+      sql`${entities.entityData}->>'type_id' = ${collection}`
+    ))
+    .limit(1)
+  return variantConfigFromTypeData(typeRow?.data as Record<string, any> | undefined)
 }
 
 const FIELD_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/
@@ -1299,7 +1310,12 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       // The full _variants block is still present on the response so the client
       // can switch variants without a round-trip.
       if (variant && typeof variant === 'string') {
-        response.resolvedData = resolveVariantOnData(entity.entityData as Record<string, unknown>, variant)
+        const variantConfig = await loadVariantConfig(projectId, collectionIds, userId, collection)
+        response.resolvedData = resolveEntityForVariant(
+          entity.entityData as Record<string, unknown>,
+          variantConfig,
+          variant
+        )
         response.resolvedVariant = variant
       }
 

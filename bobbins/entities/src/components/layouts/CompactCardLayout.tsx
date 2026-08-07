@@ -17,6 +17,7 @@ interface CompactCardLayoutProps {
   fields: FieldDefinition[]
   onFieldChange: (fieldName: string, value: any) => void
   readonly?: boolean
+  inheritedGalleryFrom?: string | null
 }
 
 export function CompactCardLayout({
@@ -24,7 +25,8 @@ export function CompactCardLayout({
   layout,
   fields,
   onFieldChange,
-  readonly = false
+  readonly = false,
+  inheritedGalleryFrom = null
 }: CompactCardLayoutProps) {
   const allFields = [
     { name: 'name', type: 'text' as const, label: 'Name', required: true },
@@ -45,6 +47,7 @@ export function CompactCardLayout({
       {layout.imagePosition === 'top-full-width' && (hasImages || !readonly) && (
         <div className={hasImages ? '' : 'p-6 pb-0'}>
           <EntityImageGallery
+          inheritedFrom={inheritedGalleryFrom}
             entity={entity}
             readonly={readonly}
             onFieldChange={onFieldChange}
@@ -61,6 +64,7 @@ export function CompactCardLayout({
         {layout.imagePosition === 'top-right' && (hasImages || !readonly) && (
           <div className="w-56 max-w-full flex-shrink-0 @lg:w-44">
             <EntityImageGallery
+          inheritedFrom={inheritedGalleryFrom}
               entity={entity}
               readonly={readonly}
               onFieldChange={onFieldChange}
@@ -110,6 +114,7 @@ export function CompactCardLayout({
         <div className="flex">
           <div className="w-64 flex-shrink-0 p-4">
             <EntityImageGallery
+          inheritedFrom={inheritedGalleryFrom}
               entity={entity}
               readonly={readonly}
               onFieldChange={onFieldChange}

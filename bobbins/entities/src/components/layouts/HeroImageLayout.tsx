@@ -16,6 +16,7 @@ interface HeroImageLayoutProps {
   fields: FieldDefinition[]
   onFieldChange: (fieldName: string, value: any) => void
   readonly?: boolean
+  inheritedGalleryFrom?: string | null
 }
 
 export function HeroImageLayout({
@@ -23,7 +24,8 @@ export function HeroImageLayout({
   layout,
   fields,
   onFieldChange,
-  readonly = false
+  readonly = false,
+  inheritedGalleryFrom = null
 }: HeroImageLayoutProps) {
   const allFields = [
     { name: 'name', type: 'text' as const, label: 'Name', required: true },
@@ -50,6 +52,7 @@ export function HeroImageLayout({
       {layout.imagePosition !== 'none' && (hasImages || !readonly) && (
         <div className={hasImages ? '' : 'px-4 pt-4 md:px-6'}>
           <EntityImageGallery
+          inheritedFrom={inheritedGalleryFrom}
             entity={entity}
             readonly={readonly}
             onFieldChange={onFieldChange}

@@ -27,6 +27,7 @@ import {
   getVariants,
   resolveEntityForVariant,
   sortedVariantIds,
+  variantFieldSource,
   versionableFieldNames,
 } from '../variants'
 
@@ -204,6 +205,12 @@ export default function EntityPreviewPanel({ context }: EntityPreviewPanelProps)
     [preview]
   )
 
+  const inheritedGalleryFrom = useMemo(() => {
+    if (!preview || !variantId) return null
+    const source = variantFieldSource(preview.entity, preview.typeConfig, variantId, 'images')
+    return source.kind === 'inherited' ? source.fromLabel : null
+  }, [preview, variantId])
+
   if (loading) {
     return <PanelLoadingState label="Loading entity preview…" />
   }
@@ -308,6 +315,7 @@ export default function EntityPreviewPanel({ context }: EntityPreviewPanelProps)
             entity={displayEntity}
             onFieldChange={() => {}}
             readonly={true}
+            inheritedGalleryFrom={inheritedGalleryFrom}
           />
         </SdkProvider>
       </PanelBody>

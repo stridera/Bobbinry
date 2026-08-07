@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { imageAltText, type EntityImage } from '../images'
 import { ImageCredit } from './ImageCredit'
+import { useSaveStatus } from './UploadContext'
 
 interface ImageLightboxProps {
   images: EntityImage[]
@@ -22,6 +23,9 @@ export function ImageLightbox({ images, startIndex, onClose, onImageChange }: Im
   const [index, setIndex] = useState(() =>
     Math.min(Math.max(startIndex, 0), Math.max(images.length - 1, 0))
   )
+  // The editor's save pill sits in the header, which this overlay covers —
+  // mirror it here so detail edits don't feel like they vanished.
+  const saveStatus = useSaveStatus()
 
   const prev = useCallback(() => {
     setIndex(i => (i - 1 + images.length) % images.length)
@@ -106,6 +110,30 @@ export function ImageLightbox({ images, startIndex, onClose, onImageChange }: Im
                 placeholder="https://artist-link…"
                 className={`${detailInputClass} flex-1 text-xs`}
               />
+            </div>
+            <div className="flex items-center justify-between gap-3 pt-0.5">
+              <span
+                className={`text-[11px] ${
+                  saveStatus === 'saved'
+                    ? 'text-green-400'
+                    : saveStatus === 'saving'
+                      ? 'text-amber-300'
+                      : 'text-gray-400'
+                }`}
+                aria-live="polite"
+              >
+                {saveStatus === 'saved' && '✓ Saved'}
+                {saveStatus === 'saving' && 'Saving…'}
+                {saveStatus === 'unsaved' && '• Saving in a moment…'}
+                {saveStatus === null && 'Changes save automatically'}
+              </span>
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-md bg-white/15 px-3 py-1 text-xs font-medium text-white hover:bg-white/25 cursor-pointer"
+              >
+                Done
+              </button>
             </div>
           </div>
         ) : current.caption || current.artist ? (

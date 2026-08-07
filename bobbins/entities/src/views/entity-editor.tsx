@@ -11,7 +11,7 @@
  * - Handle all field types (text, number, select, json, rich-text, etc.)
  */
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
 import type { EntityTypeDefinition, EntityVariants, FieldDefinition, VariantItem } from '../types'
 import { normalizeTypeConfig, normalizeJsonSchema, createDefaultJsonValue } from '../types'
@@ -23,10 +23,11 @@ import {
   setFieldOnEntity,
   slugifyVariantId,
   sortedVariantIds,
+  variantFieldSource,
   versionableFieldNames,
 } from '../variants'
 import { LayoutRenderer } from '../components/LayoutRenderer'
-import { SdkProvider, EntityNavProvider } from '../components/UploadContext'
+import { SdkProvider, EntityNavProvider, SaveStatusProvider } from '../components/UploadContext'
 import { checkTypeCompatibility } from '../components/FieldRenderers'
 import { PublishControl } from '../components/PublishControl'
 import {
@@ -485,14 +486,25 @@ export default function EntityEditorView({
     return undefined
   }, [entity, saveStatus, saveError, viewMode])
 
+  // Which entity the variant selector has already been seeded for. Tracked
+  // separately from `activeVariantId` because `null` is a legitimate user
+  // choice ("Base") — keying the seed off `activeVariantId === null` meant
+  // every later `setEntity` (an image-upload commit, a publish toggle) snapped
+  // the selector back to the default variant, so the author's *next* edit
+  // silently landed as a variant override instead of on the base.
+  const seededVariantForRef = useRef<string | null | undefined>(undefined)
+
   // Once the entity is loaded, default the variant selector to the entity's
-  // declared default if one is set.
+  // declared default if one is set. Runs once per entity id.
   useEffect(() => {
-    if (activeVariantId !== null) return
+    const key = entityId ?? null
+    if (seededVariantForRef.current === key) return
+    // Wait for the entity to actually load; `{}` is the pre-load placeholder.
+    if (Object.keys(entity).length === 0) return
+    seededVariantForRef.current = key
     const v = getVariants(entity)
-    if (v?.active && v.items[v.active]) setActiveVariantId(v.active)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entity])
+    setActiveVariantId(v?.active && v.items[v.active] ? v.active : null)
+  }, [entity, entityId])
 
   const variantsBlock = useMemo(() => getVariants(entity), [entity])
   const variantIdsInOrder = useMemo(
@@ -505,6 +517,24 @@ export default function EntityEditorView({
   const displayEntity = useMemo(
     () => (activeVariantId ? resolveEntityForVariant(entity, typeConfig, activeVariantId) : entity),
     [entity, activeVariantId, typeConfig]
+  )
+
+  // Which fields the selected era is showing a carried-forward value for. Drives
+  // the gallery badge and the summary line in the variant bar, so the author can
+  // tell an inherited value from one they set here.
+  const inheritedFields = useMemo(() => {
+    if (!activeVariantId) return [] as Array<{ field: string; fromLabel: string }>
+    const out: Array<{ field: string; fromLabel: string }> = []
+    for (const field of versionableFieldNames(typeConfig)) {
+      const source = variantFieldSource(entity, typeConfig, activeVariantId, field)
+      if (source.kind === 'inherited') out.push({ field, fromLabel: source.fromLabel })
+    }
+    return out
+  }, [entity, typeConfig, activeVariantId])
+
+  const inheritedGalleryFrom = useMemo(
+    () => inheritedFields.find(f => f.field === 'images')?.fromLabel ?? null,
+    [inheritedFields]
   )
 
   if (loading) {
@@ -760,6 +790,16 @@ export default function EntityEditorView({
               </button>
             )
           })}
+          {inheritedFields.length > 0 && (
+            <span
+              className="text-[11px] text-gray-500 dark:text-gray-400"
+              title={inheritedFields
+                .map(f => `${f.field === 'images' ? 'images (gallery)' : f.field} — from ${f.fromLabel}`)
+                .join('\n')}
+            >
+              {inheritedFields.length} field{inheritedFields.length === 1 ? '' : 's'} carried forward
+            </span>
+          )}
           <div className="flex-1" />
           <button
             type="button"
@@ -847,40 +887,43 @@ export default function EntityEditorView({
       {/* Editor Content */}
       <div className="flex-1 overflow-auto p-8">
         <SdkProvider sdk={sdk} projectId={projectId}>
-          <EntityNavProvider
-            getLinkProps={(targetType, targetId) => ({
-              href: '#',
-              onClick: (e) => {
-                e.preventDefault()
-                if (typeof window === 'undefined') return
-                window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
-                  detail: {
-                    entityType: targetType,
-                    entityId: targetId,
-                    bobbinId: 'entities',
-                    metadata: { view: 'entity-editor' },
-                  },
-                }))
-              },
-            })}
-          >
-            <AliasesField
-              entity={entity ?? {}}
-              readonly={viewMode === 'view'}
-              onChange={nextAliases => {
-                setEntity(prev => ({ ...(prev ?? {}), aliases: nextAliases }))
-                setSaveStatus('unsaved')
-                setSaveError(false)
-              }}
-            />
-            <LayoutRenderer
-              layout={typeConfig.editorLayout}
-              fields={typeConfig.customFields}
-              entity={displayEntity}
-              onFieldChange={handleFieldChange}
-              readonly={viewMode === 'view'}
-            />
-          </EntityNavProvider>
+          <SaveStatusProvider status={saveStatus}>
+            <EntityNavProvider
+              getLinkProps={(targetType, targetId) => ({
+                href: '#',
+                onClick: (e) => {
+                  e.preventDefault()
+                  if (typeof window === 'undefined') return
+                  window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
+                    detail: {
+                      entityType: targetType,
+                      entityId: targetId,
+                      bobbinId: 'entities',
+                      metadata: { view: 'entity-editor' },
+                    },
+                  }))
+                },
+              })}
+            >
+              <AliasesField
+                entity={entity ?? {}}
+                readonly={viewMode === 'view'}
+                onChange={nextAliases => {
+                  setEntity(prev => ({ ...(prev ?? {}), aliases: nextAliases }))
+                  setSaveStatus('unsaved')
+                  setSaveError(false)
+                }}
+              />
+              <LayoutRenderer
+                layout={typeConfig.editorLayout}
+                fields={typeConfig.customFields}
+                entity={displayEntity}
+                onFieldChange={handleFieldChange}
+                readonly={viewMode === 'view'}
+                inheritedGalleryFrom={inheritedGalleryFrom}
+              />
+            </EntityNavProvider>
+          </SaveStatusProvider>
         </SdkProvider>
       </div>
     </div>

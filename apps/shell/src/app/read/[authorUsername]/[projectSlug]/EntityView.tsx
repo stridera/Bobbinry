@@ -16,7 +16,7 @@ import { LayoutRenderer } from '@bobbinry/entities/components/LayoutRenderer'
 import { ResolvedEntityNamesProvider, ResolvedEntityDetailsProvider, EntityNavProvider, type ResolvedEntityDetails } from '@bobbinry/entities/components/UploadContext'
 import { config } from '@/lib/config'
 import type { PublishedType, PublishedEntity } from './entities-data'
-import { resolveEntityForVariant } from './entities-data'
+import { resolveEntityForVariant, variantConfigForType } from './entities-data'
 
 interface EntityViewProps {
   type: PublishedType
@@ -65,22 +65,15 @@ export default function EntityView({ type, entity, projectId, apiToken, bare = f
     return item?.label ?? id
   }
 
-  const versionableFieldSet = useMemo(() => {
-    const names = new Set<string>()
-    for (const f of type.customFields) if ((f as any).versionable) names.add(f.name)
-    for (const name of type.versionableBaseFields ?? []) names.add(name)
-    // Companion rule for the gallery fields — mirrors versionableFieldNames
-    // in bobbins/entities/src/variants.ts; keep in lockstep.
-    if (names.has('image_url')) {
-      names.add('images')
-      names.add('thumbnail')
-    }
-    return names
-  }, [type.customFields, type.versionableBaseFields])
+  const variantConfig = useMemo(() => variantConfigForType(type), [type])
 
+  // Resolve only over the eras this reader can actually see, so a forward-
+  // inheriting field never picks up a value from an era gated above their tier.
   const resolvedEntity = useMemo(
-    () => resolveEntityForVariant(entity.entityData, versionableFieldSet, selectedVariant),
-    [entity.entityData, versionableFieldSet, selectedVariant]
+    () => resolveEntityForVariant(entity.entityData, variantConfig, selectedVariant, {
+      eraIds: entity.publishedVariantIds,
+    }),
+    [entity.entityData, variantConfig, selectedVariant, entity.publishedVariantIds]
   )
 
   // Fetch a flat id → display-name table so relation fields (class, race, etc.)

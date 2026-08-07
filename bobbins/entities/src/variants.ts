@@ -1,42 +1,44 @@
 /**
- * Entity variant helpers.
+ * Entity variant write helpers.
  *
  * A variant is a named overlay of per-field values on top of an entity's
  * base data. Only fields marked versionable on the entity type can be
  * overridden per-variant; every other field is always the base value.
  * Versionable fields are either custom fields with `versionable: true`
  * or base fields listed in the type's `versionableBaseFields` array.
- */
-
-import type { EntityTypeDefinition, EntityVariants, FieldDefinition, VariantItem } from './types'
-
-export const VARIANTS_KEY = '_variants'
-
-/**
- * The image-gallery fields, which move as a unit (see the companion rule in
- * `versionableFieldNames`). Declared here rather than in `images.ts` because
- * `images.ts` imports from this module.
- */
-const GALLERY_OVERRIDE_FIELDS = new Set(['images', 'thumbnail', 'image_url'])
-
-/**
- * True when a variant override on a gallery field carries no image.
  *
- * An empty gallery override means "inherit the base images", not "this variant
- * has no images" — authors reach for a shared base portrait far more often
- * than for a deliberately image-less variant, and the old behaviour silently
- * blanked a variant the moment its last image was removed. Read paths skip
- * such overrides; write paths delete them rather than storing them.
- *
- * Mirrored in apps/api/src/routes/reader.ts and
- * apps/shell/src/app/read/[authorUsername]/[projectSlug]/entities-data.ts —
- * keep them in lockstep.
+ * The *read* side (resolution, ordering, versionable-field collection,
+ * the empty-gallery rule) lives in `@bobbinry/types/variant-resolution` and is
+ * re-exported here — the API and the shell reader need the identical logic,
+ * and four hand-mirrored copies had already drifted apart. Only the write
+ * helpers, which are editor-only, remain in this file.
  */
-export function isEmptyGalleryOverride(fieldName: string, value: unknown): boolean {
-  if (!GALLERY_OVERRIDE_FIELDS.has(fieldName)) return false
-  if (value === null || value === undefined || value === '') return true
-  return Array.isArray(value) && value.length === 0
-}
+
+import type { EntityVariants, VariantItem } from './types'
+import {
+  VARIANTS_KEY,
+  getVariantsBlock,
+  isEmptyGalleryOverride,
+  versionableFieldNames,
+  type VariantResolutionConfig,
+} from '@bobbinry/types'
+
+export {
+  VARIANTS_KEY,
+  GALLERY_OVERRIDE_FIELDS,
+  GALLERY_INHERIT_KEY,
+  isEmptyGalleryOverride,
+  versionableFieldNames,
+  sortedVariantIds,
+  inheritModeFor,
+  effectiveOverrides,
+  resolveEntityForVariant,
+  variantFieldSource,
+  type VariantInherit,
+  type VariantFieldSource,
+  type VariantResolutionConfig,
+  type VariantResolutionOptions,
+} from '@bobbinry/types'
 
 /** Turn a human label into a kebab-case variant id. Falls back to a timestamped id for non-ascii labels. */
 export function slugifyVariantId(label: string): string {
@@ -54,88 +56,13 @@ export function ensureUniqueVariantId(base: string, existing: string[]): string 
 
 /** Read the `_variants` block off an entity, tolerating missing / malformed values. */
 export function getVariants(entity: Record<string, any> | null | undefined): EntityVariants | null {
-  if (!entity) return null
-  const raw = entity[VARIANTS_KEY]
-  if (!raw || typeof raw !== 'object') return null
-  if (!raw.items || typeof raw.items !== 'object') return null
-  const order: string[] = Array.isArray(raw.order)
-    ? raw.order.filter((id: unknown): id is string => typeof id === 'string' && id in raw.items)
-    : Object.keys(raw.items)
-  return {
-    axis_id: typeof raw.axis_id === 'string' ? raw.axis_id : null,
-    active: typeof raw.active === 'string' && raw.active in raw.items ? raw.active : null,
-    order,
-    items: raw.items as Record<string, VariantItem>,
-  }
+  return getVariantsBlock(entity) as EntityVariants | null
 }
 
 /** List variant ids in their display order. */
 export function listVariantIds(entity: Record<string, any> | null | undefined): string[] {
   const v = getVariants(entity)
   return v ? v.order : []
-}
-
-/** Set of field names that are versionable on an entity type.
- * Includes custom fields flagged `versionable: true` plus the base-field
- * opt-ins listed in `versionableBaseFields`. */
-export function versionableFieldNames(
-  typeConfig: Pick<EntityTypeDefinition, 'customFields' | 'versionableBaseFields'> | null | undefined
-): Set<string> {
-  const names = new Set<string>()
-  if (!typeConfig) return names
-  for (const field of (typeConfig.customFields || []) as FieldDefinition[]) {
-    if (field.versionable) names.add(field.name)
-  }
-  for (const baseName of typeConfig.versionableBaseFields || []) {
-    names.add(baseName)
-  }
-  // Companion rule: installed type definitions predate the gallery fields
-  // and have `versionableBaseFields` frozen at install time, so the new
-  // gallery fields inherit image_url's versionability rather than requiring
-  // a backfill. Mirrored in apps/api/src/routes/reader.ts
-  // (collectVersionableFields) — keep in lockstep.
-  if (names.has('image_url')) {
-    names.add('images')
-    names.add('thumbnail')
-  }
-  return names
-}
-
-/**
- * Resolve an entity to its view at a specific variant id.
- *
- * Strips the `_variants` block and overlays that variant's `overrides` on
- * the base entity data. Non-versionable fields are always the base value
- * even if a variant attempts to override them (defensive — shouldn't happen
- * on well-formed data but we don't want bad clients to silently override
- * a shared field).
- *
- * If `variantId` is null/undefined or not found, returns the base entity
- * with `_variants` stripped.
- */
-export function resolveEntityForVariant(
-  entity: Record<string, any> | null | undefined,
-  typeConfig: Pick<EntityTypeDefinition, 'customFields' | 'versionableBaseFields'> | null | undefined,
-  variantId: string | null | undefined
-): Record<string, any> {
-  if (!entity) return {}
-  const { [VARIANTS_KEY]: _variants, ...base } = entity
-  if (!variantId) return base
-  const variants = getVariants(entity)
-  if (!variants) return base
-  const item = variants.items[variantId]
-  if (!item) return base
-
-  const versionable = versionableFieldNames(typeConfig)
-  const result: Record<string, any> = { ...base }
-  for (const [key, value] of Object.entries(item.overrides || {})) {
-    // Defensive: only apply overrides for fields declared versionable.
-    if (!versionable.has(key)) continue
-    // An emptied gallery falls back to the base images.
-    if (isEmptyGalleryOverride(key, value)) continue
-    result[key] = value
-  }
-  return result
 }
 
 /**
@@ -148,11 +75,11 @@ export function resolveEntityForVariant(
  * - If `variantId` is set but the field is NOT versionable → writes to the
  *   base (since the field is shared across all variants).
  * - If `variantId` is set and the value empties a gallery field → drops the
- *   override entirely so the variant inherits the base images again.
+ *   override entirely so the variant inherits again.
  */
 export function setFieldOnEntity(
   entity: Record<string, any>,
-  typeConfig: Pick<EntityTypeDefinition, 'customFields' | 'versionableBaseFields'> | null | undefined,
+  typeConfig: VariantResolutionConfig | null | undefined,
   variantId: string | null | undefined,
   fieldName: string,
   value: any
@@ -182,7 +109,7 @@ export function setFieldOnEntity(
   }
 }
 
-/** Convenience: remove a per-variant override so the field falls back to the base value. */
+/** Convenience: remove a per-variant override so the field falls back to its inherited value. */
 export function clearVariantOverride(
   entity: Record<string, any>,
   variantId: string,
@@ -200,26 +127,4 @@ export function clearVariantOverride(
       items: { ...variants.items, [variantId]: nextItem },
     },
   }
-}
-
-/** Sort variant ids for display, respecting the axis kind. */
-export function sortedVariantIds(
-  entity: Record<string, any>,
-  axisKind: 'ordered' | 'unordered' | null | undefined
-): string[] {
-  const variants = getVariants(entity)
-  if (!variants) return []
-  if (axisKind !== 'ordered') return variants.order
-  // Sort by axis_value when present (numeric-first, then string), falling back to the current order.
-  const indexed = variants.order.map((id, idx) => ({ id, idx, item: variants.items[id]! }))
-  indexed.sort((a, b) => {
-    const av = a.item.axis_value
-    const bv = b.item.axis_value
-    if (av == null && bv == null) return a.idx - b.idx
-    if (av == null) return 1
-    if (bv == null) return -1
-    if (typeof av === 'number' && typeof bv === 'number') return av - bv
-    return String(av).localeCompare(String(bv))
-  })
-  return indexed.map(e => e.id)
 }

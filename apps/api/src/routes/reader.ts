@@ -31,7 +31,13 @@ import {
 import {
   resolveDisplaySettings,
   sanitizeDisplaySettings,
-  type PartialManuscriptDisplaySettings
+  effectiveOverrides,
+  resolveEntityForVariant,
+  sortedVariantIds,
+  variantConfigFromTypeData,
+  versionableFieldNames,
+  type PartialManuscriptDisplaySettings,
+  type VariantResolutionConfig
 } from '@bobbinry/types'
 import { eq, and, desc, asc, sql, isNull, or, count, inArray } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
@@ -2357,45 +2363,6 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
     items?: Record<string, ReaderVariantItem>
   }
 
-  /** Fields whose values variants may override (custom fields flagged versionable + versionable base fields). */
-  function collectVersionableFields(typeData: Record<string, any>): Set<string> {
-    const fields = new Set<string>()
-    const customFields: Array<{ name?: string; versionable?: boolean }> = Array.isArray(typeData.custom_fields)
-      ? typeData.custom_fields
-      : []
-    for (const f of customFields) {
-      if (f?.versionable === true && typeof f.name === 'string') fields.add(f.name)
-    }
-    const versionableBase: unknown[] = Array.isArray(typeData.versionable_base_fields)
-      ? typeData.versionable_base_fields
-      : []
-    for (const name of versionableBase) {
-      if (typeof name === 'string') fields.add(name)
-    }
-    // Companion rule: installed type definitions predate the gallery fields,
-    // so `images`/`thumbnail` inherit image_url's versionability. Mirrors
-    // versionableFieldNames in bobbins/entities/src/variants.ts — keep in
-    // lockstep.
-    if (fields.has('image_url')) {
-      fields.add('images')
-      fields.add('thumbnail')
-    }
-    return fields
-  }
-
-  /**
-   * True when a variant override on a gallery field carries no image. Such an
-   * override means "inherit the base images", so it doesn't count as covering
-   * the base value below. Mirrors isEmptyGalleryOverride in
-   * bobbins/entities/src/variants.ts — keep in lockstep.
-   */
-  const GALLERY_OVERRIDE_FIELDS = new Set(['images', 'thumbnail', 'image_url'])
-  function isEmptyGalleryOverride(fieldName: string, value: unknown): boolean {
-    if (!GALLERY_OVERRIDE_FIELDS.has(fieldName)) return false
-    if (value === null || value === undefined || value === '') return true
-    return Array.isArray(value) && value.length === 0
-  }
-
   /**
    * Card-thumbnail URL for an entity's (sanitized) data: the designated
    * `thumbnail` when its url is in the `images` gallery, else the first
@@ -2423,6 +2390,43 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   }
 
   /**
+   * Card fields (name / description / thumbnail) for an entity.
+   *
+   * These are a convenience projection off the top level of the sanitized
+   * data. When the base view is hidden that top level can be missing the very
+   * fields every visible era overrides, so resolve at the first visible era
+   * instead.
+   *
+   * That era is picked in **axis** order, never by indexing
+   * `publishedVariantIds` — that array is stored in the order the author
+   * toggled the checkboxes, so on an ordered axis its first element is
+   * arbitrary.
+   */
+  function cardProjection(
+    sanitizedData: Record<string, any>,
+    variantConfig: VariantResolutionConfig,
+    visibleBase: boolean,
+    visibleVariantIds: string[]
+  ): { name: unknown; description: unknown; imageUrl: string | null } {
+    let view = sanitizedData
+    if (!visibleBase && visibleVariantIds.length > 0) {
+      const firstEra = sortedVariantIds(sanitizedData, variantConfig.variantAxis?.kind ?? null, {
+        eraIds: visibleVariantIds,
+      })[0]
+      if (firstEra) {
+        view = resolveEntityForVariant(sanitizedData, variantConfig, firstEra, {
+          eraIds: visibleVariantIds,
+        })
+      }
+    }
+    return {
+      name: view?.name ?? null,
+      description: view?.description ?? null,
+      imageUrl: deriveThumbnailUrl(view),
+    }
+  }
+
+  /**
    * Rebuild entityData so it contains only what the caller may see. The raw DB
    * record holds every base field plus the full `_variants` block — published
    * or not, tier-gated or not — so returning it verbatim hands hidden variant
@@ -2430,21 +2434,28 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
    * (publishBase / publishedVariantIds) says it's locked.
    *
    * Base fields ship when the base view is visible, or when a visible variant
-   * can still render them (variants only override versionable fields and fall
-   * back to the base value otherwise). A versionable field's base value is
-   * dropped when the base is hidden and every visible variant overrides it —
+   * can still render them. A versionable field's base value is dropped when the
+   * base is hidden and every visible variant resolves it to something else —
    * that value is never rendered through any visible view. An empty gallery
-   * override doesn't count as overriding: those variants inherit the base
-   * images, so the base value is still rendered.
+   * override doesn't count as covering: those variants inherit, so the base
+   * value may still be rendered.
+   *
+   * "Resolves to something else" is `effectiveOverrides` rather than a literal
+   * `field in overrides` check, because a forward-inheriting field can be
+   * covered by an *earlier* era. Crucially the fill runs over the **visible**
+   * era set only: a reader must never inherit a value from an era gated above
+   * their tier, which on an early-access axis is exactly the paywalled one.
+   * For `inherit: 'base'` fields this reduces to the original predicate.
    */
   function sanitizeEntityDataForReader(
     data: Record<string, unknown>,
     visibleBase: boolean,
     visibleVariantIds: string[],
-    versionableFields: Set<string>
+    variantConfig: VariantResolutionConfig
   ): Record<string, unknown> {
     if (!visibleBase && visibleVariantIds.length === 0) return {}
 
+    const versionableFields = versionableFieldNames(variantConfig)
     const { _variants, ...base } = data
     const variantsRoot = (_variants ?? {}) as ReaderVariantsBlock
     const rawItems = variantsRoot.items ?? {}
@@ -2462,12 +2473,16 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
 
     const sanitized: Record<string, unknown> = { ...base }
     if (!visibleBase) {
+      const effective = new Map(
+        visibleVariantIds.map(vid => [
+          vid,
+          effectiveOverrides(data, variantConfig, vid, { eraIds: visibleVariantIds }),
+        ])
+      )
       for (const field of versionableFields) {
-        const renderedNowhere = visibleVariantIds.every(vid => {
-          const overrides = visibleItems[vid]?.overrides
-          if (!overrides || !(field in overrides)) return false
-          return !isEmptyGalleryOverride(field, overrides[field])
-        })
+        const renderedNowhere = visibleVariantIds.every(
+          vid => effective.get(vid)?.[field] !== undefined
+        )
         if (renderedNowhere) delete sanitized[field]
       }
     }
@@ -2583,7 +2598,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       const types = visibleTypes.map(t => {
         const typeData = t.data as Record<string, any>
         const typeId = typeData.type_id as string
-        const versionableFields = collectVersionableFields(typeData)
+        const variantConfig = variantConfigFromTypeData(typeData)
         const rows = entityRowsByType.get(typeId) ?? []
         const visibleRows = isOwner ? rows : rows.filter(r => r.minimumTierLevel <= callerTier)
         lockedEntityCount += rows.length - visibleRows.length
@@ -2609,6 +2624,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           versionableBaseFields: typeData.versionable_base_fields ?? [],
           subtitleFields: typeData.subtitle_fields ?? [],
           variantAxis: typeData.variant_axis ?? null,
+          variantInheritance: typeData.variant_inheritance ?? {},
           minimumTierLevel: t.minimumTierLevel,
           publishOrder: t.publishOrder,
           lockedByTier,
@@ -2639,15 +2655,16 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
 
             const sanitizedData = isOwner
               ? data
-              : sanitizeEntityDataForReader(data, visibleBase, visibleVariantIds, versionableFields)
+              : sanitizeEntityDataForReader(data, visibleBase, visibleVariantIds, variantConfig)
+            const card = cardProjection(sanitizedData, variantConfig, visibleBase, visibleVariantIds)
 
             return {
               id: r.id,
               slug: codexSlugMap.get(r.id) ?? null,
               typeId,
-              name: sanitizedData?.name ?? null,
-              description: sanitizedData?.description ?? null,
-              imageUrl: deriveThumbnailUrl(sanitizedData),
+              name: card.name ?? null,
+              description: card.description ?? null,
+              imageUrl: card.imageUrl,
               tags: Array.isArray(sanitizedData?.tags) ? sanitizedData.tags : [],
               entityData: sanitizedData,
               publishOrder: r.publishOrder,
@@ -2776,9 +2793,11 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           (publishedVariantIds.length - visibleVariantIds.length)
       }
 
+      const variantConfig = variantConfigFromTypeData(typeData)
       const sanitizedData = isOwner
         ? data
-        : sanitizeEntityDataForReader(data, visibleBase, visibleVariantIds, collectVersionableFields(typeData))
+        : sanitizeEntityDataForReader(data, visibleBase, visibleVariantIds, variantConfig)
+      const card = cardProjection(sanitizedData, variantConfig, visibleBase, visibleVariantIds)
 
       return {
         type: {
@@ -2792,6 +2811,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           versionableBaseFields: typeData.versionable_base_fields ?? [],
           subtitleFields: typeData.subtitle_fields ?? [],
           variantAxis: typeData.variant_axis ?? null,
+          variantInheritance: typeData.variant_inheritance ?? {},
           minimumTierLevel: typeRow.minimumTierLevel,
           publishOrder: typeRow.publishOrder,
         },
@@ -2799,9 +2819,9 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           id: entityRow.id,
           slug: resolved.currentSlug,
           typeId: entityRow.collectionName,
-          name: (sanitizedData?.name as string) ?? null,
-          description: (sanitizedData?.description as string) ?? null,
-          imageUrl: deriveThumbnailUrl(sanitizedData),
+          name: (card.name as string) ?? null,
+          description: (card.description as string) ?? null,
+          imageUrl: card.imageUrl,
           tags: Array.isArray(sanitizedData?.tags) ? sanitizedData.tags : [],
           entityData: sanitizedData,
           publishOrder: entityRow.publishOrder,
@@ -2867,28 +2887,16 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           eq(entities.isPublished, true),
         ))
 
-      interface TypeMeta { label: string; icon: string; nameVersionable: boolean }
+      interface TypeMeta { label: string; icon: string; variantConfig: VariantResolutionConfig }
       const visibleTypeMeta = new Map<string, TypeMeta>()
       for (const t of typeRows) {
         if (!isOwner && t.minimumTierLevel > callerTier) continue
         const d = t.data as Record<string, any>
         if (typeof d?.type_id !== 'string') continue
-        // Name is versionable if the type flags `name` in its versionable_base_fields,
-        // or if a custom field named `name` is marked versionable (rare — handled
-        // defensively).
-        const versionableBase: string[] = Array.isArray(d.versionable_base_fields)
-          ? d.versionable_base_fields
-          : []
-        const customFields: Array<{ name?: string; versionable?: boolean }> = Array.isArray(d.custom_fields)
-          ? d.custom_fields
-          : []
-        const nameVersionable =
-          versionableBase.includes('name') ||
-          customFields.some(f => f?.name === 'name' && f?.versionable === true)
         visibleTypeMeta.set(d.type_id, {
           label: d.label ?? d.type_id,
           icon: d.icon ?? '📋',
-          nameVersionable,
+          variantConfig: variantConfigFromTypeData(d),
         })
       }
 
@@ -2950,21 +2958,12 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
 
         if (visibleBase) pushName(baseName)
 
-        if (variantIds.length > 0) {
-          const variantsRoot = data?._variants
-          const items = variantsRoot?.items as Record<string, { overrides?: Record<string, unknown> }> | undefined
-          if (items) {
-            for (const vid of variantIds) {
-              const item = items[vid]
-              if (!item) continue
-              if (meta.nameVersionable && item.overrides && typeof item.overrides.name === 'string') {
-                pushName(item.overrides.name)
-              } else {
-                // Fall back to base name for this entry since variant doesn't override it
-                pushName(baseName)
-              }
-            }
-          }
+        // Resolve each visible era's effective name. Filling over `variantIds`
+        // only means an era never surfaces a name inherited from one gated
+        // above this caller's tier.
+        for (const vid of variantIds) {
+          const resolved = effectiveOverrides(data, meta.variantConfig, vid, { eraIds: variantIds }).name
+          pushName(typeof resolved === 'string' ? resolved : baseName)
         }
 
         // Aliases are entity-level alternate names (nicknames, epithets, titles).

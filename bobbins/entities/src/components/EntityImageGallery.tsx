@@ -56,6 +56,12 @@ interface EntityImageGalleryProps {
   heroHeightClass?: string
   /** Rendered inside the primary image container (e.g. hero name overlay). */
   overlay?: React.ReactNode
+  /**
+   * Label of the earlier era these images are carried forward from, when the
+   * selected era has no gallery of its own. Null/undefined when the gallery is
+   * the era's own (or the base's).
+   */
+  inheritedFrom?: string | null
 }
 
 export function EntityImageGallery({
@@ -65,6 +71,7 @@ export function EntityImageGallery({
   variant,
   heroHeightClass = 'h-64',
   overlay,
+  inheritedFrom = null,
 }: EntityImageGalleryProps) {
   const uploadCtx = useUpload()
   const images = getEntityImages(entity)
@@ -299,6 +306,23 @@ export function EntityImageGallery({
   return (
     <div>
       {primary}
+      {inheritedFrom && images.length > 0 && (
+        <div
+          className={`flex items-center gap-1 pt-1 text-[11px] text-gray-400 dark:text-gray-500 ${
+            variant === 'hero' ? 'px-4' : ''
+          }`}
+          title={
+            canEdit
+              ? `Carried forward from ${inheritedFrom}. Adding or reordering images here gives this one its own gallery; removing them all restores the inherited one.`
+              : `Carried forward from ${inheritedFrom}`
+          }
+        >
+          <svg className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 010 5.656l-3 3a4 4 0 01-5.656-5.656l1.5-1.5m4.5-4.5l1.5-1.5a4 4 0 015.656 5.656l-3 3a4 4 0 01-5.656 0" />
+          </svg>
+          <span className="truncate">from {inheritedFrom}</span>
+        </div>
+      )}
       <ImageCredit image={primaryImage} className={variant === 'hero' ? 'px-4 pt-1.5' : 'pt-1'} />
       {strip}
 

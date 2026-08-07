@@ -80,6 +80,12 @@ const EntityTypeBodySchema = z.object({
   template_id: z.string().nullable().optional(),
   template_version: z.number().nullable().optional(),
   variant_axis: VariantAxisSchema.nullable().optional(),
+  // Per-field `base` | `forward` inheritance for ordered axes, keyed by field
+  // name. The gallery triple shares the canonical key `images`. Absent keys
+  // take the default (base everywhere except the gallery).
+  variant_inheritance: z
+    .record(z.string().regex(FIELD_NAME_RE), z.enum(['base', 'forward']))
+    .optional(),
 })
 
 const UpdateBodySchema = EntityTypeBodySchema.partial().extend({
@@ -281,6 +287,7 @@ const entityTypesPlugin: FastifyPluginAsync = async (fastify) => {
         subtitle_fields: body.subtitle_fields ?? [],
         allow_duplicates: body.allow_duplicates ?? true,
         variant_axis: body.variant_axis ?? null,
+        variant_inheritance: body.variant_inheritance ?? {},
         schema_version: 1,
         _field_history: [],
         created_at: now,
@@ -361,6 +368,11 @@ const entityTypesPlugin: FastifyPluginAsync = async (fastify) => {
 
       // Schema version bump on custom_fields OR versionable_base_fields change —
       // either meaningfully changes how existing entity data is interpreted.
+      //
+      // `variant_inheritance` deliberately does NOT bump: flipping a field
+      // versionable strands stored overrides (they stop being read), whereas
+      // changing where a field falls back strands nothing — every stored
+      // override is still read, just with a different fallback.
       if (body.custom_fields || body.versionable_base_fields) {
         const originalFields = (existingData.custom_fields || []) as FieldChangeSignature[]
         const updatedFields = (body.custom_fields ?? existingData.custom_fields ?? []) as FieldChangeSignature[]

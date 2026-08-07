@@ -16,6 +16,7 @@ interface ListDetailsLayoutProps {
   fields: FieldDefinition[]
   onFieldChange: (fieldName: string, value: any) => void
   readonly?: boolean
+  inheritedGalleryFrom?: string | null
 }
 
 export function ListDetailsLayout({
@@ -23,7 +24,8 @@ export function ListDetailsLayout({
   layout,
   fields,
   onFieldChange,
-  readonly = false
+  readonly = false,
+  inheritedGalleryFrom = null
 }: ListDetailsLayoutProps) {
   const allFields = [
     { name: 'name', type: 'text' as const, label: 'Name', required: true },
@@ -47,6 +49,7 @@ export function ListDetailsLayout({
               {/* Stacked mode renders the sidebar full width — cap the square image */}
               <div className="mx-auto max-w-72 @3xl:mx-0 @3xl:max-w-none">
                 <EntityImageGallery
+          inheritedFrom={inheritedGalleryFrom}
                   entity={entity}
                   readonly={readonly}
                   onFieldChange={onFieldChange}

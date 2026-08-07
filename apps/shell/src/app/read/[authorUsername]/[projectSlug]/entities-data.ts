@@ -1,20 +1,26 @@
 /**
  * Types + helpers for the reader's Entities tab.
  *
- * Keeps the server response shape (mirrored from /api/public/projects/:id/entities)
- * and the small amount of variant-resolution logic needed to merge overrides
- * onto the base entity for display. The inlined variant helper mirrors
- * `bobbins/entities/src/variants.ts` — gallery helpers are imported from
- * @bobbinry/entities directly.
+ * Keeps the server response shape (mirrored from /api/public/projects/:id/entities).
+ * Variant resolution itself comes from `@bobbinry/types` — the same
+ * implementation the API and the entities bobbin use, so the reader can't
+ * disagree with them about what an era renders.
  */
 
 import {
   getEntityImages,
   getEntityThumbnail,
   imageAltText,
-  isEmptyGalleryOverride,
   type EntityThumbnail,
 } from '@bobbinry/entities'
+import {
+  resolveEntityForVariant,
+  sortedVariantIds,
+  type VariantInherit,
+  type VariantResolutionConfig,
+} from '@bobbinry/types'
+
+export { resolveEntityForVariant }
 
 export interface VariantAxis {
   id: string
@@ -53,6 +59,8 @@ export interface PublishedType {
   versionableBaseFields: string[]
   subtitleFields: string[]
   variantAxis: VariantAxis | null
+  /** Per-field `base` | `forward` inheritance for ordered axes; absent = defaults. */
+  variantInheritance?: Record<string, VariantInherit>
   minimumTierLevel: number
   publishOrder: number
   /** Count of entities in this type the caller can't see yet, keyed by the tier level that would unlock them. */
@@ -84,76 +92,64 @@ export interface EntitiesPayload {
   lockedPreviews: { types: number; entities: number }
 }
 
-/**
- * Description for card previews and search. When the base view isn't
- * published, the server strips base fields that every visible variant
- * overrides, so `entity.description` can be null even though the visible
- * variants carry one — fall back to the first published variant's override,
- * matching the display-name fallback and what the drawer opens to.
- */
-export function resolveCardDescription(entity: PublishedEntity): string | null {
-  if (entity.publishBase) return entity.description
-  const firstVariantId = entity.publishedVariantIds[0]
-  const override = firstVariantId
-    ? entity.entityData._variants?.items?.[firstVariantId]?.overrides?.description
-    : undefined
-  return typeof override === 'string' ? override : entity.description
+/** The resolution config for a published type, as the shared resolver wants it. */
+export function variantConfigForType(type: PublishedType): VariantResolutionConfig {
+  return {
+    customFields: type.customFields as ReadonlyArray<{ name: string; versionable?: boolean }>,
+    versionableBaseFields: type.versionableBaseFields ?? [],
+    variantAxis: type.variantAxis,
+    variantInheritance: type.variantInheritance,
+  }
 }
 
 /**
- * Thumbnail (url + optional crop) for card previews. Mirrors the
- * description fallback above: when the base view isn't published, overlay
- * the first published variant's gallery overrides so the card matches what
- * the drawer opens to.
+ * The entity data a card should preview.
+ *
+ * When the base view isn't published the server strips base fields that every
+ * visible variant overrides, so `entity.description` / `imageUrl` can be null
+ * even though the visible eras carry them. Resolve at the first visible era
+ * instead — which is what the drawer opens to.
+ *
+ * That era must be picked in **axis** order, not from `publishedVariantIds`:
+ * that array is stored in the order the author toggled the checkboxes, so
+ * indexing it directly gives an arbitrary era on an ordered axis.
  */
+export function resolveCardView(
+  entity: PublishedEntity,
+  type: PublishedType | null | undefined
+): Record<string, any> {
+  if (entity.publishBase) return entity.entityData
+  const eraIds = entity.publishedVariantIds
+  const firstEra = sortedVariantIds(entity.entityData, type?.variantAxis?.kind ?? null, { eraIds })[0]
+  if (!firstEra) return entity.entityData
+  return resolveEntityForVariant(
+    entity.entityData,
+    type ? variantConfigForType(type) : null,
+    firstEra,
+    { eraIds }
+  )
+}
+
+/** Description for card previews and search. */
+export function resolveCardDescription(
+  entity: PublishedEntity,
+  type?: PublishedType | null
+): string | null {
+  if (entity.publishBase) return entity.description
+  const value = resolveCardView(entity, type).description
+  return typeof value === 'string' ? value : entity.description
+}
+
+/** Thumbnail (url + optional crop) for card previews. */
 export function resolveCardThumbnail(
-  entity: PublishedEntity
+  entity: PublishedEntity,
+  type?: PublishedType | null
 ): (EntityThumbnail & { alt: string }) | null {
-  let data: Record<string, unknown> = entity.entityData
-  if (!entity.publishBase) {
-    const firstVariantId = entity.publishedVariantIds[0]
-    const overrides = firstVariantId
-      ? entity.entityData._variants?.items?.[firstVariantId]?.overrides
-      : undefined
-    if (overrides) {
-      const applied = { ...data }
-      for (const [key, value] of Object.entries(overrides)) {
-        // An emptied variant gallery inherits the base images.
-        if (isEmptyGalleryOverride(key, value)) continue
-        applied[key] = value
-      }
-      data = applied
-    }
-  }
+  const data = resolveCardView(entity, type)
   const thumbnail = getEntityThumbnail(data)
   if (!thumbnail) return null
   // Author-provided alt/caption for the thumbnail's gallery image; empty
   // stays correct for decorative images next to the visible card title.
   const image = getEntityImages(data).find(img => img.url === thumbnail.url)
   return { ...thumbnail, alt: imageAltText(image) }
-}
-
-/**
- * Strip the `_variants` block and overlay a variant's overrides on top of the
- * base entity. Null variantId returns the base (with variants stripped).
- * Only fields declared versionable are allowed through as overrides — matches
- * the logic in `bobbins/entities/src/variants.ts`.
- */
-export function resolveEntityForVariant(
-  entity: Record<string, any>,
-  versionableFieldSet: Set<string>,
-  variantId: string | null
-): Record<string, any> {
-  const { _variants, ...base } = entity
-  if (!variantId) return base
-  const item = _variants?.items?.[variantId]
-  if (!item || !item.overrides) return base
-  const result: Record<string, any> = { ...base }
-  for (const [key, value] of Object.entries(item.overrides)) {
-    if (!versionableFieldSet.has(key)) continue
-    // An emptied variant gallery inherits the base images.
-    if (isEmptyGalleryOverride(key, value)) continue
-    result[key] = value
-  }
-  return result
 }
