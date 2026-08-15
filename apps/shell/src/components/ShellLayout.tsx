@@ -77,7 +77,10 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
   const [dynamicContext, setDynamicContext] = useState<Record<string, any>>({})
   const [focusMode, setFocusMode] = useState(false)
   const [showFocusHint, setShowFocusHint] = useState(false)
+  // Right panel floated over the manuscript while in focus mode (entity preview)
+  const [focusPanelOpen, setFocusPanelOpen] = useState(false)
   const focusModeRef = useRef(false)
+  const focusPanelOpenRef = useRef(false)
 
   const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
     if (typeof window === 'undefined') return DEFAULT_LEFT_WIDTH
@@ -201,17 +204,23 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
     }
   }, [])
 
-  // Keep focus mode ref in sync
+  // Keep focus mode refs in sync
   useEffect(() => {
     focusModeRef.current = focusMode
   }, [focusMode])
+  useEffect(() => {
+    focusPanelOpenRef.current = focusPanelOpen
+  }, [focusPanelOpen])
 
   // Clicking a highlighted entity in an editor should surface the preview,
-  // not load it invisibly behind a collapsed right panel.
+  // not load it invisibly behind a collapsed right panel. In focus mode the
+  // right panel is squeezed to zero width, so float it over the manuscript
+  // instead of dropping the user out of focus mode.
   useEffect(() => {
     const handleEntityPreview = (event: Event) => {
       const detail = (event as CustomEvent).detail
       setRightPanelCollapsed(false)
+      if (focusModeRef.current) setFocusPanelOpen(true)
       window.dispatchEvent(
         new CustomEvent('bobbinry:reveal-panel', {
           detail: {
@@ -234,7 +243,9 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
         setFocusMode(prev => !prev)
       }
       if (e.key === 'Escape' && focusModeRef.current) {
-        setFocusMode(false)
+        // A floated preview swallows the first Escape; the second exits focus mode.
+        if (focusPanelOpenRef.current) setFocusPanelOpen(false)
+        else setFocusMode(false)
       }
     }
 
@@ -261,6 +272,7 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
       return () => clearTimeout(timeout)
     }
     setShowFocusHint(false)
+    setFocusPanelOpen(false)
     return undefined
   }, [focusMode])
 
@@ -366,7 +378,7 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
       </header>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden relative">
         {/* Left Panel — icon rail + single active panel column */}
         <aside
           className={`bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 ${
@@ -444,14 +456,35 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
           />
         )}
 
-        {/* Right Panel */}
+        {/* Right Panel — floats over the manuscript while in focus mode */}
         <aside
           className={`bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 ${
             resizingPanel === 'right' ? '' : 'transition-all duration-300'
-          } overflow-hidden`}
-          style={{ width: focusMode || (isHydrated && rightPanelCollapsed) ? 0 : rightPanelWidth }}
+          } overflow-hidden flex flex-col ${
+            focusMode && focusPanelOpen ? 'absolute right-0 top-0 bottom-0 z-30 shadow-2xl' : ''
+          }`}
+          style={{
+            width: focusMode
+              ? (focusPanelOpen ? rightPanelWidth : 0)
+              : (isHydrated && rightPanelCollapsed ? 0 : rightPanelWidth)
+          }}
         >
-          <div className="h-full">
+          {focusMode && focusPanelOpen && (
+            <div className="shrink-0 flex items-center justify-between h-8 px-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80">
+              <span className="text-[11px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">Reference</span>
+              <button
+                onClick={() => setFocusPanelOpen(false)}
+                className="p-1 -mr-1 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                title="Close (Esc)"
+                aria-label="Close preview"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          )}
+          <div className="flex-1 min-h-0">
             <ExtensionSlot
               slotId="shell.rightPanel"
               context={shellContext}
