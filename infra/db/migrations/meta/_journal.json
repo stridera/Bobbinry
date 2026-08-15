@@ -302,6 +302,13 @@
       "when": 1786081304775,
       "tag": "0043_change_feed_deltas",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1786744760045,
+      "tag": "0044_dictionary_cache",
+      "breakpoints": true
     }
   ]
 }

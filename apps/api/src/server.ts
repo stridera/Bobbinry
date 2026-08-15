@@ -48,6 +48,7 @@ import entityPublishPlugin from './routes/entity-publish'
 import entitySlugsPlugin from './routes/entity-slugs'
 import promoCodesPlugin from './routes/promo-codes'
 import searchReplacePlugin from './routes/search-replace'
+import dictionaryPlugin from './routes/dictionary'
 import { hashApiKey, getApiKeyTier } from './middleware/auth'
 
 export function build(opts = {}): FastifyInstance {
@@ -328,6 +329,7 @@ export function build(opts = {}): FastifyInstance {
   server.register(importPlugin, { prefix: '/api' })
   server.register(promoCodesPlugin, { prefix: '/api' })
   server.register(searchReplacePlugin, { prefix: '/api' })
+  server.register(dictionaryPlugin, { prefix: '/api' })
 
 
   // Warm disk manifest cache, then start the trigger scheduler

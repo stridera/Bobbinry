@@ -1047,6 +1047,26 @@ export const entitySlugs = pgTable('entity_slugs', {
   entityIdx: index('entity_slugs_entity_idx').on(table.entityId)
 }))
 
+// Cache for third-party dictionary lookups (see lib/dictionary.ts).
+//
+// Word definitions are effectively immutable, so rows are keyed by the word
+// alone -- no project or user scoping -- and one author's lookup warms the
+// cache for everyone. `not_found` records the negative answer too, so a word
+// with no entry doesn't re-hit the upstream on every selection.
+//
+// Only settled answers are written here. An upstream outage is never cached,
+// which is the whole point: the failure mode this table exists to absorb must
+// not be able to persist itself.
+export const dictionaryCache = pgTable('dictionary_cache', {
+  word: varchar('word', { length: 128 }).primaryKey(),
+  payload: jsonb('payload'),
+  source: varchar('source', { length: 32 }).notNull(),
+  notFound: boolean('not_found').default(false).notNull(),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }).defaultNow().notNull()
+}, (table) => ({
+  fetchedAtIdx: index('dictionary_cache_fetched_at_idx').on(table.fetchedAt)
+}))
+
 // Relations
 export const usersRelations = relations(users, ({ many, one }) => ({
   projects: many(projects),
