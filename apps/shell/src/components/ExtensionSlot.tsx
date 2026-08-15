@@ -11,6 +11,8 @@ interface ExtensionSlotProps {
   className?: string
   fallback?: ReactNode
   layout?: 'stacked' | 'inline'
+  /** Render only this extension, chromeless. See ResizablePanelStack. */
+  soloPanelId?: string
 }
 
 const noopSubscribe = () => () => {}
@@ -51,7 +53,8 @@ export function ExtensionSlot({
   context,
   className,
   fallback,
-  layout = 'stacked'
+  layout = 'stacked',
+  soloPanelId
 }: ExtensionSlotProps) {
   const extensionContext = useExtensions()
   const registeredCount = extensionContext?.extensions?.length ?? 0
@@ -140,6 +143,7 @@ export function ExtensionSlot({
         slotId={slotId}
         singlePanel={extensions.length === 1}
         contextKey={context?.bobbinId}
+        {...(soloPanelId ? { soloPanelId } : {})}
         {...(slot?.maxContributions !== undefined ? { defaultVisibleCount: slot.maxContributions } : {})}
       />
     </div>

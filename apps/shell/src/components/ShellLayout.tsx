@@ -17,6 +17,8 @@ const DEFAULT_RIGHT_WIDTH = 320  // current w-80
 const MIN_PANEL_WIDTH = 200
 const MAX_PANEL_WIDTH = 600
 const RESIZE_HANDLE_WIDTH = 4
+/** The one panel focus mode will float, and only on an editor gesture. */
+const FOCUS_PANEL_ID = 'entities.entity-preview'
 
 interface InstalledBobbin {
   id: string
@@ -220,12 +222,15 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
     const handleEntityPreview = (event: Event) => {
       const detail = (event as CustomEvent).detail
       setRightPanelCollapsed(false)
-      if (focusModeRef.current) setFocusPanelOpen(true)
+      // Focus mode admits user-initiated surfaces only. The same event is also
+      // dispatched by the entities navigation panel; that one may reveal the
+      // panel, but it may not float anything over the manuscript.
+      if (focusModeRef.current && detail?.source === 'editor') setFocusPanelOpen(true)
       window.dispatchEvent(
         new CustomEvent('bobbinry:reveal-panel', {
           detail: {
             slotId: 'shell.rightPanel',
-            panelId: 'entities.entity-preview',
+            panelId: FOCUS_PANEL_ID,
             replay: { type: 'bobbinry:entity-preview', detail },
           },
         })
@@ -489,6 +494,7 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
               slotId="shell.rightPanel"
               context={shellContext}
               className="h-full"
+              {...(focusMode && focusPanelOpen ? { soloPanelId: FOCUS_PANEL_ID } : {})}
               fallback={
                 <EmptySlotFallback
                   icon={

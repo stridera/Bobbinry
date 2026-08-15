@@ -162,7 +162,10 @@ export const EntityHighlight = Extension.create({
 
             window.dispatchEvent(
               new CustomEvent('bobbinry:entity-preview', {
-                detail: { entityId, entityType, entityName },
+                // `source` marks this as a gesture the writer made in the
+                // manuscript. Focus mode only surfaces panels on that basis —
+                // nothing is allowed to summon itself.
+                detail: { entityId, entityType, entityName, source: 'editor' },
               })
             )
             return true

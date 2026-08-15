@@ -15,6 +15,16 @@ interface ResizablePanelStackProps {
   singlePanel?: boolean
   defaultVisibleCount?: number
   contextKey?: string
+  /**
+   * Show exactly this panel, chromeless — used by focus mode, where a click on
+   * an entity should surface one reference and nothing else.
+   *
+   * The other panels stay mounted but hidden rather than being unmounted: a
+   * writing session in progress (Bookworm Siege) or an unsaved note would not
+   * survive the round trip. Saved layout is never written from this mode, so
+   * leaving it restores the arrangement the user built.
+   */
+  soloPanelId?: string
 }
 
 interface PanelState {
@@ -135,6 +145,7 @@ export function ResizablePanelStack({
   singlePanel,
   defaultVisibleCount,
   contextKey,
+  soloPanelId,
 }: ResizablePanelStackProps) {
   const storageKey = contextKey ? `panelLayout:${slotId}:${contextKey}` : `panelLayout:${slotId}`
   const storageKeyRef = useRef(storageKey)
@@ -473,7 +484,7 @@ export function ResizablePanelStack({
     return raw.map(s => (s / total) * 100)
   }, [visiblePanels, visibleSizes, panelState.collapsed])
   const hiddenCount = panels.length - visiblePanels.length
-  const showManagementBar = panels.length > 1 || hiddenCount > 0
+  const showManagementBar = !soloPanelId && (panels.length > 1 || hiddenCount > 0)
 
   return (
     <div className="flex h-full flex-col">
@@ -564,6 +575,13 @@ export function ResizablePanelStack({
           // eslint-disable-next-line react-hooks/refs -- getActionsRef is a stable ref-callback factory, not reading mutable state for render
           visiblePanels.map((item, index) => {
             const isCollapsed = panelState.collapsed[item.orderIndex]
+            // Solo mode hides rather than removes, and keeps the element tree
+            // identical to normal mode, so React preserves every panel instance
+            // — the soloed one keeps the entity it was just handed, and the
+            // others keep whatever they were in the middle of.
+            const isSoloed = soloPanelId != null && item.panel.id === soloPanelId
+            const isDimmedBySolo = soloPanelId != null && !isSoloed
+
             const heightPercent = effectiveSizes[index] || 100 / visiblePanels.length
             const heightPx = isCollapsed ? HEADER_HEIGHT : (heightPercent / 100) * availableHeight + HEADER_HEIGHT
             const isDragOver = dropTarget === index && reorderDrag?.sourceIndex !== index
@@ -571,13 +589,13 @@ export function ResizablePanelStack({
             const nextVisiblePanel = visiblePanels[index + 1]
 
             return (
-              <div key={item.panel.id}>
+              <div key={item.panel.id} className={isDimmedBySolo ? 'hidden' : undefined}>
                 <div
-                  style={{ height: `${heightPx}px` }}
+                  style={isSoloed ? { height: '100%' } : { height: `${heightPx}px` }}
                   className={`flex flex-col border-b border-gray-200 dark:border-gray-600 ${isDragSource ? 'opacity-50' : ''}`}
                 >
                   <div
-                    className={`flex h-10 items-center gap-1.5 border-b border-gray-200 px-2 transition-colors select-none dark:border-gray-600 ${
+                    className={`${soloPanelId ? 'hidden ' : ''}flex h-10 items-center gap-1.5 border-b border-gray-200 px-2 transition-colors select-none dark:border-gray-600 ${
                       effectiveSinglePanel
                         ? 'bg-gray-50 dark:bg-gray-700'
                         : `cursor-pointer ${
@@ -637,7 +655,7 @@ export function ResizablePanelStack({
                     ) : null}
                   </div>
 
-                  {!isCollapsed ? (
+                  {!isCollapsed || isSoloed ? (
                     <div className="flex-1 overflow-hidden">
                       <PanelActionsProvider value={actionsTargets.get(item.panel.id) || null}>
                         {item.panel.content}
@@ -646,7 +664,7 @@ export function ResizablePanelStack({
                   ) : null}
                 </div>
 
-                {!effectiveSinglePanel && nextVisiblePanel && !panelState.collapsed[item.orderIndex] && !panelState.collapsed[nextVisiblePanel.orderIndex] ? (
+                {!soloPanelId && !effectiveSinglePanel && nextVisiblePanel && !panelState.collapsed[item.orderIndex] && !panelState.collapsed[nextVisiblePanel.orderIndex] ? (
                   <div
                     className="h-1 cursor-row-resize bg-gray-200 transition-colors hover:bg-blue-400 active:bg-blue-500 dark:bg-gray-600 dark:hover:bg-blue-500"
                     onMouseDown={event => handleDividerMouseDown(index, event)}
