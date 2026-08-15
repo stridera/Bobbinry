@@ -20,6 +20,17 @@ export interface EntityEntry {
   typeId: string
   typeIcon: string
   typeLabel: string
+  /** Carried for the hover card — the editor already fetches it, so it's free. */
+  description?: string
+  imageUrl?: string
+}
+
+/** Payload of `bobbinry:entity-hover`. `rect` is viewport-relative. */
+export interface EntityHoverDetail {
+  key: string
+  name: string
+  entries: EntityEntry[]
+  rect: { top: number; bottom: number; left: number; right: number }
 }
 
 const entityHighlightPluginKey = new PluginKey('entityHighlight')
@@ -155,6 +166,52 @@ export const EntityHighlight = Extension.create({
               })
             )
             return true
+          },
+
+          // Hovering reports the entity under the pointer; the hover card owns
+          // the open/close timing so the plugin stays free of UI policy.
+          handleDOMEvents: {
+            mouseover(_view, event) {
+              const target = (event.target as HTMLElement | null)?.closest?.(
+                '.entity-highlight'
+              ) as HTMLElement | null
+              if (!target) return false
+
+              const ids = target.dataset.entityId
+              const name = target.dataset.entityName
+              if (!ids || !name) return false
+
+              // One entry per name *and* alias, so the same id can appear more
+              // than once — index by id to hand the card each entity only once.
+              const byId = new Map<string, EntityEntry>()
+              for (const entry of extension.storage.entityList as EntityEntry[]) {
+                if (!byId.has(entry.id)) byId.set(entry.id, entry)
+              }
+              const entries = ids
+                .split(',')
+                .map(id => byId.get(id.trim()))
+                .filter((entry): entry is EntityEntry => entry != null)
+              if (entries.length === 0) return false
+
+              const { top, bottom, left, right } = target.getBoundingClientRect()
+              const detail: EntityHoverDetail = {
+                key: ids,
+                name,
+                entries,
+                rect: { top, bottom, left, right },
+              }
+              window.dispatchEvent(new CustomEvent('bobbinry:entity-hover', { detail }))
+              return false
+            },
+
+            mouseout(_view, event) {
+              const target = (event.target as HTMLElement | null)?.closest?.(
+                '.entity-highlight'
+              ) as HTMLElement | null
+              if (!target) return false
+              window.dispatchEvent(new CustomEvent('bobbinry:entity-hover-end'))
+              return false
+            },
           },
         },
       }),

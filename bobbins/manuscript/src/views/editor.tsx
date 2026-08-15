@@ -27,6 +27,7 @@ import TextAlign from '@tiptap/extension-text-align'
 import { ImageUpload } from '../extensions/image-upload'
 import { EntityHighlight } from '../extensions/entity-highlight'
 import type { EntityEntry } from '../extensions/entity-highlight'
+import { EntityHoverCard } from '../components/EntityHoverCard'
 import {
   SearchHighlight,
   setSearchHighlight,
@@ -1039,6 +1040,14 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
                     typeId,
                     typeIcon,
                     typeLabel,
+                    // Only used by the hover card. Already on the record we
+                    // fetched, so carrying it costs nothing extra.
+                    ...(typeof entity.description === 'string'
+                      ? { description: entity.description }
+                      : {}),
+                    ...(typeof entity.image_url === 'string'
+                      ? { imageUrl: entity.image_url }
+                      : {}),
                   }
                   const out: EntityEntry[] = [{ ...base, name: entity.name }]
                   if (Array.isArray(entity.aliases)) {
@@ -2096,6 +2105,9 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
           className={`h-[3px] flex-shrink-0 ${chapterColorClasses.stripe}`}
         />
       )}
+
+      {/* Hover peek for highlighted entities — inert, fixed-positioned overlay */}
+      <EntityHoverCard />
 
       {/* Toolbar - hidden in focus mode */}
       <div className={`transition-all duration-200 overflow-hidden ${focusMode ? 'h-0 opacity-0' : ''}`}>

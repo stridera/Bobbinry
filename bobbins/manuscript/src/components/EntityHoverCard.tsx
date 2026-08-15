@@ -1,0 +1,233 @@
+/**
+ * Entity Hover Card
+ *
+ * The first rung of the entity ladder: hover peeks, click opens the preview
+ * panel, the panel links to the full entity page. This card is deliberately
+ * inert — `pointer-events: none`, no controls, nothing to aim at. Clicking
+ * "through" it hits the word underneath, which is what opens the panel.
+ *
+ * All of the data it renders is already in the editor's entity list, so
+ * showing it costs no network request.
+ *
+ * Timing policy lives here rather than in the ProseMirror plugin: a card that
+ * fires while you are typing or drag-selecting is worse than no card at all.
+ */
+
+import { useEffect, useRef, useState } from 'react'
+import type { EntityHoverDetail } from '../extensions/entity-highlight'
+
+/** Pointer must rest this long before the card appears. */
+const OPEN_DELAY_MS = 400
+/** Grace period on leave, so crossing between adjacent names doesn't flicker. */
+const CLOSE_DELAY_MS = 120
+/** Hovering is browsing, not writing — stay out of the way just after a keystroke. */
+const TYPING_QUIET_MS = 1000
+/** Below this much room above the word, the card flips underneath it. */
+const FLIP_THRESHOLD_PX = 200
+const CARD_WIDTH_PX = 288
+const VIEWPORT_MARGIN_PX = 8
+
+/**
+ * Entity descriptions may hold rich text. Reduce to a single plain line —
+ * exported for tests.
+ */
+export function toPlainSummary(raw: string | undefined, maxLength = 180): string {
+  if (!raw) return ''
+  const text = raw
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<\/(p|div|li|h[1-6])>/gi, ' ')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (text.length <= maxLength) return text
+  const clipped = text.slice(0, maxLength)
+  const lastSpace = clipped.lastIndexOf(' ')
+  return `${(lastSpace > maxLength * 0.6 ? clipped.slice(0, lastSpace) : clipped).trimEnd()}…`
+}
+
+export function EntityHoverCard() {
+  const [hover, setHover] = useState<EntityHoverDetail | null>(null)
+
+  // Timers and suppression flags stay in refs — window listeners must see the
+  // latest values without re-subscribing on every hover.
+  const openTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const draggingRef = useRef(false)
+  const lastKeyAtRef = useRef(0)
+  const shownKeyRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const clearOpen = () => {
+      if (openTimerRef.current) clearTimeout(openTimerRef.current)
+      openTimerRef.current = null
+    }
+    const clearClose = () => {
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+    }
+    const dismiss = () => {
+      clearOpen()
+      clearClose()
+      shownKeyRef.current = null
+      setHover(null)
+    }
+
+    const handleHover = (event: Event) => {
+      const detail = (event as CustomEvent<EntityHoverDetail>).detail
+      if (!detail?.entries?.length) return
+      if (draggingRef.current) return
+      if (Date.now() - lastKeyAtRef.current < TYPING_QUIET_MS) return
+
+      // Re-entering the name that's already shown: cancel the pending close
+      // rather than tearing the card down and rebuilding it.
+      clearClose()
+      if (shownKeyRef.current === detail.key) {
+        setHover(detail)
+        return
+      }
+
+      clearOpen()
+      openTimerRef.current = setTimeout(() => {
+        if (draggingRef.current) return
+        shownKeyRef.current = detail.key
+        setHover(detail)
+      }, OPEN_DELAY_MS)
+    }
+
+    const handleHoverEnd = () => {
+      clearOpen()
+      clearClose()
+      closeTimerRef.current = setTimeout(() => {
+        shownKeyRef.current = null
+        setHover(null)
+      }, CLOSE_DELAY_MS)
+    }
+
+    const handleKeyDown = () => {
+      lastKeyAtRef.current = Date.now()
+      dismiss()
+    }
+    const handleMouseDown = () => {
+      draggingRef.current = true
+      dismiss()
+    }
+    const handleMouseUp = () => {
+      draggingRef.current = false
+    }
+
+    window.addEventListener('bobbinry:entity-hover', handleHover)
+    window.addEventListener('bobbinry:entity-hover-end', handleHoverEnd)
+    // A click promotes the peek to the preview panel — the card has done its job.
+    window.addEventListener('bobbinry:entity-preview', dismiss)
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('mousedown', handleMouseDown)
+    window.addEventListener('mouseup', handleMouseUp)
+    // Any scroll invalidates the anchor rect we were positioned against.
+    window.addEventListener('scroll', dismiss, true)
+    window.addEventListener('resize', dismiss)
+
+    return () => {
+      clearOpen()
+      clearClose()
+      window.removeEventListener('bobbinry:entity-hover', handleHover)
+      window.removeEventListener('bobbinry:entity-hover-end', handleHoverEnd)
+      window.removeEventListener('bobbinry:entity-preview', dismiss)
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('mousedown', handleMouseDown)
+      window.removeEventListener('mouseup', handleMouseUp)
+      window.removeEventListener('scroll', dismiss, true)
+      window.removeEventListener('resize', dismiss)
+    }
+  }, [])
+
+  if (!hover) return null
+
+  const entry = hover.entries[0]
+  if (!entry) return null
+
+  const summary = toPlainSummary(entry.description)
+  const extraCount = hover.entries.length - 1
+  const placeAbove = hover.rect.top >= FLIP_THRESHOLD_PX
+
+  const maxLeft = Math.max(
+    VIEWPORT_MARGIN_PX,
+    window.innerWidth - CARD_WIDTH_PX - VIEWPORT_MARGIN_PX
+  )
+  const left = Math.min(Math.max(hover.rect.left, VIEWPORT_MARGIN_PX), maxLeft)
+
+  // Placement and entrance animation are split across two elements on purpose:
+  // the shell's `fade-in` keyframes animate `transform` with `both` fill, so an
+  // inline transform on the same element gets overridden and "above" placement
+  // silently collapses onto the word it describes.
+  return (
+    <div
+      className="fixed z-50 pointer-events-none"
+      style={{
+        left,
+        width: CARD_WIDTH_PX,
+        top: placeAbove ? hover.rect.top - 8 : hover.rect.bottom + 8,
+        ...(placeAbove ? { transform: 'translateY(-100%)' } : {}),
+      }}
+    >
+      <div
+        role="tooltip"
+        aria-hidden
+        className="select-none rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl px-3 py-2.5 animate-fade-in"
+      >
+        <div className="flex items-start gap-2.5">
+          {entry.imageUrl && (
+            <img
+              src={entry.imageUrl}
+              alt=""
+              className="w-10 h-10 rounded object-cover shrink-0 bg-gray-100 dark:bg-gray-700"
+              onError={event => {
+                event.currentTarget.style.display = 'none'
+              }}
+            />
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline gap-1.5">
+              {entry.typeIcon && <span className="text-sm shrink-0">{entry.typeIcon}</span>}
+              <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                {entry.name}
+              </span>
+            </div>
+            <div className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mt-0.5">
+              {entry.typeLabel}
+            </div>
+            <p
+              className={`text-xs leading-relaxed mt-1.5 ${
+                summary
+                  ? 'text-gray-600 dark:text-gray-300'
+                  : 'text-gray-400 dark:text-gray-500 italic'
+              }`}
+              style={{
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+              }}
+            >
+              {summary || 'No description yet.'}
+            </p>
+          </div>
+        </div>
+        {extraCount > 0 && (
+          <div className="text-[11px] text-gray-400 dark:text-gray-500 mt-2 pt-2 border-t border-gray-100 dark:border-gray-700">
+            +{extraCount} other {extraCount === 1 ? 'entity shares' : 'entities share'} this name —
+            click to choose
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export default EntityHoverCard
