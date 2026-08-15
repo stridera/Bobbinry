@@ -4,7 +4,7 @@
  * the summary has to survive markup, entities, and stray whitespace.
  */
 
-import { toPlainSummary } from '../../components/EntityHoverCard'
+import { toPlainSummary } from '@bobbinry/ui-components'
 
 describe('toPlainSummary', () => {
   it('returns an empty string for missing descriptions', () => {

@@ -13,25 +13,13 @@ import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
+import type { EntityPeekEntry, EntityHoverDetail } from '@bobbinry/ui-components'
 
-export interface EntityEntry {
-  id: string
-  name: string
-  typeId: string
-  typeIcon: string
-  typeLabel: string
-  /** Carried for the hover card — the editor already fetches it, so it's free. */
-  description?: string
-  imageUrl?: string
-}
-
-/** Payload of `bobbinry:entity-hover`. `rect` is viewport-relative. */
-export interface EntityHoverDetail {
-  key: string
-  name: string
-  entries: EntityEntry[]
-  rect: { top: number; bottom: number; left: number; right: number }
-}
+/**
+ * The decoration's entity shape is the hover card's peek shape — description
+ * and image ride along because the editor already fetched them.
+ */
+export type EntityEntry = EntityPeekEntry
 
 const entityHighlightPluginKey = new PluginKey('entityHighlight')
 

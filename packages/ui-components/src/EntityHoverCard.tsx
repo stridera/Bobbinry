@@ -1,20 +1,45 @@
 /**
  * Entity Hover Card
  *
- * The first rung of the entity ladder: hover peeks, click opens the preview
- * panel, the panel links to the full entity page. This card is deliberately
- * inert — `pointer-events: none`, no controls, nothing to aim at. Clicking
- * "through" it hits the word underneath, which is what opens the panel.
+ * The first rung of the entity ladder: hover peeks, click opens the panel, the
+ * panel links to the full entity page. This card is deliberately inert —
+ * `pointer-events: none`, no controls, nothing to aim at. Clicking "through" it
+ * hits the word underneath, which is what opens the panel.
  *
- * All of the data it renders is already in the editor's entity list, so
- * showing it costs no network request.
+ * Shared by the manuscript editor and the public reader, which feed it very
+ * differently. The editor already holds every entity record in memory, so its
+ * card is instant. The reader must fetch — entity data there is tier-gated and
+ * spoiler-sensitive, and the bulk name list deliberately carries no
+ * descriptions — so it opens the card with the little it knows and enriches it
+ * when the gated fetch lands. Hence `pending` and `locked`.
  *
- * Timing policy lives here rather than in the ProseMirror plugin: a card that
- * fires while you are typing or drag-selecting is worse than no card at all.
+ * Timing policy lives here rather than in the callers: a card that fires while
+ * you are typing or drag-selecting is worse than no card at all.
  */
 
 import { useEffect, useRef, useState } from 'react'
-import type { EntityHoverDetail } from '../extensions/entity-highlight'
+
+export interface EntityPeekEntry {
+  id: string
+  name: string
+  typeId: string
+  typeIcon: string
+  typeLabel: string
+  description?: string | undefined
+  imageUrl?: string | undefined
+}
+
+/** Payload of `bobbinry:entity-hover`. `rect` is viewport-relative. */
+export interface EntityHoverDetail {
+  key: string
+  name: string
+  entries: EntityPeekEntry[]
+  rect: { top: number; bottom: number; left: number; right: number }
+  /** Detail is still being fetched; the card shows a placeholder line. */
+  pending?: boolean | undefined
+  /** The reader can't see this entity yet. Never render a gated description. */
+  locked?: { tierLevel: number } | undefined
+}
 
 /** Pointer must rest this long before the card appears. */
 const OPEN_DELAY_MS = 400
@@ -62,6 +87,10 @@ export function EntityHoverCard() {
   const draggingRef = useRef(false)
   const lastKeyAtRef = useRef(0)
   const shownKeyRef = useRef<string | null>(null)
+  // Latest detail for the hovered name. The open timer reads this when it
+  // fires, so an enrichment arriving mid-delay updates the content in place
+  // instead of restarting the wait the reader has already served.
+  const pendingRef = useRef<EntityHoverDetail | null>(null)
 
   useEffect(() => {
     const clearOpen = () => {
@@ -76,6 +105,7 @@ export function EntityHoverCard() {
       clearOpen()
       clearClose()
       shownKeyRef.current = null
+      pendingRef.current = null
       setHover(null)
     }
 
@@ -85,19 +115,32 @@ export function EntityHoverCard() {
       if (draggingRef.current) return
       if (Date.now() - lastKeyAtRef.current < TYPING_QUIET_MS) return
 
-      // Re-entering the name that's already shown: cancel the pending close
-      // rather than tearing the card down and rebuilding it.
+      // Re-entering the name that's already shown, or an enrichment landing for
+      // it: cancel the pending close and swap the content, rather than tearing
+      // the card down and rebuilding it.
       clearClose()
       if (shownKeyRef.current === detail.key) {
+        pendingRef.current = detail
         setHover(detail)
         return
       }
 
+      // An enrichment for a name still inside its open delay: update what the
+      // timer will show without pushing the deadline back.
+      if (pendingRef.current?.key === detail.key && openTimerRef.current) {
+        pendingRef.current = detail
+        return
+      }
+
       clearOpen()
+      pendingRef.current = detail
       openTimerRef.current = setTimeout(() => {
+        openTimerRef.current = null
         if (draggingRef.current) return
-        shownKeyRef.current = detail.key
-        setHover(detail)
+        const latest = pendingRef.current
+        if (!latest) return
+        shownKeyRef.current = latest.key
+        setHover(latest)
       }, OPEN_DELAY_MS)
     }
 
@@ -106,6 +149,7 @@ export function EntityHoverCard() {
       clearClose()
       closeTimerRef.current = setTimeout(() => {
         shownKeyRef.current = null
+        pendingRef.current = null
         setHover(null)
       }, CLOSE_DELAY_MS)
     }
@@ -176,9 +220,11 @@ export function EntityHoverCard() {
         ...(placeAbove ? { transform: 'translateY(-100%)' } : {}),
       }}
     >
+      {/* A tooltip proper, not an aria-hidden decoration: the same content is
+          reachable by keyboard through the highlight itself, which is a button
+          that opens the panel. Nothing here is mouse-only information. */}
       <div
         role="tooltip"
-        aria-hidden
         className="select-none rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl px-3 py-2.5 animate-fade-in"
       >
         <div className="flex items-start gap-2.5">
@@ -202,21 +248,35 @@ export function EntityHoverCard() {
             <div className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mt-0.5">
               {entry.typeLabel}
             </div>
-            <p
-              className={`text-xs leading-relaxed mt-1.5 ${
-                summary
-                  ? 'text-gray-600 dark:text-gray-300'
-                  : 'text-gray-400 dark:text-gray-500 italic'
-              }`}
-              style={{
-                display: '-webkit-box',
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: 'vertical',
-                overflow: 'hidden',
-              }}
-            >
-              {summary || 'No description yet.'}
-            </p>
+            {hover.locked ? (
+              <p className="text-xs leading-relaxed mt-1.5 text-amber-600 dark:text-amber-400">
+                🔒 Subscriber-only
+              </p>
+            ) : !summary && hover.pending ? (
+              // Placeholder rather than "No description yet." — saying the
+              // entity has no description while still fetching it is a lie the
+              // reader would see for a few hundred milliseconds.
+              <div className="mt-2 space-y-1.5" aria-hidden>
+                <div className="h-2 w-full rounded bg-gray-200 dark:bg-gray-700 animate-pulse" />
+                <div className="h-2 w-2/3 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" />
+              </div>
+            ) : (
+              <p
+                className={`text-xs leading-relaxed mt-1.5 ${
+                  summary
+                    ? 'text-gray-600 dark:text-gray-300'
+                    : 'text-gray-400 dark:text-gray-500 italic'
+                }`}
+                style={{
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                }}
+              >
+                {summary || 'No description yet.'}
+              </p>
+            )}
           </div>
         </div>
         {extraCount > 0 && (

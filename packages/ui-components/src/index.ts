@@ -38,6 +38,9 @@ export type { ModalFrameProps } from './ModalFrame'
 export { Dialog } from './Dialog'
 export type { DialogProps, DialogVariant } from './Dialog'
 
+export { EntityHoverCard, toPlainSummary } from './EntityHoverCard'
+export type { EntityPeekEntry, EntityHoverDetail } from './EntityHoverCard'
+
 export {
   PALETTE_TOKENS,
   isPaletteToken,

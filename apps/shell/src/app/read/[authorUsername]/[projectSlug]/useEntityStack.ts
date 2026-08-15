@@ -38,23 +38,25 @@ export function useEntityStack({ projectId, apiToken, resolveLocal }: UseEntityS
 
   const back = useCallback(() => setStack(s => s.slice(0, -1)), [])
 
-  const navigate = useCallback(
-    async (entityId: string, { reset = false }: { reset?: boolean } = {}) => {
-      const push = (entry: EntityStackEntry) =>
-        setStack(s => (reset ? [entry] : [...s, entry]))
-
+  /**
+   * Local data, then cache, then the gated endpoint. Shared by `navigate` and
+   * `peek` so a hover card can never show more than the drawer would: the
+   * server decides what this reader may see, and both paths ask it the same
+   * question. Hovering also warms the cache the click will hit.
+   *
+   * `track` drives the page-level fetching indicator. Hovers leave it alone —
+   * a peek that flashes a loading pill over the prose is worse than a peek
+   * that quietly arrives a moment later.
+   */
+  const resolveEntry = useCallback(
+    async (entityId: string, { track = false }: { track?: boolean } = {}): Promise<EntityStackEntry | null> => {
       const local = resolveLocal?.(entityId)
-      if (local) {
-        push({ kind: 'entity', ...local })
-        return
-      }
-      const cached = cacheRef.current.get(entityId)
-      if (cached) {
-        push(cached)
-        return
-      }
+      if (local) return { kind: 'entity', ...local }
 
-      setFetching(true)
+      const cached = cacheRef.current.get(entityId)
+      if (cached) return cached
+
+      if (track) setFetching(true)
       try {
         const headers: Record<string, string> = {}
         if (apiToken) headers['Authorization'] = `Bearer ${apiToken}`
@@ -73,21 +75,37 @@ export function useEntityStack({ projectId, apiToken, resolveLocal }: UseEntityS
           entry = { kind: 'entity', type: data.type, entity: data.entity }
         }
         cacheRef.current.set(entityId, entry)
-        push(entry)
+        return entry
       } catch {
-        // Network hiccup — leave the current view in place rather than erroring.
+        // Network hiccup — the caller leaves what's on screen in place.
+        return null
       } finally {
-        setFetching(false)
+        if (track) setFetching(false)
       }
     },
     [projectId, apiToken, resolveLocal]
+  )
+
+  const navigate = useCallback(
+    async (entityId: string, { reset = false }: { reset?: boolean } = {}) => {
+      const entry = await resolveEntry(entityId, { track: true })
+      if (!entry) return
+      setStack(s => (reset ? [entry] : [...s, entry]))
+    },
+    [resolveEntry]
+  )
+
+  /** Resolve for a hover peek: same gating, no stack push, no loading pill. */
+  const peek = useCallback(
+    (entityId: string) => resolveEntry(entityId),
+    [resolveEntry]
   )
 
   const current = stack.length > 0 ? stack[stack.length - 1]! : null
   const canGoBack = stack.length > 1
 
   return useMemo(
-    () => ({ current, canGoBack, fetching, open, close, back, navigate }),
-    [current, canGoBack, fetching, open, close, back, navigate]
+    () => ({ current, canGoBack, fetching, open, close, back, navigate, peek }),
+    [current, canGoBack, fetching, open, close, back, navigate, peek]
   )
 }

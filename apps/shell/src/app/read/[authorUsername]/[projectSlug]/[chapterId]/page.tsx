@@ -20,6 +20,8 @@ import { AnnotationForm } from '@/components/AnnotationForm'
 import EntityModal from '../EntityModal'
 import EntitySidebar from '../EntitySidebar'
 import { useEntityStack } from '../useEntityStack'
+import { resolveCardDescription, resolveCardThumbnail } from '../entities-data'
+import { EntityHoverCard, type EntityHoverDetail } from '@bobbinry/ui-components'
 
 interface ChapterData {
   id: string
@@ -303,8 +305,12 @@ function ChapterReaderContent() {
   const [readerWidth, setReaderWidth] = useState<ReaderWidth>('standard')
   const [entityHighlightStyle, setEntityHighlightStyle] = useState<EntityHighlightStyle>('highlight')
   const [entityInfoDisplay, setEntityInfoDisplay] = useState<EntityInfoDisplay>('sidebar')
+  const [entityPeekOnHover, setEntityPeekOnHover] = useState(true)
   const isDesktop = useIsDesktop()
   const showEntitySidebar = entityInfoDisplay === 'sidebar' && isDesktop
+  // Hover has no touch equivalent, and a reader who turned highlights off has
+  // asked not to be shown entities at all.
+  const enableEntityPeek = entityPeekOnHover && isDesktop && entityHighlightStyle !== 'off'
   const [showSettings, setShowSettings] = useState(false)
 
   // Published-entity names + click-to-open modal state. The stack lets
@@ -500,6 +506,7 @@ function ChapterReaderContent() {
         if (prefs.entityInfoDisplay === 'sidebar' || prefs.entityInfoDisplay === 'popup') {
           setEntityInfoDisplay(prefs.entityInfoDisplay)
         }
+        if (prefs.entityPeekOnHover === 'off') setEntityPeekOnHover(false)
         /* eslint-enable react-hooks/set-state-in-effect */
       } catch {}
     }
@@ -840,6 +847,96 @@ function ChapterReaderContent() {
     }
   }, [projectId, navigateEntity, loading])
 
+  // Delegated hover: peek at the entity under the pointer. The card opens with
+  // the name and type we already hold, then fills in once the gated fetch lands
+  // — the bulk name list carries no descriptions on purpose, so unlike the
+  // editor there is nothing to show instantly.
+  useEffect(() => {
+    const proseEl = chapterContentRef.current
+    if (!proseEl || !projectId || !enableEntityPeek) return
+
+    const nameIndex = new Map(publishedEntityNames.map(entry => [entry.id, entry]))
+    let hoveredKey: string | null = null
+
+    function handleOver(e: Event) {
+      const target = (e.target as HTMLElement | null)?.closest('[data-entity-id]') as HTMLElement | null
+      if (!target) return
+      const idAttr = target.getAttribute('data-entity-id')
+      const name = target.getAttribute('data-entity-name')
+      if (!idAttr || !name) return
+
+      const ids = idAttr.split(',').map(id => id.trim()).filter(Boolean)
+      const entries = ids
+        .map(id => nameIndex.get(id))
+        .filter((entry): entry is PublishedEntityName => entry != null)
+        .map(entry => ({
+          id: entry.id,
+          name: entry.name,
+          typeId: entry.typeId,
+          typeIcon: entry.typeIcon,
+          typeLabel: entry.typeLabel,
+        }))
+      if (entries.length === 0) return
+
+      const { top, bottom, left, right } = target.getBoundingClientRect()
+      const rect = { top, bottom, left, right }
+      hoveredKey = idAttr
+
+      const emit = (detail: EntityHoverDetail) =>
+        window.dispatchEvent(new CustomEvent('bobbinry:entity-hover', { detail }))
+
+      emit({ key: idAttr, name, entries, rect, pending: true })
+
+      const firstId = ids[0]
+      if (!firstId) return
+      void entityStack.peek(firstId).then(entry => {
+        // The pointer may have moved on while we were fetching.
+        if (hoveredKey !== idAttr || !entry) return
+        if (entry.kind === 'locked') {
+          emit({ key: idAttr, name, entries, rect, locked: { tierLevel: entry.tierLevel } })
+          return
+        }
+        if (entry.kind !== 'entity') {
+          emit({ key: idAttr, name, entries, rect })
+          return
+        }
+        // resolveCard* apply the same variant gating the codex cards use, so a
+        // peek can never show a description the drawer would have withheld.
+        const description = resolveCardDescription(entry.entity, entry.type)
+        const thumbnail = resolveCardThumbnail(entry.entity, entry.type)
+        const [first, ...rest] = entries
+        if (!first) return
+        emit({
+          key: idAttr,
+          name,
+          rect,
+          entries: [
+            {
+              ...first,
+              ...(description ? { description } : {}),
+              ...(thumbnail?.url ? { imageUrl: thumbnail.url } : {}),
+            },
+            ...rest,
+          ],
+        })
+      })
+    }
+
+    function handleOut(e: Event) {
+      const target = (e.target as HTMLElement | null)?.closest('[data-entity-id]') as HTMLElement | null
+      if (!target) return
+      hoveredKey = null
+      window.dispatchEvent(new CustomEvent('bobbinry:entity-hover-end'))
+    }
+
+    proseEl.addEventListener('mouseover', handleOver)
+    proseEl.addEventListener('mouseout', handleOut)
+    return () => {
+      proseEl.removeEventListener('mouseover', handleOver)
+      proseEl.removeEventListener('mouseout', handleOut)
+    }
+  }, [projectId, enableEntityPeek, publishedEntityNames, entityStack, loading])
+
   const toggleReaction = async (type: string) => {
     if (!session?.user || !chapterId) return
     try {
@@ -1173,6 +1270,30 @@ function ChapterReaderContent() {
                   </div>
                 </div>
               )}
+              {publishedEntityNames.length > 0 && entityHighlightStyle !== 'off' && (
+                <div className="hidden lg:block">
+                  <span className={`text-xs ${mutedText} block mb-1`}>Peek on hover</span>
+                  <div className="flex gap-1">
+                    {([
+                      { id: 'on' as const, label: 'On' },
+                      { id: 'off' as const, label: 'Off' },
+                    ]).map(opt => (
+                      <button
+                        key={opt.id}
+                        onClick={() => {
+                          setEntityPeekOnHover(opt.id === 'on')
+                          savePrefs('entityPeekOnHover', opt.id)
+                        }}
+                        className={`px-2 py-1 rounded text-xs ${
+                          (entityPeekOnHover ? 'on' : 'off') === opt.id ? activeBg : hoverBg
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {publishedEntityNames.length > 0 && (
                 <div className="hidden lg:block">
                   <span className={`text-xs ${mutedText} block mb-1`}>Entity info</span>
@@ -1442,6 +1563,8 @@ function ChapterReaderContent() {
           />
         )}
       </div>
+
+      {enableEntityPeek && <EntityHoverCard />}
 
       {entityStack.current && projectId && !showEntitySidebar && (
         <EntityModal

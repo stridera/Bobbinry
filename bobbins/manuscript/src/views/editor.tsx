@@ -27,7 +27,7 @@ import TextAlign from '@tiptap/extension-text-align'
 import { ImageUpload } from '../extensions/image-upload'
 import { EntityHighlight } from '../extensions/entity-highlight'
 import type { EntityEntry } from '../extensions/entity-highlight'
-import { EntityHoverCard } from '../components/EntityHoverCard'
+import { EntityHoverCard } from '@bobbinry/ui-components'
 import {
   SearchHighlight,
   setSearchHighlight,
