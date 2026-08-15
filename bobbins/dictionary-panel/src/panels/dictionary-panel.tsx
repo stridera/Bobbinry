@@ -1,9 +1,15 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
-import { useMessageBus } from '@bobbinry/sdk'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { BobbinrySDK, useMessageBus } from '@bobbinry/sdk'
 
 type TabId = 'dictionary' | 'thesaurus'
+
+interface DictionaryPanelProps {
+  context?: {
+    apiToken?: string
+  }
+}
 
 interface DictionaryPhonetic {
   text?: string
@@ -38,6 +44,20 @@ interface SelectionMessage {
   }
 }
 
+interface CachedLookup {
+  dictionary: DictionaryEntry[] | null
+  thesaurus: ThesaurusResult
+  status: string
+}
+
+/**
+ * A lookup can fail two very different ways, and the panel words them differently:
+ * the word genuinely has no entry (404), or the upstream is unreachable — a 5xx, a
+ * rate limit, or a fetch rejected outright because the error page carried no CORS
+ * headers. Only the latter is worth retrying.
+ */
+type LookupOutcome = 'ok' | 'not-found' | 'unavailable'
+
 const INITIAL_STATUS = 'Select a single word in the editor to look it up.'
 
 function normalizeWord(value: string | undefined): string {
@@ -55,55 +75,107 @@ function getSafeExternalUrl(rawUrl: string | undefined): string | null {
   return null
 }
 
-export default function DictionaryPanel() {
+function classifyOutcome(result: PromiseSettledResult<Response>): LookupOutcome {
+  if (result.status === 'rejected') return 'unavailable'
+  if (result.value.ok) return 'ok'
+  if (result.value.status === 404) return 'not-found'
+  return 'unavailable'
+}
+
+async function readJson<T>(result: PromiseSettledResult<Response>): Promise<T | null> {
+  if (result.status !== 'fulfilled' || !result.value.ok) return null
+  try {
+    return await result.value.json() as T
+  } catch {
+    return null
+  }
+}
+
+export default function DictionaryPanel({ context }: DictionaryPanelProps) {
+  const [sdk] = useState(() => new BobbinrySDK('dictionary-panel'))
   const [activeTab, setActiveTab] = useState<TabId>('dictionary')
   const [selectedWord, setSelectedWord] = useState('')
   const [status, setStatus] = useState(INITIAL_STATUS)
   const [loading, setLoading] = useState(false)
   const [dictionaryData, setDictionaryData] = useState<DictionaryEntry[] | null>(null)
   const [thesaurusData, setThesaurusData] = useState<ThesaurusResult | null>(null)
-  const cacheRef = useRef<Record<string, { dictionary: DictionaryEntry[] | null; thesaurus: ThesaurusResult }>>({})
+  const [dictionaryUnavailable, setDictionaryUnavailable] = useState(false)
+  const cacheRef = useRef<Record<string, CachedLookup>>({})
   const lastWordRef = useRef('')
 
+  useEffect(() => {
+    if (context?.apiToken) sdk.api.setAuthToken(context.apiToken)
+  }, [context?.apiToken, sdk])
+
   const fetchResults = useCallback(async (word: string) => {
-    if (cacheRef.current[word]) {
-      setDictionaryData(cacheRef.current[word].dictionary)
-      setThesaurusData(cacheRef.current[word].thesaurus)
-      setStatus('')
+    const cached = cacheRef.current[word]
+    if (cached) {
+      setDictionaryData(cached.dictionary)
+      setThesaurusData(cached.thesaurus)
+      setDictionaryUnavailable(false)
+      setStatus(cached.status)
       return
     }
 
     setLoading(true)
     setStatus('')
+    setDictionaryUnavailable(false)
     try {
-      const [dictionaryResponse, synonymResponse, antonymResponse] = await Promise.all([
-        fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`),
+      // allSettled, not all: the dictionary and thesaurus are unrelated services, so
+      // one going down must not discard the other's results.
+      //
+      // Definitions go through our API (cached, with a Wiktionary fallback) rather
+      // than straight to api.dictionaryapi.dev, whose Cloudflare error pages carry
+      // no CORS headers and so surfaced as unexplained failures. Datamuse is called
+      // directly -- it's healthy and its CORS is already scoped to us.
+      const [dictionaryResult, synonymResult, antonymResult] = await Promise.allSettled([
+        fetch(`${sdk.api.apiBaseUrl}/dictionary/${encodeURIComponent(word)}`, {
+          headers: sdk.api.getAuthHeaders(),
+        }),
         fetch(`https://api.datamuse.com/words?rel_syn=${encodeURIComponent(word)}&max=20`),
         fetch(`https://api.datamuse.com/words?rel_ant=${encodeURIComponent(word)}&max=12`),
       ])
 
-      const dictionary = dictionaryResponse.ok ? await dictionaryResponse.json() as DictionaryEntry[] : null
-      const synonyms = synonymResponse.ok ? await synonymResponse.json() as Array<{ word: string }> : []
-      const antonyms = antonymResponse.ok ? await antonymResponse.json() as Array<{ word: string }> : []
+      const dictionaryOutcome = classifyOutcome(dictionaryResult)
+      const dictionaryBody = await readJson<{ entries?: DictionaryEntry[] }>(dictionaryResult)
+      const dictionary = dictionaryBody?.entries?.length ? dictionaryBody.entries : null
+      const synonyms = await readJson<Array<{ word: string }>>(synonymResult) || []
+      const antonyms = await readJson<Array<{ word: string }>>(antonymResult) || []
       const thesaurus = {
         synonyms: synonyms.map((entry) => entry.word),
         antonyms: antonyms.map((entry) => entry.word),
       }
 
-      cacheRef.current[word] = { dictionary, thesaurus }
+      const dictionaryDown = dictionaryOutcome === 'unavailable'
+      const thesaurusDown =
+        classifyOutcome(synonymResult) === 'unavailable' &&
+        classifyOutcome(antonymResult) === 'unavailable'
+
+      let nextStatus = ''
+      if (dictionaryDown && thesaurusDown) {
+        nextStatus = 'Lookup services are unreachable right now. Check your connection and try again.'
+      } else if (!dictionary?.length && !thesaurus.synonyms.length && !thesaurus.antonyms.length && !dictionaryDown) {
+        nextStatus = 'No definition, synonyms, or antonyms found for this word.'
+      }
+
+      // Only cache settled results. Caching an outage would pin the failure for the
+      // rest of the session, long after the upstream recovered.
+      if (!dictionaryDown && !thesaurusDown) {
+        cacheRef.current[word] = { dictionary, thesaurus, status: nextStatus }
+      }
+
       setDictionaryData(dictionary)
       setThesaurusData(thesaurus)
-      if (!dictionary?.length && !thesaurus.synonyms.length && !thesaurus.antonyms.length) {
-        setStatus('No definition, synonyms, or antonyms found for this word.')
-      }
+      setDictionaryUnavailable(dictionaryDown && !thesaurusDown)
+      setStatus(nextStatus)
     } catch {
-      setStatus('Lookup failed. Check your connection and try again.')
+      setStatus('Lookup services are unreachable right now. Check your connection and try again.')
       setDictionaryData(null)
       setThesaurusData(null)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [sdk])
 
   const handleLookup = useCallback((rawWord: string | undefined) => {
     const word = normalizeWord(rawWord)
@@ -123,6 +195,14 @@ export default function DictionaryPanel() {
     setSelectedWord(word)
     void fetchResults(word)
   }, [fetchResults])
+
+  // Re-selecting the same word is a no-op (lastWordRef), so a failed lookup needs an
+  // explicit way back in.
+  const retryLookup = useCallback(() => {
+    if (!selectedWord) return
+    delete cacheRef.current[selectedWord]
+    void fetchResults(selectedWord)
+  }, [selectedWord, fetchResults])
 
   useMessageBus('manuscript.editor.selection.v1', (message: SelectionMessage) => {
     handleLookup(message?.data?.text)
@@ -175,8 +255,17 @@ export default function DictionaryPanel() {
             Looking up “{selectedWord}”...
           </div>
         ) : status ? (
-          <div className="flex h-full items-center justify-center text-center text-sm text-gray-500 dark:text-gray-400">
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-sm text-gray-500 dark:text-gray-400">
             <p>{status}</p>
+            {selectedWord && (
+              <button
+                type="button"
+                onClick={retryLookup}
+                className="rounded-md border border-gray-200 dark:border-gray-700 px-2.5 py-1 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-900"
+              >
+                Try again
+              </button>
+            )}
           </div>
         ) : activeTab === 'dictionary' ? (
           dictionaryEntry ? (
@@ -234,6 +323,20 @@ export default function DictionaryPanel() {
                   Source: Wiktionary
                 </a>
               )}
+            </div>
+          ) : dictionaryUnavailable ? (
+            <div className="space-y-2">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Definitions are temporarily unavailable — the dictionary service isn’t responding.
+                Synonyms and antonyms still work.
+              </p>
+              <button
+                type="button"
+                onClick={retryLookup}
+                className="rounded-md border border-gray-200 dark:border-gray-700 px-2.5 py-1 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-900"
+              >
+                Try again
+              </button>
             </div>
           ) : (
             <div className="text-sm text-gray-500 dark:text-gray-400">No definition found for “{selectedWord}”.</div>
