@@ -385,7 +385,9 @@ const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
             return reply.status(500).send({ error: 'Stripe subscription has no items' })
           }
 
-          const interval = currentItem.price.recurring?.interval || 'month'
+          // Tiers only carry monthly/yearly prices; anything else falls back to
+          // monthly (also narrows Stripe's open string union for prices.create).
+          const interval = currentItem.price.recurring?.interval === 'year' ? 'year' : 'month'
           const price = interval === 'year'
             ? Math.round(parseFloat(tier[0]!.priceYearly || '0') * 100)
             : Math.round(parseFloat(tier[0]!.priceMonthly || '0') * 100)

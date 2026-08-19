@@ -22,11 +22,11 @@
     "@bobbinry/sdk": "workspace:*",
     "@bobbinry/types": "workspace:*",
     "@bobbinry/ui-components": "workspace:*",
-    "@tiptap/core": "^3.29.0",
-    "@tiptap/pm": "^3.29.0"
+    "@tiptap/core": "^3.30.2",
+    "@tiptap/pm": "^3.30.2"
   },
   "devDependencies": {
-    "@types/react": "^19.2.14",
+    "@types/react": "^19.2.18",
     "typescript": "6.0.3"
   }
 }
