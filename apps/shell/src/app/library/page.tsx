@@ -388,52 +388,66 @@ export default function LibraryPage() {
               <div className="space-y-3">
                 {progress.map(item => (
                   (() => {
-                    const chapterHref = item.projectShortUrl
-                      ? `/read/${item.authorUsername || item.projectId}/${item.projectShortUrl}/${item.chapterId}`
+                    const projectHref = item.projectShortUrl
+                      ? `/read/${item.authorUsername || item.projectId}/${item.projectShortUrl}`
                       : null
+                    const chapterHref = projectHref ? `${projectHref}/${item.chapterId}` : null
                     const cardClasses = 'flex items-center gap-4 p-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 transition-colors'
 
-                    const content = (
-                      <>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
-                            {item.chapterTitle}
-                          </p>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">
-                            {item.projectName}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-3 flex-shrink-0">
-                          <div className="w-24">
-                            <div className="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-blue-500 rounded-full"
-                                style={{ width: `${item.lastPositionPercent}%` }}
-                              />
-                            </div>
-                            <p className="text-xs text-gray-400 mt-0.5 text-right">{item.lastPositionPercent}%</p>
+                    const meta = (
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <div className="w-24">
+                          <div className="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-blue-500 rounded-full"
+                              style={{ width: `${item.lastPositionPercent}%` }}
+                            />
                           </div>
-                          <span className="text-xs text-gray-400">{formatTimeAgo(item.startedAt)}</span>
+                          <p className="text-xs text-gray-400 mt-0.5 text-right">{item.lastPositionPercent}%</p>
                         </div>
-                      </>
+                        <span className="text-xs text-gray-400">{formatTimeAgo(item.startedAt)}</span>
+                      </div>
                     )
 
-                    if (!chapterHref) {
+                    if (!chapterHref || !projectHref) {
                       return (
                         <div key={item.viewId} className={`${cardClasses} opacity-70`} aria-disabled="true">
-                          {content}
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
+                              {item.chapterTitle}
+                            </p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                              {item.projectName}
+                            </p>
+                          </div>
+                          {meta}
                         </div>
                       )
                     }
 
+                    // Card stays fully clickable via the chapter title's stretched
+                    // link; the project name is its own link layered above it.
                     return (
-                      <Link
+                      <div
                         key={item.viewId}
-                        href={chapterHref}
-                        className={`${cardClasses} hover:border-blue-300 dark:hover:border-blue-700`}
+                        className={`relative ${cardClasses} hover:border-blue-300 dark:hover:border-blue-700`}
                       >
-                        {content}
-                      </Link>
+                        <div className="flex-1 min-w-0">
+                          <Link
+                            href={chapterHref}
+                            className="block font-medium text-gray-900 dark:text-gray-100 truncate after:absolute after:inset-0"
+                          >
+                            {item.chapterTitle}
+                          </Link>
+                          <Link
+                            href={projectHref}
+                            className="relative z-10 inline-block text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:underline"
+                          >
+                            {item.projectName}
+                          </Link>
+                        </div>
+                        {meta}
+                      </div>
                     )
                   })()
                 ))}
@@ -455,48 +469,78 @@ export default function LibraryPage() {
               <div className="space-y-3">
                 {feed.map(item => (
                   (() => {
-                    const chapterHref = item.projectShortUrl
-                      ? `/read/${item.authorUsername || item.authorId}/${item.projectShortUrl}/${item.chapterId}`
+                    const projectHref = item.projectShortUrl
+                      ? `/read/${item.authorUsername || item.authorId}/${item.projectShortUrl}`
                       : null
+                    const chapterHref = projectHref ? `${projectHref}/${item.chapterId}` : null
+                    const authorHref = item.authorUsername ? `/read/${item.authorUsername}` : null
 
-                    const content = (
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
-                            {item.chapterTitle}
-                          </p>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">
-                            {item.projectName} &middot; {item.authorName}
-                          </p>
-                        </div>
-                        {item.publishedAt && (
-                          <span className="text-xs text-gray-400 flex-shrink-0">
-                            {formatTimeAgo(item.publishedAt)}
-                          </span>
-                        )}
-                      </div>
+                    const timestamp = item.publishedAt && (
+                      <span className="text-xs text-gray-400 flex-shrink-0">
+                        {formatTimeAgo(item.publishedAt)}
+                      </span>
                     )
 
-                    if (!chapterHref) {
+                    if (!chapterHref || !projectHref) {
                       return (
                         <div
                           key={item.publicationId}
                           className="block p-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 opacity-70"
                           aria-disabled="true"
                         >
-                          {content}
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
+                                {item.chapterTitle}
+                              </p>
+                              <p className="text-sm text-gray-500 dark:text-gray-400">
+                                {item.projectName} &middot; {item.authorName}
+                              </p>
+                            </div>
+                            {timestamp}
+                          </div>
                         </div>
                       )
                     }
 
+                    // Card stays fully clickable via the chapter title's stretched
+                    // link; project and author names are their own links above it.
                     return (
-                      <Link
+                      <div
                         key={item.publicationId}
-                        href={chapterHref}
-                        className="block p-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
+                        className="relative block p-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
                       >
-                        {content}
-                      </Link>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <Link
+                              href={chapterHref}
+                              className="block font-medium text-gray-900 dark:text-gray-100 truncate after:absolute after:inset-0"
+                            >
+                              {item.chapterTitle}
+                            </Link>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                              <Link
+                                href={projectHref}
+                                className="relative z-10 hover:text-blue-600 dark:hover:text-blue-400 hover:underline"
+                              >
+                                {item.projectName}
+                              </Link>
+                              {' '}&middot;{' '}
+                              {authorHref ? (
+                                <Link
+                                  href={authorHref}
+                                  className="relative z-10 hover:text-blue-600 dark:hover:text-blue-400 hover:underline"
+                                >
+                                  {item.authorName}
+                                </Link>
+                              ) : (
+                                item.authorName
+                              )}
+                            </p>
+                          </div>
+                          {timestamp}
+                        </div>
+                      </div>
                     )
                   })()
                 ))}
