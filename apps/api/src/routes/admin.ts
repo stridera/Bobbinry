@@ -345,7 +345,7 @@ const adminPlugin: FastifyPluginAsync = async (fastify) => {
     const { job } = request.params
     const force = request.query.force === 'true'
 
-    const handler = cronJobs[job]
+    const handler = Object.hasOwn(cronJobs, job) ? cronJobs[job] : undefined
     if (!handler) {
       return reply.status(404).send({ error: `unknown cron job: ${job}` })
     }

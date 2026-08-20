@@ -17,7 +17,13 @@ const manifestCache = new Map<string, Record<string, any>>()
 const PROJECT_ROOT = path.resolve(__dirname, '../../../..')
 const BOBBINS_DIR = path.resolve(PROJECT_ROOT, 'bobbins')
 
+const BOBBIN_ID_RE = /^[a-z0-9-]+$/i
+
 export function getCanonicalManifestPath(bobbinId: string): string {
+  // Bobbin ids are plain slugs; reject anything that could traverse out of BOBBINS_DIR.
+  if (!BOBBIN_ID_RE.test(bobbinId)) {
+    throw new Error(`Invalid bobbin id: ${JSON.stringify(bobbinId)}`)
+  }
   return path.resolve(BOBBINS_DIR, bobbinId, 'manifest.yaml')
 }
 
