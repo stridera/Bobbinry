@@ -31,6 +31,7 @@ export async function generateMetadata({
   let authorName = authorUsername
   let chapterTitle = 'Chapter'
   let chapterSlug: string | null = null
+  let canonicalAuthor = authorUsername
 
   try {
     const result = await fetchChapter(authorUsername, projectSlug, chapterId)
@@ -39,12 +40,13 @@ export async function generateMetadata({
       authorName = result.slugData.author?.displayName || result.slugData.author?.userName || authorUsername
       chapterTitle = result.chapterData?.chapter?.title || 'Chapter'
       chapterSlug = result.chapterData?.chapter?.slug || null
+      canonicalAuthor = result.slugData.author?.username || authorUsername
     }
   } catch {}
 
   const title = `${chapterTitle} — ${projectName} | Bobbinry`
   const description = `Read "${chapterTitle}" from ${projectName} by ${authorName} on Bobbinry`
-  const url = `${BASE_URL}/read/${authorUsername}/${projectSlug}/${chapterSlug ?? chapterId}`
+  const url = `${BASE_URL}/read/${canonicalAuthor}/${projectSlug}/${chapterSlug ?? chapterId}`
 
   return {
     title,

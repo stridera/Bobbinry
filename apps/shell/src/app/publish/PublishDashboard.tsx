@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { UsernameNudge } from '@/components/UsernameNudge'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { SiteNav } from '@/components/SiteNav'
@@ -45,6 +46,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
   // New setups default to private so authors can verify before anyone else sees it
   const [visibilityInputs, setVisibilityInputs] = useState<Record<string, string>>({})
   const [username, setUsername] = useState<string>('')
+  const [profileLoaded, setProfileLoaded] = useState(false)
 
   const authorId = username || user.id
 
@@ -101,6 +103,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
         if (response.ok) {
           const data = await response.json()
           setUsername(data.profile?.username || '')
+          setProfileLoaded(true)
         }
       } catch {
         // ignore
@@ -264,6 +267,7 @@ export function PublishDashboard({ user, apiToken }: { user: User; apiToken: str
       </header>
 
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+        {profileLoaded && !username && <UsernameNudge className="mb-6" />}
         {message ? (
           <div
             className={`mb-6 rounded-lg border p-4 text-sm ${

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { SiteNav } from '@/components/SiteNav'
+import { UsernameNudge } from '@/components/UsernameNudge'
 import { SkeletonList } from '@/components/LoadingState'
 import { apiFetch } from '@/lib/api'
 import { BobbinrySDK } from '@bobbinry/sdk'
@@ -48,6 +49,7 @@ export function ProjectPublisherDashboard({
 }) {
   const [project, setProject] = useState<ProjectInfo | null>(null)
   const [username, setUsername] = useState('')
+  const [profileLoaded, setProfileLoaded] = useState(false)
   const [publishConfig, setPublishConfig] = useState<PublishConfig | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -86,6 +88,7 @@ export function ProjectPublisherDashboard({
       if (profileRes.ok) {
         const profileData = await profileRes.json()
         setUsername(profileData.profile?.username || '')
+        setProfileLoaded(true)
       }
 
       if (configRes.ok) {
@@ -238,6 +241,7 @@ export function ProjectPublisherDashboard({
       </header>
 
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+        {profileLoaded && !username && <UsernameNudge className="mb-6" />}
         {message && (
           <div className={`mb-6 rounded-lg border p-4 text-sm ${
             message.type === 'success'

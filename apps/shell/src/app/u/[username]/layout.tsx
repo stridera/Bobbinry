@@ -21,6 +21,15 @@ async function fetchProfile(username: string): Promise<ProfileData | null> {
       { next: { revalidate: 300 } }
     )
     if (res.ok) return res.json()
+    // The page body falls back to an ID lookup for authors without a username; mirror that here
+    const idRes = await fetch(
+      `${API_URL}/api/users/${encodeURIComponent(username)}/profile`,
+      { next: { revalidate: 300 } }
+    )
+    if (idRes.ok) {
+      const data = await idRes.json()
+      if (data.profile) return { profile: { ...data.profile, userId: data.profile.userId ?? username } }
+    }
   } catch {}
   return null
 }
@@ -39,11 +48,12 @@ export async function generateMetadata({
 
   const { profile } = data
   const displayName = profile.displayName || profile.userName || profile.username || username
-  const title = `${displayName} (@${username}) | Bobbinry`
+  const canonicalHandle = profile.username || username
+  const title = `${displayName} (@${canonicalHandle}) | Bobbinry`
   const description = profile.bio
     ? profile.bio.slice(0, 160)
     : `${displayName}'s profile on Bobbinry — tools for writers and worldbuilders`
-  const url = `${BASE_URL}/u/${username}`
+  const url = `${BASE_URL}/u/${canonicalHandle}`
 
   return {
     title,

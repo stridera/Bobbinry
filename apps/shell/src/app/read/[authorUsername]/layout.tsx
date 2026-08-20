@@ -11,6 +11,7 @@ export async function generateMetadata({
   const { authorUsername } = await params
 
   let displayName = authorUsername
+  let canonicalAuthor = authorUsername
 
   try {
     const res = await fetch(
@@ -20,12 +21,13 @@ export async function generateMetadata({
     if (res.ok) {
       const data = await res.json()
       displayName = data.profile?.displayName || data.profile?.userName || authorUsername
+      canonicalAuthor = data.profile?.username || authorUsername
     }
   } catch {}
 
   const title = `Stories by ${displayName} | Bobbinry`
   const description = `Browse stories and projects by ${displayName} on Bobbinry`
-  const url = `${BASE_URL}/read/${authorUsername}`
+  const url = `${BASE_URL}/read/${canonicalAuthor}`
 
   return {
     title,

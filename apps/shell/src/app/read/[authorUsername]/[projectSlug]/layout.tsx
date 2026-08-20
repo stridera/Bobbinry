@@ -45,7 +45,9 @@ export async function generateMetadata({
   const description = project.description
     ? project.description.slice(0, 160)
     : `Read ${project.name} by ${authorName} on Bobbinry`
-  const url = `${BASE_URL}/read/${authorUsername}/${projectSlug}`
+  // Prefer the author's real username so UUID-based links canonicalize to the stable URL
+  const canonicalAuthor = author.username || authorUsername
+  const url = `${BASE_URL}/read/${canonicalAuthor}/${projectSlug}`
 
   return {
     title,
