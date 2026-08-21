@@ -7,6 +7,8 @@ import {
   PanelFrame,
   PanelPill,
 } from '@bobbinry/sdk'
+import { NoteContentEditor } from '../components/NoteContentEditor'
+import { normalizeNoteContent } from '../components/content-utils'
 
 interface ChapterNotesPanelProps {
   context?: {
@@ -170,7 +172,8 @@ export default function ChapterNotesPanel({ context }: ChapterNotesPanelProps) {
       try {
         const entity = await sdk.entities.get('content', activeChapter!.entityId) as any
         if (!cancelled) {
-          setNoteText(entity?.notes || '')
+          // Older chapter notes were plain text; the editor works in HTML.
+          setNoteText(normalizeNoteContent(entity?.notes))
           setSaveStatus('clean')
         }
       } catch (err) {
@@ -210,7 +213,8 @@ export default function ChapterNotesPanel({ context }: ChapterNotesPanelProps) {
     }
   }, [sdk])
 
-  function handleChange(value: string) {
+  function handleChange(html: string) {
+    const value = html === '<p></p>' ? '' : html
     setNoteText(value)
     setSaveStatus('dirty')
     pendingTextRef.current = value
@@ -258,11 +262,12 @@ export default function ChapterNotesPanel({ context }: ChapterNotesPanelProps) {
         ) : null}
       </PanelActions>
       <PanelBody className="flex flex-1 flex-col">
-        <textarea
-          value={noteText}
-          onChange={(e) => handleChange(e.target.value)}
+        <NoteContentEditor
+          key={activeChapter.entityId}
+          content={noteText}
+          onChange={handleChange}
           placeholder="Jot notes for this chapter..."
-          className="flex-1 w-full resize-none bg-transparent p-2 text-sm font-mono text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none"
+          compact
         />
       </PanelBody>
     </PanelFrame>

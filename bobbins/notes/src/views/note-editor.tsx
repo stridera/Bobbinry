@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { ConfirmModal } from '@bobbinry/sdk'
 import type { BobbinrySDK } from '@bobbinry/sdk'
+import { NoteContentEditor } from '../components/NoteContentEditor'
+import { normalizeNoteContent } from '../components/content-utils'
 
 interface NoteEditorViewProps {
   projectId: string
@@ -44,6 +46,7 @@ export default function NoteEditorView({
   }
 
   useEffect(() => {
+    flushRef.current()
     if (entityId && entityId !== 'pinboard') {
       loadNote()
       loadFolders()
@@ -54,8 +57,9 @@ export default function NoteEditorView({
     try {
       setLoading(true)
       setError(null)
-      const response = await sdk.entities.get('notes', entityId!)
-      setNote(response as any)
+      const response = await sdk.entities.get('notes', entityId!) as Record<string, any>
+      // Legacy notes stored plain text; the editor works in HTML.
+      setNote({ ...response, content: normalizeNoteContent(response.content) })
     } catch (err: any) {
       console.error('[NoteEditor] Failed to load note:', err)
       setError(err.message || 'Failed to load note')
@@ -95,6 +99,44 @@ export default function NoteEditorView({
       setSaving(false)
     }
   }, [entityId, note, sdk])
+
+  // Content autosave: debounce while typing, flush on blur/unmount.
+  // Pending content is pinned to the note it was typed in, so switching notes
+  // mid-debounce never writes one note's body into another.
+  const pendingContentRef = useRef<{ entityId: string; content: string } | null>(null)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const saveNoteRef = useRef(saveNote)
+  saveNoteRef.current = saveNote
+
+  const flushContentSave = useCallback(() => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
+    const pending = pendingContentRef.current
+    if (!pending) return
+    pendingContentRef.current = null
+    if (pending.entityId === entityId) {
+      saveNoteRef.current({ content: pending.content })
+    } else {
+      // Note changed underneath us — persist directly without touching local state.
+      sdk.entities.update('notes', pending.entityId, {
+        content: pending.content,
+        updated_at: new Date().toISOString(),
+      }).catch(err => console.error('[NoteEditor] Failed to save previous note:', err))
+    }
+  }, [entityId, sdk])
+
+  // Always call the latest flush so a timer or unmount never uses a stale entityId.
+  const flushRef = useRef(flushContentSave)
+  flushRef.current = flushContentSave
+
+  const scheduleContentSave = useCallback(() => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => flushRef.current(), 1000)
+  }, [])
+
+  useEffect(() => () => flushRef.current(), [])
 
   function handleAddTag() {
     const tag = tagInput.trim()
@@ -181,15 +223,18 @@ export default function NoteEditorView({
 
       <div className="flex flex-1 overflow-hidden">
         {/* Editor */}
-        <div className="flex-1 overflow-auto p-6">
-          <textarea
-            value={note.content || ''}
-            onChange={(e) => {
-              setNote(prev => prev ? { ...prev, content: e.target.value } : prev)
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <NoteContentEditor
+            key={entityId}
+            content={note.content || ''}
+            onChange={(html) => {
+              const content = html === '<p></p>' ? '' : html
+              if (entityId) pendingContentRef.current = { entityId, content }
+              setNote(prev => prev ? { ...prev, content } : prev)
               setSaveStatus('unsaved')
+              scheduleContentSave()
             }}
-            onBlur={() => saveNote({ content: note.content })}
-            className="w-full h-full min-h-[400px] bg-transparent border-none outline-none text-gray-900 dark:text-gray-100 resize-none font-mono text-sm leading-relaxed"
+            onBlur={flushContentSave}
             placeholder="Start writing..."
           />
         </div>

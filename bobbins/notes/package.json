@@ -13,7 +13,8 @@
     "build": "tsc",
     "dev": "tsc --noEmit --watch --preserveWatchOutput",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "jest --passWithNoTests"
   },
   "peerDependencies": {
     "react": "^19.0.0"
@@ -21,10 +22,18 @@
   "dependencies": {
     "@bobbinry/sdk": "workspace:*",
     "@bobbinry/types": "workspace:*",
-    "@bobbinry/ui-components": "workspace:*"
+    "@bobbinry/ui-components": "workspace:*",
+    "@tiptap/extension-placeholder": "^3.30.2",
+    "@tiptap/pm": "^3.30.2",
+    "@tiptap/react": "^3.30.2",
+    "@tiptap/starter-kit": "^3.30.2"
   },
   "devDependencies": {
+    "@jest/globals": "^30.3.0",
+    "@types/jest": "^30.0.0",
     "@types/react": "^19.2.18",
+    "jest": "^30.3.0",
+    "ts-jest": "^29.4.6",
     "typescript": "6.0.3"
   }
 }

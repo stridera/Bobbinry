@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { noteContentToText } from '../components/content-utils'
 import type { BobbinrySDK } from '@bobbinry/sdk'
 
 interface PinboardViewProps {
@@ -64,7 +65,7 @@ export default function PinboardView({
       if (!searchTerm.trim()) return true
       const term = searchTerm.toLowerCase()
       return (n.title || '').toLowerCase().includes(term) ||
-        (n.content || '').toLowerCase().includes(term) ||
+        noteContentToText(n.content).toLowerCase().includes(term) ||
         (n.tags || []).some((t: string) => t.toLowerCase().includes(term))
     })
 
@@ -139,7 +140,7 @@ export default function PinboardView({
                 </div>
                 {note.content && (
                   <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-4 mb-2">
-                    {note.content.substring(0, 200)}
+                    {noteContentToText(note.content).substring(0, 200)}
                   </p>
                 )}
                 {note.tags && note.tags.length > 0 && (
