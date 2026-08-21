@@ -1,6 +1,6 @@
 id: entities
 name: Entities
-version: 1.8.0
+version: 1.8.1
 author: "Bobbins Core"
 description: "Configurable entity system for characters, spells, locations, items, and more"
 tags: [worldbuilding, rpg, entities, configurable]
@@ -77,6 +77,8 @@ extensions:
       title: "Entities"
       entry: panels/navigation
     - slot: shell.rightPanel
+      priority: 10
+      icon: eye
       type: panel
       id: entity-preview
       title: "Entity Preview"

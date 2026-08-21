@@ -1,6 +1,6 @@
 id: ai-tools
 name: AI Tools
-version: 0.2.1
+version: 0.2.2
 author: Bobbins Core
 description: Context-adaptive AI tools for your writing. Provides feedback, name generation, brainstorming, and more — never writes or rewrites your content.
 tags: [ai, analysis, feedback, synopsis]
@@ -16,11 +16,12 @@ capabilities:
 extensions:
   contributions:
     - slot: shell.rightPanel
+      icon: sparkles
       type: panel
       id: ai-panel
       title: "AI Tools"
       entry: panels/ai-panel
-      priority: 3
+      priority: 5
 
 external:
   endpoints:

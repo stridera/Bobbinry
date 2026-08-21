@@ -1,6 +1,6 @@
 id: notes
 name: Notes & Research
-version: 1.2.0
+version: 1.2.1
 author: "Bobbins Core"
 description: "Rich-text research notes with folders, tagging, entity linking, and pinboard"
 tags: [notes, research, organization, writing]
@@ -73,6 +73,8 @@ extensions:
       title: "Project Notes"
       entry: panels/navigation
     - slot: shell.rightPanel
+      priority: 9
+      icon: note
       type: panel
       id: chapter-notes
       title: "Chapter Notes"

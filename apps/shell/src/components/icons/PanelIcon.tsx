@@ -44,6 +44,58 @@ const ICON_PATHS: Record<string, React.ReactNode> = {
       <circle cx="12" cy="12" r="1" />
     </>
   ),
+  eye: (
+    <>
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
+  globe: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18" />
+      <path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z" />
+    </>
+  ),
+  message: (
+    <>
+      <path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z" />
+    </>
+  ),
+  castle: (
+    <>
+      <path d="M4 21V9l2-2V4h3v3h2V4h2v3h2V4h3v3l2 2v12z" />
+      <path d="M10 21v-5a2 2 0 0 1 4 0v5" />
+    </>
+  ),
+  paw: (
+    <>
+      <circle cx="8" cy="8" r="1.8" />
+      <circle cx="16" cy="8" r="1.8" />
+      <circle cx="4.5" cy="12.5" r="1.6" />
+      <circle cx="19.5" cy="12.5" r="1.6" />
+      <path d="M12 12c-2.8 0-5 2.6-5 4.8 0 1.4 1 2.2 2.3 2.2 1 0 1.8-.6 2.7-.6s1.7.6 2.7.6c1.3 0 2.3-.8 2.3-2.2 0-2.2-2.2-4.8-5-4.8z" />
+    </>
+  ),
+  sparkles: (
+    <>
+      <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" />
+      <path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z" />
+      <path d="M5 2l.6 1.4L7 4l-1.4.6L5 6l-.6-1.4L3 4l1.4-.6z" />
+    </>
+  ),
+  bell: (
+    <>
+      <path d="M18 16v-5a6 6 0 0 0-12 0v5l-2 2h16z" />
+      <path d="M10 21a2 2 0 0 0 4 0" />
+    </>
+  ),
+  shield: (
+    <>
+      <path d="M12 3l8 3v6c0 4.5-3.2 8.2-8 9.5C7.2 20.2 4 16.5 4 12V6z" />
+      <path d="M9 12l2 2 4-4" />
+    </>
+  ),
 }
 
 interface PanelIconProps {

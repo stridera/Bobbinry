@@ -1,6 +1,6 @@
 id: goals
 name: Goals & Progress
-version: 1.0.5
+version: 1.0.6
 author: "Bobbins Core"
 description: "Word count goals, writing sessions, streaks, and progress visualization"
 tags: [goals, progress, writing, tracking]
@@ -78,6 +78,8 @@ extensions:
       title: "Goals"
     # Contextual progress while writing (right bar = information)
     - slot: shell.rightPanel
+      priority: 0
+      icon: target
       type: panel
       id: progress
       title: "Progress"

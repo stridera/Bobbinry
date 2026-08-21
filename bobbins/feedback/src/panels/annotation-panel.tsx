@@ -6,6 +6,7 @@ import {
   PanelEmptyState,
   PanelFrame,
   PanelPill,
+  usePanelBadge,
 } from '@bobbinry/sdk'
 
 interface AnnotationPanelProps {
@@ -210,6 +211,14 @@ export default function AnnotationPanel({ context }: AnnotationPanelProps) {
       }
     }))
   }
+
+  // Surface the open count on the rail icon so unread feedback is visible
+  // even while another panel has the column.
+  const openCount = useMemo(
+    () => annotations.filter(a => a.status === 'open' || a.status === 'acknowledged').length,
+    [annotations]
+  )
+  usePanelBadge(openCount > 0 ? { count: openCount, tone: 'attention' } : null)
 
   if (!projectId) {
     return <PanelEmptyState title="No project selected" description="Open a project to see reader feedback." />

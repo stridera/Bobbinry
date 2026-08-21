@@ -1,6 +1,6 @@
 id: bookworm-siege
 name: Bookworm Siege
-version: 1.0.0
+version: 1.0.1
 author: Bobbinry Team
 description: A typing tower-defense game — every word you type fires a tower at the bookworms besieging your castle. Set a word goal, a target WPM, and secret words for burst attacks.
 tags:
@@ -19,11 +19,12 @@ capabilities:
 extensions:
   contributions:
     - slot: shell.rightPanel
+      icon: castle
       type: panel
       id: bookworm-siege-panel
       title: "Bookworm Siege"
       entry: panels/game-panel
-      priority: 6
+      priority: 4
       when:
         entityType: content
 

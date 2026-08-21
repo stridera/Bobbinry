@@ -1,6 +1,6 @@
 id: discord-roles
 name: Discord Role Manager
-version: 1.0.3
+version: 1.0.4
 author: Bobbins Core
 description: Sync Discord server roles based on Bobbinry subscription tiers. Assign and remove roles automatically when subscriptions change.
 tags: [discord, roles, integration, subscriptions]
@@ -14,11 +14,12 @@ capabilities:
 extensions:
   contributions:
     - slot: shell.rightPanel
+      icon: shield
       type: panel
       id: discord-roles-settings
       title: "Discord Roles"
       entry: panels/settings
-      priority: 9
+      priority: 1
       when:
         inView: project
 

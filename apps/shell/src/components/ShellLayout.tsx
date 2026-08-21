@@ -4,6 +4,7 @@ import { ReactNode, useState, useMemo, useEffect, useRef, useCallback } from 're
 import Link from 'next/link'
 import { ExtensionSlot } from './ExtensionSlot'
 import { LeftPanelRail, RAIL_WIDTH } from './LeftPanelRail'
+import { RightPanelRail } from './RightPanelRail'
 import { QuickOpenPalette } from './QuickOpenPalette'
 import { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp'
 import { Breadcrumbs } from './Breadcrumbs'
@@ -461,7 +462,8 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
           />
         )}
 
-        {/* Right Panel — floats over the manuscript while in focus mode */}
+        {/* Right Panel — icon rail + active panel (+ optional pinned pane);
+            floats over the manuscript while in focus mode */}
         <aside
           className={`bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 ${
             resizingPanel === 'right' ? '' : 'transition-all duration-300'
@@ -471,7 +473,9 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
           style={{
             width: focusMode
               ? (focusPanelOpen ? rightPanelWidth : 0)
-              : (isHydrated && rightPanelCollapsed ? 0 : rightPanelWidth)
+              : isHydrated && rightPanelCollapsed
+                ? RAIL_WIDTH
+                : RAIL_WIDTH + rightPanelWidth
           }}
         >
           {focusMode && focusPanelOpen && (
@@ -490,12 +494,15 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
             </div>
           )}
           <div className="flex-1 min-h-0">
-            <ExtensionSlot
-              slotId="shell.rightPanel"
+            <RightPanelRail
               context={shellContext}
-              className="h-full"
-              {...(focusMode && focusPanelOpen ? { soloPanelId: FOCUS_PANEL_ID } : {})}
-              fallback={
+              collapsed={isHydrated && rightPanelCollapsed}
+              columnWidth={rightPanelWidth}
+              animate={resizingPanel !== 'right'}
+              onToggleCollapse={() => setRightPanelCollapsed(prev => !prev)}
+              onOpenMarketplace={onOpenMarketplace ? () => onOpenMarketplace('shell.rightPanel') : undefined}
+              soloPanelId={focusMode && focusPanelOpen ? FOCUS_PANEL_ID : undefined}
+              emptyFallback={
                 <EmptySlotFallback
                   icon={
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

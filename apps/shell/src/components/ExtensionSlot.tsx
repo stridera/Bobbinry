@@ -3,16 +3,17 @@
 import { useEffect, useState, useRef, ReactNode, useMemo, memo, useSyncExternalStore } from 'react'
 import { extensionRegistry, RegisteredExtension } from '@/lib/extensions'
 import { useExtensions } from './ExtensionProvider'
-import { ResizablePanelStack } from './ResizablePanelStack'
 
 interface ExtensionSlotProps {
   slotId: string
   context?: any
   className?: string
   fallback?: ReactNode
-  layout?: 'stacked' | 'inline'
-  /** Render only this extension, chromeless. See ResizablePanelStack. */
-  soloPanelId?: string
+  /**
+   * Kept for call-site compatibility; every slot now renders inline. The
+   * right panel column has its own host (RightPanelRail).
+   */
+  layout?: 'inline'
 }
 
 const noopSubscribe = () => () => {}
@@ -53,8 +54,6 @@ export function ExtensionSlot({
   context,
   className,
   fallback,
-  layout = 'stacked',
-  soloPanelId
 }: ExtensionSlotProps) {
   const extensionContext = useExtensions()
   const registeredCount = extensionContext?.extensions?.length ?? 0
@@ -83,21 +82,6 @@ export function ExtensionSlot({
     return unsubscribe
   }, [slotId])
 
-  const panels = useMemo(() => {
-    return extensions.map(extension => ({
-      id: extension.id,
-      title: extension.contribution.title || extension.id,
-      content: (
-        <PanelContent
-          extension={extension}
-          context={context}
-        />
-      )
-    }))
-  }, [extensions, context])
-
-  const slot = useMemo(() => extensionRegistry.getSlot(slotId), [slotId])
-
   if (!isHydrated) {
     if (fallback === null) return null
     return (
@@ -115,37 +99,21 @@ export function ExtensionSlot({
     return <>{fallback !== undefined ? fallback : <div className="text-xs text-gray-400">No extensions for {slotId}</div>}</>
   }
 
-  if (layout === 'inline') {
-    return (
-      <div className={className}>
-        {extensions.map(extension => {
-          const Component = extension.component
-          if (typeof Component === 'function') {
-            return <Component key={extension.id} {...context} context={context} />
-          }
-          return (
-            <PanelContent
-              key={extension.id}
-              extension={extension}
-              context={context}
-            />
-          )
-        })}
-      </div>
-    )
-  }
-
-  // Use ResizablePanelStack for all extensions (single or multiple)
   return (
     <div className={className}>
-      <ResizablePanelStack
-        panels={panels}
-        slotId={slotId}
-        singlePanel={extensions.length === 1}
-        contextKey={context?.bobbinId}
-        {...(soloPanelId ? { soloPanelId } : {})}
-        {...(slot?.maxContributions !== undefined ? { defaultVisibleCount: slot.maxContributions } : {})}
-      />
+      {extensions.map(extension => {
+        const Component = extension.component
+        if (typeof Component === 'function') {
+          return <Component key={extension.id} {...context} context={context} />
+        }
+        return (
+          <PanelContent
+            key={extension.id}
+            extension={extension}
+            context={context}
+          />
+        )
+      })}
     </div>
   )
 }

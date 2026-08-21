@@ -1,6 +1,6 @@
 id: feedback
 name: Reader Feedback
-version: 1.0.1
+version: 1.0.2
 author: "Bobbins Core"
 description: "View and manage reader annotations, error reports, and suggestions in the editor"
 tags: [feedback, annotations, beta-readers, editing]
@@ -25,6 +25,8 @@ interactions:
 extensions:
   contributions:
     - slot: shell.rightPanel
+      priority: 8
+      icon: message
       type: panel
       id: reader-feedback
       title: "Reader Feedback"

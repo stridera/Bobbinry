@@ -1090,6 +1090,8 @@ export {
 
 // Panel actions portal
 export { PanelActionsProvider, PanelActions } from './panel-actions'
+export { PanelBadgeProvider, usePanelBadge } from './panel-badge'
+export type { PanelBadge, PanelBadgeSetter } from './panel-badge'
 export {
   PanelActionButton,
   PanelBody,
