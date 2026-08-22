@@ -24,6 +24,8 @@ declare module '@auth/core/types' {
       isNewUser?: boolean
     }
     apiToken: string
+    /** Epoch ms when `apiToken` expires. Renewed server-side on session fetch. */
+    apiTokenExpiresAt?: number
   }
 
   interface User {
@@ -49,6 +51,8 @@ declare module 'next-auth' {
       isNewUser?: boolean
     }
     apiToken: string
+    /** Epoch ms when `apiToken` expires. Renewed server-side on session fetch. */
+    apiTokenExpiresAt?: number
   }
 
   interface User {
@@ -63,6 +67,7 @@ declare module 'next-auth/jwt' {
   interface JWT {
     id: string
     apiToken: string
+    apiTokenExpiresAt?: number
     membershipTier: 'free' | 'supporter'
     badges: string[]
     emailVerified: boolean

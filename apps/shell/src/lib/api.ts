@@ -4,20 +4,19 @@
  * Wraps fetch with the API base URL and JWT authorization header.
  * Use with the apiToken from the NextAuth session.
  *
- * Automatically handles 401 responses by signing the user out,
- * so stale sessions (e.g. deleted/banned users) are cleared immediately.
+ * On a 401 it asks the session layer for a renewed token (the API token is
+ * re-minted from the still-valid NextAuth cookie) and retries once. Only if
+ * that fails — user deleted/banned, cookie itself expired — is the user
+ * signed out and sent to /login.
  */
 
-import { signOut } from 'next-auth/react'
 import { config } from '@/lib/config'
-
-/** Prevent multiple concurrent signOut calls when parallel requests hit 401 */
-let signingOut = false
+import { requestSessionRefresh } from '@/lib/session-refresh'
 
 /**
  * Make an authenticated fetch to the API.
  * Prepends the API base URL and sets the Authorization header.
- * On 401 responses, triggers a sign-out to clear the stale session.
+ * On 401, refreshes the session and retries once with the new token.
  */
 export async function apiFetch(
   path: string,
@@ -25,18 +24,19 @@ export async function apiFetch(
   init?: RequestInit
 ): Promise<Response> {
   const url = `${config.apiUrl}${path}`
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      ...init?.headers,
-      'Authorization': `Bearer ${apiToken}`,
-    },
-  })
+  const doFetch = (token: string) =>
+    fetch(url, {
+      ...init,
+      headers: {
+        ...init?.headers,
+        'Authorization': `Bearer ${token}`,
+      },
+    })
 
-  if (res.status === 401 && !signingOut) {
-    signingOut = true
-    signOut({ callbackUrl: '/login' })
-  }
+  const res = await doFetch(apiToken)
+  if (res.status !== 401) return res
 
-  return res
+  const renewed = await requestSessionRefresh(apiToken)
+  if (!renewed) return res
+  return doFetch(renewed)
 }

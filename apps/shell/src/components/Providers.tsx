@@ -15,7 +15,9 @@ interface ProvidersProps {
 
 export function Providers({ children }: ProvidersProps) {
   return (
-    <SessionProvider>
+    // Refetch every 10 minutes so the server-side `jwt` callback keeps the
+    // API token rolling during long writing sessions (see auth.ts).
+    <SessionProvider refetchInterval={10 * 60} refetchOnWindowFocus>
       <SessionValidator />
       <AnalyticsProvider />
       <ThemeProvider>

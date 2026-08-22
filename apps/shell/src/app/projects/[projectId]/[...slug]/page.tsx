@@ -120,9 +120,14 @@ export default function ProjectDeepLinkPage() {
     }
   }, [projectId, sdk, registerManifestExtensions, unregisterManifestExtensions])
 
+  // Load once per project. The API token rotates during long sessions
+  // (rolling renewal in auth.ts); that must NOT re-run the full load, which
+  // toggles `loading` and remounts ShellLayout + every open editor view.
+  const loadedForProjectRef = useRef<string | null>(null)
   useEffect(() => {
     if (!session?.apiToken || !projectId) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
+    if (loadedForProjectRef.current === projectId) return
+    loadedForProjectRef.current = projectId
     loadProject()
   }, [loadProject, projectId, session?.apiToken])
 

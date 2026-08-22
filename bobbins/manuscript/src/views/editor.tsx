@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { ConflictError, registerShortcuts } from '@bobbinry/sdk'
+import { AuthError, ConflictError, registerShortcuts } from '@bobbinry/sdk'
 import type { BobbinrySDK } from '@bobbinry/sdk'
 import { paletteClasses, isPaletteToken, PALETTE_TOKENS } from '@bobbinry/ui-components'
 import {
@@ -148,7 +148,10 @@ function versionDebug(
 }
 
 // --- Save state ---
-type SaveStatus = 'clean' | 'dirty' | 'saving' | 'saved' | 'error' | 'offline' | 'conflict'
+type SaveStatus = 'clean' | 'dirty' | 'saving' | 'saved' | 'error' | 'offline' | 'conflict' | 'auth'
+
+/** Dispatched by the shell once the API token has been renewed after a 401. */
+const AUTH_TOKEN_RENEWED_EVENT = 'bobbinry:auth-token-renewed'
 
 interface ConflictInfo {
   serverVersion: number
@@ -381,6 +384,12 @@ function SaveIndicator({ status, focusMode }: { status: SaveStatus; focusMode: b
         <span className="flex items-center gap-1" title="Offline — changes saved locally">
           <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
           <span className="text-[10px] text-orange-400 font-medium">Offline</span>
+        </span>
+      )}
+      {status === 'auth' && (
+        <span className="flex items-center gap-1" title="Signed out — changes are saved on this device only">
+          <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+          <span className="text-[10px] text-red-500 font-medium">Not syncing</span>
         </span>
       )}
       {status === 'conflict' && (
@@ -663,11 +672,28 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
     const goOffline = () => {
       setSaveStatus(prev => (prev === 'dirty' || prev === 'error') ? 'offline' : prev)
     }
+    // The shell renewed the API token after a 401 — retry the local draft.
+    const onTokenRenewed = () => {
+      setSaveStatus(prev => {
+        if (prev !== 'auth') return prev
+        const eid = activeEntityRef.current
+        if (eid) {
+          const draft = loadDraft(eid)
+          if (draft && !draft.savedToServer) {
+            setTimeout(() => serverSave(eid, draft.html, draft.wordCount), 500)
+            return 'saving'
+          }
+        }
+        return 'dirty'
+      })
+    }
     window.addEventListener('online', goOnline)
     window.addEventListener('offline', goOffline)
+    window.addEventListener(AUTH_TOKEN_RENEWED_EVENT, onTokenRenewed)
     return () => {
       window.removeEventListener('online', goOnline)
       window.removeEventListener('offline', goOffline)
+      window.removeEventListener(AUTH_TOKEN_RENEWED_EVENT, onTokenRenewed)
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1829,6 +1855,16 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
         }
         return
       }
+      if (error instanceof AuthError) {
+        // Session expired. The SDK's 401 hook has already asked the shell to
+        // renew the token; we'll get AUTH_TOKEN_RENEWED_EVENT and retry. If
+        // renewal fails the shell redirects to /login, and beforeunload
+        // flushes the draft. Either way the prose is safe in localStorage.
+        console.warn('[EditorView] Auto-save rejected: session expired')
+        markDirty()
+        if (activeEntityRef.current === targetEntityId) setSaveStatus('auth')
+        return
+      }
       console.error('[EditorView] Auto-save failed:', error)
       markDirty()
       // Only update status if this entity is still active
@@ -2509,6 +2545,25 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
           <EditorContent editor={editor} />
         </div>
       </div>
+
+      {/* Session expired banner — unmissable, unlike the status dot */}
+      {saveStatus === 'auth' && (
+        <div className="absolute top-0 inset-x-0 z-40 flex items-center justify-center gap-3 px-4 py-2 bg-red-50 dark:bg-red-900/40 border-b border-red-200 dark:border-red-800 text-sm text-red-800 dark:text-red-200">
+          <span>
+            <strong>Your session has expired.</strong> Your writing is saved on this device but isn&apos;t syncing.
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              const here = window.location.pathname + window.location.search
+              window.location.assign(`/login?callbackUrl=${encodeURIComponent(here)}`)
+            }}
+            className="px-3 py-1 rounded-md text-xs font-medium bg-red-600 hover:bg-red-700 text-white transition-colors cursor-pointer"
+          >
+            Sign in to keep saving
+          </button>
+        </div>
+      )}
 
       {/* Conflict resolution dialog */}
       {conflictInfo && (

@@ -23,12 +23,26 @@ const jwtSecret = new TextEncoder().encode(
   process.env.NEXTAUTH_SECRET || 'development-secret-only-for-local-dev'
 )
 
+/** Lifetime of the API JWT carried inside the NextAuth session. */
+const API_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000
+
+/**
+ * Re-mint the API token whenever it has less than this long left. Because
+ * the `jwt` callback runs on every session fetch (page load, window focus,
+ * the SessionProvider refetch interval), this gives a rolling token: as long
+ * as the user keeps using the app their API token never actually expires,
+ * and they are never bounced to the login page mid-session.
+ */
+const API_TOKEN_RENEW_BEFORE_MS = 6 * 24 * 60 * 60 * 1000
+
 /** Sign a JWT that the API can verify via its requireAuth middleware */
-async function signApiToken(userId: string): Promise<string> {
-  return new SignJWT({ id: userId })
+async function signApiToken(userId: string): Promise<{ token: string; expiresAt: number }> {
+  const expiresAt = Date.now() + API_TOKEN_TTL_MS
+  const token = await new SignJWT({ id: userId })
     .setProtectedHeader({ alg: 'HS256' })
-    .setExpirationTime('7d')
+    .setExpirationTime(Math.floor(expiresAt / 1000))
     .sign(jwtSecret)
+  return { token, expiresAt }
 }
 
 function toHex(buffer: ArrayBuffer): string {
@@ -243,7 +257,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async jwt({ token, user, trigger, session: updateData }) {
       if (user) {
         token.id = user.id
-        token.apiToken = await signApiToken(user.id)
+        const minted = await signApiToken(user.id)
+        token.apiToken = minted.token
+        token.apiTokenExpiresAt = minted.expiresAt
         token.emailVerified = !!(user as any).emailVerified
         token.isNewUser = !!user.isNewUser
         // Use profile displayName as the canonical display name
@@ -258,6 +274,21 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             }
           }
         } catch {}
+      }
+      // Rolling renewal: re-mint the API token before it runs out. The
+      // NextAuth cookie is the source of truth for "is this person signed
+      // in"; the API token is derived from it, so as long as the cookie is
+      // valid we can always issue a fresh one. Sessions minted before this
+      // field existed have no expiry recorded and are re-minted immediately.
+      // A client can also force renewal with `update({ renewApiToken: true })`.
+      if (!user && token.id) {
+        const expiresAt = typeof token.apiTokenExpiresAt === 'number' ? token.apiTokenExpiresAt : 0
+        const forceRenew = trigger === 'update' && updateData?.renewApiToken === true
+        if (!token.apiToken || forceRenew || expiresAt - Date.now() < API_TOKEN_RENEW_BEFORE_MS) {
+          const minted = await signApiToken(token.id as string)
+          token.apiToken = minted.token
+          token.apiTokenExpiresAt = minted.expiresAt
+        }
       }
       // Handle session updates (e.g. after profile displayName change)
       if (trigger === 'update' && updateData?.name) {
@@ -315,6 +346,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.user.isNewUser = !!token.isNewUser
       }
       session.apiToken = token.apiToken as string
+      if (typeof token.apiTokenExpiresAt === 'number') session.apiTokenExpiresAt = token.apiTokenExpiresAt
       return session
     }
   },

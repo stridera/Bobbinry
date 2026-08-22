@@ -22,10 +22,30 @@ function getParentOrigin(): string {
   }
 }
 
+/**
+ * Thrown when the API rejects a request with 401. Distinct from network
+ * failures (TypeError) so callers can show "session expired" instead of
+ * "offline", and from ConflictError so autosave doesn't misclassify it.
+ */
+export class AuthError extends Error {
+  status: number
+
+  constructor(message = 'Session expired — please sign in again') {
+    super(message)
+    this.name = 'AuthError'
+    this.status = 401
+  }
+}
+
+type UnauthorizedHandler = () => void
+
 // API client for communicating with the Bobbinry API
 export class BobbinryAPI {
   private baseURL: string
   private authToken: string | null = null
+  private unauthorizedHandler: UnauthorizedHandler | null = null
+  /** Fallback 401 handler shared by every instance (set once by the shell). */
+  private static defaultUnauthorizedHandler: UnauthorizedHandler | null = null
 
   constructor(baseURL: string = (process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}/api` : 'http://localhost:4100/api')) {
     this.baseURL = baseURL
@@ -38,6 +58,36 @@ export class BobbinryAPI {
   /** Set the JWT token used to authenticate API requests */
   setAuthToken(token: string) {
     this.authToken = token
+  }
+
+  /**
+   * Register a callback invoked whenever a request comes back 401.
+   * The shell uses this to force a session refresh (re-minting the API
+   * token) or, failing that, to send the user to the login page.
+   */
+  onUnauthorized(handler: UnauthorizedHandler | null) {
+    this.unauthorizedHandler = handler
+  }
+
+  /**
+   * Process-wide fallback for instances that never called `onUnauthorized`
+   * (bobbins construct their own SDKs). The shell registers a session
+   * refresher here once at mount.
+   */
+  static setDefaultUnauthorizedHandler(handler: UnauthorizedHandler | null) {
+    BobbinryAPI.defaultUnauthorizedHandler = handler
+  }
+
+  /**
+   * Throw a typed AuthError when the response is a 401. Call this first in
+   * every `!response.ok` branch so auth failures never get folded into the
+   * generic "request failed" error.
+   */
+  throwIfUnauthorized(response: Response): void {
+    if (response.status !== 401) return
+    const handler = this.unauthorizedHandler ?? BobbinryAPI.defaultUnauthorizedHandler
+    try { handler?.() } catch {}
+    throw new AuthError()
   }
 
   /** Build headers for an authenticated request */
@@ -55,6 +105,7 @@ export class BobbinryAPI {
       headers: this.getAuthHeaders()
     })
     if (!response.ok) {
+      this.throwIfUnauthorized(response)
       throw new Error(`Failed to fetch project: ${response.statusText}`)
     }
     return response.json()
@@ -72,6 +123,7 @@ export class BobbinryAPI {
     })
 
     if (!response.ok) {
+      this.throwIfUnauthorized(response)
       const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
       throw new Error(errorData.error || `Installation failed: ${response.statusText}`)
     }
@@ -84,6 +136,7 @@ export class BobbinryAPI {
       headers: this.getAuthHeaders()
     })
     if (!response.ok) {
+      this.throwIfUnauthorized(response)
       const err = new Error(`Failed to fetch bobbins: ${response.statusText}`) as Error & { status?: number }
       err.status = response.status
       throw err
@@ -98,6 +151,7 @@ export class BobbinryAPI {
     })
 
     if (!response.ok) {
+      this.throwIfUnauthorized(response)
       const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
       throw new Error(errorData.error || `Uninstall failed: ${response.statusText}`)
     }
@@ -290,6 +344,7 @@ export class EntityAPI {
     })
 
     if (!response.ok) {
+      this.api.throwIfUnauthorized(response)
       const body = await response.text().catch(() => '')
       throw new Error(`Failed to query entities (${response.status}): ${body || response.statusText}`)
     }
@@ -314,6 +369,7 @@ export class EntityAPI {
     })
 
     if (!response.ok) {
+      this.api.throwIfUnauthorized(response)
       if (response.status === 404) {
         return null
       }
@@ -336,6 +392,7 @@ export class EntityAPI {
     })
 
     if (!response.ok) {
+      this.api.throwIfUnauthorized(response)
       const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
       throw new Error(`Failed to create entity: ${errorData.error || response.statusText}`)
     }
@@ -360,6 +417,7 @@ export class EntityAPI {
     })
 
     if (!response.ok) {
+      this.api.throwIfUnauthorized(response)
       const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
       throw new Error(`Failed to create entities (batch): ${errorData.error || response.statusText}`)
     }
@@ -385,6 +443,7 @@ export class EntityAPI {
     })
 
     if (!response.ok) {
+      this.api.throwIfUnauthorized(response)
       if (response.status === 409) {
         const errorData = await response.json().catch(() => ({}))
         throw new ConflictError(
@@ -411,6 +470,7 @@ export class EntityAPI {
     })
 
     if (!response.ok) {
+      this.api.throwIfUnauthorized(response)
       if (response.status === 404) return null
       throw new Error(`Failed to get entity version (${response.status})`)
     }
@@ -445,6 +505,7 @@ export class EntityAPI {
       body: JSON.stringify({ contentType }),
     })
     if (!response.ok) {
+      this.api.throwIfUnauthorized(response)
       const body = await response.text().catch(() => '')
       throw new Error(`Failed to update content type (${response.status}): ${body || response.statusText}`)
     }
@@ -463,6 +524,7 @@ export class EntityAPI {
     })
 
     if (!response.ok) {
+      this.api.throwIfUnauthorized(response)
       const body = await response.text().catch(() => '')
       throw new Error(`Failed to delete entity (${response.status}): ${body || response.statusText}`)
     }
@@ -489,6 +551,7 @@ export class EntityAPI {
     )
 
     if (!response.ok) {
+      this.api.throwIfUnauthorized(response)
       const body = await response.text().catch(() => '')
       throw new Error(`Failed to detach entity type from template (${response.status}): ${body || response.statusText}`)
     }
@@ -663,6 +726,7 @@ export class PublishingAPI {
       body: JSON.stringify(options || {})
     })
     if (!response.ok) {
+      this.api.throwIfUnauthorized(response)
       const err = await response.json().catch(() => ({ error: 'Unknown error' }))
       throw new Error(err.error || `Publish failed: ${response.statusText}`)
     }
@@ -675,6 +739,7 @@ export class PublishingAPI {
       headers: this.api.getAuthHeaders()
     })
     if (!response.ok) {
+      this.api.throwIfUnauthorized(response)
       throw new Error(`Unpublish failed: ${response.statusText}`)
     }
     return response.json()
@@ -687,6 +752,7 @@ export class PublishingAPI {
       body: JSON.stringify({ entityId: chapterId, tierSchedules })
     })
     if (!response.ok) {
+      this.api.throwIfUnauthorized(response)
       throw new Error(`Create embargo failed: ${response.statusText}`)
     }
     return response.json()
@@ -697,6 +763,7 @@ export class PublishingAPI {
       headers: this.api.getAuthHeaders()
     })
     if (!response.ok) {
+      this.api.throwIfUnauthorized(response)
       throw new Error(`Get status failed: ${response.statusText}`)
     }
     return response.json()
@@ -707,6 +774,7 @@ export class PublishingAPI {
       headers: this.api.getAuthHeaders()
     })
     if (!response.ok) {
+      this.api.throwIfUnauthorized(response)
       throw new Error(`Get tiers failed: ${response.statusText}`)
     }
     return response.json()
@@ -726,6 +794,7 @@ export class ReaderAPI {
       headers: this.api.getAuthHeaders()
     })
     if (!response.ok) {
+      this.api.throwIfUnauthorized(response)
       if (response.status === 403) {
         const data = await response.json()
         throw new Error(data.error || 'Access denied')
@@ -890,6 +959,7 @@ export class UploadAPI {
       headers: this.api.getAuthHeaders(),
     })
     if (!response.ok) {
+      this.api.throwIfUnauthorized(response)
       const err = await response.json().catch(() => ({ error: 'Delete failed' }))
       throw new Error(err.error || `Delete failed: ${response.statusText}`)
     }
@@ -921,6 +991,7 @@ export class ImportAPI {
       body: JSON.stringify({ fileKey, projectId }),
     })
     if (!response.ok) {
+      this.api.throwIfUnauthorized(response)
       const err = await response.json().catch(() => ({ error: 'Parse failed' }))
       throw new Error(err.error || `Import parse failed: ${response.statusText}`)
     }
@@ -943,6 +1014,7 @@ export class ImportAPI {
       body: JSON.stringify({ projectId, containerId, segments }),
     })
     if (!response.ok) {
+      this.api.throwIfUnauthorized(response)
       const err = await response.json().catch(() => ({ error: 'Commit failed' }))
       throw new Error(err.error || `Import commit failed: ${response.statusText}`)
     }
@@ -969,6 +1041,7 @@ export class ExportAPI {
       headers: this.api.getAuthHeaders(),
     })
     if (!response.ok) {
+      this.api.throwIfUnauthorized(response)
       const err = await response.json().catch(() => ({ error: 'Snapshot failed' }))
       throw new Error(err.error || `Export snapshot failed: ${response.statusText}`)
     }
@@ -994,7 +1067,10 @@ export class TemplateAPI {
     const response = await fetch(`${this.api.apiBaseUrl}/templates?${params}`, {
       headers: this.api.getAuthHeaders()
     })
-    if (!response.ok) throw new Error(`Failed to list templates: ${response.statusText}`)
+    if (!response.ok) {
+      this.api.throwIfUnauthorized(response)
+      throw new Error(`Failed to list templates: ${response.statusText}`)
+    }
     return response.json()
   }
 
@@ -1002,7 +1078,10 @@ export class TemplateAPI {
     const response = await fetch(`${this.api.apiBaseUrl}/templates/${shareId}`, {
       headers: this.api.getAuthHeaders()
     })
-    if (!response.ok) throw new Error(`Failed to get template: ${response.statusText}`)
+    if (!response.ok) {
+      this.api.throwIfUnauthorized(response)
+      throw new Error(`Failed to get template: ${response.statusText}`)
+    }
     return response.json()
   }
 
@@ -1024,6 +1103,7 @@ export class TemplateAPI {
       body: JSON.stringify(data)
     })
     if (!response.ok) {
+      this.api.throwIfUnauthorized(response)
       const err = await response.json().catch(() => ({ error: response.statusText }))
       throw new Error(err.error || 'Failed to publish template')
     }
@@ -1036,6 +1116,7 @@ export class TemplateAPI {
       headers: this.api.getAuthHeaders()
     })
     if (!response.ok) {
+      this.api.throwIfUnauthorized(response)
       const err = await response.json().catch(() => ({ error: response.statusText }))
       throw new Error(err.error || 'Failed to unpublish template')
     }
