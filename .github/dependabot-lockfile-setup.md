@@ -79,7 +79,10 @@ To test without waiting for the Monday schedule, comment `@dependabot recreate`
 on any open Dependabot PR.
 
 The workflow settles after exactly one regeneration: its own push re-fires the
-workflow, the second run finds the lockfile already in sync, and stops.
+workflow, the second run finds the lockfile already in sync, and stops. That
+second run is triggered by the App bot, not Dependabot, so it cannot see
+Dependabot secrets — which is why the workflow only checks credentials when a
+push is actually needed.
 
 ## Rotating the key
 
@@ -91,7 +94,7 @@ are short-lived, so nothing else needs revoking.
 
 | Symptom | Cause |
 |---|---|
-| `LOCKFILE_APP_ID / LOCKFILE_APP_PRIVATE_KEY are not set` | Secrets missing, or added under Actions instead of Dependabot (step 4). |
+| `LOCKFILE_APP_ID / LOCKFILE_APP_PRIVATE_KEY are not set` | Secrets missing, or added under Actions instead of Dependabot (step 4). Only fires on runs that need to push. |
 | Token creation fails with `not found` / `Integration not found` | Wrong App ID, or malformed private key — re-paste the whole `.pem`. |
 | Checkout or push fails with 403 | App not installed on the repo (step 3), or missing **Contents: read/write** (step 1). |
 | Check never appears at all | The PR touched no `**/package.json`, or its author isn't `dependabot[bot]` — both are intentional guards in the workflow. |
