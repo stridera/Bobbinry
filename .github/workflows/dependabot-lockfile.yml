@@ -29,6 +29,11 @@ jobs:
           # Check out the branch itself, not the detached merge commit, so we
           # have somewhere to push to.
           ref: ${{ github.head_ref }}
+          # Don't persist GITHUB_TOKEN as an http.extraheader: that header
+          # overrides the App token embedded in the push URL below, so the
+          # push would authenticate as the read-only github-actions[bot]
+          # and fail with 403.
+          persist-credentials: false
 
       - uses: oven-sh/setup-bun@v2
         with:
