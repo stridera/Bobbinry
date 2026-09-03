@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, Suspense } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -15,6 +15,7 @@ import {
 import { config } from '@/lib/config'
 import { ReaderNav } from '@/components/ReaderNav'
 import { ExtensionSlot } from '@/components/ExtensionSlot'
+import { useReaderBobbins } from '@/hooks/useReaderBobbins'
 import { AnnotationSelectionPopover, type TextAnchor } from '@/components/AnnotationSelectionPopover'
 import { AnnotationForm } from '@/components/AnnotationForm'
 import EntityModal from '../EntityModal'
@@ -76,6 +77,9 @@ interface Annotation {
 
 type FontSize = 'small' | 'medium' | 'large' | 'xlarge'
 type ReaderTheme = 'light' | 'dark' | 'sepia'
+
+/** Stable id on the chapter body so reader bobbins (read-aloud, etc.) can find the text. */
+const READER_CONTENT_ID = 'reader-chapter-content'
 type ReaderWidth = 'narrow' | 'standard' | 'wide' | 'fit'
 type EntityHighlightStyle = 'highlight' | 'underline' | 'off'
 type EntityInfoDisplay = 'sidebar' | 'popup'
@@ -252,6 +256,12 @@ function ChapterReaderContent() {
   const searchParams = useSearchParams()
   const { data: session, status: sessionStatus } = useSession()
   const sessionUserId = session?.user?.id
+  // Reader bobbins (read-aloud, etc.) register into the reader.* slots.
+  useReaderBobbins({
+    userId: sessionUserId,
+    apiToken: (session as any)?.apiToken as string | undefined,
+    sessionStatus,
+  })
   const authorUsername = params.authorUsername as string
   const projectSlug = params.projectSlug as string
   // Slug, old-slug alias, or legacy UUID — the API resolves all three.
@@ -303,6 +313,24 @@ function ChapterReaderContent() {
     return 'light'
   })
   const [readerWidth, setReaderWidth] = useState<ReaderWidth>('standard')
+
+  // Context handed to reader.* extension slots. Memoized so bobbin panels only
+  // re-render when something they can see changes.
+  const nextChapterHref = nav.next
+    ? `${basePath}/${nav.next.slug ?? nav.next.id}${viewAsQuery ? `?${viewAsQuery}` : ''}`
+    : null
+  const navigateTo = useCallback((href: string) => {
+    router.push(href)
+  }, [router])
+  const slotContext = useMemo(() => ({
+    chapterId,
+    projectId,
+    readerTheme,
+    chapterTitle: chapter?.title ?? null,
+    contentElementId: READER_CONTENT_ID,
+    nextChapterHref,
+    navigate: navigateTo,
+  }), [chapterId, projectId, readerTheme, chapter?.title, nextChapterHref, navigateTo])
   const [entityHighlightStyle, setEntityHighlightStyle] = useState<EntityHighlightStyle>('highlight')
   const [entityInfoDisplay, setEntityInfoDisplay] = useState<EntityInfoDisplay>('sidebar')
   const [entityPeekOnHover, setEntityPeekOnHover] = useState(true)
@@ -1147,7 +1175,7 @@ function ChapterReaderContent() {
           {/* Reader bobbin toolbar actions */}
           <ExtensionSlot
             slotId="reader.toolbar"
-            context={{ chapterId, projectId, readerTheme }}
+            context={slotContext}
             className="flex items-center gap-2"
             fallback={<span />}
           />
@@ -1354,6 +1382,7 @@ function ChapterReaderContent() {
           <h1 className="font-display text-3xl font-bold mb-6">{chapter.title}</h1>
 
           <div
+            id={READER_CONTENT_ID}
             ref={chapterContentRef}
             className={`${FONT_SIZES[fontSize]} prose ${proseClass} max-w-none ${displaySettingsToClass(displaySettings)}`}
             dangerouslySetInnerHTML={getSanitizedHtmlProps(chapter.content)}
@@ -1420,7 +1449,7 @@ function ChapterReaderContent() {
           {/* Reader bobbin after-chapter panels */}
           <ExtensionSlot
             slotId="reader.afterChapter"
-            context={{ chapterId, projectId, readerTheme }}
+            context={slotContext}
             className={`mt-8 pt-6 border-t ${borderColor} space-y-4`}
             fallback={null}
           />

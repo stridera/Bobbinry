@@ -470,8 +470,8 @@ export const BUILTIN_SLOTS: Record<string, ExtensionSlotDefinition> = {
   'reader.toolbar': {
     id: 'reader.toolbar',
     name: 'Reader Toolbar',
-    description: 'Translation toggle, TTS, bookmark actions',
-    supportedTypes: ['action'],
+    description: 'Read-aloud controls, translation toggle, bookmark actions',
+    supportedTypes: ['panel', 'action'],
     maxContributions: 8,
   },
   'reader.afterChapter': {

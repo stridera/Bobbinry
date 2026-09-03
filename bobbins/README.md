@@ -44,6 +44,12 @@ sources via the `shell.importSource` slot and read manuscripts via
 | [`discord-roles`](./discord-roles) | Sync Discord roles to subscription tiers. |
 | [`google-drive-backup`](./google-drive-backup) | Mirror chapters to Google Drive. |
 
+## Reader-side
+
+| Bobbin | What it does |
+|---|---|
+| [`reader-tts`](./reader-tts) | Read Aloud: browser text-to-speech in the public reader, with auto-advance. |
+
 ## Reference
 
 | Bobbin | What it does |

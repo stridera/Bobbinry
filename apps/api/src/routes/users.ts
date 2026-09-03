@@ -1726,13 +1726,15 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
       bobbinId: string
       bobbinType: 'reader_enhancement' | 'delivery_channel'
       config?: Record<string, any>
+      /** Reader-type bobbins are on by default; a row with false records an opt-out. */
+      isEnabled?: boolean
     }
   }>('/users/:userId/reader-bobbins', {
     preHandler: requireAuth
   }, async (request, reply) => {
     try {
       const { userId } = request.params
-      const { bobbinId, bobbinType, config } = request.body
+      const { bobbinId, bobbinType, config, isEnabled } = request.body
       if (!requireSelf(request, reply, userId)) return
 
       if (!bobbinId || !bobbinType) {
@@ -1760,7 +1762,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
           bobbinId,
           bobbinType,
           config: config || null,
-          isEnabled: true
+          isEnabled: typeof isEnabled === 'boolean' ? isEnabled : true
         })
         .returning()
 

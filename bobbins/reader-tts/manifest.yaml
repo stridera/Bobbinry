@@ -1,0 +1,26 @@
+id: reader-tts
+name: Read Aloud
+version: 1.0.0
+author: Bobbins Core
+description: Listen to published chapters with your browser's built-in voices. Play, pause, pick a voice and speed, follow along with paragraph highlighting, and roll straight into the next chapter.
+tags: [reader, tts, accessibility, audio]
+license: MIT
+category: augment
+visibility: none  # Reader-side bobbin; not something authors install on a project
+
+capabilities:
+  customViews: true
+  readerBobbinType: reader
+
+extensions:
+  contributions:
+    - slot: reader.toolbar
+      icon: volume-2
+      type: panel
+      id: reader-tts-listen
+      title: "Listen"
+      entry: panels/listen
+      priority: 10
+
+compatibility:
+  minShellVersion: 1.0.0

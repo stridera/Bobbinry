@@ -100,6 +100,7 @@
         "@bobbinry/google-drive-backup": "workspace:*",
         "@bobbinry/manuscript": "workspace:*",
         "@bobbinry/notes": "workspace:*",
+        "@bobbinry/reader-tts": "workspace:*",
         "@bobbinry/relationships": "workspace:*",
         "@bobbinry/sdk": "workspace:*",
         "@bobbinry/timeline": "workspace:*",
@@ -391,6 +392,26 @@
         "@types/jest": "^30.0.0",
         "@types/react": "^19.2.18",
         "jest": "^30.3.0",
+        "ts-jest": "^29.4.6",
+        "typescript": "6.0.3",
+      },
+      "peerDependencies": {
+        "react": "^19.0.0",
+      },
+    },
+    "bobbins/reader-tts": {
+      "name": "@bobbinry/reader-tts",
+      "version": "1.0.0",
+      "dependencies": {
+        "@bobbinry/sdk": "workspace:*",
+      },
+      "devDependencies": {
+        "@jest/globals": "^30.3.0",
+        "@testing-library/jest-dom": "^7.0.0",
+        "@types/jest": "^30.0.0",
+        "@types/react": "^19.2.18",
+        "jest": "^30.3.0",
+        "jest-environment-jsdom": "^30.3.0",
         "ts-jest": "^29.4.6",
         "typescript": "6.0.3",
       },
@@ -732,6 +753,8 @@
     "@bobbinry/manuscript": ["@bobbinry/manuscript@workspace:bobbins/manuscript"],
 
     "@bobbinry/notes": ["@bobbinry/notes@workspace:bobbins/notes"],
+
+    "@bobbinry/reader-tts": ["@bobbinry/reader-tts@workspace:bobbins/reader-tts"],
 
     "@bobbinry/relationships": ["@bobbinry/relationships@workspace:bobbins/relationships"],
 

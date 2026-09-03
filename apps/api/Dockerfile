@@ -40,6 +40,7 @@ COPY bobbins/google-drive-backup/package.json bobbins/google-drive-backup/
 COPY bobbins/hello-world/package.json bobbins/hello-world/
 COPY bobbins/manuscript/package.json bobbins/manuscript/
 COPY bobbins/notes/package.json bobbins/notes/
+COPY bobbins/reader-tts/package.json bobbins/reader-tts/
 COPY bobbins/relationships/package.json bobbins/relationships/
 COPY bobbins/timeline/package.json bobbins/timeline/
 COPY bobbins/web-publisher/package.json bobbins/web-publisher/

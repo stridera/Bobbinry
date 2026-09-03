@@ -30,6 +30,7 @@
     "@bobbinry/google-drive-backup": "workspace:*",
     "@bobbinry/manuscript": "workspace:*",
     "@bobbinry/notes": "workspace:*",
+    "@bobbinry/reader-tts": "workspace:*",
     "@bobbinry/relationships": "workspace:*",
     "@bobbinry/sdk": "workspace:*",
     "@bobbinry/timeline": "workspace:*",

@@ -444,6 +444,7 @@ Public-facing endpoints for reading published content. No authentication require
 | GET | `/api/public/projects/by-slug/:slug` | None | Resolve project by short URL slug |
 | POST | `/api/public/projects/by-slugs` | None | Batch resolve multiple slugs |
 | GET | `/api/public/projects/by-author-and-slug/:username/:projectSlug` | None | Resolve by author + project slug |
+| GET | `/api/public/reader-bobbins` | None | Catalog of reader bobbins (manifests with `capabilities.readerBobbinType`) |
 | GET | `/api/public/authors/:username/projects` | None | List an author's published projects |
 
 #### Comments & Reactions
@@ -577,7 +578,7 @@ Public endpoints for browsing published content. No authentication required.
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/api/users/:userId/reader-bobbins` | JWT (self) | List reader bobbins |
-| POST | `/api/users/:userId/reader-bobbins` | JWT (self) | Install reader bobbin |
+| POST | `/api/users/:userId/reader-bobbins` | JWT (self) | Install reader bobbin (`isEnabled: false` records an opt-out for reader-type bobbins) |
 | PUT | `/api/users/:userId/reader-bobbins/:bobbinInstallId` | JWT (self) | Update reader bobbin config |
 | DELETE | `/api/users/:userId/reader-bobbins/:bobbinInstallId` | JWT (self) | Uninstall reader bobbin |
 
