@@ -21,9 +21,26 @@ interface EntityListViewProps {
 const ITEMS_PER_PAGE = 20
 
 /**
+ * Resized-variant URL for an upload (mirrors `variantKey` in
+ * apps/api/src/lib/image-variants.ts and `getVariantUrl` in the shell, which
+ * this package can't import). Older uploads may predate variants, so callers
+ * must fall back to the original on error.
+ */
+function thumbVariantUrl(originalUrl: string): string {
+  const lastDot = originalUrl.lastIndexOf('.')
+  if (lastDot === -1) return `${originalUrl}__thumb.webp`
+  return `${originalUrl.substring(0, lastDot)}__thumb.webp`
+}
+
+/**
  * Card thumbnail honouring the author's crop rect, so the editor's list
  * matches the reader cards (which render through CroppedImage). Falls back to
  * object-cover for entities with no crop.
+ *
+ * The frame the caller supplies should be THUMBNAIL_ASPECT (3:4). Crops are
+ * locked to that aspect and `cropToCssStyles` centres the crop in the frame,
+ * so a wider frame shows only the crop's middle band — which for a portrait
+ * is the torso, not the face.
  */
 function CardThumb({
   thumbnail,
@@ -34,19 +51,36 @@ function CardThumb({
   alt: string
   className: string
 }) {
+  const [src, setSrc] = useState(() => thumbVariantUrl(thumbnail.url))
+  useEffect(() => {
+    setSrc(thumbVariantUrl(thumbnail.url))
+  }, [thumbnail.url])
+
   const cropStyles = cropToCssStyles(thumbnail.crop)
+  const handleError = () => {
+    if (src !== thumbnail.url) setSrc(thumbnail.url)
+  }
   return (
     <div className={`relative overflow-hidden bg-gray-100 dark:bg-gray-700 ${className}`}>
       {cropStyles ? (
         <div style={cropStyles.box}>
-          <img src={thumbnail.url} alt={alt} style={cropStyles.image} draggable={false} />
+          <img
+            src={src}
+            alt={alt}
+            style={cropStyles.image}
+            loading="lazy"
+            draggable={false}
+            onError={handleError}
+          />
         </div>
       ) : (
         <img
-          src={thumbnail.url}
+          src={src}
           alt={alt}
           className="absolute inset-0 h-full w-full object-cover"
+          loading="lazy"
           draggable={false}
+          onError={handleError}
         />
       )}
     </div>
@@ -333,14 +367,23 @@ export default function EntityListView({
     )
   }
 
-  const displayStyle = typeConfig?.listLayout.display || 'grid'
-  const cardSize = typeConfig?.listLayout.cardSize || 'medium'
+  const displayStyle = typeConfig?.listLayout?.display || 'grid'
+  const cardSize = typeConfig?.listLayout?.cardSize || 'medium'
 
+  // Grid cards carry a full-bleed 3:4 portrait, so column counts are tuned
+  // for that height rather than the old wide-strip thumbnail: a 3-up medium
+  // grid would be ~700px tall per card on a wide editor.
   const gridClasses = {
-    small: 'grid-cols-2 md:grid-cols-4 lg:grid-cols-6',
-    medium: 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3',
-    large: 'grid-cols-1 md:grid-cols-2'
+    small: 'grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 2xl:grid-cols-8',
+    medium: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5',
+    large: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',
   }[cardSize]
+
+  // The portrait well is only earned when the type actually has artwork.
+  // Types with no images at all (spells, items…) render as text cards rather
+  // than rows of tall empty icon wells; types with some art get an icon well
+  // on the art-less entries so the rows stay aligned.
+  const typeHasArt = entities.some(entity => getEntityThumbnail(entity) !== null)
 
   return (
     <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900">
@@ -483,8 +526,8 @@ export default function EntityListView({
                   <div
                     key={entity.id}
                     onClick={() => handleEntityClick(entity)}
-                    className={`border-2 border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-400 dark:hover:border-blue-600 cursor-pointer bg-white dark:bg-gray-800 hover:shadow-md transition-all ${
-                      displayStyle === 'list' ? 'flex items-center gap-4 p-5' : 'p-6'
+                    className={`group border-2 border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-400 dark:hover:border-blue-600 cursor-pointer bg-white dark:bg-gray-800 hover:shadow-md transition-all overflow-hidden ${
+                      displayStyle === 'list' ? 'flex items-center gap-4 p-4' : 'flex flex-col'
                     }`}
                   >
                     {displayStyle === 'list' ? (
@@ -492,28 +535,36 @@ export default function EntityListView({
                         <CardThumb
                           thumbnail={thumbnail}
                           alt={entity.name}
-                          className="w-16 h-16 flex-shrink-0 rounded"
+                          className="w-12 h-16 flex-shrink-0 rounded"
                         />
                       ) : (
-                        <div className="w-16 h-16 flex-shrink-0 flex items-center justify-center rounded bg-gray-100 dark:bg-gray-700 text-3xl">
+                        <div className="w-12 h-16 flex-shrink-0 flex items-center justify-center rounded bg-gray-100 dark:bg-gray-700 text-2xl">
                           {typeConfig?.icon ?? '📄'}
                         </div>
                       )
-                    ) : (
-                      thumbnail && (
+                    ) : thumbnail ? (
+                      // Full-bleed portrait at the crop's own 3:4 aspect, so the
+                      // author's chosen crop is shown whole — never re-cropped
+                      // to a wide strip.
+                      <div className="w-full overflow-hidden transition-transform group-hover:scale-[1.02]">
                         <CardThumb
                           thumbnail={thumbnail}
                           alt={entity.name}
-                          className="w-full h-48 rounded mb-4"
+                          className="w-full aspect-[3/4]"
                         />
-                      )
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1">
+                      </div>
+                    ) : typeHasArt ? (
+                      // Icon well matches the image aspect so rows of mixed cards align.
+                      <div className="flex w-full aspect-[3/4] items-center justify-center bg-gray-100 dark:bg-gray-700/60 text-5xl opacity-60">
+                        {typeConfig?.icon ?? '📄'}
+                      </div>
+                    ) : null}
+                    <div className={`flex-1 min-w-0 ${displayStyle === 'list' ? '' : 'p-4'}`}>
+                      <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400">
                         {entity.name || 'Untitled'}
                       </h3>
                       {subtitle ? (
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-2 line-clamp-2">
                           {subtitle}
                         </p>
                       ) : showDescriptionFallback ? (
@@ -526,7 +577,7 @@ export default function EntityListView({
                           {entity.tags.map((tag: string, i: number) => (
                             <span
                               key={i}
-                              className="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-xs"
+                              className="px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-xs"
                             >
                               {tag}
                             </span>
