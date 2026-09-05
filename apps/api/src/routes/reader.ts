@@ -45,7 +45,7 @@ import { randomUUID } from 'crypto'
 import { env } from '../lib/env'
 import { optionalAuth, requireAuth, requireProjectOwnership, ownsProject } from '../middleware/auth'
 import { hashRssToken } from './rss-tokens'
-import { countWordsFromHtml } from '../lib/text'
+import { countWordsFromHtml, escapeXml } from '../lib/text'
 import { liveProjectEntity, notDeleted } from '../lib/entity-scope'
 import { checkChapterAccess, checkChaptersAccess, type ViewSimulation } from '../lib/chapter-access'
 import { changeEventFromRow, extractWordCount, recordEntityChangesSafe } from '../lib/entity-changes'
@@ -1159,7 +1159,9 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
     const correlationId = request.id
     try {
       const { projectId } = request.params
-      const { limit = 20, reader: readerToken } = request.query
+      const { reader: readerToken } = request.query
+      // Clamp: this over-fetches 2x and renders full chapter bodies.
+      const limit = Math.min(Math.max(1, Number(request.query.limit) || 20), 100)
 
       // Get project info — projects live in `projects`, not `entities`.
       const [project] = await db
@@ -1269,14 +1271,6 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
           ? `${readerBase}/${slugMap.get(chapter.id) ?? chapter.id}`
           : `${baseUrl}/projects/${projectId}/chapters/${chapter.id}`
 
-        // Escape XML special characters
-        const escapeXml = (str: string) =>
-          str.replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&apos;')
-
         // guid stays keyed to the UUID URL: slugs move on rename, and a
         // changed guid would make feed readers re-surface old chapters.
         const guid = `${baseUrl}/projects/${projectId}/chapters/${chapter.id}`
@@ -1295,16 +1289,16 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       const rss = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>${projectData.title || 'Untitled Project'}</title>
-    <link>${projectLink}</link>
-    <description>${projectData.description || 'No description'}</description>
+    <title>${escapeXml(projectData.title || 'Untitled Project')}</title>
+    <link>${escapeXml(projectLink)}</link>
+    <description>${escapeXml(projectData.description || 'No description')}</description>
     <language>en</language>
     <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
     <atom:link href="${baseUrl}/projects/${projectId}/feed.xml" rel="self" type="application/rss+xml" />
     <image>
-      <url>${projectData.coverImage || `${baseUrl}/default-cover.jpg`}</url>
-      <title>${projectData.title || 'Untitled Project'}</title>
-      <link>${projectLink}</link>
+      <url>${escapeXml(projectData.coverImage || `${baseUrl}/default-cover.jpg`)}</url>
+      <title>${escapeXml(projectData.title || 'Untitled Project')}</title>
+      <link>${escapeXml(projectLink)}</link>
     </image>${items}
   </channel>
 </rss>`

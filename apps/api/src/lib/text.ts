@@ -224,3 +224,13 @@ export function escapeHtmlText(str: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
 }
+
+/** Escape for XML text and attribute values (RSS, sitemaps). */
+export function escapeXml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+}

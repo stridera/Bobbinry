@@ -1109,25 +1109,27 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
   })
 
   // Atomic batch operations (requires project ownership)
+  const atomicBatchSchema = z.object({
+    projectId: z.string().uuid(),
+    operations: z.array(z.object({
+      type: z.enum(['create', 'update', 'delete']),
+      collection: z.string().min(1),
+      id: z.string().uuid().optional(),
+      data: z.record(z.string(), z.unknown()).optional(),
+    })).min(1, 'No operations provided').max(500),
+  }).strict()
+
   fastify.post<{
-    Body: {
-      projectId: string
-      operations: Array<{
-        type: 'create' | 'update' | 'delete'
-        collection: string
-        id?: string
-        data?: Record<string, any>
-      }>
-    }
+    Body: z.infer<typeof atomicBatchSchema>
   }>('/entities/batch/atomic', {
     preHandler: [requireAuth]
   }, async (request, reply) => {
     try {
-      const { projectId, operations } = request.body
-
-      if (!operations || operations.length === 0) {
-        return reply.status(400).send({ error: 'No operations provided' })
+      const parsed = atomicBatchSchema.safeParse(request.body)
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Invalid request', issues: parsed.error.issues })
       }
+      const { projectId, operations } = parsed.data
 
       // Scope check per distinct collection — a mixed batch needs scopes for
       // every collection it touches (a manuscript-only key can't update
@@ -1233,11 +1235,30 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
                 if (!id || !data) {
                   throw new ValidationError('Update operation requires id and data')
                 }
+                const previous = oldDataById.get(id)
+                if (!previous) {
+                  throw new NotFoundError('Entity', id)
+                }
+
+                // Same rules as PUT /entities/:id: merge into the stored data
+                // (null deletes a key), keep word_count honest for content, and
+                // stamp updated_at into the JSON. Version bumps so the editor's
+                // optimistic lock sees this write.
+                const patch: Record<string, unknown> = { ...data }
+                if (collection === 'content' && typeof patch.body === 'string') {
+                  patch.word_count = countWordsFromHtml(patch.body)
+                }
+                patch.updated_at = new Date().toISOString()
+                const merged: Record<string, unknown> = { ...previous, ...patch }
+                for (const key of Object.keys(patch)) {
+                  if (patch[key] === null) delete merged[key]
+                }
 
                 const updated = await tx
                   .update(entities)
                   .set({
-                    entityData: data,
+                    entityData: merged,
+                    version: sql`${entities.version} + 1`,
                     updatedAt: new Date(),
                     lastEditedAt: new Date(),
                     lastEditedBy: userId
@@ -1254,7 +1275,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
                 }
 
                 {
-                  const diff = diffEntityData(oldDataById.get(id) ?? null, data)
+                  const diff = diffEntityData(previous, merged)
                   if (hasChanges(diff)) {
                     changeEvents.push(changeEventFromRow('updated', { projectId, actor: userId }, updated[0]!, {
                       fieldsChanged: diff.fieldsChanged,
