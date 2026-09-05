@@ -72,20 +72,19 @@ export default function DiscordRolesSettings({ context }: DiscordRolesSettingsPr
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<{ success: boolean; synced?: number; error?: string } | null>(null)
 
-  const apiBase = sdk.api.apiBaseUrl
-  const headers = useMemo(
-    () => ({
-      'Content-Type': 'application/json',
-      ...(context?.apiToken ? { Authorization: `Bearer ${context.apiToken}` } : {}),
-    }),
-    [context?.apiToken]
-  )
+  // Authenticated fetch through the SDK: it owns the API origin and attaches
+  // the bearer token, so there are no hand-built Authorization headers here.
+  const apiFetch = useCallback((path: string, init?: RequestInit) => {
+    if (context?.apiToken) sdk.api.setAuthToken(context.apiToken)
+    return sdk.api.fetch(path, init)
+  }, [sdk, context?.apiToken])
+  const headers = useMemo(() => ({ 'Content-Type': 'application/json' }), [])
 
   const loadConfig = useCallback(async () => {
     if (!projectId || !context?.apiToken) return
     try {
       setLoading(true)
-      const resp = await fetch(`${apiBase}/discord-roles/config?projectId=${projectId}`, { headers })
+      const resp = await apiFetch(`/discord-roles/config?projectId=${projectId}`, { headers })
       if (resp.ok) {
         const data = await resp.json()
         setConfig(data.config)
@@ -101,15 +100,12 @@ export default function DiscordRolesSettings({ context }: DiscordRolesSettingsPr
     } finally {
       setLoading(false)
     }
-  }, [apiBase, headers, projectId, context?.apiToken])
+  }, [apiFetch, headers, projectId, context?.apiToken])
 
   useEffect(() => {
     loadConfig()
   }, [loadConfig])
 
-  useEffect(() => {
-    if (context?.apiToken) sdk.api.setAuthToken(context.apiToken)
-  }, [context?.apiToken, sdk])
 
   useEffect(() => {
     if (projectId) sdk.setProject(projectId)
@@ -127,7 +123,7 @@ export default function DiscordRolesSettings({ context }: DiscordRolesSettingsPr
     try {
       setTesting(true)
       setTestResult(null)
-      const resp = await fetch(`${apiBase}/discord-roles/test-connection`, {
+      const resp = await apiFetch(`/discord-roles/test-connection`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -156,7 +152,7 @@ export default function DiscordRolesSettings({ context }: DiscordRolesSettingsPr
     try {
       setSaving(true)
       setError(null)
-      const resp = await fetch(`${apiBase}/discord-roles/config`, {
+      const resp = await apiFetch(`/discord-roles/config`, {
         method: 'PUT',
         headers,
         body: JSON.stringify({
@@ -193,7 +189,7 @@ export default function DiscordRolesSettings({ context }: DiscordRolesSettingsPr
     try {
       setSyncing(true)
       setSyncResult(null)
-      const resp = await fetch(`${apiBase}/discord-roles/sync`, {
+      const resp = await apiFetch(`/discord-roles/sync`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ projectId }),

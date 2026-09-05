@@ -76,20 +76,19 @@ export default function DiscordNotifierSettings({ context }: DiscordNotifierSett
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ success: boolean; error?: string } | null>(null)
 
-  const apiBase = sdk.api.apiBaseUrl
-  const headers = useMemo(
-    () => ({
-      'Content-Type': 'application/json',
-      ...(context?.apiToken ? { Authorization: `Bearer ${context.apiToken}` } : {}),
-    }),
-    [context?.apiToken]
-  )
+  // Authenticated fetch through the SDK: it owns the API origin and attaches
+  // the bearer token, so there are no hand-built Authorization headers here.
+  const apiFetch = useCallback((path: string, init?: RequestInit) => {
+    if (context?.apiToken) sdk.api.setAuthToken(context.apiToken)
+    return sdk.api.fetch(path, init)
+  }, [sdk, context?.apiToken])
+  const headers = useMemo(() => ({ 'Content-Type': 'application/json' }), [])
 
   const loadDestinations = useCallback(async () => {
     if (!projectId || !context?.apiToken) return
     try {
       setLoading(true)
-      const resp = await fetch(`${apiBase}/discord-notifier/destinations?projectId=${projectId}`, { headers })
+      const resp = await apiFetch(`/discord-notifier/destinations?projectId=${projectId}`, { headers })
       if (resp.ok) {
         const data = await resp.json()
         setDestinations(data.destinations || [])
@@ -100,15 +99,12 @@ export default function DiscordNotifierSettings({ context }: DiscordNotifierSett
     } finally {
       setLoading(false)
     }
-  }, [apiBase, headers, projectId, context?.apiToken])
+  }, [apiFetch, headers, projectId, context?.apiToken])
 
   useEffect(() => {
     loadDestinations()
   }, [loadDestinations])
 
-  useEffect(() => {
-    if (context?.apiToken) sdk.api.setAuthToken(context.apiToken)
-  }, [context?.apiToken, sdk])
 
   useEffect(() => {
     if (projectId) sdk.setProject(projectId)
@@ -147,7 +143,7 @@ export default function DiscordNotifierSettings({ context }: DiscordNotifierSett
     try {
       setTesting(true)
       setTestResult(null)
-      const resp = await fetch(`${apiBase}/discord-notifier/test-webhook`, {
+      const resp = await apiFetch(`/discord-notifier/test-webhook`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ webhookUrl: formWebhookUrl }),
@@ -182,11 +178,11 @@ export default function DiscordNotifierSettings({ context }: DiscordNotifierSett
       }
 
       const url = editingId
-        ? `${apiBase}/discord-notifier/destinations/${editingId}`
-        : `${apiBase}/discord-notifier/destinations`
+        ? `/discord-notifier/destinations/${editingId}`
+        : `/discord-notifier/destinations`
       const method = editingId ? 'PUT' : 'POST'
 
-      const resp = await fetch(url, { method, headers, body: JSON.stringify(body) })
+      const resp = await apiFetch(url, { method, headers, body: JSON.stringify(body) })
       if (resp.ok) {
         resetForm()
         setViewMode('list')
@@ -204,7 +200,7 @@ export default function DiscordNotifierSettings({ context }: DiscordNotifierSett
 
   async function handleDelete(id: string) {
     try {
-      const resp = await fetch(`${apiBase}/discord-notifier/destinations/${id}`, {
+      const resp = await apiFetch(`/discord-notifier/destinations/${id}`, {
         method: 'DELETE',
         headers,
       })
@@ -218,7 +214,7 @@ export default function DiscordNotifierSettings({ context }: DiscordNotifierSett
 
   async function handleToggle(id: string, isActive: boolean) {
     try {
-      await fetch(`${apiBase}/discord-notifier/destinations/${id}/toggle`, {
+      await apiFetch(`/discord-notifier/destinations/${id}/toggle`, {
         method: 'PUT',
         headers,
         body: JSON.stringify({ isActive: !isActive }),

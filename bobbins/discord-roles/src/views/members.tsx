@@ -42,20 +42,19 @@ export default function DiscordRolesMembers({ context }: DiscordRolesMembersProp
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const apiBase = sdk.api.apiBaseUrl
-  const headers = useMemo(
-    () => ({
-      'Content-Type': 'application/json',
-      ...(context?.apiToken ? { Authorization: `Bearer ${context.apiToken}` } : {}),
-    }),
-    [context?.apiToken]
-  )
+  // Authenticated fetch through the SDK: it owns the API origin and attaches
+  // the bearer token, so there are no hand-built Authorization headers here.
+  const apiFetch = useCallback((path: string, init?: RequestInit) => {
+    if (context?.apiToken) sdk.api.setAuthToken(context.apiToken)
+    return sdk.api.fetch(path, init)
+  }, [sdk, context?.apiToken])
+  const headers = useMemo(() => ({ 'Content-Type': 'application/json' }), [])
 
   const loadMembers = useCallback(async () => {
     if (!projectId || !context?.apiToken) return
     try {
       setLoading(true)
-      const resp = await fetch(`${apiBase}/discord-roles/members?projectId=${projectId}`, { headers })
+      const resp = await apiFetch(`/discord-roles/members?projectId=${projectId}`, { headers })
       if (resp.ok) {
         const data = await resp.json()
         setMembers(data.members || [])
@@ -65,19 +64,16 @@ export default function DiscordRolesMembers({ context }: DiscordRolesMembersProp
     } finally {
       setLoading(false)
     }
-  }, [apiBase, headers, projectId, context?.apiToken])
+  }, [apiFetch, headers, projectId, context?.apiToken])
 
   useEffect(() => {
     loadMembers()
   }, [loadMembers])
 
-  useEffect(() => {
-    if (context?.apiToken) sdk.api.setAuthToken(context.apiToken)
-  }, [context?.apiToken, sdk])
 
   async function handleSyncUser(userId: string) {
     try {
-      await fetch(`${apiBase}/discord-roles/sync-user`, {
+      await apiFetch(`/discord-roles/sync-user`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ projectId, userId }),

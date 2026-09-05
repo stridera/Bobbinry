@@ -119,15 +119,13 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
 
   const [error, setError] = useState<string | null>(null)
 
-  const apiBase = sdk.api.apiBaseUrl
-
-  const headers = useMemo(
-    () => ({
-      'Content-Type': 'application/json',
-      ...(context?.apiToken ? { Authorization: `Bearer ${context.apiToken}` } : {}),
-    }),
-    [context?.apiToken]
-  )
+  // Authenticated fetch through the SDK: it owns the API origin and attaches
+  // the bearer token, so there are no hand-built Authorization headers here.
+  const apiFetch = useCallback((path: string, init?: RequestInit) => {
+    if (context?.apiToken) sdk.api.setAuthToken(context.apiToken)
+    return sdk.api.fetch(path, init)
+  }, [sdk, context?.apiToken])
+  const headers = useMemo(() => ({ 'Content-Type': 'application/json' }), [])
 
   const toolContext = useMemo(
     () => getToolContext(activeEntity?.bobbinId, activeEntity?.entityType),
@@ -139,7 +137,7 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
     if (!context?.apiToken) return
     try {
       setConfigLoading(true)
-      const resp = await fetch(`${apiBase}/ai-tools/config`, { headers })
+      const resp = await apiFetch(`/ai-tools/config`, { headers })
       if (resp.ok) {
         const data = await resp.json()
         setConfig(data)
@@ -152,17 +150,12 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
     } finally {
       setConfigLoading(false)
     }
-  }, [apiBase, headers, context?.apiToken, sdk])
+  }, [apiFetch, headers, context?.apiToken, sdk])
 
   useEffect(() => {
     loadConfig()
   }, [loadConfig])
 
-  useEffect(() => {
-    if (context?.apiToken) {
-      sdk.api.setAuthToken(context.apiToken)
-    }
-  }, [context?.apiToken, sdk])
 
   useEffect(() => {
     if (projectId) {
@@ -243,8 +236,8 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
 
     async function loadExistingReview() {
       try {
-        const resp = await fetch(
-          `${apiBase}/ai-tools/review/existing?projectId=${encodeURIComponent(projectId!)}&entityId=${encodeURIComponent(activeEntity!.entityId)}`,
+        const resp = await apiFetch(
+          `/ai-tools/review/existing?projectId=${encodeURIComponent(projectId!)}&entityId=${encodeURIComponent(activeEntity!.entityId)}`,
           { headers }
         )
         if (resp.ok) {
@@ -264,7 +257,7 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
     }
 
     loadExistingReview()
-  }, [activeEntity?.entityId, toolContext, projectId, apiBase, headers])
+  }, [activeEntity?.entityId, toolContext, projectId, apiFetch, headers])
 
   // --- Action handlers ---
 
@@ -275,7 +268,7 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
       setSynopsisSaved(false)
       setError(null)
 
-      const resp = await fetch(`${apiBase}/ai-tools/synopsis`, {
+      const resp = await apiFetch(`/ai-tools/synopsis`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ projectId, entityId: activeEntity.entityId }),
@@ -302,7 +295,7 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
     try {
       setError(null)
 
-      const resp = await fetch(`${apiBase}/ai-tools/synopsis/save`, {
+      const resp = await apiFetch(`/ai-tools/synopsis/save`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -332,7 +325,7 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
       setReviewLoading(true)
       setError(null)
 
-      const resp = await fetch(`${apiBase}/ai-tools/review`, {
+      const resp = await apiFetch(`/ai-tools/review`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -369,7 +362,7 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
       setError(null)
       setCopiedName(null)
 
-      const resp = await fetch(`${apiBase}/ai-tools/names`, {
+      const resp = await apiFetch(`/ai-tools/names`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -399,7 +392,7 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
       setBrainstormLoading(true)
       setError(null)
 
-      const resp = await fetch(`${apiBase}/ai-tools/brainstorm`, {
+      const resp = await apiFetch(`/ai-tools/brainstorm`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ projectId, entityId: activeEntity.entityId }),
@@ -425,7 +418,7 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
       setFleshOutLoading(true)
       setError(null)
 
-      const resp = await fetch(`${apiBase}/ai-tools/flesh-out`, {
+      const resp = await apiFetch(`/ai-tools/flesh-out`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ projectId, entityId: activeEntity.entityId }),
@@ -457,7 +450,7 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
       setSettingsTesting(true)
       setSettingsTestResult(null)
 
-      const resp = await fetch(`${apiBase}/ai-tools/test`, {
+      const resp = await apiFetch(`/ai-tools/test`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -491,7 +484,7 @@ export default function AIToolsPanel({ context }: AIToolsPanelProps) {
       }
       if (settingsModel) body.model = settingsModel
 
-      const resp = await fetch(`${apiBase}/ai-tools/config`, {
+      const resp = await apiFetch(`/ai-tools/config`, {
         method: 'PUT',
         headers,
         body: JSON.stringify(body),
