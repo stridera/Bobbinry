@@ -338,7 +338,10 @@ export function build(opts = {}): FastifyInstance {
   // Warm disk manifest cache, then start the trigger scheduler
   server.addHook('onReady', async () => {
     await loadAllDiskManifests()
-    startTriggerScheduler()
+    // The scheduler ticks immediately on start. Under jest that tick races the
+    // per-test TRUNCATE ... CASCADE and intermittently deadlocks the suite, so
+    // tests that need a job call its process*() function directly instead.
+    if (process.env.NODE_ENV !== 'test') startTriggerScheduler()
     initNotificationHandlers()
     initDriveSyncHandler()
     initDiscordNotifierHandler()
