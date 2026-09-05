@@ -23,8 +23,8 @@ Good examples in the repo:
 
 - `entities`, `notes`, `goals`: project-scoped workspace bobbins
 - `dictionary-panel`: minimal native right-panel example
-- `google-drive-backup`: external backup bobbin with reviewed server actions
-- `web-publisher`: publishing bobbin with multiple panels and custom actions
+- `google-drive-backup`: external backup bobbin with a reviewed server-side sync service
+- `web-publisher`: publishing bobbin with multiple panels
 
 ## Required Layout
 
@@ -233,11 +233,11 @@ Manifest:
 ```yaml
 interactions:
   actions:
-    - id: sync_to_drive
-      name: Sync to Drive
+    - id: nightly_digest
+      name: Nightly Digest
       type: custom
-      handler: syncChapterToDrive
-      description: Upload the latest chapter content
+      handler: nightlyDigest
+      description: Summarise the day's writing
 ```
 
 Action module:
@@ -245,13 +245,13 @@ Action module:
 ```ts
 import type { ActionHandler } from '@bobbinry/action-runtime'
 
-export const syncChapterToDrive: ActionHandler = async (params, context, runtime) => {
+export const nightlyDigest: ActionHandler = async (params, context, runtime) => {
   runtime.log.info({ actionId: context.actionId }, 'Running action')
   return { success: true }
 }
 
 export const actions = {
-  sync_to_drive: syncChapterToDrive,
+  nightly_digest: nightlyDigest,
 }
 ```
 
@@ -263,7 +263,14 @@ Rules:
 - action handlers receive `ActionContext` and `ActionRuntimeHost`
 - do not accept `FastifyInstance` in bobbin action handlers
 
-Current reviewed bobbins may lazily import `apps/api` modules from `actions/index.ts` when they need DB or service access. Keep those imports inside action code only, not in views or panels.
+Bobbin code must not import from `apps/api` — not from views, panels, or
+action handlers. The `ActionRuntimeHost` passed to a handler is the only
+sanctioned way to reach the platform, and today it exposes just `log` and
+`hasPermission`, so a custom action cannot read or write project data yet.
+No shipped bobbin currently declares a custom action; server-side work that
+needs data goes through API routes, and panels call them via `sdk.api`. If
+you need a custom action, raise it so the host can grow a scoped data facade
+rather than reaching around it.
 
 ## External Services
 
