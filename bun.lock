@@ -511,32 +511,6 @@
         "ts-jest": "^29.4.6",
       },
     },
-    "packages/config": {
-      "name": "config",
-      "version": "1.0.0",
-    },
-    "packages/connectors": {
-      "name": "@bobbinry/connectors",
-      "version": "1.0.0",
-      "dependencies": {
-        "@bobbinry/types": "workspace:*",
-      },
-      "devDependencies": {
-        "@types/node": "^26",
-        "typescript": "6.0.3",
-      },
-    },
-    "packages/event-bus": {
-      "name": "@bobbinry/event-bus",
-      "version": "1.0.0",
-      "dependencies": {
-        "@bobbinry/types": "workspace:*",
-      },
-      "devDependencies": {
-        "@types/node": "^26",
-        "typescript": "6.0.3",
-      },
-    },
     "packages/sdk": {
       "name": "@bobbinry/sdk",
       "version": "1.0.0",
@@ -567,10 +541,6 @@
       "devDependencies": {
         "typescript": "6.0.3",
       },
-    },
-    "packages/ui": {
-      "name": "ui",
-      "version": "1.0.0",
     },
     "packages/ui-components": {
       "name": "@bobbinry/ui-components",
@@ -729,8 +699,6 @@
 
     "@bobbinry/compiler": ["@bobbinry/compiler@workspace:packages/compiler"],
 
-    "@bobbinry/connectors": ["@bobbinry/connectors@workspace:packages/connectors"],
-
     "@bobbinry/corkboard": ["@bobbinry/corkboard@workspace:bobbins/corkboard"],
 
     "@bobbinry/dictionary-panel": ["@bobbinry/dictionary-panel@workspace:bobbins/dictionary-panel"],
@@ -740,8 +708,6 @@
     "@bobbinry/discord-roles": ["@bobbinry/discord-roles@workspace:bobbins/discord-roles"],
 
     "@bobbinry/entities": ["@bobbinry/entities@workspace:bobbins/entities"],
-
-    "@bobbinry/event-bus": ["@bobbinry/event-bus@workspace:packages/event-bus"],
 
     "@bobbinry/feedback": ["@bobbinry/feedback@workspace:bobbins/feedback"],
 
@@ -1552,8 +1518,6 @@
     "component-emitter": ["component-emitter@1.3.1", "", {}, "sha512-T0+barUSQRTUQASh8bx02dl+DhF54GtIDY13Y3m9oWTklKbb3Wv974meRpeZ3lp1JpLVECWWNHC4vaG2XHXouQ=="],
 
     "compress-commons": ["compress-commons@7.0.1", "", { "dependencies": { "crc-32": "^1.2.0", "crc32-stream": "^7.0.1", "is-stream": "^4.0.0", "normalize-path": "^3.0.0", "readable-stream": "^4.0.0" } }, "sha512-g0S8KAD8qf4+V//pr3BfB1aBnARLXNz2Gx+jmHU0LEriUuoQUOPOulVquHKTJ8+EAIIO7fhseNDr9wK5Q9FKBQ=="],
-
-    "config": ["config@workspace:packages/config"],
 
     "convert-source-map": ["convert-source-map@2.0.0", "", {}, "sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg=="],
 
@@ -2676,8 +2640,6 @@
     "typescript-eslint": ["typescript-eslint@8.56.1", "", { "dependencies": { "@typescript-eslint/eslint-plugin": "8.56.1", "@typescript-eslint/parser": "8.56.1", "@typescript-eslint/typescript-estree": "8.56.1", "@typescript-eslint/utils": "8.56.1" }, "peerDependencies": { "eslint": "^8.57.0 || ^9.0.0 || ^10.0.0", "typescript": ">=4.8.4 <6.0.0" } }, "sha512-U4lM6pjmBX7J5wk4szltF7I1cGBHXZopnAXCMXb3+fZ3B/0Z3hq3wS/CCUB2NZBNAExK92mCU2tEohWuwVMsDQ=="],
 
     "uglify-js": ["uglify-js@3.19.3", "", { "bin": { "uglifyjs": "bin/uglifyjs" } }, "sha512-v3Xu+yuwBXisp6QYTcH4UbH+xYJXqnq2m/LtQVWKWzYc1iehYnLixoQDN9FH6/j9/oybfd6W9Ghwkl8+UMKTKQ=="],
-
-    "ui": ["ui@workspace:packages/ui"],
 
     "unbox-primitive": ["unbox-primitive@1.1.0", "", { "dependencies": { "call-bound": "^1.0.3", "has-bigints": "^1.0.2", "has-symbols": "^1.1.0", "which-boxed-primitive": "^1.1.1" } }, "sha512-nWJ91DjeOkej/TA8pXQ3myruKpKEYgqvpw9lz4OPHj/NWFNluYrjbz9j01CJ8yKQd2g4jFoOkINCTW2I5LEEyw=="],
 

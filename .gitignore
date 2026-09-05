@@ -38,3 +38,4 @@ infra/TODO.md
 # Test screenshots
 /*.png
 .vercel
+packages/ui-components/src/**/*.d.ts

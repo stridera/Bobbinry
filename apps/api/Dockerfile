@@ -16,12 +16,8 @@ COPY apps/shell/package.json apps/shell/
 # Packages
 COPY packages/action-runtime/package.json packages/action-runtime/
 COPY packages/compiler/package.json packages/compiler/
-COPY packages/config/package.json packages/config/
-COPY packages/connectors/package.json packages/connectors/
-COPY packages/event-bus/package.json packages/event-bus/
 COPY packages/sdk/package.json packages/sdk/
 COPY packages/types/package.json packages/types/
-COPY packages/ui/package.json packages/ui/
 COPY packages/cli/package.json packages/cli/
 COPY packages/ui-components/package.json packages/ui-components/
 
