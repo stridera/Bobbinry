@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals'
 import { renderHook, act, waitFor } from '@testing-library/react'
-import { useEntity, useEntityList, useCreateEntity, useUpdateEntity, useDeleteEntity, useDebounce, useBoolean } from '../hooks'
+import { useEntityList, useCreateEntity, useUpdateEntity, useDeleteEntity, useDebounce } from '../hooks'
 import type { BobbinrySDK, EntityQuery, EntityResult } from '../index'
 
 function createMockSDK() {
@@ -14,47 +14,6 @@ function createMockSDK() {
 
   return { entities } as unknown as BobbinrySDK
 }
-
-describe('useEntity', () => {
-  it('fetches entity and transitions loading → data', async () => {
-    const sdk = createMockSDK()
-    ;(sdk.entities.get as jest.Mock).mockResolvedValue({ id: '1', title: 'Book' })
-
-    const { result } = renderHook(() => useEntity(sdk, 'books', '1'))
-
-    // Initially loading
-    expect(result.current.loading).toBe(true)
-
-    await waitFor(() => expect(result.current.loading).toBe(false))
-
-    expect(result.current.data).toEqual({ id: '1', title: 'Book' })
-    expect(result.current.error).toBeNull()
-    expect(sdk.entities.get).toHaveBeenCalledWith('books', '1')
-  })
-
-  it('transitions loading → error on failure', async () => {
-    const sdk = createMockSDK()
-    ;(sdk.entities.get as jest.Mock).mockRejectedValue(new Error('Network error'))
-
-    const { result } = renderHook(() => useEntity(sdk, 'books', '1'))
-
-    await waitFor(() => expect(result.current.loading).toBe(false))
-
-    expect(result.current.data).toBeNull()
-    expect(result.current.error?.message).toBe('Network error')
-  })
-
-  it('returns null data immediately when id is null', async () => {
-    const sdk = createMockSDK()
-
-    const { result } = renderHook(() => useEntity(sdk, 'books', null))
-
-    await waitFor(() => expect(result.current.loading).toBe(false))
-
-    expect(result.current.data).toBeNull()
-    expect(sdk.entities.get).not.toHaveBeenCalled()
-  })
-})
 
 describe('useEntityList', () => {
   it('fetches list with query params', async () => {
@@ -211,37 +170,5 @@ describe('useDebounce', () => {
 
     act(() => { jest.advanceTimersByTime(300) })
     expect(result.current).toBe('c')
-  })
-})
-
-describe('useBoolean', () => {
-  it('starts with initial value', () => {
-    const { result } = renderHook(() => useBoolean(true))
-    expect(result.current[0]).toBe(true)
-  })
-
-  it('defaults to false', () => {
-    const { result } = renderHook(() => useBoolean())
-    expect(result.current[0]).toBe(false)
-  })
-
-  it('toggle flips value', () => {
-    const { result } = renderHook(() => useBoolean(false))
-
-    act(() => { result.current[1].toggle() })
-    expect(result.current[0]).toBe(true)
-
-    act(() => { result.current[1].toggle() })
-    expect(result.current[0]).toBe(false)
-  })
-
-  it('setTrue and setFalse work', () => {
-    const { result } = renderHook(() => useBoolean(false))
-
-    act(() => { result.current[1].setTrue() })
-    expect(result.current[0]).toBe(true)
-
-    act(() => { result.current[1].setFalse() })
-    expect(result.current[0]).toBe(false)
   })
 })

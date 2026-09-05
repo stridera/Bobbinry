@@ -30,30 +30,6 @@ export function PanelBody({
   )
 }
 
-export function PanelHeader({
-  title,
-  description,
-  badge,
-}: {
-  title: string
-  description?: string
-  badge?: ReactNode
-}) {
-  return (
-    <div className="border-b border-gray-200 dark:border-gray-700 px-3 py-2.5">
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{title}</h3>
-          {description ? (
-            <p className="mt-0.5 text-xs leading-5 text-gray-500 dark:text-gray-400">{description}</p>
-          ) : null}
-        </div>
-        {badge ? <div className="flex-shrink-0">{badge}</div> : null}
-      </div>
-    </div>
-  )
-}
-
 export function PanelSectionTitle({ children }: { children: ReactNode }) {
   return (
     <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">

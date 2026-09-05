@@ -1,4 +1,4 @@
-import type { Entity, ExportSnapshot, ImportCommitResult, ImportParseResult } from '@bobbinry/types'
+import type { Entity, ImportCommitResult, ImportParseResult } from '@bobbinry/types'
 
 declare const process: { env: Record<string, string | undefined> }
 
@@ -521,146 +521,6 @@ export class EntityAPI {
   }
 }
 
-// Shell configuration access
-export interface ShellConfig {
-  theme: 'light' | 'dark'
-  projectId: string
-  user: {
-    id: string
-    name: string
-    email?: string
-  }
-  locale: string
-  capabilities: string[]
-  api: {
-    baseUrl: string
-    wsUrl?: string
-  }
-}
-
-type ConfigChangeCallback = (config: ShellConfig) => void
-
-export class ShellAPI {
-  private config: ShellConfig | null = null
-  private configListeners: ConfigChangeCallback[] = []
-  private isIframe: boolean
-
-  constructor() {
-    this.isIframe = typeof window !== 'undefined' && window.parent !== window
-    this.setupConfigListener()
-    this.requestInitialConfig()
-  }
-
-  private setupConfigListener() {
-    if (typeof window === 'undefined') return
-
-    window.addEventListener('message', (event) => {
-      const isTrustedSameWindowMessage = event.source === window && event.origin === getCurrentOrigin()
-      const isTrustedParentMessage = event.source === window.parent && event.origin === getParentOrigin()
-      if (!isTrustedSameWindowMessage && !isTrustedParentMessage) {
-        return
-      }
-
-      const msg = event.data
-
-      // Handle new message envelope format
-      if (msg && msg.namespace === 'SHELL') {
-        if (msg.type === 'SHELL_INIT' && msg.payload?.config) {
-          this.config = msg.payload.config
-          this.notifyListeners()
-        } else if (msg.type === 'SHELL_CONFIG_RESPONSE' && msg.payload?.config) {
-          this.config = msg.payload.config
-          this.notifyListeners()
-        } else if (msg.type === 'SHELL_THEME_UPDATE' && msg.payload?.theme) {
-          if (this.config) {
-            this.config.theme = msg.payload.theme
-            this.notifyListeners()
-          }
-        }
-      }
-    })
-  }
-
-  private requestInitialConfig() {
-    if (!this.isIframe || typeof window === 'undefined') return
-
-    // Request config from parent using new message format
-    window.parent.postMessage({
-      namespace: 'SHELL',
-      type: 'SHELL_CONFIG_REQUEST',
-      payload: {},
-      metadata: {
-        source: 'sdk',
-        timestamp: Date.now()
-      }
-    }, getParentOrigin())
-  }
-
-  private notifyListeners() {
-    if (!this.config) return
-    this.configListeners.forEach(listener => listener(this.config!))
-  }
-
-  /**
-   * Get current shell configuration
-   * Returns null if config hasn't been received yet
-   */
-  getConfig(): ShellConfig | null {
-    return this.config
-  }
-
-  /**
-   * Get current theme
-   * Returns 'light' as default if config not available
-   */
-  getTheme(): 'light' | 'dark' {
-    return this.config?.theme || 'light'
-  }
-
-  /**
-   * Get current project ID
-   */
-  getProjectId(): string {
-    return this.config?.projectId || ''
-  }
-
-  /**
-   * Get current user
-   */
-  getUser() {
-    return this.config?.user || { id: '', name: '' }
-  }
-
-  /**
-   * Listen for configuration changes
-   * Returns unsubscribe function
-   */
-  onConfigChange(callback: ConfigChangeCallback): () => void {
-    this.configListeners.push(callback)
-    
-    // Immediately call with current config if available
-    if (this.config) {
-      callback(this.config)
-    }
-
-    return () => {
-      const index = this.configListeners.indexOf(callback)
-      if (index > -1) {
-        this.configListeners.splice(index, 1)
-      }
-    }
-  }
-
-  /**
-   * Listen for theme changes only
-   */
-  onThemeChange(callback: (theme: 'light' | 'dark') => void): () => void {
-    return this.onConfigChange((config) => {
-      callback(config.theme)
-    })
-  }
-}
-
 // Publishing API - used by publisher bobbins (author-side)
 export interface PublishOptions {
   accessLevel?: 'public' | 'subscribers_only' | 'tier_gated'
@@ -739,67 +599,6 @@ export class PublishingAPI {
       throw new Error(`Get tiers failed: ${response.statusText}`)
     }
     return response.json()
-  }
-}
-
-// Reader API - used by reader bobbins (reader-side)
-export class ReaderAPI {
-  private api: BobbinryAPI
-
-  constructor(api: BobbinryAPI) {
-    this.api = api
-  }
-
-  async getPublishedContent(projectId: string, chapterId: string) {
-    const response = await fetch(`${this.api.apiBaseUrl}/public/projects/${projectId}/chapters/${chapterId}`, {
-      headers: this.api.getAuthHeaders()
-    })
-    if (!response.ok) {
-      this.api.throwIfUnauthorized(response)
-      if (response.status === 403) {
-        const data = await response.json()
-        throw new Error(data.error || 'Access denied')
-      }
-      throw new Error(`Get content failed: ${response.statusText}`)
-    }
-    return response.json()
-  }
-
-  async saveProgress(chapterId: string, position: number, readTime?: number) {
-    // Find project ID from chapter - use the view tracking endpoint
-    // This is a simplified version; bobbins should know their project context
-    const response = await fetch(`${this.api.apiBaseUrl}/public/projects/_/chapters/${chapterId}/view`, {
-      method: 'POST',
-      headers: this.api.getAuthHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ position, readTime })
-    })
-    return response.ok
-  }
-
-  async getProgress(chapterId: string) {
-    // Progress is returned as part of the chapter view data
-    // Reader bobbins can query the user's chapter_views
-    const response = await fetch(`${this.api.apiBaseUrl}/public/chapters/${chapterId}/progress`, {
-      headers: this.api.getAuthHeaders()
-    })
-    if (!response.ok) return null
-    return response.json()
-  }
-
-  async getPreferences() {
-    const response = await fetch(`${this.api.apiBaseUrl}/users/me/reading-preferences`, {
-      headers: this.api.getAuthHeaders()
-    })
-    if (!response.ok) return null
-    return response.json()
-  }
-
-  async checkAccess(projectId: string, chapterId: string): Promise<boolean> {
-    const response = await fetch(
-      `${this.api.apiBaseUrl}/public/projects/${projectId}/chapters/${chapterId}`,
-      { headers: this.api.getAuthHeaders(), method: 'HEAD' }
-    )
-    return response.ok
   }
 }
 
@@ -983,33 +782,7 @@ export class ImportAPI {
   }
 }
 
-// Export API — normalized manuscript reads for export/publisher bobbins.
-export class ExportAPI {
-  private api: BobbinryAPI
-
-  constructor(api: BobbinryAPI) {
-    this.api = api
-  }
-
-  /**
-   * Fetch the normalized manuscript snapshot (project meta, containers,
-   * content with HTML bodies, ordered). The blessed read path for export
-   * and publisher bobbins — use this instead of querying the manuscript
-   * collections directly.
-   */
-  async getSnapshot(projectId: string): Promise<ExportSnapshot> {
-    const response = await fetch(`${this.api.apiBaseUrl}/projects/${projectId}/export/snapshot`, {
-      headers: this.api.getAuthHeaders(),
-    })
-    if (!response.ok) {
-      this.api.throwIfUnauthorized(response)
-      const err = await response.json().catch(() => ({ error: 'Snapshot failed' }))
-      throw new Error(err.error || `Export snapshot failed: ${response.statusText}`)
-    }
-    return response.json()
-  }
-}
-
+// Template API — shared entity-type templates (official + community).
 export class TemplateAPI {
   private api: BobbinryAPI
 
@@ -1089,24 +862,18 @@ export class BobbinrySDK {
   public api: BobbinryAPI
   public messageBus: MessageBus
   public entities: EntityAPI
-  public shell: ShellAPI
   public publishing: PublishingAPI
-  public reader: ReaderAPI
   public uploads: UploadAPI
   public import: ImportAPI
-  public export: ExportAPI
   public templates: TemplateAPI
 
   constructor(componentId: string, apiBaseURL?: string) {
     this.api = new BobbinryAPI(apiBaseURL)
     this.messageBus = new MessageBus(componentId)
     this.entities = new EntityAPI(this.api, '') // Project ID will be set when project is loaded
-    this.shell = new ShellAPI()
     this.publishing = new PublishingAPI(this.api)
-    this.reader = new ReaderAPI(this.api)
     this.uploads = new UploadAPI(this.api)
     this.import = new ImportAPI(this.api)
-    this.export = new ExportAPI(this.api)
     this.templates = new TemplateAPI(this.api)
   }
 
@@ -1117,17 +884,13 @@ export class BobbinrySDK {
 
 // React Hooks for common patterns
 export {
-  useEntity,
   useEntityList,
   useCreateEntity,
   useUpdateEntity,
   useDeleteEntity,
   useMessageBus,
   useDebounce,
-  useLocalStorage,
-  usePrevious,
-  useClickOutside,
-  useBoolean
+  useClickOutside
 } from './hooks'
 
 // Panel actions portal
@@ -1140,7 +903,6 @@ export {
   PanelCard,
   PanelEmptyState,
   PanelFrame,
-  PanelHeader,
   PanelIconButton,
   PanelLoadingState,
   PanelMessage,

@@ -7,63 +7,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { BobbinrySDK, EntityQuery, Message } from './index'
 
-/**
- * Hook to fetch and cache a single entity
- *
- * @example
- * const { data, loading, error, refetch } = useEntity(sdk, 'scenes', sceneId)
- */
-export function useEntity<T = any>(
-  sdk: BobbinrySDK,
-  collection: string,
-  id: string | null | undefined
-) {
-  const [data, setData] = useState<T | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<Error | null>(null)
-
-  const fetch = useCallback(async () => {
-    if (!id) {
-      setData(null)
-      setLoading(false)
-      return
-    }
-
-    try {
-      setLoading(true)
-      setError(null)
-      const entity = await sdk.entities.get<T>(collection, id)
-      setData(entity)
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)))
-      setData(null)
-    } finally {
-      setLoading(false)
-    }
-  }, [sdk, collection, id])
-
-  useEffect(() => {
-    fetch()
-  }, [fetch])
-
-  return {
-    data,
-    loading,
-    error,
-    refetch: fetch
-  }
-}
-
-/**
- * Hook to query a list of entities with pagination
- *
- * @example
- * const { data, total, loading, error, refetch } = useEntityList(sdk, {
- *   collection: 'scenes',
- *   limit: 50,
- *   sort: [{ field: 'created_at', direction: 'desc' }]
- * })
- */
 export function useEntityList<T = any>(
   sdk: BobbinrySDK,
   query: EntityQuery
@@ -295,89 +238,6 @@ export function useDebounce<T>(value: T, delay = 500): T {
   return debouncedValue
 }
 
-/**
- * Hook to persist state in localStorage
- * @param key - localStorage key
- * @param initialValue - Initial value if key doesn't exist
- * @returns [value, setValue] tuple like useState
- *
- * @example
- * const [name, setName] = useLocalStorage('user-name', 'Anonymous')
- *
- * // Value persists across page reloads
- * setName('John Doe')
- */
-export function useLocalStorage<T>(
-  key: string,
-  initialValue: T
-): [T, (value: T | ((val: T) => T)) => void] {
-  // State to store our value
-  const [storedValue, setStoredValue] = useState<T>(() => {
-    if (typeof window === 'undefined') {
-      return initialValue
-    }
-
-    try {
-      const item = window.localStorage.getItem(key)
-      return item ? JSON.parse(item) : initialValue
-    } catch (error) {
-      console.error(`Error reading localStorage key "${key}":`, error)
-      return initialValue
-    }
-  })
-
-  // Return a wrapped version of useState's setter function that
-  // persists the new value to localStorage.
-  const setValue = (value: T | ((val: T) => T)) => {
-    try {
-      // Allow value to be a function so we have same API as useState
-      const valueToStore = value instanceof Function ? value(storedValue) : value
-      setStoredValue(valueToStore)
-
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(key, JSON.stringify(valueToStore))
-      }
-    } catch (error) {
-      console.error(`Error setting localStorage key "${key}":`, error)
-    }
-  }
-
-  return [storedValue, setValue]
-}
-
-/**
- * Hook to track previous value of a prop/state
- * @param value - Current value
- * @returns Previous value
- *
- * @example
- * const [count, setCount] = useState(0)
- * const previousCount = usePrevious(count)
- *
- * // previousCount will be undefined on first render,
- * // then will always be one step behind count
- */
-export function usePrevious<T>(value: T): T | undefined {
-  const ref = useRef<T | undefined>(undefined)
-
-  useEffect(() => {
-    ref.current = value
-  }, [value])
-
-  return ref.current
-}
-
-/**
- * Hook to detect clicks outside of a ref element
- * @param ref - React ref to element
- * @param handler - Function to call when click outside occurs
- *
- * @example
- * const modalRef = useRef(null)
- * useClickOutside(modalRef, () => setIsOpen(false))
- *
- * return <div ref={modalRef}>Modal content</div>
- */
 export function useClickOutside(
   ref: React.RefObject<HTMLElement | null>,
   handler: (event: MouseEvent | TouchEvent) => void
@@ -399,34 +259,4 @@ export function useClickOutside(
       document.removeEventListener('touchstart', listener)
     }
   }, [ref, handler])
-}
-
-/**
- * Hook to manage boolean state with helpful toggle/set functions
- * @param initialValue - Initial boolean value (default: false)
- * @returns [value, { toggle, setTrue, setFalse, setValue }]
- *
- * @example
- * const [isOpen, { toggle, setTrue, setFalse }] = useBoolean()
- *
- * <button onClick={toggle}>Toggle</button>
- * <button onClick={setTrue}>Open</button>
- * <button onClick={setFalse}>Close</button>
- */
-export function useBoolean(initialValue = false) {
-  const [value, setValue] = useState(initialValue)
-
-  const toggle = useCallback(() => setValue(v => !v), [])
-  const setTrue = useCallback(() => setValue(true), [])
-  const setFalse = useCallback(() => setValue(false), [])
-
-  return [
-    value,
-    {
-      toggle,
-      setTrue,
-      setFalse,
-      setValue
-    }
-  ] as const
 }
