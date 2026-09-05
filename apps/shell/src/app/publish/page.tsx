@@ -9,5 +9,5 @@ export default async function PublishPage() {
     redirect('/login')
   }
 
-  return <PublishDashboard user={session.user} apiToken={(session as any).apiToken} />
+  return <PublishDashboard user={session.user} apiToken={session?.apiToken} />
 }

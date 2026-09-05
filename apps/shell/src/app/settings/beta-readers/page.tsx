@@ -106,7 +106,7 @@ export default function BetaReadersPage() {
   const [grantLookupError, setGrantLookupError] = useState<string | null>(null)
 
   const userId = session?.user?.id
-  const apiToken = (session as any)?.apiToken as string | undefined
+  const apiToken = session?.apiToken as string | undefined
 
   const loadProjects = useCallback(async () => {
     if (!apiToken) return

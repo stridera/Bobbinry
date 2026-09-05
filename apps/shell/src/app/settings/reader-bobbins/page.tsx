@@ -29,7 +29,8 @@ export default function ReaderBobbinsPage() {
   const [actionInProgress, setActionInProgress] = useState<string | null>(null)
 
   const userId = session?.user?.id
-  const apiToken = (session as any)?.apiToken
+  // Empty until the session resolves; every action below guards on it.
+  const apiToken = session?.apiToken ?? ''
 
   const loadAll = useCallback(async () => {
     if (!userId || !apiToken) return

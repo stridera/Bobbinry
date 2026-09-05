@@ -60,7 +60,7 @@ export default function BackupsPage() {
 function BackupsContent() {
   const { data: session } = useSession()
   const searchParams = useSearchParams()
-  const apiToken = (session as any)?.apiToken as string | undefined
+  const apiToken = session?.apiToken as string | undefined
 
   const [status, setStatus] = useState<BackupStatus | null>(null)
   const [loading, setLoading] = useState(true)

@@ -42,7 +42,7 @@ export default function ReadIndexPage() {
   const [authorUsernames, setAuthorUsernames] = useState<Record<string, string>>({})
 
   const userId = session?.user?.id
-  const apiToken = (session as any)?.apiToken
+  const apiToken = session?.apiToken
 
   const loadData = useCallback(async () => {
     if (!userId || !apiToken) return

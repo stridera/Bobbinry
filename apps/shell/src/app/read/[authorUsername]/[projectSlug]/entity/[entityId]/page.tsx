@@ -31,7 +31,7 @@ function EntitySubpageContent() {
   // Slug, old-slug alias, or legacy UUID — the API resolves all three.
   const entityId = params.entityId as string
   const { data: session } = useSession()
-  const apiToken = (session as any)?.apiToken as string | undefined
+  const apiToken = session?.apiToken as string | undefined
 
   const [authorName, setAuthorName] = useState<string>('')
   const [projectName, setProjectName] = useState<string>('')

@@ -9,5 +9,5 @@ export default async function TrashPage() {
     redirect('/login')
   }
 
-  return <TrashContent apiToken={(session as any).apiToken} />
+  return <TrashContent apiToken={session?.apiToken} />
 }

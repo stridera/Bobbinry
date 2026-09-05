@@ -30,7 +30,7 @@ const POLL_INTERVAL = 30_000
 export function useUnreadCount() {
   const { data: session } = useSession()
   const [count, setCount] = useState(0)
-  const apiToken = (session as any)?.apiToken as string | undefined
+  const apiToken = session?.apiToken as string | undefined
 
   const refetch = useCallback(async () => {
     if (!apiToken) return
@@ -60,7 +60,7 @@ export function useNotifications(limit = 20) {
   const { data: session } = useSession()
   const [items, setItems] = useState<Notification[]>([])
   const [loading, setLoading] = useState(false)
-  const apiToken = (session as any)?.apiToken as string | undefined
+  const apiToken = session?.apiToken as string | undefined
 
   const fetchNotifications = useCallback(async () => {
     if (!apiToken) return

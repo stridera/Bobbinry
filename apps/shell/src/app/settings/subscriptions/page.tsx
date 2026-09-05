@@ -64,7 +64,7 @@ function SubscriptionsContent() {
   const [error, setError] = useState<string | null>(null)
   const [justSubscribed, setJustSubscribed] = useState(false)
 
-  const apiToken = (session as any)?.apiToken as string | undefined
+  const apiToken = session?.apiToken as string | undefined
 
   useEffect(() => {
     if (searchParams.get('subscribed') === 'true') {

@@ -259,7 +259,7 @@ function ChapterReaderContent() {
   // Reader bobbins (read-aloud, etc.) register into the reader.* slots.
   useReaderBobbins({
     userId: sessionUserId,
-    apiToken: (session as any)?.apiToken as string | undefined,
+    apiToken: session?.apiToken as string | undefined,
     sessionStatus,
   })
   const authorUsername = params.authorUsername as string
@@ -402,7 +402,7 @@ function ChapterReaderContent() {
     setError(null)
     try {
       const authHeaders: Record<string, string> = {}
-      const apiToken = (session as any)?.apiToken as string | undefined
+      const apiToken = session?.apiToken as string | undefined
       if (apiToken) authHeaders['Authorization'] = `Bearer ${apiToken}`
 
       // Resolve by author + slug

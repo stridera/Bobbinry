@@ -50,7 +50,7 @@ export default function BetaInvitePage() {
   const [alreadyMember, setAlreadyMember] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const apiToken = (session as any)?.apiToken as string | undefined
+  const apiToken = session?.apiToken as string | undefined
 
   useEffect(() => {
     if (!token) return

@@ -18,7 +18,7 @@ export default async function ProjectPublishPage({
   return (
     <ProjectPublisherDashboard
       user={session.user}
-      apiToken={(session as any).apiToken}
+      apiToken={session?.apiToken}
       projectId={projectId}
     />
   )

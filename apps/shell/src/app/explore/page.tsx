@@ -82,7 +82,7 @@ export default function ExplorePage() {
   const checkedAuthorIdsRef = useRef<Set<string>>(new Set())
   const [genresOverflow, setGenresOverflow] = useState(false)
 
-  const apiToken = (session as any)?.apiToken
+  const apiToken = session?.apiToken
   const userId = session?.user?.id
 
   // Detect if genre pills overflow one row

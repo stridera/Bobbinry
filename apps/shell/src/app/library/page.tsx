@@ -111,7 +111,7 @@ export default function LibraryPage() {
   const [loading, setLoading] = useState(true)
 
   const userId = session?.user?.id
-  const apiToken = (session as any)?.apiToken
+  const apiToken = session?.apiToken
 
   const loadData = useCallback(async () => {
     if (!userId || !apiToken) return

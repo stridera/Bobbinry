@@ -134,7 +134,7 @@ function PublicProfileContent() {
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly')
   const [justSubscribed, setJustSubscribed] = useState(false)
 
-  const apiToken = (session as any)?.apiToken as string | undefined
+  const apiToken = session?.apiToken as string | undefined
   const sessionUserId = session?.user?.id
   const profileUserId = profile?.userId
   const isOwnProfile = sessionUserId === profileUserId

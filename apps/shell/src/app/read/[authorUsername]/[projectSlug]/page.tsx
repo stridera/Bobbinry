@@ -227,7 +227,7 @@ function ProjectReadingContent() {
     return () => cancelAnimationFrame(id)
   }, [activeTab, pendingHighlight, runSupportHighlight])
 
-  const apiToken = (session as any)?.apiToken as string | undefined
+  const apiToken = session?.apiToken as string | undefined
   const userId = session?.user?.id
   const authorUserId = author?.userId
   const isOwnProject = !!(userId && authorUserId === userId)

@@ -155,7 +155,7 @@ export default function ApiKeysPage() {
   // Revoke state
   const [revoking, setRevoking] = useState<string | null>(null)
 
-  const apiToken = (session as any)?.apiToken
+  const apiToken = session?.apiToken
 
   const loadKeys = useCallback(async () => {
     if (!apiToken) return

@@ -52,7 +52,7 @@ export default function AuthorReadPage() {
   const [isSubscribed, setIsSubscribed] = useState(false)
   const [hasPaidTiers, setHasPaidTiers] = useState(false)
 
-  const apiToken = (session as any)?.apiToken as string | undefined
+  const apiToken = session?.apiToken as string | undefined
   const userId = session?.user?.id
 
   const loadAuthor = useCallback(async () => {
