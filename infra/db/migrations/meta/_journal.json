@@ -309,6 +309,13 @@
       "when": 1786744760045,
       "tag": "0044_dictionary_cache",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1788581985750,
+      "tag": "0045_drop_unused_tables",
+      "breakpoints": true
     }
   ]
 }

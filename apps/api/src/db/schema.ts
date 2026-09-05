@@ -362,20 +362,6 @@ export const publishSnapshots = pgTable('publish_snapshots', {
   entityVersionIdx: index('publish_snapshots_entity_version_idx').on(table.entityId, table.versionNumber)
 }))
 
-// Export configurations
-export const exportConfigs = pgTable('export_configs', {
-  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }).primaryKey(),
-  epubEnabled: boolean('epub_enabled').default(true).notNull(),
-  epubCoverUrl: text('epub_cover_url'),
-  epubMetadata: jsonb('epub_metadata'), // { author, publisher, isbn, language }
-  pdfEnabled: boolean('pdf_enabled').default(true).notNull(),
-  pdfTemplate: varchar('pdf_template', { length: 50 }).default('classic').notNull(), // minimal, classic, modern
-  markdownEnabled: boolean('markdown_enabled').default(true).notNull(),
-  htmlEnabled: boolean('html_enabled').default(true).notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull()
-})
-
 // Content & Engagement tables
 
 // Chapter publications - publication state tracking
@@ -452,20 +438,6 @@ export const reactions = pgTable('reactions', {
 }, (table) => ({
   chapterUserIdx: index('reactions_chapter_user_idx').on(table.chapterId, table.userId),
   typeIdx: index('reactions_type_idx').on(table.reactionType)
-}))
-
-// Author notes - commentary attached to chapters
-export const authorNotes = pgTable('author_notes', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  chapterId: uuid('chapter_id').references((): any => entities.id, { onDelete: 'cascade' }).notNull(),
-  noteType: varchar('note_type', { length: 50 }).default('postscript').notNull(), // preface, postscript, content_warning
-  content: text('content').notNull(),
-  displayOrder: varchar('display_order', { length: 10 }).default('1').notNull(),
-  isPublished: boolean('is_published').default(true).notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull()
-}, (table) => ({
-  chapterIdx: index('author_notes_chapter_idx').on(table.chapterId)
 }))
 
 // Chapter annotations - reader feedback anchored to text
@@ -757,20 +729,6 @@ export const cronRuns = pgTable('cron_runs', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   lastSentAt: timestamp('last_sent_at'), // last time the job actually sent output; used as cutoff for windowed reports
 })
-
-// Publish targets - static site generation results
-export const publishTargets = pgTable('publish_targets', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  projectId: uuid('project_id').references(() => projects.id).notNull(),
-  type: varchar('type', { length: 50 }).notNull(), // snapshot, live, preview
-  status: varchar('status', { length: 50 }).notNull().default('pending'), // pending, building, ready, failed
-  url: text('url'),
-  versionId: varchar('version_id', { length: 255 }),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull()
-}, (table) => ({
-  projectIdx: index('publish_targets_project_idx').on(table.projectId),
-}))
 
 // Entities table - Tier 1 JSONB storage for all collections
 export const entities = pgTable('entities', {
@@ -1088,7 +1046,6 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   memberships: many(memberships),
   bobbinsInstalled: many(bobbinsInstalled),
   entities: many(entities),
-  publishTargets: many(publishTargets),
   provenanceEvents: many(provenanceEvents),
   entityChanges: many(entityChanges),
   collectionMemberships: many(projectCollectionMemberships),
@@ -1118,13 +1075,6 @@ export const bobbinsInstalledRelations = relations(bobbinsInstalled, ({ one }) =
   user: one(users, {
     fields: [bobbinsInstalled.userId],
     references: [users.id]
-  })
-}))
-
-export const publishTargetsRelations = relations(publishTargets, ({ one }) => ({
-  project: one(projects, {
-    fields: [publishTargets.projectId],
-    references: [projects.id]
   })
 }))
 
@@ -1321,13 +1271,6 @@ export const publishSnapshotsRelations = relations(publishSnapshots, ({ one }) =
   publisher: one(users, {
     fields: [publishSnapshots.publishedBy],
     references: [users.id]
-  })
-}))
-
-export const exportConfigsRelations = relations(exportConfigs, ({ one }) => ({
-  project: one(projects, {
-    fields: [exportConfigs.projectId],
-    references: [projects.id]
   })
 }))
 
