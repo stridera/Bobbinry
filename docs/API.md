@@ -633,12 +633,6 @@ Public endpoints for browsing published content. No authentication required.
 | GET | `/api/uploads` | JWT | List uploads |
 | GET | `/api/images/:key` | None | Image proxy |
 
-### Bobbin Actions (`bobbin-actions.ts`)
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/api/bobbins/:bobbinId/actions/:actionId` | JWT | Invoke custom bobbin action |
-
 ### User Bobbins (`user-bobbins.ts`)
 
 | Method | Path | Auth | Description |

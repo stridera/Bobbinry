@@ -575,10 +575,9 @@ export const manifestSchema = {
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
-        "type": { "enum": ["create", "update", "delete", "publish", "export", "import", "custom"] },
+        "type": { "enum": ["create", "update", "delete", "publish", "export", "import"] },
         "description": { "type": "string" },
         "target": { "type": "string" },
-        "handler": { "type": "string" },
         "parameters": {
           "type": "array",
           "items": { "$ref": "#/definitions/ActionParameter" }

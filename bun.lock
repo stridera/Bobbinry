@@ -29,7 +29,6 @@
       "dependencies": {
         "@aws-sdk/client-s3": "^3.1113.0",
         "@aws-sdk/s3-request-presigner": "^3.1113.0",
-        "@bobbinry/action-runtime": "workspace:*",
         "@bobbinry/compiler": "workspace:*",
         "@bobbinry/types": "workspace:*",
         "@fastify/cors": "^11.3.0",
@@ -461,17 +460,6 @@
         "react": "^19.0.0",
       },
     },
-    "packages/action-runtime": {
-      "name": "@bobbinry/action-runtime",
-      "version": "1.0.0",
-      "dependencies": {
-        "@bobbinry/types": "workspace:*",
-      },
-      "devDependencies": {
-        "@types/node": "^26",
-        "typescript": "6.0.3",
-      },
-    },
     "packages/cli": {
       "name": "bobbinry",
       "version": "0.1.1",
@@ -683,8 +671,6 @@
     "@babel/types": ["@babel/types@7.29.0", "", { "dependencies": { "@babel/helper-string-parser": "^7.27.1", "@babel/helper-validator-identifier": "^7.28.5" } }, "sha512-LwdZHpScM4Qz8Xw2iKSzS+cfglZzJGvofQICy7W7v4caru4EaAmyUuO6BGrbyQ2mYV11W0U8j5mBhd14dd3B0A=="],
 
     "@bcoe/v8-coverage": ["@bcoe/v8-coverage@0.2.3", "", {}, "sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2nSUHW9tYpxWriPrWDASIxiaXax83REcLxuSdnGPZtw=="],
-
-    "@bobbinry/action-runtime": ["@bobbinry/action-runtime@workspace:packages/action-runtime"],
 
     "@bobbinry/ai-tools": ["@bobbinry/ai-tools@workspace:bobbins/ai-tools"],
 

@@ -286,7 +286,6 @@ export interface Action {
   type: ActionType
   description?: string
   target?: string
-  handler?: string
   parameters?: ActionParameter[]
   permissions?: ActionPermission[]
 }
@@ -298,7 +297,6 @@ export type ActionType =
   | 'publish'
   | 'export'
   | 'import'
-  | 'custom'
 
 export interface ActionParameter {
   name: string

@@ -224,53 +224,20 @@ Use shell notifications for:
 
 Do not use bobbin views to create persistent in-app notification records directly. Persistent notifications are a server/domain concern handled in API jobs and routes.
 
-## Server Actions
+## Server-side Logic
 
-Custom server actions are declared in the manifest and implemented in `actions/index.ts`.
+Bobbins are client-side: views and panels that talk to the platform through
+`@bobbinry/sdk`. Bobbin code must not import from `apps/api`.
 
-Manifest:
+When a feature needs privileged server work (webhooks, third-party sync, AI
+calls), it lives in an API route under `apps/api/src/routes/` and the panel
+calls it via `sdk.api.request()`. The one exception today is
+`google-drive-backup/actions/sync-service.ts`, which the API imports as a
+library; treat that as reviewed first-party code, not a pattern to copy.
 
-```yaml
-interactions:
-  actions:
-    - id: nightly_digest
-      name: Nightly Digest
-      type: custom
-      handler: nightlyDigest
-      description: Summarise the day's writing
-```
-
-Action module:
-
-```ts
-import type { ActionHandler } from '@bobbinry/action-runtime'
-
-export const nightlyDigest: ActionHandler = async (params, context, runtime) => {
-  runtime.log.info({ actionId: context.actionId }, 'Running action')
-  return { success: true }
-}
-
-export const actions = {
-  nightly_digest: nightlyDigest,
-}
-```
-
-Rules:
-
-- every `type: custom` action must declare `handler`
-- the handler must exist in `actions/index.ts`
-- the API only runs custom actions declared in the installed bobbin manifest
-- action handlers receive `ActionContext` and `ActionRuntimeHost`
-- do not accept `FastifyInstance` in bobbin action handlers
-
-Bobbin code must not import from `apps/api` — not from views, panels, or
-action handlers. The `ActionRuntimeHost` passed to a handler is the only
-sanctioned way to reach the platform, and today it exposes just `log` and
-`hasPermission`, so a custom action cannot read or write project data yet.
-No shipped bobbin currently declares a custom action; server-side work that
-needs data goes through API routes, and panels call them via `sdk.api`. If
-you need a custom action, raise it so the host can grow a scoped data facade
-rather than reaching around it.
+An earlier "custom action" mechanism (manifest `interactions.actions` of
+`type: custom` with handlers in `actions/index.ts`) was removed in September
+2026: nothing invoked it and the handlers had no sanctioned platform access.
 
 ## External Services
 
@@ -326,7 +293,6 @@ Before opening a PR, make sure:
 - `manifest.yaml` is in `bobbins/<id>/manifest.yaml`
 - manifest version is bumped if the manifest changed
 - panel IDs are namespaced and entries resolve to real files
-- custom actions declare handlers and those handlers exist
 - external URLs are declared in the manifest
 - light/dark states both work
 - loading, empty, and error states exist

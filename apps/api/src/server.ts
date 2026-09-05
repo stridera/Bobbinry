@@ -14,7 +14,6 @@ import subscriptionsPlugin from './routes/subscriptions'
 import stripePlugin from './routes/stripe'
 import publishingPlugin from './routes/publishing'
 import readerPlugin from './routes/reader'
-import bobbinActionsPlugin from './routes/bobbin-actions'
 import collectionsPlugin from './routes/collections'
 import dashboardPlugin from './routes/dashboard'
 import authPlugin from './routes/auth'
@@ -306,7 +305,6 @@ export function build(opts = {}): FastifyInstance {
   server.register(stripePlugin, { prefix: '/api' })
   server.register(publishingPlugin, { prefix: '/api' })
   server.register(readerPlugin, { prefix: '/api' })
-  server.register(bobbinActionsPlugin, { prefix: '/api' })
   server.register(collectionsPlugin, { prefix: '/api' })
   server.register(dashboardPlugin, { prefix: '/api' })
   server.register(authPlugin, { prefix: '/api' })

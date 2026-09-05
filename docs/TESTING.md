@@ -18,7 +18,6 @@ apps/api/src/
 │   ├── subscriptions-access.test.ts  # Subscription + access grants
 │   └── users-follow.test.ts          # Follow/unfollow
 ├── lib/__tests__/unit/
-│   ├── bobbin-actions.test.ts        # Action handler logic
 │   └── bobbin-upgrader.test.ts       # Bobbin upgrade logic
 └── __tests__/
     ├── integration/

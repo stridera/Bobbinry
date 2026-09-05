@@ -87,51 +87,6 @@ describe('Manifest Validation', () => {
       expect(result.valid).toBe(false)
       expect(result.errors.some(err => err.includes('pattern'))).toBe(true)
     })
-
-    it('should reject custom actions without handlers', () => {
-      const invalidManifest = {
-        id: 'test-bobbin',
-        name: 'Test Bobbin',
-        version: '1.0.0',
-        capabilities: {},
-        interactions: {
-          actions: [
-            {
-              id: 'publish_chapter',
-              name: 'Publish Chapter',
-              type: 'custom'
-            }
-          ]
-        }
-      }
-
-      const result = compiler.validateManifestWithDetails(invalidManifest as any)
-      expect(result.valid).toBe(false)
-      expect(result.errors).toContain("action 'publish_chapter': custom actions require a handler")
-    })
-
-    it('should reject non-custom actions that declare handlers', () => {
-      const invalidManifest = {
-        id: 'test-bobbin',
-        name: 'Test Bobbin',
-        version: '1.0.0',
-        capabilities: {},
-        interactions: {
-          actions: [
-            {
-              id: 'publish_chapter',
-              name: 'Publish Chapter',
-              type: 'publish',
-              handler: 'publishChapter'
-            }
-          ]
-        }
-      }
-
-      const result = compiler.validateManifestWithDetails(invalidManifest as any)
-      expect(result.valid).toBe(false)
-      expect(result.errors).toContain("action 'publish_chapter': only custom actions may declare a handler")
-    })
   })
 
   describe('Example Manifests', () => {

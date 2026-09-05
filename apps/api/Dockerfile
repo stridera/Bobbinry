@@ -14,7 +14,6 @@ COPY apps/api/package.json apps/api/
 COPY apps/shell/package.json apps/shell/
 
 # Packages
-COPY packages/action-runtime/package.json packages/action-runtime/
 COPY packages/compiler/package.json packages/compiler/
 COPY packages/sdk/package.json packages/sdk/
 COPY packages/types/package.json packages/types/
@@ -47,7 +46,6 @@ RUN bun install --frozen-lockfile
 # Copy source code
 COPY packages/types/ packages/types/
 COPY packages/compiler/ packages/compiler/
-COPY packages/action-runtime/ packages/action-runtime/
 COPY apps/api/ apps/api/
 COPY infra/db/ infra/db/
 COPY bobbins/ bobbins/
@@ -69,13 +67,11 @@ COPY package.json ./
 COPY apps/api/package.json apps/api/
 COPY packages/compiler/package.json packages/compiler/
 COPY packages/types/package.json packages/types/
-COPY packages/action-runtime/package.json packages/action-runtime/
 
 # Copy compiled output
 COPY --from=builder /app/apps/api/dist/ apps/api/dist/
 COPY --from=builder /app/packages/compiler/dist/ packages/compiler/dist/
 COPY --from=builder /app/packages/types/dist/ packages/types/dist/
-COPY --from=builder /app/packages/action-runtime/dist/ packages/action-runtime/dist/
 
 # Copy migrations
 COPY --from=builder /app/infra/db/migrations/ infra/db/migrations/
