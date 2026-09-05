@@ -256,6 +256,12 @@ function ChapterReaderContent() {
   const searchParams = useSearchParams()
   const { data: session, status: sessionStatus } = useSession()
   const sessionUserId = session?.user?.id
+  // Depend on the token string, not the session object: NextAuth re-creates
+  // the object on every focus refetch, which used to re-run the chapter load.
+  const apiToken = session?.apiToken
+  // Generation counter so a superseded load (fast navigation, token refresh)
+  // cannot apply its stale response over the current one.
+  const loadGenRef = useRef(0)
   // Reader bobbins (read-aloud, etc.) register into the reader.* slots.
   useReaderBobbins({
     userId: sessionUserId,
@@ -398,11 +404,12 @@ function ChapterReaderContent() {
     // Wait for the session to settle: private projects and beta/subscriber
     // perks need the bearer token on the very first fetch.
     if (sessionStatus === 'loading') return
+    const gen = ++loadGenRef.current
+    const stale = () => gen !== loadGenRef.current
     setLoading(true)
     setError(null)
     try {
       const authHeaders: Record<string, string> = {}
-      const apiToken = session?.apiToken as string | undefined
       if (apiToken) authHeaders['Authorization'] = `Bearer ${apiToken}`
 
       // Resolve by author + slug
@@ -410,6 +417,7 @@ function ChapterReaderContent() {
         `${config.apiUrl}/api/public/projects/by-author-and-slug/${encodeURIComponent(authorUsername)}/${encodeURIComponent(projectSlug)}${viewAsQuery ? `?${viewAsQuery}` : ''}`,
         { headers: authHeaders }
       )
+      if (stale()) return
       if (!slugRes.ok) {
         setError('Project not found')
         return
@@ -420,10 +428,10 @@ function ChapterReaderContent() {
       setProjectName(slugData.project.name || projectSlug)
       setAuthorDisplayName(slugData.author?.displayName || slugData.author?.userName || authorUsername)
 
-      const userId = sessionUserId
       const chapterUrl = `${config.apiUrl}/api/public/projects/${projId}/chapters/${encodeURIComponent(chapterParam)}${viewAsQuery ? `?${viewAsQuery}` : ''}`
 
       const res = await fetch(chapterUrl, { headers: authHeaders })
+      if (stale()) return
       if (res.status === 403) {
         const data = await res.json()
         setEmbargoUntil(data.embargoUntil)
@@ -436,6 +444,7 @@ function ChapterReaderContent() {
       }
 
       const data = await res.json()
+      if (stale()) return
       setChapter(data.chapter)
       setNav(data.navigation)
       // Author-driven manuscript layout cascade resolved server-side.
@@ -461,6 +470,7 @@ function ChapterReaderContent() {
         fetch(`${config.apiUrl}/api/public/chapters/${canonicalId}/comments`)
       ])
 
+      if (stale()) return
       if (reactionsRes.ok) {
         const rData = await reactionsRes.json()
         setReactions(rData.reactions || [])
@@ -469,34 +479,41 @@ function ChapterReaderContent() {
         const cData = await commentsRes.json()
         setCommentsList(cData.comments || [])
       }
-
-      trackEvent('chapter_view_started', {
-        projectId: projId,
-        chapterId: canonicalId,
-        signedIn: !!userId,
-      })
-
-      // Track view
-      fetch(`${config.apiUrl}/api/public/projects/${projId}/chapters/${canonicalId}/view`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: userId || undefined,
-          deviceType: window.innerWidth < 768 ? 'mobile' : window.innerWidth < 1024 ? 'tablet' : 'desktop',
-          referrer: document.referrer || undefined
-        })
-      }).catch(() => {})
     } catch {
-      setError('Failed to load chapter')
+      if (!stale()) setError('Failed to load chapter')
     } finally {
-      setLoading(false)
+      if (!stale()) setLoading(false)
     }
-  }, [authorUsername, projectSlug, chapterParam, sessionUserId, sessionStatus, session, basePath, viewAsQuery])
+  }, [authorUsername, projectSlug, chapterParam, sessionStatus, apiToken, basePath, viewAsQuery])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
     loadChapter()
   }, [loadChapter])
+
+  // Record the view once per loaded chapter, keyed on its canonical id — not
+  // inside loadChapter, where any reload (token refresh, retry) would count
+  // again. The bearer header lets the server attribute the view to the reader
+  // instead of logging every signed-in read as anonymous.
+  useEffect(() => {
+    if (!chapter?.id || !projectId) return
+    trackEvent('chapter_view_started', {
+      projectId,
+      chapterId: chapter.id,
+      signedIn: !!sessionUserId,
+    })
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (apiToken) headers['Authorization'] = `Bearer ${apiToken}`
+    fetch(`${config.apiUrl}/api/public/projects/${projectId}/chapters/${chapter.id}/view`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        deviceType: window.innerWidth < 768 ? 'mobile' : window.innerWidth < 1024 ? 'tablet' : 'desktop',
+        referrer: document.referrer || undefined
+      })
+    }).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fire once per chapter id
+  }, [chapter?.id, projectId])
 
   // Load annotation access separately — session loads async after chapter
   useEffect(() => {
