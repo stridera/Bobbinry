@@ -15,7 +15,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@bobbinry/action-runtime": "workspace:*",
     "@bobbinry/sdk": "workspace:*"
   },
   "peerDependencies": {

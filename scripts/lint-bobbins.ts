@@ -399,8 +399,11 @@ function checkCompatibilityPresent(ctx: BobbinContext): Diagnostic[] {
  */
 function checkNoRawApiAccess(ctx: BobbinContext): Diagnostic[] {
   const diags: Diagnostic[] = [];
+  // Server-side `actions/` code talks to third-party APIs (Drive, Discord,
+  // AI providers) with its own bearer tokens; the rule targets client code
+  // that should be going through the SDK.
   const sourceFiles = ctx.files.filter(
-    (f) => /\.(ts|tsx)$/.test(f) && !/(^|\/)(dist|node_modules|__tests__)\//.test(f) && !/\.test\.tsx?$/.test(f)
+    (f) => /\.(ts|tsx)$/.test(f) && !/(^|\/)(dist|node_modules|__tests__|actions)\//.test(f) && !/\.test\.tsx?$/.test(f)
   );
   for (const rel of sourceFiles) {
     const content = fs.readFileSync(path.join(ctx.dirPath, rel), "utf8");

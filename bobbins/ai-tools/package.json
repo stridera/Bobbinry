@@ -1,7 +1,7 @@
 {
   "name": "@bobbinry/ai-tools",
   "version": "0.1.0",
-  "description": "AI analysis and suggestion tools — synopsis generation and structured feedback",
+  "description": "AI analysis and suggestion tools \u2014 synopsis generation and structured feedback",
   "main": "src/index.ts",
   "types": "src/index.ts",
   "exports": {
@@ -9,12 +9,11 @@
     "./panels/*": "./panels/*.tsx"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.actions.json",
+    "build": "echo 'consumed as source by shell'",
     "dev": "echo 'consumed as source by shell'",
     "typecheck": "echo 'consumed as source by shell'"
   },
   "dependencies": {
-    "@bobbinry/action-runtime": "workspace:*",
     "@bobbinry/sdk": "workspace:*"
   },
   "peerDependencies": {

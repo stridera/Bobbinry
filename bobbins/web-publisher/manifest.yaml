@@ -1,6 +1,6 @@
 id: web-publisher
 name: Web Publisher
-version: 1.2.1
+version: 1.2.2
 author: Bobbins Core
 description: Native publishing suite with reader delivery, analytics, and release automation
 tags: [publishing, reader, automation, scheduling, analytics, community]
@@ -179,74 +179,6 @@ ui:
           - hide
           - delete
           - ban_user
-
-interactions:
-  triggers:
-    - id: on_chapter_view
-      event: update
-      target: PublishedChapter
-      actions:
-        - track_view
-        - update_reading_progress
-        
-    - id: on_chapter_complete
-      event: update
-      target: PublishedChapter
-      actions:
-        - mark_completed
-        - send_completion_notification
-        
-    - id: on_subscription_created
-      event: create
-      target: subscriptions
-      actions:
-        - send_welcome_email
-        - grant_access
-
-  actions:
-    - id: publish_chapter
-      name: Publish Chapter
-      type: custom
-      target: Chapter
-      handler: publishChapter
-      description: Make chapter available to readers based on access rules
-      
-    - id: unpublish_chapter
-      name: Unpublish Chapter
-      type: custom
-      target: PublishedChapter
-      handler: unpublishChapter
-      description: Remove chapter from public view
-      
-    - id: track_view
-      name: Track View
-      type: custom
-      handler: trackChapterView
-      description: Record analytics for chapter view
-      
-    - id: update_reading_progress
-      name: Update Progress
-      type: custom
-      handler: updateReaderProgress
-      description: Save reader's current position
-      
-    - id: check_access
-      name: Check Access
-      type: custom
-      handler: checkReaderAccess
-      description: Determine if reader can access chapter
-      
-    - id: export_analytics
-      name: Export Analytics
-      type: custom
-      handler: exportAnalyticsData
-      description: Generate CSV/JSON export of analytics
-      
-    - id: send_announcement
-      name: Send Announcement
-      type: custom
-      handler: sendSubscriberAnnouncement
-      description: Email all subscribers in a tier
 
 external: null
 

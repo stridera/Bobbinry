@@ -1,6 +1,6 @@
 id: google-drive-backup
 name: Google Drive Backup
-version: 1.0.6
+version: 1.0.7
 author: Bobbins Core
 description: Automatically back up all your projects to Google Drive. Manage and monitor backups from the Backups page.
 tags: [backup, integration, cloud-storage, automation]
@@ -69,51 +69,6 @@ ui:
           - date_range
         actions:
           - view_in_drive
-
-interactions:
-  triggers:
-    - id: on_chapter_create
-      event: create
-      target: Chapter  # From manuscript bobbin
-      actions:
-        - sync_to_drive
-
-    - id: on_chapter_update
-      event: update
-      target: Chapter
-      actions:
-        - sync_to_drive
-
-    - id: on_chapter_publish
-      event: publish
-      target: Chapter
-      actions:
-        - sync_to_drive
-
-  actions:
-    - id: authorize_drive
-      name: Authorize Google Drive
-      type: custom
-      handler: initiateDriveOAuth
-      description: Start OAuth flow to connect Google Drive account
-
-    - id: sync_to_drive
-      name: Sync to Drive
-      type: custom
-      handler: syncChapterToDrive
-      description: Upload or update chapter in Google Drive
-
-    - id: test_connection
-      name: Test Connection
-      type: custom
-      handler: testConnection
-      description: Verify Drive credentials are valid
-
-    - id: manual_sync_all
-      name: Sync All Chapters
-      type: custom
-      handler: syncAllChapters
-      description: Manually trigger sync of all chapters
 
 external:
   endpoints:

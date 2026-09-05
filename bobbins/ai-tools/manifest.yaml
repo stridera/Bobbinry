@@ -1,6 +1,6 @@
 id: ai-tools
 name: AI Tools
-version: 0.2.2
+version: 0.2.3
 author: Bobbins Core
 description: Context-adaptive AI tools for your writing. Provides feedback, name generation, brainstorming, and more — never writes or rewrites your content.
 tags: [ai, analysis, feedback, synopsis]
@@ -34,39 +34,6 @@ external:
     - endpoint: api.openai.com
       reason: Generate synopsis suggestions and structured feedback via OpenAI
       required: false
-
-interactions:
-  actions:
-    - id: generate_synopsis
-      name: Generate Synopsis
-      type: custom
-      handler: generateSynopsis
-      description: Generate a synopsis suggestion for a chapter
-    - id: generate_review
-      name: Generate Review
-      type: custom
-      handler: generateReview
-      description: Generate structured feedback for a chapter
-    - id: test_api_key
-      name: Test API Key
-      type: custom
-      handler: testApiKey
-      description: Validate an AI provider API key
-    - id: generate_names
-      name: Generate Names
-      type: custom
-      handler: generateNames
-      description: Generate name suggestions for an entity
-    - id: generate_brainstorm
-      name: Brainstorm
-      type: custom
-      handler: generateBrainstorm
-      description: Brainstorm ideas from note content
-    - id: generate_flesh_out
-      name: Flesh Out Event
-      type: custom
-      handler: generateFleshOut
-      description: Flesh out a timeline event with details
 
 compatibility:
   minShellVersion: 1.0.0

@@ -1,6 +1,6 @@
 id: discord-roles
 name: Discord Role Manager
-version: 1.0.4
+version: 1.0.5
 author: Bobbins Core
 description: Sync Discord server roles based on Bobbinry subscription tiers. Assign and remove roles automatically when subscriptions change.
 tags: [discord, roles, integration, subscriptions]
@@ -22,24 +22,6 @@ extensions:
       priority: 1
       when:
         inView: project
-
-interactions:
-  actions:
-    - id: sync_roles
-      name: Sync All Roles
-      type: custom
-      handler: syncRoles
-      description: Bulk sync Discord roles for all subscribers
-    - id: sync_single_user
-      name: Sync User Role
-      type: custom
-      handler: syncSingleUser
-      description: Sync Discord role for a single subscriber
-    - id: test_connection
-      name: Test Bot Connection
-      type: custom
-      handler: testConnection
-      description: Verify Discord bot token and guild access
 
 external:
   endpoints:
