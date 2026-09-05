@@ -95,7 +95,7 @@ export default function NavigationView({ context }: NavigationViewProps) {
       setLoading(true)
       setError(null)
 
-      const result = await entityApi.query({ collection: 'entity_type_definitions' })
+      const result = await entityApi.query<EntityTypeDefinition>({ collection: 'entity_type_definitions' })
       const types = result.data
       setEntityTypes(types)
 

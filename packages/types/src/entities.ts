@@ -9,6 +9,9 @@
 export interface EntityMetadata {
   bobbinId: string
   collection: string
+  /** Optimistic-lock version; pass back as `expectedVersion` on update. */
+  version?: number
+  scope?: string | null
   createdAt: Date | string
   updatedAt: Date | string
 }

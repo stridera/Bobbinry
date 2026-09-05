@@ -391,6 +391,37 @@ function checkCompatibilityPresent(ctx: BobbinContext): Diagnostic[] {
   return [];
 }
 
+/**
+ * Bobbins talk to the platform through the SDK. Reading the API origin from
+ * the environment or hand-building Bearer headers means a third-party bobbin
+ * (which has no such env) breaks, and it bypasses the SDK's 401 handling.
+ * Use `sdk.api.request()` / `sdk.api.fetch()` instead.
+ */
+function checkNoRawApiAccess(ctx: BobbinContext): Diagnostic[] {
+  const diags: Diagnostic[] = [];
+  const sourceFiles = ctx.files.filter(
+    (f) => /\.(ts|tsx)$/.test(f) && !/(^|\/)(dist|node_modules|__tests__)\//.test(f) && !/\.test\.tsx?$/.test(f)
+  );
+  for (const rel of sourceFiles) {
+    const content = fs.readFileSync(path.join(ctx.dirPath, rel), "utf8");
+    if (/process\.env\.NEXT_PUBLIC_API_URL/.test(content)) {
+      diags.push({
+        rule: "no-raw-api-access",
+        message: `${rel} reads NEXT_PUBLIC_API_URL — use sdk.api.request()/fetch() (the SDK owns the API origin)`,
+        severity: "warning",
+      });
+    }
+    if (/Authorization:\s*`Bearer \$\{/.test(content)) {
+      diags.push({
+        rule: "no-raw-api-access",
+        message: `${rel} hand-builds an Authorization header — use sdk.api.request()/fetch()`,
+        severity: "warning",
+      });
+    }
+  }
+  return diags;
+}
+
 function checkPkgExists(ctx: BobbinContext): Diagnostic[] {
   if (!ctx.pkg) {
     return [{ rule: "pkg-exists", message: "missing package.json", severity: "warning" }];
@@ -891,6 +922,7 @@ const perBobbinRules = [
   checkNativeOnlyRuntime,
   checkCustomActionContract,
   checkCompatibilityPresent,
+  checkNoRawApiAccess,
   checkPkgExists,
   checkPkgNameMatches,
   checkPkgHasExports,

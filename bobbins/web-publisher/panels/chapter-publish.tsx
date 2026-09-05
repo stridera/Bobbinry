@@ -21,6 +21,7 @@ import {
   parseDateTimeInputValue,
   toDateTimeInputValue,
 } from '../lib/time'
+import { apiFetchLocal } from '../lib/api'
 
 interface ChapterPublishProps {
   projectId: string
@@ -68,18 +69,6 @@ interface SlugInfo {
   isPinned: boolean
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
-
-async function apiFetchLocal(path: string, token: string, init?: RequestInit) {
-  return fetch(`${API_URL}${path}`, {
-    ...init,
-    headers: {
-      ...init?.headers,
-      Authorization: `Bearer ${token}`,
-    },
-  })
-}
-
 export default function ChapterPublishPanel(props: ChapterPublishProps) {
   const projectId = props.projectId || props.context?.projectId
   const apiToken = props.apiToken || props.context?.apiToken
@@ -125,7 +114,7 @@ export default function ChapterPublishPanel(props: ChapterPublishProps) {
 
         if (project?.ownerId) {
           try {
-            const profileRes = await fetch(`${API_URL}/api/users/${project.ownerId}/profile`)
+            const profileRes = await apiFetchLocal(`/api/users/${project.ownerId}/profile`, apiToken)
             if (profileRes.ok) {
               const profileData = await profileRes.json()
               ownerUsername = profileData.profile?.username || null

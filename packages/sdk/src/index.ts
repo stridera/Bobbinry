@@ -1,4 +1,4 @@
-import type { ExportSnapshot, ImportCommitResult, ImportParseResult } from '@bobbinry/types'
+import type { Entity, ExportSnapshot, ImportCommitResult, ImportParseResult } from '@bobbinry/types'
 
 declare const process: { env: Record<string, string | undefined> }
 
@@ -35,6 +35,45 @@ export class AuthError extends Error {
     this.name = 'AuthError'
     this.status = 401
   }
+}
+
+/**
+ * Thrown by `BobbinryAPI.request()` for any non-2xx response other than 401
+ * (see `AuthError`). `body` is the parsed JSON error payload when the server
+ * sent one, so callers can read `error`, `details`, `currentVersion`, etc.
+ */
+export class ApiError extends Error {
+  status: number
+  body: unknown
+
+  constructor(status: number, message: string, body: unknown = null) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.body = body
+  }
+}
+
+export interface RequestOptions {
+  /** JSON-serialised as the request body when defined. */
+  body?: unknown
+  /** Appended as a query string; `undefined` values are skipped. */
+  query?: Record<string, string | number | boolean | undefined>
+  headers?: Record<string, string>
+  signal?: AbortSignal
+  /** Prefixed to the thrown error message, e.g. "Failed to load chapter". */
+  errorContext?: string
+}
+
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD'
+
+function errorMessageFrom(body: unknown, fallback: string): string {
+  if (body && typeof body === 'object') {
+    const b = body as Record<string, unknown>
+    const msg = b.details ?? b.error ?? b.message
+    if (typeof msg === 'string' && msg.length > 0) return msg
+  }
+  return fallback
 }
 
 type UnauthorizedHandler = () => void
@@ -99,64 +138,87 @@ export class BobbinryAPI {
     return headers
   }
 
-  // Project management
-  async getProject(projectId: string) {
-    const response = await fetch(`${this.baseURL}/projects/${projectId}`, {
-      headers: this.getAuthHeaders()
-    })
+  /**
+   * Authenticated `fetch` against the API. `path` is relative to the API base
+   * (e.g. `/projects/:id`). Prefer `request()` unless you need the raw
+   * `Response` (streaming, HEAD headers).
+   */
+  async fetch(path: string, init: RequestInit = {}): Promise<Response> {
+    const headers = this.getAuthHeaders(
+      init.headers instanceof Headers
+        ? Object.fromEntries(init.headers.entries())
+        : (init.headers as Record<string, string> | undefined)
+    )
+    return fetch(`${this.baseURL}${path}`, { ...init, headers })
+  }
+
+  /**
+   * Typed JSON request. Attaches auth, serialises `body`, and turns non-2xx
+   * responses into `AuthError` (401) or `ApiError` (everything else) carrying
+   * the server's error payload. Empty responses resolve to `undefined`.
+   */
+  async request<T = unknown>(method: HttpMethod, path: string, opts: RequestOptions = {}): Promise<T> {
+    let url = path
+    if (opts.query) {
+      const params = new URLSearchParams()
+      for (const [k, v] of Object.entries(opts.query)) {
+        if (v !== undefined) params.set(k, String(v))
+      }
+      const qs = params.toString()
+      if (qs) url += (url.includes('?') ? '&' : '?') + qs
+    }
+
+    const headers: Record<string, string> = { ...opts.headers }
+    let body: string | undefined
+    if (opts.body !== undefined) {
+      headers['Content-Type'] = 'application/json'
+      body = JSON.stringify(opts.body)
+    }
+
+    const init: RequestInit = { method, headers }
+    if (body !== undefined) init.body = body
+    if (opts.signal) init.signal = opts.signal
+    const response = await this.fetch(url, init)
+
     if (!response.ok) {
       this.throwIfUnauthorized(response)
-      throw new Error(`Failed to fetch project: ${response.statusText}`)
+      const text = await response.text().catch(() => '')
+      let parsed: unknown = null
+      try { parsed = text ? JSON.parse(text) : null } catch { parsed = null }
+      // Prefer the server's message; fall back to raw text only when it wasn't JSON.
+      const fallback = (parsed === null && text) || response.statusText || `Request failed (${response.status})`
+      const detail = errorMessageFrom(parsed, fallback)
+      throw new ApiError(
+        response.status,
+        opts.errorContext ? `${opts.errorContext} (${response.status}): ${detail}` : detail,
+        parsed,
+      )
     }
-    return response.json()
+
+    if (response.status === 204) return undefined as T
+    const text = await response.text()
+    return (text ? JSON.parse(text) : undefined) as T
+  }
+
+  // Project management
+  async getProject(projectId: string) {
+    return this.request<Record<string, any>>('GET', `/projects/${projectId}`, { errorContext: 'Failed to fetch project' })
   }
 
   // Bobbin management
   async installBobbin(projectId: string, manifestContent: string, manifestType: 'yaml' | 'json' = 'yaml') {
-    const response = await fetch(`${this.baseURL}/projects/${projectId}/bobbins/install`, {
-      method: 'POST',
-      headers: this.getAuthHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({
-        manifestContent,
-        manifestType
-      })
+    return this.request<Record<string, any>>('POST', `/projects/${projectId}/bobbins/install`, {
+      body: { manifestContent, manifestType },
+      errorContext: 'Installation failed',
     })
-
-    if (!response.ok) {
-      this.throwIfUnauthorized(response)
-      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-      throw new Error(errorData.error || `Installation failed: ${response.statusText}`)
-    }
-
-    return response.json()
   }
 
   async getInstalledBobbins(projectId: string) {
-    const response = await fetch(`${this.baseURL}/projects/${projectId}/bobbins`, {
-      headers: this.getAuthHeaders()
-    })
-    if (!response.ok) {
-      this.throwIfUnauthorized(response)
-      const err = new Error(`Failed to fetch bobbins: ${response.statusText}`) as Error & { status?: number }
-      err.status = response.status
-      throw err
-    }
-    return response.json()
+    return this.request<Record<string, any>>('GET', `/projects/${projectId}/bobbins`, { errorContext: 'Failed to fetch bobbins' })
   }
 
   async uninstallBobbin(projectId: string, bobbinId: string) {
-    const response = await fetch(`${this.baseURL}/projects/${projectId}/bobbins/${bobbinId}`, {
-      method: 'DELETE',
-      headers: this.getAuthHeaders()
-    })
-
-    if (!response.ok) {
-      this.throwIfUnauthorized(response)
-      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-      throw new Error(errorData.error || `Uninstall failed: ${response.statusText}`)
-    }
-
-    return response.json()
+    return this.request<Record<string, any>>('DELETE', `/projects/${projectId}/bobbins/${bobbinId}`, { errorContext: 'Uninstall failed' })
   }
 }
 
@@ -313,7 +375,7 @@ export interface EntityQuery {
   fields?: string[]
 }
 
-export interface EntityResult<T = any> {
+export interface EntityResult<T = Entity> {
   data: T[]
   total: number
   hasMore: boolean
@@ -328,76 +390,44 @@ export class EntityAPI {
     this.projectId = projectId
   }
 
-  // TODO: Implement entity CRUD operations
-  async query<T = any>(query: EntityQuery): Promise<EntityResult<T>> {
-    const params = new URLSearchParams({
-      projectId: this.projectId,
-      ...(query.limit && { limit: query.limit.toString() }),
-      ...(query.offset && { offset: query.offset.toString() }),
-      ...(query.search && { search: query.search }),
-      ...(query.filters && { filters: JSON.stringify(query.filters) }),
-      ...(query.fields && query.fields.length > 0 && { fields: query.fields.join(',') })
-    })
-
-    const response = await fetch(`${this.api.apiBaseUrl}/collections/${query.collection}/entities?${params}`, {
-      headers: this.api.getAuthHeaders()
-    })
-
-    if (!response.ok) {
-      this.api.throwIfUnauthorized(response)
-      const body = await response.text().catch(() => '')
-      throw new Error(`Failed to query entities (${response.status}): ${body || response.statusText}`)
-    }
-
-    const result = await response.json()
-    return {
-      data: result.entities || [],
-      total: result.total || 0,
-      hasMore: result.entities && result.entities.length >= (query.limit || 50)
-    }
-  }
-
-  async get<T = any>(collection: string, id: string, options?: { variant?: string }): Promise<T | null> {
-    const params = new URLSearchParams({
-      projectId: this.projectId,
-      collection
-    })
-    if (options?.variant) params.set('variant', options.variant)
-
-    const response = await fetch(`${this.api.apiBaseUrl}/entities/${id}?${params}`, {
-      headers: this.api.getAuthHeaders()
-    })
-
-    if (!response.ok) {
-      this.api.throwIfUnauthorized(response)
-      if (response.status === 404) {
-        return null
-      }
-      const body = await response.text().catch(() => '')
-      throw new Error(`Failed to get entity (${response.status}): ${body || response.statusText}`)
-    }
-
-    return response.json()
-  }
-
-  async create<T = any>(collection: string, data: Partial<T>): Promise<T> {
-    const response = await fetch(`${this.api.apiBaseUrl}/entities`, {
-      method: 'POST',
-      headers: this.api.getAuthHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({
-        collection,
-        projectId: this.projectId,
-        data
+  async query<T = Entity>(query: EntityQuery): Promise<EntityResult<T>> {
+    const result = await this.api.request<{ entities?: T[]; total?: number }>(
+      'GET', `/collections/${query.collection}/entities`, {
+        query: {
+          projectId: this.projectId,
+          limit: query.limit,
+          offset: query.offset,
+          search: query.search,
+          filters: query.filters ? JSON.stringify(query.filters) : undefined,
+          fields: query.fields && query.fields.length > 0 ? query.fields.join(',') : undefined,
+        },
+        errorContext: 'Failed to query entities',
       })
-    })
-
-    if (!response.ok) {
-      this.api.throwIfUnauthorized(response)
-      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-      throw new Error(`Failed to create entity: ${errorData.error || response.statusText}`)
+    const entities = result.entities ?? []
+    return {
+      data: entities,
+      total: result.total ?? 0,
+      hasMore: entities.length >= (query.limit || 50),
     }
+  }
 
-    return response.json()
+  async get<T = Entity>(collection: string, id: string, options?: { variant?: string }): Promise<T | null> {
+    try {
+      return await this.api.request<T>('GET', `/entities/${id}`, {
+        query: { projectId: this.projectId, collection, variant: options?.variant },
+        errorContext: 'Failed to get entity',
+      })
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) return null
+      throw err
+    }
+  }
+
+  async create<T = Entity>(collection: string, data: Partial<T>): Promise<T> {
+    return this.api.request<T>('POST', '/entities', {
+      body: { collection, projectId: this.projectId, data },
+      errorContext: 'Failed to create entity',
+    })
   }
 
   /**
@@ -405,74 +435,37 @@ export class EntityAPI {
    * collection; if any insert fails, the whole batch rolls back. Capped at 500
    * items server-side. Use the atomic-batch endpoint for mixed create/update/delete.
    */
-  async createBatch<T = any>(collection: string, items: Array<Partial<T>>): Promise<T[]> {
-    const response = await fetch(`${this.api.apiBaseUrl}/entities/batch`, {
-      method: 'POST',
-      headers: this.api.getAuthHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({
-        collection,
-        projectId: this.projectId,
-        items
-      })
+  async createBatch<T = Entity>(collection: string, items: Array<Partial<T>>): Promise<T[]> {
+    const result = await this.api.request<{ entities?: T[] }>('POST', '/entities/batch', {
+      body: { collection, projectId: this.projectId, items },
+      errorContext: 'Failed to create entities (batch)',
     })
-
-    if (!response.ok) {
-      this.api.throwIfUnauthorized(response)
-      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-      throw new Error(`Failed to create entities (batch): ${errorData.error || response.statusText}`)
-    }
-
-    const result = await response.json()
-    return result.entities || []
+    return result.entities ?? []
   }
 
-  async update<T = any>(collection: string, id: string, data: Partial<T>, expectedVersion?: number): Promise<T> {
-    const body: Record<string, any> = {
-      collection,
-      projectId: this.projectId,
-      data
-    }
-    if (expectedVersion !== undefined) {
-      body.expectedVersion = expectedVersion
-    }
+  async update<T = Entity>(collection: string, id: string, data: Partial<T>, expectedVersion?: number): Promise<T> {
+    const body: Record<string, any> = { collection, projectId: this.projectId, data }
+    if (expectedVersion !== undefined) body.expectedVersion = expectedVersion
 
-    const response = await fetch(`${this.api.apiBaseUrl}/entities/${id}`, {
-      method: 'PUT',
-      headers: this.api.getAuthHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify(body)
-    })
-
-    if (!response.ok) {
-      this.api.throwIfUnauthorized(response)
-      if (response.status === 409) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new ConflictError(
-          errorData.currentVersion ?? 0,
-          errorData.expectedVersion ?? expectedVersion ?? 0
-        )
+    try {
+      return await this.api.request<T>('PUT', `/entities/${id}`, { body, errorContext: 'Failed to update entity' })
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        const conflict = (err.body ?? {}) as { currentVersion?: number; expectedVersion?: number }
+        throw new ConflictError(conflict.currentVersion ?? 0, conflict.expectedVersion ?? expectedVersion ?? 0)
       }
-      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-      throw new Error(`Failed to update entity: ${errorData.details || errorData.error || response.statusText}`)
+      throw err
     }
-
-    return response.json()
   }
 
   async getVersion(collection: string, id: string): Promise<{ version: number; updatedAt: string } | null> {
-    const params = new URLSearchParams({
-      projectId: this.projectId,
-      collection
-    })
-
-    const response = await fetch(`${this.api.apiBaseUrl}/entities/${id}?${params}`, {
-      method: 'HEAD',
-      headers: this.api.getAuthHeaders()
-    })
+    const params = new URLSearchParams({ projectId: this.projectId, collection })
+    const response = await this.api.fetch(`/entities/${id}?${params}`, { method: 'HEAD' })
 
     if (!response.ok) {
       this.api.throwIfUnauthorized(response)
       if (response.status === 404) return null
-      throw new Error(`Failed to get entity version (${response.status})`)
+      throw new ApiError(response.status, `Failed to get entity version (${response.status})`)
     }
 
     const version = response.headers.get('X-Entity-Version')
@@ -498,36 +491,18 @@ export class EntityAPI {
    * normalised value the server stored.
    */
   async setContentType(id: string, contentType: string): Promise<{ id: string; contentType: string }> {
-    const params = new URLSearchParams({ projectId: this.projectId })
-    const response = await fetch(`${this.api.apiBaseUrl}/entities/${id}/content-type?${params}`, {
-      method: 'PATCH',
-      headers: this.api.getAuthHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ contentType }),
+    return this.api.request('PATCH', `/entities/${id}/content-type`, {
+      query: { projectId: this.projectId },
+      body: { contentType },
+      errorContext: 'Failed to update content type',
     })
-    if (!response.ok) {
-      this.api.throwIfUnauthorized(response)
-      const body = await response.text().catch(() => '')
-      throw new Error(`Failed to update content type (${response.status}): ${body || response.statusText}`)
-    }
-    return response.json()
   }
 
   async delete(collection: string, id: string): Promise<void> {
-    const params = new URLSearchParams({
-      projectId: this.projectId,
-      collection
+    await this.api.request<void>('DELETE', `/entities/${id}`, {
+      query: { projectId: this.projectId, collection },
+      errorContext: 'Failed to delete entity',
     })
-
-    const response = await fetch(`${this.api.apiBaseUrl}/entities/${id}?${params}`, {
-      method: 'DELETE',
-      headers: this.api.getAuthHeaders()
-    })
-
-    if (!response.ok) {
-      this.api.throwIfUnauthorized(response)
-      const body = await response.text().catch(() => '')
-      throw new Error(`Failed to delete entity (${response.status}): ${body || response.statusText}`)
-    }
   }
 
   /**
@@ -542,21 +517,7 @@ export class EntityAPI {
     previous_template_id: string | null
     type: Record<string, any>
   }> {
-    const response = await fetch(
-      `${this.api.apiBaseUrl}/projects/${this.projectId}/entity-types/${encodeURIComponent(typeId)}/detach`,
-      {
-        method: 'POST',
-        headers: this.api.getAuthHeaders()
-      }
-    )
-
-    if (!response.ok) {
-      this.api.throwIfUnauthorized(response)
-      const body = await response.text().catch(() => '')
-      throw new Error(`Failed to detach entity type from template (${response.status}): ${body || response.statusText}`)
-    }
-
-    return response.json()
+    return this.api.request('POST', `/projects/${this.projectId}/entity-types/${encodeURIComponent(typeId)}/detach`, { errorContext: 'Failed to detach entity type from template' })
   }
 }
 
