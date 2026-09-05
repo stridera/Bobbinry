@@ -17,7 +17,7 @@ import { randomUUID } from 'crypto'
 import { eq, and, desc, sql } from 'drizzle-orm'
 import { db } from '../db/connection'
 import { uploads } from '../db/schema'
-import { requireAuth, requireProjectOwnership } from '../middleware/auth'
+import { requireAuth, ownsProject } from '../middleware/auth'
 import { generatePresignedPutUrl, headObject, deleteObject, getPublicUrl, getObject } from '../lib/s3'
 import { generateVariants, variantKey } from '../lib/image-variants'
 import { getUserMembershipTier, getSizeLimits } from '../lib/membership'
@@ -124,7 +124,7 @@ async function uploadsPlugin(fastify: FastifyInstance) {
       collection?: string
     }
   }>('/uploads/presign', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, ownsProject('body')],
   }, async (request, reply) => {
     const { filename, contentType, size, context, projectId, entityId, collection } = request.body
     const user = request.user!
@@ -164,8 +164,6 @@ async function uploadsPlugin(fastify: FastifyInstance) {
       if (!projectId) {
         return reply.status(400).send({ error: 'projectId is required for non-avatar uploads' })
       }
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
     }
 
     // Generate S3 key
@@ -200,7 +198,7 @@ async function uploadsPlugin(fastify: FastifyInstance) {
       projectId?: string
     }
   }>('/uploads/confirm', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, ownsProject('body')],
   }, async (request, reply) => {
     const { fileKey, filename, contentType, size, context, projectId } = request.body
     const user = request.user!
@@ -233,8 +231,6 @@ async function uploadsPlugin(fastify: FastifyInstance) {
     // presign already did, but the project could have changed hands between
     // presign and confirm.
     if (context !== 'avatar' && projectId) {
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
     }
 
     // Verify the object actually exists in S3

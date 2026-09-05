@@ -11,7 +11,7 @@ import {
   type ContentType,
   type VariantResolutionConfig
 } from '@bobbinry/types'
-import { requireAuth, requireProjectOwnership, assertEntityScope } from '../middleware/auth'
+import { requireAuth, requireProjectOwnership, assertEntityScope, ownsProject } from '../middleware/auth'
 import { serverEventBus, contentEdited } from '../lib/event-bus'
 import {
   changeEventFromRow,
@@ -922,7 +922,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       collection: string
     }
   }>('/entities/:entityId', {
-    preHandler: [requireAuth]
+    preHandler: [requireAuth, ownsProject('query')]
   }, async (request, reply) => {
     try {
       const { entityId } = request.params
@@ -935,8 +935,6 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       if (!assertEntityScope(request, reply, collection, 'write')) return
 
       // Check project ownership
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       // Resolve scope for entity visibility
       const userId = request.user!.id
@@ -1399,7 +1397,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       variant?: string
     }
   }>('/entities/:entityId', {
-    preHandler: [requireAuth]
+    preHandler: [requireAuth, ownsProject('query')]
   }, async (request, reply) => {
     try {
       const { entityId } = request.params
@@ -1415,8 +1413,6 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       if (!assertEntityScope(request, reply, collection, 'read')) return
 
       // Check project ownership
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       // Resolve scope for entity visibility
       const userId = request.user!.id
@@ -1742,13 +1738,10 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{ Params: { projectId: string } }>(
     '/projects/:projectId/trash',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, ownsProject()] },
     async (request, reply) => {
       try {
         const { projectId } = request.params
-
-        const hasAccess = await requireProjectOwnership(request, reply, projectId)
-        if (!hasAccess) return
 
         const rows = await db
           .select({
@@ -1908,7 +1901,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
     Querystring: { projectId: string }
     Body: { contentType: ContentType }
   }>('/entities/:entityId/content-type', {
-    preHandler: [requireAuth],
+    preHandler: [requireAuth, ownsProject('query')],
   }, async (request, reply) => {
     try {
       const { entityId } = request.params
@@ -1918,9 +1911,6 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       if (!isContentType(contentType)) {
         return reply.status(400).send({ error: 'Invalid contentType' })
       }
-
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       const updated = await db
         .update(entities)

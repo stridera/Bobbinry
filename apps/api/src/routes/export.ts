@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import type { ExportSnapshot, ExportFormat, ExportMode } from '@bobbinry/types'
 import { EXPORT_FORMATS, EXPORT_MODES } from '@bobbinry/types'
-import { requireAuth, requireProjectOwnership, assertEntityScope } from '../middleware/auth'
+import { requireAuth, assertEntityScope, ownsProject } from '../middleware/auth'
 import { db } from '../db/connection'
 import { entities, projects } from '../db/schema'
 import { eq, and, sql } from 'drizzle-orm'
@@ -137,11 +137,9 @@ const exportPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string }
   }>('/projects/:projectId/export/snapshot', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, ownsProject()],
   }, async (request, reply) => {
     const { projectId } = request.params
-    const hasAccess = await requireProjectOwnership(request, reply, projectId)
-    if (!hasAccess) return
 
     // Snapshot exposes manuscript content — gate on the manuscript read scope.
     if (!assertEntityScope(request, reply, 'content', 'read')) return
@@ -153,11 +151,9 @@ const exportPlugin: FastifyPluginAsync = async (fastify) => {
     Params: { projectId: string; format: string }
     Querystring: { mode?: string }
   }>('/projects/:projectId/export/:format', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, ownsProject()],
   }, async (request, reply) => {
     const { projectId, format } = request.params
-    const hasAccess = await requireProjectOwnership(request, reply, projectId)
-    if (!hasAccess) return
 
     if (!EXPORT_FORMATS.includes(format as ExportFormat)) {
       return reply.status(400).send({

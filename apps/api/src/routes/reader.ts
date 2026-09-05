@@ -43,7 +43,7 @@ import {
 import { eq, and, desc, asc, sql, isNull, or, count, inArray } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { env } from '../lib/env'
-import { optionalAuth, requireAuth, requireProjectOwnership } from '../middleware/auth'
+import { optionalAuth, requireAuth, requireProjectOwnership, ownsProject } from '../middleware/auth'
 import { hashRssToken } from './rss-tokens'
 import { countWordsFromHtml } from '../lib/text'
 import { liveProjectEntity, notDeleted } from '../lib/entity-scope'
@@ -3036,15 +3036,12 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
     Params: { projectId: string }
     Querystring: { status?: string; annotationType?: string; chapterId?: string; limit?: number; offset?: number }
   }>('/projects/:projectId/annotations', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { projectId } = request.params
       const { status: statusFilter, annotationType, chapterId, limit = 50, offset = 0 } = request.query
-
-      const isOwner = await requireProjectOwnership(request, reply, projectId)
-      if (!isOwner) return
 
       const conditions = [eq(chapterAnnotations.projectId, projectId)]
       if (statusFilter) conditions.push(eq(chapterAnnotations.status, statusFilter))
@@ -3307,14 +3304,11 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.post<{
     Params: { projectId: string; annotationId: string }
   }>('/projects/:projectId/annotations/:annotationId/accept', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { projectId, annotationId } = request.params
-
-      const isOwner = await requireProjectOwnership(request, reply, projectId)
-      if (!isOwner) return
 
       // Verify the annotation exists and has suggested text
       const [annotation] = await db

@@ -15,7 +15,7 @@ import {
 } from '../db/schema'
 import { eq, and, sql, isNotNull } from 'drizzle-orm'
 import { chapterViewStats, getChapterViewStats } from '../lib/chapter-view-stats'
-import { requireAuth, requireProjectOwnership } from '../middleware/auth'
+import { requireAuth, ownsProject } from '../middleware/auth'
 import { loadDiskManifests } from '../lib/disk-manifests'
 import { getCollectionIdsForProject, buildScopeCondition } from '../lib/effective-bobbins'
 import { getSlugsForEntities } from '../lib/slugs'
@@ -33,14 +33,11 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string }
   }>('/projects/:projectId/tags', {
-    preHandler: [requireAuth]
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { projectId } = request.params
-
-      const isOwner = await requireProjectOwnership(request, reply, projectId)
-      if (!isOwner) return
 
       const tags = await db
         .select({
@@ -64,15 +61,12 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
     Params: { projectId: string }
     Body: { tagCategory: string; tagName: string }
   }>('/projects/:projectId/tags', {
-    preHandler: [requireAuth]
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { projectId } = request.params
       const { tagCategory, tagName } = request.body
-
-      const isOwner = await requireProjectOwnership(request, reply, projectId)
-      if (!isOwner) return
 
       // Validate category
       if (!VALID_TAG_CATEGORIES.includes(tagCategory as any)) {
@@ -127,14 +121,11 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.delete<{
     Params: { projectId: string; tagId: string }
   }>('/projects/:projectId/tags/:tagId', {
-    preHandler: [requireAuth]
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { projectId, tagId } = request.params
-
-      const isOwner = await requireProjectOwnership(request, reply, projectId)
-      if (!isOwner) return
 
       const deleted = await db
         .delete(contentTags)
@@ -166,7 +157,7 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
       includeDeleted?: 'deleted-only' | 'all'
     }
   }>('/projects/:projectId/dashboard', {
-    preHandler: [requireAuth]
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
@@ -181,9 +172,6 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
         includeDeleted === 'deleted-only' ? isNotNull(entities.deletedAt)
         : includeDeleted === 'all' ? undefined
         : notDeleted()
-
-      const isOwner = await requireProjectOwnership(request, reply, projectId)
-      if (!isOwner) return
 
       // Entity visibility scope for the bobbin tile counts: project-scoped
       // rows, plus collection-scoped rows from collections this project

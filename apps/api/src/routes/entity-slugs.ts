@@ -8,7 +8,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { db } from '../db/connection'
 import { entities, entitySlugs } from '../db/schema'
 import { eq, and } from 'drizzle-orm'
-import { requireAuth, requireProjectOwnership } from '../middleware/auth'
+import { requireAuth, ownsProject } from '../middleware/auth'
 import {
   claimSlugManually,
   getSlugAliases,
@@ -25,12 +25,10 @@ const entitySlugsPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string; entityId: string }
   }>('/projects/:projectId/entities/:entityId/slug', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     try {
       const { projectId, entityId } = request.params
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
       if (!UUID_RE.test(entityId)) {
         return reply.status(404).send({ error: 'Entity not found' })
       }
@@ -65,13 +63,11 @@ const entitySlugsPlugin: FastifyPluginAsync = async (fastify) => {
     Params: { projectId: string; entityId: string }
     Body: { slug?: string; pinned?: boolean }
   }>('/projects/:projectId/entities/:entityId/slug', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     try {
       const { projectId, entityId } = request.params
       const { slug, pinned } = request.body || {}
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
       if (!UUID_RE.test(entityId)) {
         return reply.status(404).send({ error: 'Entity not found' })
       }

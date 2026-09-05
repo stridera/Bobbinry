@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { requireAuth, requireProjectOwnership, requireVerified } from '../middleware/auth'
+import { requireAuth, requireProjectOwnership, requireVerified, ownsProject } from '../middleware/auth'
 import { db } from '../db/connection'
 import {
   chapterPublications,
@@ -47,13 +47,11 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       publishEarly?: boolean
     }
   }>('/projects/:projectId/chapters/:chapterId/publish', {
-    preHandler: [requireAuth, requireVerified]
+    preHandler: [requireAuth, requireVerified, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { projectId, chapterId } = request.params
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
       const { publishStatus, publishedVersion, firstPublishedAt, scheduledFor, publishEarly } = request.body
 
       // Check if chapter exists
@@ -200,13 +198,11 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.post<{
     Params: { projectId: string; chapterId: string }
   }>('/projects/:projectId/chapters/:chapterId/unpublish', {
-    preHandler: [requireAuth, requireVerified]
+    preHandler: [requireAuth, requireVerified, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { projectId, chapterId } = request.params
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       const [updated] = await db
         .update(chapterPublications)
@@ -238,13 +234,11 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.post<{
     Params: { projectId: string; chapterId: string }
   }>('/projects/:projectId/chapters/:chapterId/complete', {
-    preHandler: [requireAuth, requireVerified]
+    preHandler: [requireAuth, requireVerified, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { projectId, chapterId } = request.params
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       // Check if chapter exists
       const [chapter] = await db
@@ -344,13 +338,11 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.post<{
     Params: { projectId: string; chapterId: string }
   }>('/projects/:projectId/chapters/:chapterId/revert-to-draft', {
-    preHandler: [requireAuth, requireVerified]
+    preHandler: [requireAuth, requireVerified, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { projectId, chapterId } = request.params
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       const [updated] = await db
         .update(chapterPublications)
@@ -374,13 +366,11 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string; chapterId: string }
   }>('/projects/:projectId/chapters/:chapterId/publication', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { projectId, chapterId } = request.params
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       const [publication] = await db
         .select()
@@ -403,13 +393,11 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string; chapterId: string }
   }>('/projects/:projectId/chapters/:chapterId/next-release-slot', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { projectId, chapterId } = request.params
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       const nextReleaseSlot = await getNextAvailableReleaseSlot(projectId, { excludeChapterId: chapterId })
       return reply.send({
@@ -427,14 +415,12 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
     Params: { projectId: string }
     Querystring: { status?: string }
   }>('/projects/:projectId/publications', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { projectId } = request.params
       const { status } = request.query
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       const whereConditions = (status && status !== 'all')
         ? and(eq(chapterPublications.projectId, projectId), eq(chapterPublications.publishStatus, status))
@@ -474,13 +460,11 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string }
   }>('/projects/:projectId/publish-config', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { projectId } = request.params
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       const [config] = await db
         .select()
@@ -533,7 +517,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       useManuscriptOrder?: boolean
     }
   }>('/projects/:projectId/publish-config', {
-    preHandler: [requireAuth, requireVerified]
+    preHandler: [requireAuth, requireVerified, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
@@ -546,8 +530,6 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
         'slugPrefix', 'seoDescription', 'ogImageUrl',
         'enableComments', 'enableReactions', 'moderationMode', 'useManuscriptOrder',
       ] as const)
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       if (updates.projectVisibility !== undefined
         && !['public', 'unlisted', 'private'].includes(updates.projectVisibility)) {
@@ -652,13 +634,11 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       tierSchedules?: Array<{ tierId: string; releaseDate: string }>
     }
   }>('/projects/:projectId/embargoes', {
-    preHandler: [requireAuth, requireVerified]
+    preHandler: [requireAuth, requireVerified, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { projectId } = request.params
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
       const { entityId, publishMode, baseReleaseDate, publicReleaseDate, tierSchedules } = request.body
 
       const [embargo] = await db
@@ -684,13 +664,11 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string; chapterId: string }
   }>('/projects/:projectId/chapters/:chapterId/embargo', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { projectId, chapterId } = request.params
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       const [embargo] = await db
         .select()
@@ -802,13 +780,11 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string }
   }>('/projects/:projectId/destinations', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { projectId } = request.params
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       const destinations = await db
         .select()
@@ -833,13 +809,11 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       isActive?: boolean
     }
   }>('/projects/:projectId/destinations', {
-    preHandler: [requireAuth, requireVerified]
+    preHandler: [requireAuth, requireVerified, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { projectId } = request.params
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
       const { type, name, config, isActive } = request.body
 
       const [destination] = await db
@@ -1023,13 +997,11 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       requireAgeGate?: boolean
     }
   }>('/projects/:projectId/content-warnings', {
-    preHandler: [requireAuth, requireVerified]
+    preHandler: [requireAuth, requireVerified, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { projectId } = request.params
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
       const { warningType, customLabel, severity, displayInSummary, requireAgeGate } = request.body
 
       const [warning] = await db
@@ -1089,13 +1061,11 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string; chapterId: string }
   }>('/projects/:projectId/chapters/:chapterId/analytics', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
-      const { projectId, chapterId } = request.params
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
+      const { chapterId } = request.params
 
       const [publication] = await db
         .select()
@@ -1140,13 +1110,11 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string; chapterId: string }
   }>('/projects/:projectId/chapters/:chapterId/analytics/breakdown', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
-      const { projectId, chapterId } = request.params
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
+      const { chapterId } = request.params
 
       const progressBucket = sql`CASE
         WHEN ${chapterViews.completedAt} IS NOT NULL THEN 'completed'
@@ -1211,13 +1179,11 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string }
   }>('/projects/:projectId/analytics/chapters', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { projectId } = request.params
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       // The stored counters of these names are unmaintained; see
       // lib/chapter-view-stats.ts. Derive from chapter_views instead.
@@ -1258,13 +1224,11 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string }
   }>('/projects/:projectId/analytics', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { projectId } = request.params
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       const publications = await db
         .select()
@@ -1303,14 +1267,12 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
     Params: { projectId: string; chapterId: string }
     Querystring: { limit?: number; offset?: number }
   }>('/projects/:projectId/chapters/:chapterId/snapshots', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { projectId, chapterId } = request.params
       const { limit = 20, offset = 0 } = request.query
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       const snapshots = await db
         .select({
@@ -1340,13 +1302,11 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string; snapshotId: string }
   }>('/projects/:projectId/snapshots/:snapshotId', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { projectId, snapshotId } = request.params
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       const [snapshot] = await db
         .select()

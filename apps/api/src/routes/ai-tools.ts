@@ -11,7 +11,7 @@ import { eq, and } from 'drizzle-orm'
 import { db } from '../db/connection'
 import { entities, userBobbinsInstalled, provenanceEvents } from '../db/schema'
 import { liveProjectEntity } from '../lib/entity-scope'
-import { requireAuth, requireProjectOwnership } from '../middleware/auth'
+import { requireAuth, ownsProject } from '../middleware/auth'
 import { ApiError } from '../lib/errors'
 import { encryptSecret, decryptSecret } from '../lib/secret-storage'
 import { extractTitle, recordEntityChangesSafe } from '../lib/entity-changes'
@@ -430,7 +430,7 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.post<{ Body: { projectId: string; entityId: string } }>(
     '/ai-tools/synopsis',
-    { preHandler: requireAuth },
+    { preHandler: [requireAuth, ownsProject('body')] },
     async (request, reply) => {
       const userId = request.user!.id
       const { projectId, entityId } = request.body || {}
@@ -438,9 +438,6 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
       if (!projectId || !entityId) {
         return reply.status(400).send({ error: 'projectId and entityId are required' })
       }
-
-      const isOwner = await requireProjectOwnership(request, reply, projectId)
-      if (!isOwner) return
 
       const bobbin = await getUserAIBobbin(userId)
       const config = bobbin?.config as any
@@ -502,7 +499,7 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.post<{ Body: { projectId: string; entityId: string; synopsis: string; model?: string } }>(
     '/ai-tools/synopsis/save',
-    { preHandler: requireAuth },
+    { preHandler: [requireAuth, ownsProject('body')] },
     async (request, reply) => {
       const userId = request.user!.id
       const { projectId, entityId, synopsis, model } = request.body || {}
@@ -510,9 +507,6 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
       if (!projectId || !entityId || !synopsis) {
         return reply.status(400).send({ error: 'projectId, entityId, and synopsis are required' })
       }
-
-      const isOwner = await requireProjectOwnership(request, reply, projectId)
-      if (!isOwner) return
 
       const [entity] = await db
         .select()
@@ -567,7 +561,7 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.post<{ Body: { projectId: string; entityId: string; focus?: string } }>(
     '/ai-tools/review',
-    { preHandler: requireAuth },
+    { preHandler: [requireAuth, ownsProject('body')] },
     async (request, reply) => {
       const userId = request.user!.id
       const { projectId, entityId, focus } = request.body || {}
@@ -575,9 +569,6 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
       if (!projectId || !entityId) {
         return reply.status(400).send({ error: 'projectId and entityId are required' })
       }
-
-      const isOwner = await requireProjectOwnership(request, reply, projectId)
-      if (!isOwner) return
 
       const bobbin = await getUserAIBobbin(userId)
       const config = bobbin?.config as any
@@ -692,16 +683,13 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{ Querystring: { projectId: string; entityId: string } }>(
     '/ai-tools/review/existing',
-    { preHandler: requireAuth },
+    { preHandler: [requireAuth, ownsProject('query')] },
     async (request, reply) => {
       const { projectId, entityId } = request.query || {}
 
       if (!projectId || !entityId) {
         return reply.status(400).send({ error: 'projectId and entityId are required' })
       }
-
-      const isOwner = await requireProjectOwnership(request, reply, projectId)
-      if (!isOwner) return
 
       const [entity] = await db
         .select()
@@ -736,7 +724,7 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.post<{ Body: { projectId: string; entityId: string; genre?: string } }>(
     '/ai-tools/names',
-    { preHandler: requireAuth },
+    { preHandler: [requireAuth, ownsProject('body')] },
     async (request, reply) => {
       const userId = request.user!.id
       const { projectId, entityId, genre } = request.body || {}
@@ -744,9 +732,6 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
       if (!projectId || !entityId) {
         return reply.status(400).send({ error: 'projectId and entityId are required' })
       }
-
-      const isOwner = await requireProjectOwnership(request, reply, projectId)
-      if (!isOwner) return
 
       const bobbin = await getUserAIBobbin(userId)
       const config = bobbin?.config as any
@@ -806,7 +791,7 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.post<{ Body: { projectId: string; entityId: string } }>(
     '/ai-tools/brainstorm',
-    { preHandler: requireAuth },
+    { preHandler: [requireAuth, ownsProject('body')] },
     async (request, reply) => {
       const userId = request.user!.id
       const { projectId, entityId } = request.body || {}
@@ -814,9 +799,6 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
       if (!projectId || !entityId) {
         return reply.status(400).send({ error: 'projectId and entityId are required' })
       }
-
-      const isOwner = await requireProjectOwnership(request, reply, projectId)
-      if (!isOwner) return
 
       const bobbin = await getUserAIBobbin(userId)
       const config = bobbin?.config as any
@@ -875,7 +857,7 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.post<{ Body: { projectId: string; entityId: string } }>(
     '/ai-tools/flesh-out',
-    { preHandler: requireAuth },
+    { preHandler: [requireAuth, ownsProject('body')] },
     async (request, reply) => {
       const userId = request.user!.id
       const { projectId, entityId } = request.body || {}
@@ -883,9 +865,6 @@ const aiToolsPlugin: FastifyPluginAsync = async (fastify) => {
       if (!projectId || !entityId) {
         return reply.status(400).send({ error: 'projectId and entityId are required' })
       }
-
-      const isOwner = await requireProjectOwnership(request, reply, projectId)
-      if (!isOwner) return
 
       const bobbin = await getUserAIBobbin(userId)
       const config = bobbin?.config as any

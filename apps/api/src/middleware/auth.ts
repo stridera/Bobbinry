@@ -498,6 +498,22 @@ export async function requireProjectOwnership(
   return checkProjectOwnership(request, reply, projectId, false)
 }
 
+/**
+ * Route-level ownership guard: the authenticated user must own the active
+ * project named by `request[source][key]` (params by default). Use as
+ * `preHandler: [requireAuth, ownsProject()]` instead of calling
+ * requireProjectOwnership inside the handler — a guard that runs before the
+ * handler cannot be forgotten on one code path, which is how two IDORs got in.
+ */
+export function ownsProject(source: 'params' | 'body' | 'query' = 'params', key = 'projectId') {
+  return async (request: FastifyRequest, reply: FastifyReply) => {
+    const bag = (request[source] ?? {}) as Record<string, unknown>
+    const projectId = typeof bag[key] === 'string' ? (bag[key] as string) : ''
+    const ok = await checkProjectOwnership(request, reply, projectId, false)
+    if (!ok) return reply
+  }
+}
+
 /** Same as requireProjectOwnership but only matches trashed (soft-deleted) projects. */
 export async function requireDeletedProjectOwnership(
   request: FastifyRequest,

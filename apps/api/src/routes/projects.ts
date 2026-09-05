@@ -4,7 +4,7 @@ import { db } from '../db/connection'
 import { projects, bobbinsInstalled, entities, projectManuscriptDisplaySettings } from '../db/schema'
 import { eq, and, count, inArray, isNull } from 'drizzle-orm'
 import { ManifestCompiler } from '@bobbinry/compiler'
-import { requireAuth, requireProjectOwnership, requireVerified, requireScope } from '../middleware/auth'
+import { requireAuth, requireProjectOwnership, requireVerified, requireScope, ownsProject } from '../middleware/auth'
 import { getUserMembershipTier, getProjectLimit, getUserBadges } from '../lib/membership'
 import { checkAndUpgradeBobbin, type UpgradeResult } from '../lib/bobbin-upgrader'
 import { loadDiskManifests, loadManifestFromBobbinsPath } from '../lib/disk-manifests'
@@ -165,15 +165,13 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
       manifestType?: 'yaml' | 'json'
     }
   }>('/projects/:projectId/bobbins/install', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     try {
       const { projectId } = request.params
       const { manifestPath, manifestContent, manifestType } = request.body
 
       // Check ownership
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       // Get manifest content
       let content: string
@@ -355,15 +353,13 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string }
   }>('/projects/:projectId/bobbins', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     try {
       const { projectId } = request.params
       const userId = request.user!.id
 
       // Check ownership
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       // --- Project-scoped installations (with legacy migration) ---
 
@@ -480,14 +476,12 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.delete<{
     Params: { projectId: string; bobbinId: string }
   }>('/projects/:projectId/bobbins/:bobbinId', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     try {
       const { projectId, bobbinId } = request.params
 
       // Check ownership
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       // Check if bobbin is installed
       const installation = await db
@@ -547,15 +541,13 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
       coverImage?: string | null
     }
   }>('/projects/:projectId', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     try {
       const { projectId } = request.params
       const { name, description, coverImage } = request.body
 
       // Check ownership
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       const updates: Record<string, unknown> = {}
       if (name !== undefined) updates.name = name
@@ -590,12 +582,10 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string }
   }>('/projects/:projectId/manuscript-display-settings', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     try {
       const { projectId } = request.params
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       const rows = await db
         .select()
@@ -636,12 +626,10 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
       smartEllipsis?: boolean | null
     }
   }>('/projects/:projectId/manuscript-display-settings', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     try {
       const { projectId } = request.params
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
       const body = pickDefined(request.body, [
         'paragraphSpacing', 'paragraphIndent', 'codeBlockWrap', 'sceneBreakStyle',
         'dropCaps', 'smartDashes', 'smartEllipsis',

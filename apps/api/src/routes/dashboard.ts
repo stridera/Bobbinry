@@ -15,7 +15,7 @@ import {
 } from '../db/schema'
 import { eq, and, ne, desc, sql, inArray, isNull, isNotNull } from 'drizzle-orm'
 import { randomBytes } from 'crypto'
-import { requireAuth, requireProjectOwnership, requireDeletedProjectOwnership, requireScope } from '../middleware/auth'
+import { requireAuth, requireDeletedProjectOwnership, requireScope, ownsProject } from '../middleware/auth'
 import { autoDeleteAt, notDeleted } from '../lib/entity-scope'
 
 const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
@@ -289,12 +289,10 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
       projectId: string
     }
   }>('/projects/:projectId/archive', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     try {
       const { projectId } = request.params
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       const [project] = await db
         .update(projects)
@@ -326,12 +324,10 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
       projectId: string
     }
   }>('/projects/:projectId/unarchive', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     try {
       const { projectId } = request.params
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       const [project] = await db
         .update(projects)
@@ -366,13 +362,11 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
       customUrl?: string
     }
   }>('/projects/:projectId/short-url', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     try {
       const { projectId } = request.params
       const { customUrl } = request.body || {}
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       // Reserved words
       const reservedWords = [
@@ -436,12 +430,10 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
       projectId: string
     }
   }>('/projects/:projectId/short-url', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     try {
       const { projectId } = request.params
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       await db
         .update(projects)
@@ -520,12 +512,10 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
       projectId: string
     }
   }>('/projects/:projectId', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     try {
       const { projectId } = request.params
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       await db
         .update(projects)
