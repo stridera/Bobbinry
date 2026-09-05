@@ -9,6 +9,7 @@ import { getUserMembershipTier, getProjectLimit, getUserBadges } from '../lib/me
 import { checkAndUpgradeBobbin, type UpgradeResult } from '../lib/bobbin-upgrader'
 import { loadDiskManifests, loadManifestFromBobbinsPath } from '../lib/disk-manifests'
 import { getEffectiveBobbins } from '../lib/effective-bobbins'
+import { pickDefined } from '../lib/pick'
 
 // Bobbins auto-installed on every new project and protected from uninstall.
 // Source of truth is each bobbin's manifest `core: true` flag; this list keeps
@@ -641,7 +642,10 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
       const { projectId } = request.params
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
       if (!hasAccess) return
-      const body = request.body ?? {}
+      const body = pickDefined(request.body, [
+        'paragraphSpacing', 'paragraphIndent', 'codeBlockWrap', 'sceneBreakStyle',
+        'dropCaps', 'smartDashes', 'smartEllipsis',
+      ] as const)
 
       const existing = await db
         .select()

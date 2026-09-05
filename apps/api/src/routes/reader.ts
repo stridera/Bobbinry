@@ -46,7 +46,7 @@ import { env } from '../lib/env'
 import { optionalAuth, requireAuth, requireProjectOwnership } from '../middleware/auth'
 import { hashRssToken } from './rss-tokens'
 import { countWordsFromHtml } from '../lib/text'
-import { liveEntity, notDeleted } from '../lib/entity-scope'
+import { liveProjectEntity, notDeleted } from '../lib/entity-scope'
 import { changeEventFromRow, extractWordCount, recordEntityChangesSafe } from '../lib/entity-changes'
 import {
   getEffectiveBobbins,
@@ -3186,6 +3186,18 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         }
       }
 
+      // The chapter must be a live content entity of the project the caller was
+      // authorised against. Without this, a reader of project A could attach
+      // annotations — and accepted suggestions — to chapters in project B.
+      const [chapter] = await db
+        .select({ id: entities.id })
+        .from(entities)
+        .where(and(liveProjectEntity(body.projectId, chapterId), eq(entities.collectionName, 'content')))
+        .limit(1)
+      if (!chapter) {
+        return reply.status(404).send({ error: 'Chapter not found', correlationId })
+      }
+
       const [annotation] = await db
         .insert(chapterAnnotations)
         .values({
@@ -3367,7 +3379,11 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         })
         .from(chapterAnnotations)
         .innerJoin(users, eq(users.id, chapterAnnotations.authorId))
-        .leftJoin(entities, and(eq(entities.id, chapterAnnotations.chapterId), notDeleted()))
+        .leftJoin(entities, and(
+          eq(entities.id, chapterAnnotations.chapterId),
+          eq(entities.projectId, projectId),
+          notDeleted()
+        ))
         .where(and(...conditions))
         .orderBy(desc(chapterAnnotations.createdAt))
         .limit(limit)
@@ -3383,7 +3399,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
             body: sql<string>`(${entities.entityData}->>'body')`
           })
           .from(entities)
-          .where(and(inArray(entities.id, chapterIds), notDeleted()))
+          .where(and(inArray(entities.id, chapterIds), eq(entities.projectId, projectId), notDeleted()))
 
         for (const row of bodyRows) {
           if (row.body) chapterBodies.set(row.id, row.body)
@@ -3635,7 +3651,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
             contentType: entities.contentType,
           })
           .from(entities)
-          .where(liveEntity(annotation.chapterId))
+          .where(liveProjectEntity(projectId, annotation.chapterId))
           .limit(1)
 
         if (chapter) {

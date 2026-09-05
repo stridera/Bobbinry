@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterEach } from '@jest/globals'
 import { eq } from 'drizzle-orm'
 import { db } from '../../db/connection'
-import { chapterAnnotations, entities, users } from '../../db/schema'
+import { chapterAnnotations, entities, users, projectPublishConfig } from '../../db/schema'
 import {
   createTestApp,
   createTestToken,
@@ -244,6 +244,140 @@ describe('Public Reader — Annotations', () => {
       })
 
       expect(res.statusCode).toBe(404)
+    })
+  })
+  // Regression: annotations were scoped only by the caller's access to
+  // `body.projectId`; the chapter id itself was never checked against that
+  // project. A reader of project A could annotate — and, as A's owner, accept a
+  // suggestion into — any chapter in project B.
+  describe('cross-project chapter ids are rejected', () => {
+    it('refuses to create an annotation on a chapter from another project', async () => {
+      const attacker = await createTestUser()
+      const victim = await createTestUser()
+      const attackerProject = await createTestProject(attacker.id)
+      const victimProject = await createTestProject(victim.id)
+      const victimChapter = await seedChapter(victimProject.id)
+      const token = await createTestToken(attacker.id)
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/public/chapters/${victimChapter.id}/annotations`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          projectId: attackerProject.id,
+          anchorQuote: 'The reactor hummed',
+          annotationType: 'suggestion',
+          content: 'smuggled',
+          suggestedText: 'The reactor exploded',
+          chapterVersion: 1,
+        },
+      })
+
+      expect(res.statusCode).toBe(404)
+      const rows = await db
+        .select()
+        .from(chapterAnnotations)
+        .where(eq(chapterAnnotations.chapterId, victimChapter.id))
+      expect(rows).toHaveLength(0)
+    })
+
+    it('does not apply an accepted suggestion to a chapter outside the project', async () => {
+      const attacker = await createTestUser()
+      const victim = await createTestUser()
+      const attackerProject = await createTestProject(attacker.id)
+      const victimProject = await createTestProject(victim.id)
+      const victimChapter = await seedChapter(victimProject.id)
+      const token = await createTestToken(attacker.id)
+
+      // Seed the mismatched row directly — the create route now refuses it.
+      const [annotation] = await db.insert(chapterAnnotations).values({
+        chapterId: victimChapter.id,
+        projectId: attackerProject.id,
+        authorId: attacker.id,
+        anchorQuote: 'The reactor hummed',
+        annotationType: 'suggestion',
+        content: 'smuggled',
+        suggestedText: 'The reactor exploded',
+        chapterVersion: 1,
+      }).returning()
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/projects/${attackerProject.id}/annotations/${annotation!.id}/accept`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(res.statusCode).toBeLessThan(500)
+
+      const [chapter] = await db
+        .select({ entityData: entities.entityData, version: entities.version })
+        .from(entities)
+        .where(eq(entities.id, victimChapter.id))
+      expect((chapter!.entityData as { body: string }).body).toBe('<p>The reactor hummed, and then it did not.</p>')
+      expect(chapter!.version).toBe(victimChapter.version)
+    })
+
+    it('does not leak other projects\' chapter titles into the author dashboard', async () => {
+      const attacker = await createTestUser()
+      const victim = await createTestUser()
+      const attackerProject = await createTestProject(attacker.id)
+      const victimProject = await createTestProject(victim.id)
+      const victimChapter = await seedChapter(victimProject.id)
+      const token = await createTestToken(attacker.id)
+
+      await db.insert(chapterAnnotations).values({
+        chapterId: victimChapter.id,
+        projectId: attackerProject.id,
+        authorId: attacker.id,
+        anchorParagraphIndex: 0,
+        anchorQuote: 'The reactor hummed',
+        annotationType: 'error',
+        content: 'probe',
+        chapterVersion: 1,
+      })
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/projects/${attackerProject.id}/annotations`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(res.statusCode).toBe(200)
+      const [row] = JSON.parse(res.payload).annotations
+      expect(row.chapterTitle).toBeNull()
+      expect(row.anchorContext ?? null).toBeNull()
+    })
+  })
+
+  // Regression: the body was spread straight into `.set()` / `.values()`, and
+  // `projectId` is the table's primary key, so a caller could re-point their
+  // config row at a project they do not own.
+  describe('PUT /projects/:projectId/publish-config', () => {
+    it('ignores a projectId smuggled in the body', async () => {
+      const owner = await createTestUser()
+      await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, owner.id))
+      const victim = await createTestUser()
+      const ownProject = await createTestProject(owner.id)
+      const victimProject = await createTestProject(victim.id)
+      const token = await createTestToken(owner.id)
+
+      const res = await app.inject({
+        method: 'PUT',
+        url: `/api/projects/${ownProject.id}/publish-config`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { projectVisibility: 'public', projectId: victimProject.id },
+      })
+      expect(res.statusCode).toBe(201)
+
+      const victimRows = await db
+        .select()
+        .from(projectPublishConfig)
+        .where(eq(projectPublishConfig.projectId, victimProject.id))
+      expect(victimRows).toHaveLength(0)
+
+      const [own] = await db
+        .select()
+        .from(projectPublishConfig)
+        .where(eq(projectPublishConfig.projectId, ownProject.id))
+      expect(own?.projectVisibility).toBe('public')
     })
   })
 })

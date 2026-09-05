@@ -50,6 +50,7 @@ import promoCodesPlugin from './routes/promo-codes'
 import searchReplacePlugin from './routes/search-replace'
 import dictionaryPlugin from './routes/dictionary'
 import { hashApiKey, getApiKeyTier } from './middleware/auth'
+import sjson from 'secure-json-parse'
 
 export function build(opts = {}): FastifyInstance {
   const server = Fastify({
@@ -80,6 +81,10 @@ export function build(opts = {}): FastifyInstance {
       }
     },
     genReqId: () => randomUUID(),
+    // Fly (prod) and Caddy (dev) are the single proxy hop in front of the API.
+    // Without this `request.ip` is the proxy address, so rate limiting shares
+    // one bucket across every client and logs record the wrong address.
+    trustProxy: true,
     maxParamLength: 512,
     // Guard against event-loop / DB-pool hangs: if a request isn't served in 30s, return 408
     // so the HTTP handler is released instead of piling up forever.
@@ -215,6 +220,11 @@ export function build(opts = {}): FastifyInstance {
   //     "no body" and let the route decide.
   //  2. Genuinely malformed JSON is a client error: tag it `400` so it is not
   //     reported as a server fault.
+  //
+  // `secure-json-parse` is what Fastify's own parser uses: it rejects bodies that
+  // carry `__proto__` / `constructor.prototype` keys, which matters anywhere a
+  // body is spread into an object. Oversized bodies are rejected by `bodyLimit`
+  // before this callback runs.
   server.addContentTypeParser('application/json', { parseAs: 'string', bodyLimit: 5 * 1024 * 1024 }, (_req, body, done) => {
     const raw = typeof body === 'string' ? body : ''
 
@@ -223,15 +233,8 @@ export function build(opts = {}): FastifyInstance {
       return
     }
 
-    if (raw.length > 5 * 1024 * 1024) {
-      const tooLarge = new Error('Request body too large') as Error & { statusCode: number }
-      tooLarge.statusCode = 413
-      done(tooLarge, undefined)
-      return
-    }
-
     try {
-      done(null, JSON.parse(raw))
+      done(null, sjson.parse(raw, { protoAction: 'error', constructorAction: 'error' }))
     } catch {
       const invalid = new Error('Invalid JSON body') as Error & { statusCode: number }
       invalid.statusCode = 400

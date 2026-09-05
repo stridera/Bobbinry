@@ -29,6 +29,7 @@ import {
   upsertScheduledChapterPublication
 } from '../lib/release-schedule'
 import { liveProjectEntity, notDeleted } from '../lib/entity-scope'
+import { pickDefined } from '../lib/pick'
 import { actorKeyFor, captureRevisionSafe } from '../lib/entity-revisions'
 
 // ============================================
@@ -706,7 +707,14 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
     const correlationId = request.id
     try {
       const { projectId } = request.params
-      const updates = request.body
+      // Allow-list the writable columns: `projectId` is this table's primary key,
+      // so spreading the raw body would let a caller re-point the row.
+      const updates = pickDefined(request.body, [
+        'publishingMode', 'defaultVisibility', 'projectVisibility',
+        'autoReleaseEnabled', 'releaseFrequency', 'releaseDay', 'releaseTime',
+        'slugPrefix', 'seoDescription', 'ogImageUrl',
+        'enableComments', 'enableReactions', 'moderationMode', 'useManuscriptOrder',
+      ] as const)
       const hasAccess = await requireProjectOwnership(request, reply, projectId)
       if (!hasAccess) return
 
@@ -1037,7 +1045,9 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
     const correlationId = request.id
     try {
       const { destinationId } = request.params
-      const updates = request.body
+      const updates = pickDefined(request.body, [
+        'name', 'config', 'isActive', 'lastSyncStatus', 'lastSyncError',
+      ] as const)
 
       const [destRow] = await db
         .select({ projectId: projectDestinations.projectId })

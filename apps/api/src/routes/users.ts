@@ -2142,10 +2142,15 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
         })
         .from(projects)
         .innerJoin(projectPublishConfig, eq(projectPublishConfig.projectId, projects.id))
+        // Same rules as /public/authors/:username/projects — this endpoint is
+        // public, so a trashed or private project must not appear here either.
         .where(and(
           eq(projects.ownerId, userId),
           eq(projects.isArchived, false),
-          eq(projectPublishConfig.publishingMode, 'live')
+          isNull(projects.deletedAt),
+          eq(projectPublishConfig.publishingMode, 'live'),
+          eq(projectPublishConfig.projectVisibility, 'public'),
+          sql`EXISTS (SELECT 1 FROM ${chapterPublications} WHERE ${chapterPublications.projectId} = ${projects.id} AND ${chapterPublications.isPublished} = true)`
         ))
         .orderBy(desc(projects.updatedAt))
 

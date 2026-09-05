@@ -765,93 +765,6 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
     return () => window.removeEventListener('bobbinry:entity-version-changed', handleVersionChanged)
   }, [])
 
-  // Re-check server version when the tab becomes visible again.
-  // Handles the case where content was edited on another device while
-  // this tab was in the background.
-  useEffect(() => {
-    function handleVisibilityChange() {
-      if (document.visibilityState !== 'visible') return
-
-      const eid = activeEntityRef.current
-      if (!eid) return
-
-      // Throttle: skip if checked less than 10 seconds ago
-      const now = Date.now()
-      if (now - lastVersionCheckRef.current < 10_000) return
-      lastVersionCheckRef.current = now
-
-      // Don't interrupt an in-flight save or a conflict the user is resolving
-      if (savingRef.current) return
-
-      if (!localStorage.getItem(getDraftKey(eid))) return
-
-      sdk.entities.getVersion('content', eid).then((versionInfo) => {
-        if (!versionInfo) return
-        // Bail if user navigated elsewhere while the request was in flight
-        if (activeEntityRef.current !== eid) return
-        // Bail if a save started (or finished) while the HEAD was in flight
-        if (savingRef.current) {
-          versionDebug('visibility-check', { eid, branch: 'skip: save in flight' }, 'debug')
-          return
-        }
-
-        // Re-read the draft — a debounced save may have completed during
-        // the async getVersion round-trip, updating version/savedToServer.
-        const draft = loadDraft(eid)
-        if (!draft) return
-
-        const serverVersion = versionInfo.version
-        const ctx = {
-          eid,
-          serverVersion,
-          draftVersion: draft.version,
-          savedToServer: draft.savedToServer,
-          versionRef: versionRef.current,
-          draftAgeMs: Date.now() - draft.timestamp,
-          savePending: pendingFieldsRef.current !== null,
-        }
-        if (draft.version !== null && serverVersion === draft.version) {
-          // Versions match — nothing to do
-          versionDebug('visibility-check', { ...ctx, branch: 'match' }, 'debug')
-          return
-        }
-
-        if (!draft.savedToServer) {
-          // Local unsaved edits AND server changed — conflict
-          versionDebug('visibility-check', { ...ctx, branch: 'CONFLICT: unsaved local edits + server version differs' }, 'warn')
-          setSaveStatus('conflict')
-          setConflictInfo({ serverVersion, localVersion: draft.version })
-          return
-        }
-
-        versionDebug('visibility-check', { ...ctx, branch: 'server newer, draft clean — reconciling' })
-
-        // Draft was saved, server is newer — fetch and apply fresh content
-        sdk.entities.get('content', eid).then((result: any) => {
-          if (activeEntityRef.current !== eid) return
-          const serverBody = result?.body ?? ''
-          const serverTitle = result?.title ?? ''
-          const serverWordCount = result?.word_count ?? 0
-          const newVersion = result?._meta?.version ?? serverVersion
-
-          applyContent(serverBody, serverTitle || draft.title, serverWordCount)
-          versionRef.current = newVersion
-          saveDraft(eid, {
-            html: serverBody,
-            title: serverTitle || draft.title,
-            wordCount: serverWordCount,
-            savedToServer: true,
-            version: newVersion,
-            containerId: result?.container_id ?? draft.containerId,
-          })
-        }).catch(() => {})
-      }).catch(() => {})
-    }
-
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
   const imageUploadFileRef = useRef<HTMLInputElement>(null)
 
   const editor = useEditor({
@@ -1026,6 +939,99 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
     window.addEventListener('bobbinry:entities-bulk-updated', handleBulkUpdated)
     return () => window.removeEventListener('bobbinry:entities-bulk-updated', handleBulkUpdated)
   }, [entityType, editor]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-check server version when the tab becomes visible again.
+  // Handles the case where content was edited on another device while
+  // this tab was in the background.
+  // `editor` must be a dep (same reason as the bulk-update effect below):
+  // with immediatelyRender:false it is null on the first render, and a handler
+  // bound then captures an applyContent that can never write into the editor —
+  // it would mark the draft saved with the new version while the stale body
+  // stays on screen, and the next keystroke would overwrite the server copy.
+  useEffect(() => {
+    if (!editor) return
+    function handleVisibilityChange() {
+      if (document.visibilityState !== 'visible') return
+
+      const eid = activeEntityRef.current
+      if (!eid) return
+
+      // Throttle: skip if checked less than 10 seconds ago
+      const now = Date.now()
+      if (now - lastVersionCheckRef.current < 10_000) return
+      lastVersionCheckRef.current = now
+
+      // Don't interrupt an in-flight save or a conflict the user is resolving
+      if (savingRef.current) return
+
+      if (!localStorage.getItem(getDraftKey(eid))) return
+
+      sdk.entities.getVersion('content', eid).then((versionInfo) => {
+        if (!versionInfo) return
+        // Bail if user navigated elsewhere while the request was in flight
+        if (activeEntityRef.current !== eid) return
+        // Bail if a save started (or finished) while the HEAD was in flight
+        if (savingRef.current) {
+          versionDebug('visibility-check', { eid, branch: 'skip: save in flight' }, 'debug')
+          return
+        }
+
+        // Re-read the draft — a debounced save may have completed during
+        // the async getVersion round-trip, updating version/savedToServer.
+        const draft = loadDraft(eid)
+        if (!draft) return
+
+        const serverVersion = versionInfo.version
+        const ctx = {
+          eid,
+          serverVersion,
+          draftVersion: draft.version,
+          savedToServer: draft.savedToServer,
+          versionRef: versionRef.current,
+          draftAgeMs: Date.now() - draft.timestamp,
+          savePending: pendingFieldsRef.current !== null,
+        }
+        if (draft.version !== null && serverVersion === draft.version) {
+          // Versions match — nothing to do
+          versionDebug('visibility-check', { ...ctx, branch: 'match' }, 'debug')
+          return
+        }
+
+        if (!draft.savedToServer) {
+          // Local unsaved edits AND server changed — conflict
+          versionDebug('visibility-check', { ...ctx, branch: 'CONFLICT: unsaved local edits + server version differs' }, 'warn')
+          setSaveStatus('conflict')
+          setConflictInfo({ serverVersion, localVersion: draft.version })
+          return
+        }
+
+        versionDebug('visibility-check', { ...ctx, branch: 'server newer, draft clean — reconciling' })
+
+        // Draft was saved, server is newer — fetch and apply fresh content
+        sdk.entities.get('content', eid).then((result: any) => {
+          if (activeEntityRef.current !== eid) return
+          const serverBody = result?.body ?? ''
+          const serverTitle = result?.title ?? ''
+          const serverWordCount = result?.word_count ?? 0
+          const newVersion = result?._meta?.version ?? serverVersion
+
+          applyContent(serverBody, serverTitle || draft.title, serverWordCount)
+          versionRef.current = newVersion
+          saveDraft(eid, {
+            html: serverBody,
+            title: serverTitle || draft.title,
+            wordCount: serverWordCount,
+            savedToServer: true,
+            version: newVersion,
+            containerId: result?.container_id ?? draft.containerId,
+          })
+        }).catch(() => {})
+      }).catch(() => {})
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [editor]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Also flush before page unload (tab close, refresh)
   useEffect(() => {
