@@ -152,19 +152,19 @@ describe('Publishing API', () => {
 
       expect([200, 201]).toContain(publishRes.statusCode)
 
-      // Identity comes from the session, never `?userId=` — the route deliberately
-      // ignores the query string so an owner's UUID can't be used to spoof access.
+      // Identity comes from the session, never the query string, so an owner's
+      // UUID can't be used to spoof access. The reader route is the only access
+      // path now (the old /access probe route had no callers and drifted).
       const subscriberToken = await createTestToken(subscriber.id)
       const accessRes = await app.inject({
         method: 'GET',
-        url: `/api/projects/${project.id}/chapters/${chapter.id}/access`,
+        url: `/api/public/projects/${project.id}/chapters/${chapter.id}`,
         headers: { authorization: `Bearer ${subscriberToken}` }
       })
 
-      expect(accessRes.statusCode).toBe(200)
+      expect(accessRes.statusCode).toBe(403)
       const access = JSON.parse(accessRes.payload)
-      expect(access.canAccess).toBe(false)
-      expect(access.reason).toBe('Chapter not yet available for your tier')
+      expect(access.error).toMatch(/not yet available for your tier|not published/)
     })
 
     it('publishes scheduled chapters when their release time arrives', async () => {
@@ -721,13 +721,23 @@ describe('Publishing API', () => {
         payload: { publishStatus: 'published' }
       })
 
-      // Record a view
+      // Record a view through the public reader route (the only tracker).
       const viewRes = await app.inject({
         method: 'POST',
-        url: `/api/chapters/${chapter.id}/views`,
+        url: `/api/public/projects/${project.id}/chapters/${chapter.id}/view`,
         payload: { sessionId: 'test-session-1', deviceType: 'desktop' }
       })
       expect(viewRes.statusCode).toBe(201)
+      expect(JSON.parse(viewRes.payload).viewId).toBeTruthy()
+
+      // Same anonymous session again: no second row, no second count.
+      const repeat = await app.inject({
+        method: 'POST',
+        url: `/api/public/projects/${project.id}/chapters/${chapter.id}/view`,
+        payload: { sessionId: 'test-session-1', deviceType: 'desktop', position: 50 }
+      })
+      expect(repeat.statusCode).toBe(201)
+      expect(JSON.parse(repeat.payload).viewId).toBe(JSON.parse(viewRes.payload).viewId)
 
       // Get analytics
       const analyticsRes = await app.inject({

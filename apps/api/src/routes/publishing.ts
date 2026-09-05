@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { requireAuth, requireProjectOwnership, requireVerified, optionalAuth } from '../middleware/auth'
+import { requireAuth, requireProjectOwnership, requireVerified } from '../middleware/auth'
 import { db } from '../db/connection'
 import {
   chapterPublications,
@@ -9,14 +9,9 @@ import {
   projectDestinations,
   contentWarnings,
   publishSnapshots,
-  entities,
-  subscriptions,
-  subscriptionTiers,
-  betaReaders,
-  accessGrants
+  entities
 } from '../db/schema'
 import { eq, and, desc, sql } from 'drizzle-orm'
-import { randomUUID } from 'crypto'
 import { chapterViewStats, getChapterViewStats, EMPTY_CHAPTER_VIEW_STAT } from '../lib/chapter-view-stats'
 import { serverEventBus, contentPublished, contentStatusChange } from '../lib/event-bus'
 import { ensureCurrentSlug, getSlugsForEntities } from '../lib/slugs'
@@ -31,170 +26,6 @@ import {
 import { liveProjectEntity, notDeleted } from '../lib/entity-scope'
 import { pickDefined } from '../lib/pick'
 import { actorKeyFor, captureRevisionSafe } from '../lib/entity-revisions'
-
-// ============================================
-// ACCESS CONTROL HELPERS
-// ============================================
-
-interface AccessCheckResult {
-  canAccess: boolean
-  reason?: string
-  embargoUntil?: Date
-}
-
-/**
- * Check if a user can access a specific chapter based on:
- * - Active subscription tier
- * - Beta reader status
- * - Access grants
- * - Embargo schedules
- */
-async function checkChapterAccess(
-  userId: string | null,
-  chapterId: string,
-  projectId: string,
-  defaultVisibility?: string
-): Promise<AccessCheckResult> {
-  // Get chapter publication info
-  const [chapterPub] = await db
-    .select()
-    .from(chapterPublications)
-    .where(eq(chapterPublications.chapterId, chapterId))
-    .limit(1)
-
-  if (!chapterPub) {
-    return { canAccess: false, reason: 'Chapter not published' }
-  }
-
-  // Draft chapters are not accessible
-  if (chapterPub.publishStatus === 'draft') {
-    return { canAccess: false, reason: 'Chapter is in draft' }
-  }
-
-  // Archived chapters are not accessible
-  if (chapterPub.publishStatus === 'archived') {
-    return { canAccess: false, reason: 'Chapter is archived' }
-  }
-
-  // Anonymous users can only access fully public chapters
-  if (!userId) {
-    if (defaultVisibility === 'subscribers_only') {
-      return { canAccess: false, reason: 'Subscription required' }
-    }
-
-    if (chapterPub.publicReleaseDate) {
-      const now = new Date()
-      if (now < new Date(chapterPub.publicReleaseDate)) {
-        return {
-          canAccess: false,
-          reason: 'Chapter is under embargo',
-          embargoUntil: new Date(chapterPub.publicReleaseDate)
-        }
-      }
-    }
-
-    return { canAccess: true }
-  }
-
-  // Check beta reader status
-  const [betaReader] = await db
-    .select()
-    .from(betaReaders)
-    .where(
-      and(
-        eq(betaReaders.readerId, userId),
-        eq(betaReaders.projectId, projectId),
-        eq(betaReaders.isActive, true)
-      )
-    )
-    .limit(1)
-
-  if (betaReader) {
-    return { canAccess: true, reason: 'Beta reader access' }
-  }
-
-  // Check access grants
-  const [grant] = await db
-    .select()
-    .from(accessGrants)
-    .where(
-      and(
-        eq(accessGrants.grantedTo, userId),
-        eq(accessGrants.isActive, true),
-        sql`(${accessGrants.projectId} = ${projectId} OR ${accessGrants.projectId} IS NULL)`,
-        sql`(${accessGrants.expiresAt} IS NULL OR ${accessGrants.expiresAt} > NOW())`
-      )
-    )
-    .limit(1)
-
-  if (grant) {
-    return { canAccess: true, reason: 'Access grant' }
-  }
-
-  // Get author from project
-  const [project] = await db.query.projects.findMany({
-    where: (projects, { eq }) => eq(projects.id, projectId),
-    limit: 1
-  })
-
-  if (!project) {
-    return { canAccess: false, reason: 'Project not found' }
-  }
-
-  // Check active subscription
-  const [subscription] = await db
-    .select({
-      earlyAccessDays: subscriptionTiers.earlyAccessDays
-    })
-    .from(subscriptions)
-    .innerJoin(subscriptionTiers, eq(subscriptions.tierId, subscriptionTiers.id))
-    .where(
-      and(
-        eq(subscriptions.subscriberId, userId),
-        eq(subscriptions.authorId, project.ownerId),
-        eq(subscriptions.status, 'active'),
-        sql`${subscriptions.currentPeriodEnd} > NOW()`
-      )
-    )
-    .limit(1)
-
-  if (subscription) {
-    if (chapterPub.publishedAt) {
-      const earlyMs = (subscription.earlyAccessDays ?? 0) * 24 * 60 * 60 * 1000
-      const accessDate = new Date(chapterPub.publishedAt.getTime() - earlyMs)
-      const now = new Date()
-
-      if (now < accessDate) {
-        return {
-          canAccess: false,
-          reason: 'Chapter not yet available for your tier',
-          embargoUntil: accessDate
-        }
-      }
-    }
-
-    return { canAccess: true, reason: 'Active subscription' }
-  }
-
-  // Project-level subscriber-only restriction
-  if (defaultVisibility === 'subscribers_only') {
-    return { canAccess: false, reason: 'Subscription required' }
-  }
-
-  // Check if chapter is public (embargo passed)
-  if (chapterPub.publicReleaseDate) {
-    const now = new Date()
-    if (now < new Date(chapterPub.publicReleaseDate)) {
-      return {
-        canAccess: false,
-        reason: 'Chapter is under embargo',
-        embargoUntil: new Date(chapterPub.publicReleaseDate)
-      }
-    }
-  }
-
-  return { canAccess: true }
-}
 
 // ============================================
 // PLUGIN
@@ -1254,113 +1085,6 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   // ANALYTICS
   // ============================================
 
-  // Track chapter view
-  fastify.post<{
-    Params: { chapterId: string }
-    Body: {
-      sessionId?: string
-      deviceType?: string
-      referrer?: string
-    }
-  }>('/chapters/:chapterId/views', {
-    preHandler: optionalAuth
-  }, async (request, reply) => {
-    const correlationId = request.id
-    try {
-      const { chapterId } = request.params
-      const { sessionId, deviceType, referrer } = request.body
-
-      // readerId is always sourced from the authenticated session — never from
-      // the body — so anonymous attackers can't fabricate reads attributed to
-      // arbitrary users.
-      const readerId = request.user?.id ?? null
-
-      const [view] = await db
-        .insert(chapterViews)
-        .values({
-          chapterId,
-          readerId,
-          sessionId: sessionId || randomUUID(),
-          deviceType,
-          referrer
-        })
-        .returning()
-
-      // Increment view count
-      await db
-        .update(chapterPublications)
-        .set({
-          viewCount: sql`CAST(${chapterPublications.viewCount} AS INTEGER) + 1`,
-          updatedAt: new Date()
-        })
-        .where(eq(chapterPublications.chapterId, chapterId))
-
-      return reply.status(201).send({ view, correlationId })
-    } catch (error) {
-      fastify.log.error({ error, correlationId }, 'Failed to track view')
-      return reply.status(500).send({ error: 'Failed to track view', correlationId })
-    }
-  })
-
-  // Update reading progress
-  fastify.put<{
-    Params: { viewId: string }
-    Body: {
-      lastPositionPercent?: string
-      readTimeSeconds?: string
-      completed?: boolean
-    }
-  }>('/chapter-views/:viewId/progress', {
-    preHandler: requireAuth
-  }, async (request, reply) => {
-    const correlationId = request.id
-    try {
-      const { viewId } = request.params
-      const { lastPositionPercent, readTimeSeconds, completed } = request.body
-
-      // Only the reader who created the view (or a logged-in reader who matches
-      // the row's readerId) can update progress on it. Without this, anyone with
-      // a view UUID could corrupt anyone's reading progress and inflate
-      // completion counts.
-      const [viewRow] = await db
-        .select({ readerId: chapterViews.readerId })
-        .from(chapterViews)
-        .where(eq(chapterViews.id, viewId))
-        .limit(1)
-      if (!viewRow) {
-        return reply.status(404).send({ error: 'View not found', correlationId })
-      }
-      if (viewRow.readerId && viewRow.readerId !== request.user?.id) {
-        return reply.status(403).send({ error: 'Forbidden', correlationId })
-      }
-
-      const updateData: any = {}
-      if (lastPositionPercent) updateData.lastPositionPercent = lastPositionPercent
-      if (readTimeSeconds) updateData.readTimeSeconds = readTimeSeconds
-      // completed_at is the source of truth for completions — everything that
-      // reports them counts these rows. The stored completion_count column on
-      // chapter_publications used to be incremented here too, but nothing reads
-      // it any more, and maintaining a counter no one consumes only invites the
-      // next reader to trust it.
-      if (completed) updateData.completedAt = new Date()
-
-      const [updated] = await db
-        .update(chapterViews)
-        .set(updateData)
-        .where(eq(chapterViews.id, viewId))
-        .returning()
-
-      if (!updated) {
-        return reply.status(404).send({ error: 'View not found', correlationId })
-      }
-
-      return reply.send({ view: updated, correlationId })
-    } catch (error) {
-      fastify.log.error({ error, correlationId }, 'Failed to update progress')
-      return reply.status(500).send({ error: 'Failed to update progress', correlationId })
-    }
-  })
-
   // Get analytics for a chapter
   fastify.get<{
     Params: { projectId: string; chapterId: string }
@@ -1644,39 +1368,6 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
-  // ============================================
-  // ACCESS CHECK ENDPOINT
-  // ============================================
-
-  // Check if user can access a chapter
-  fastify.get<{
-    Params: { projectId: string; chapterId: string }
-  }>('/projects/:projectId/chapters/:chapterId/access', {
-    preHandler: optionalAuth
-  }, async (request, reply) => {
-    const correlationId = request.id
-    try {
-      const { projectId, chapterId } = request.params
-      // Identity for access checks is always sourced from the authenticated
-      // session — never the query string. Without this, anyone who knew the
-      // project owner's UUID could spoof access-grant checks.
-      const userId = request.user?.id ?? null
-
-      // Get project visibility setting
-      const [accessPublishConfig] = await db
-        .select({ defaultVisibility: projectPublishConfig.defaultVisibility })
-        .from(projectPublishConfig)
-        .where(eq(projectPublishConfig.projectId, projectId))
-        .limit(1)
-
-      const result = await checkChapterAccess(userId, chapterId, projectId, accessPublishConfig?.defaultVisibility || 'public')
-
-      return reply.send({ ...result, correlationId })
-    } catch (error) {
-      fastify.log.error({ error, correlationId }, 'Failed to check access')
-      return reply.status(500).send({ error: 'Failed to check access', correlationId })
-    }
-  })
 }
 
 export default publishingPlugin

@@ -47,6 +47,7 @@ import { optionalAuth, requireAuth, requireProjectOwnership } from '../middlewar
 import { hashRssToken } from './rss-tokens'
 import { countWordsFromHtml } from '../lib/text'
 import { liveProjectEntity, notDeleted } from '../lib/entity-scope'
+import { checkChapterAccess, checkChaptersAccess, type ViewSimulation } from '../lib/chapter-access'
 import { changeEventFromRow, extractWordCount, recordEntityChangesSafe } from '../lib/entity-changes'
 import {
   getEffectiveBobbins,
@@ -148,337 +149,6 @@ async function resolveAuthor(identifier: string): Promise<ResolvedAuthor | null>
 // ACCESS CONTROL
 // ============================================
 
-interface AccessCheckResult {
-  canAccess: boolean
-  reason?: string
-  embargoUntil?: Date
-}
-
-async function checkPublicChapterAccess(
-  chapterId: string,
-  projectId: string,
-  userId?: string,
-  defaultVisibility?: string,
-  simulate?: ViewSimulation
-): Promise<AccessCheckResult> {
-  // Get chapter publication info
-  const [chapterPub] = await db
-    .select()
-    .from(chapterPublications)
-    .where(eq(chapterPublications.chapterId, chapterId))
-    .limit(1)
-
-  if (!chapterPub || !chapterPub.isPublished) {
-    return { canAccess: false, reason: 'Chapter not published' }
-  }
-
-  // Owner preview ("view as"): replace the real beta/grant/owner/subscription
-  // lookups with the simulated audience.
-  if (simulate) {
-    if (simulate.kind === 'beta') {
-      return { canAccess: true }
-    }
-    // tier: subscriber logic with the tier's early-access window
-    if (chapterPub.publishedAt) {
-      const earlyMs = simulate.earlyAccessDays * 24 * 60 * 60 * 1000
-      const accessDate = new Date(chapterPub.publishedAt.getTime() - earlyMs)
-      if (new Date() >= accessDate) {
-        return { canAccess: true }
-      }
-      return {
-        canAccess: false,
-        reason: 'Chapter not yet available for your tier',
-        embargoUntil: accessDate
-      }
-    }
-    return { canAccess: true }
-  }
-
-  // Check if user is a beta reader (early access)
-  if (userId) {
-    const [betaReader] = await db
-      .select()
-      .from(betaReaders)
-      .where(and(
-        or(eq(betaReaders.projectId, projectId), isNull(betaReaders.projectId)),
-        eq(betaReaders.readerId, userId),
-        eq(betaReaders.isActive, true)
-      ))
-      .limit(1)
-
-    if (betaReader) {
-      return { canAccess: true }
-    }
-
-    // Check for explicit access grants
-    const [grant] = await db
-      .select()
-      .from(accessGrants)
-      .where(and(
-        or(eq(accessGrants.projectId, projectId), isNull(accessGrants.projectId)),
-        eq(accessGrants.grantedTo, userId),
-        or(
-          eq(accessGrants.chapterId, chapterId),
-          isNull(accessGrants.chapterId)
-        ),
-        eq(accessGrants.isActive, true)
-      ))
-      .limit(1)
-
-    if (grant) {
-      return { canAccess: true }
-    }
-
-    // Check subscription tier-based access
-    // Find the project owner to look up subscription
-    const [project] = await db
-      .select({ ownerId: projects.ownerId })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1)
-
-    if (project) {
-      // Project owner always has full access to their own chapters
-      if (project.ownerId === userId) {
-        return { canAccess: true }
-      }
-
-      const [sub] = await db
-        .select({
-          tierId: subscriptions.tierId,
-          status: subscriptions.status,
-          earlyAccessDays: subscriptionTiers.earlyAccessDays
-        })
-        .from(subscriptions)
-        .innerJoin(subscriptionTiers, eq(subscriptionTiers.id, subscriptions.tierId))
-        .where(and(
-          eq(subscriptions.subscriberId, userId),
-          eq(subscriptions.authorId, project.ownerId),
-          eq(subscriptions.status, 'active'),
-          sql`${subscriptions.currentPeriodEnd} > NOW()`
-        ))
-        .limit(1)
-
-      if (sub) {
-        // Subscriber: can access chapters earlyAccessDays before the public release
-        if (chapterPub.publishedAt) {
-          const earlyMs = (sub.earlyAccessDays ?? 0) * 24 * 60 * 60 * 1000
-          const accessDate = new Date(chapterPub.publishedAt.getTime() - earlyMs)
-          const now = new Date()
-          if (now >= accessDate) {
-            return { canAccess: true }
-          } else {
-            return {
-              canAccess: false,
-              reason: 'Chapter not yet available for your tier',
-              embargoUntil: accessDate
-            }
-          }
-        }
-        // Published but no date? Grant access
-        return { canAccess: true }
-      }
-    }
-  }
-
-  // Project-level subscriber-only restriction
-  if (defaultVisibility === 'subscribers_only') {
-    return { canAccess: false, reason: 'Subscription required' }
-  }
-
-  // Check embargo (public release date) for free/anonymous users
-  if (chapterPub.publicReleaseDate) {
-    const now = new Date()
-    if (chapterPub.publicReleaseDate > now) {
-      return {
-        canAccess: false,
-        reason: 'Chapter embargoed',
-        embargoUntil: chapterPub.publicReleaseDate
-      }
-    }
-  }
-
-  // Public chapter - anyone can access
-  return { canAccess: true }
-}
-
-/**
- * Batch version of checkPublicChapterAccess.
- * Pre-loads all access data in 3-4 queries total (instead of 3-5 per chapter),
- * then resolves access in memory.
- */
-async function checkMultipleChaptersAccess(
-  chapters: { chapterId: string; publishedAt: Date | null; publicReleaseDate: Date | null }[],
-  projectId: string,
-  userId: string | undefined,
-  defaultVisibility: string | undefined,
-  simulate?: ViewSimulation
-): Promise<Map<string, AccessCheckResult>> {
-  const results = new Map<string, AccessCheckResult>()
-  if (chapters.length === 0) return results
-
-  const chapterIds = chapters.map(c => c.chapterId)
-  const now = new Date()
-
-  // Build lookup maps for user-specific access (if userId provided)
-  let accessGrantMap = new Map<string, boolean>() // chapterId -> has grant (or project-wide grant)
-  let hasProjectWideGrant = false
-  let isOwner = false
-  let subscription: { earlyAccessDays: number | null } | null = null
-
-  // Owner preview ("view as"): substitute the simulated audience for the real
-  // beta/grant/owner/subscription lookups.
-  if (simulate) {
-    if (simulate.kind === 'beta') {
-      for (const ch of chapters) {
-        results.set(ch.chapterId, { canAccess: true })
-      }
-      return results
-    }
-    subscription = { earlyAccessDays: simulate.earlyAccessDays }
-  } else if (userId) {
-    // Query 1: Beta readers for this project + user
-    const [betaReaderRow] = await db
-      .select({ readerId: betaReaders.readerId })
-      .from(betaReaders)
-      .where(and(
-        or(eq(betaReaders.projectId, projectId), isNull(betaReaders.projectId)),
-        eq(betaReaders.readerId, userId),
-        eq(betaReaders.isActive, true)
-      ))
-      .limit(1)
-
-    if (betaReaderRow) {
-      // Beta reader has access to all chapters
-      for (const ch of chapters) {
-        results.set(ch.chapterId, { canAccess: true })
-      }
-      return results
-    }
-
-    // Query 2: Access grants for this project + user (chapter-specific and project-wide)
-    const grants = await db
-      .select({ chapterId: accessGrants.chapterId })
-      .from(accessGrants)
-      .where(and(
-        or(eq(accessGrants.projectId, projectId), isNull(accessGrants.projectId)),
-        eq(accessGrants.grantedTo, userId),
-        eq(accessGrants.isActive, true),
-        or(
-          inArray(accessGrants.chapterId, chapterIds),
-          isNull(accessGrants.chapterId)
-        )
-      ))
-
-    for (const g of grants) {
-      if (g.chapterId === null) {
-        hasProjectWideGrant = true
-      } else {
-        accessGrantMap.set(g.chapterId, true)
-      }
-    }
-
-    if (hasProjectWideGrant) {
-      for (const ch of chapters) {
-        results.set(ch.chapterId, { canAccess: true })
-      }
-      return results
-    }
-
-    // Query 3: Project owner + subscription
-    const [project] = await db
-      .select({ ownerId: projects.ownerId })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1)
-
-    if (project) {
-      if (project.ownerId === userId) {
-        isOwner = true
-      } else {
-        // Query 4: Active subscription for this user -> project owner
-        const [sub] = await db
-          .select({
-            earlyAccessDays: subscriptionTiers.earlyAccessDays
-          })
-          .from(subscriptions)
-          .innerJoin(subscriptionTiers, eq(subscriptionTiers.id, subscriptions.tierId))
-          .where(and(
-            eq(subscriptions.subscriberId, userId),
-            eq(subscriptions.authorId, project.ownerId),
-            eq(subscriptions.status, 'active'),
-            sql`${subscriptions.currentPeriodEnd} > NOW()`
-          ))
-          .limit(1)
-
-        if (sub) {
-          subscription = sub
-        }
-      }
-    }
-  }
-
-  // Resolve access per chapter in memory
-  for (const ch of chapters) {
-    // Owner always has access
-    if (isOwner) {
-      results.set(ch.chapterId, { canAccess: true })
-      continue
-    }
-
-    // Chapter-specific access grant
-    if (accessGrantMap.has(ch.chapterId)) {
-      results.set(ch.chapterId, { canAccess: true })
-      continue
-    }
-
-    // Subscription tier-based access
-    if (subscription) {
-      if (ch.publishedAt) {
-        const earlyMs = (subscription.earlyAccessDays ?? 0) * 24 * 60 * 60 * 1000
-        const accessDate = new Date(ch.publishedAt.getTime() - earlyMs)
-        if (now >= accessDate) {
-          results.set(ch.chapterId, { canAccess: true })
-          continue
-        } else {
-          results.set(ch.chapterId, {
-            canAccess: false,
-            reason: 'Chapter not yet available for your tier',
-            embargoUntil: accessDate
-          })
-          continue
-        }
-      }
-      // Published but no date? Grant access
-      results.set(ch.chapterId, { canAccess: true })
-      continue
-    }
-
-    // Project-level subscriber-only restriction
-    if (defaultVisibility === 'subscribers_only') {
-      results.set(ch.chapterId, { canAccess: false, reason: 'Subscription required' })
-      continue
-    }
-
-    // Embargo for free/anonymous users
-    if (ch.publicReleaseDate) {
-      if (ch.publicReleaseDate > now) {
-        results.set(ch.chapterId, {
-          canAccess: false,
-          reason: 'Chapter embargoed',
-          embargoUntil: ch.publicReleaseDate
-        })
-        continue
-      }
-    }
-
-    // Public chapter - anyone can access
-    results.set(ch.chapterId, { canAccess: true })
-  }
-
-  return results
-}
-
 /**
  * Check whether a user can leave annotations on a project's chapters.
  * Annotations must be enabled via projectPublishConfig (like comments/reactions),
@@ -552,10 +222,6 @@ async function canUserAnnotate(
  * userId; `beta` and `tier` replace the real beta/grant/subscription lookups
  * in the access checks. Only ever downgrades — non-owners can't invoke it.
  */
-type ViewSimulation =
-  | { kind: 'beta' }
-  | { kind: 'tier'; earlyAccessDays: number }
-
 interface EffectiveViewer {
   userId?: string | undefined
   simulate?: ViewSimulation
@@ -655,6 +321,38 @@ async function canViewProject(
 }
 
 /** Look up the projectId a published chapter belongs to (for chapter-scoped routes). */
+/**
+ * Gate for reader interactions on a public chapter: it must be published, the
+ * caller must be able to view the project, and the author must not have
+ * switched the feature off in the publish config.
+ */
+async function checkInteractionAllowed(
+  chapterId: string,
+  userId: string | undefined,
+  feature: 'comments' | 'reactions'
+): Promise<{ ok: true } | { ok: false; status: 403 | 404; error: string }> {
+  const [row] = await db
+    .select({
+      projectId: chapterPublications.projectId,
+      isPublished: chapterPublications.isPublished,
+      enableComments: projectPublishConfig.enableComments,
+      enableReactions: projectPublishConfig.enableReactions,
+    })
+    .from(chapterPublications)
+    .leftJoin(projectPublishConfig, eq(projectPublishConfig.projectId, chapterPublications.projectId))
+    .where(eq(chapterPublications.chapterId, chapterId))
+    .limit(1)
+
+  if (!row?.isPublished || !(await canViewProject(row.projectId, userId))) {
+    return { ok: false, status: 404, error: 'Chapter not found' }
+  }
+  const enabled = feature === 'comments' ? row.enableComments : row.enableReactions
+  if (enabled === false) {
+    return { ok: false, status: 403, error: `${feature === 'comments' ? 'Comments' : 'Reactions'} are disabled for this project` }
+  }
+  return { ok: true }
+}
+
 async function getChapterProjectId(chapterId: string): Promise<string | null> {
   const [row] = await db
     .select({ projectId: chapterPublications.projectId })
@@ -795,7 +493,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       const totalWords = publishedChapters.reduce((sum, ch) => sum + (ch.wordCount || 0), 0)
 
       // Batch access check: 3-4 queries total instead of 3-5 per chapter
-      const accessMap = await checkMultipleChaptersAccess(
+      const accessMap = await checkChaptersAccess(
         publishedChapters.map(ch => ({
           chapterId: ch.chapterId,
           publishedAt: ch.publishedAt,
@@ -883,7 +581,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         .limit(1)
 
       // Check access
-      const access = await checkPublicChapterAccess(chapterId, projectId, userId, chapterPublishConfig?.defaultVisibility || 'public', viewer.simulate)
+      const access = await checkChapterAccess(chapterId, projectId, userId, chapterPublishConfig?.defaultVisibility || 'public', viewer.simulate)
       if (!access.canAccess) {
         return reply.status(403).send({
           error: access.reason || 'Access denied',
@@ -1017,71 +715,51 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       // to other accounts.
       const userId = request.user?.id
 
-      if (!(await canViewProject(request.params.projectId, userId))) {
-        return reply.status(404).send({ error: 'Project not found', correlationId })
+      const [pub] = await db
+        .select({ isPublished: chapterPublications.isPublished })
+        .from(chapterPublications)
+        .where(and(
+          eq(chapterPublications.chapterId, chapterId),
+          eq(chapterPublications.projectId, request.params.projectId)
+        ))
+        .limit(1)
+      if (!pub?.isPublished || !(await canViewProject(request.params.projectId, userId))) {
+        return reply.status(404).send({ error: 'Chapter not found', correlationId })
       }
 
       let viewId: string
       let isNewView = false
 
-      // For authenticated users, upsert on (readerId, chapterId) to prevent duplicate rows
-      if (userId) {
-        const [existing] = await db
-          .select({ id: chapterViews.id })
-          .from(chapterViews)
-          .where(and(
-            eq(chapterViews.readerId, userId),
-            eq(chapterViews.chapterId, chapterId)
-          ))
-          .limit(1)
+      // Upsert one row per reader+chapter (signed in) or session+chapter
+      // (anonymous). Anonymous calls without a session id always insert.
+      const existingWhere = userId
+        ? and(eq(chapterViews.readerId, userId), eq(chapterViews.chapterId, chapterId))
+        : sessionId
+          ? and(isNull(chapterViews.readerId), eq(chapterViews.sessionId, sessionId), eq(chapterViews.chapterId, chapterId))
+          : null
+      const [existing] = existingWhere
+        ? await db.select({ id: chapterViews.id }).from(chapterViews).where(existingWhere).limit(1)
+        : []
 
-        if (existing) {
-          // Update existing view record
-          const updates: Record<string, any> = {}
-          if (position !== undefined) updates.lastPositionPercent = Number(position)
-          if (readTime !== undefined) updates.readTimeSeconds = sql`${chapterViews.readTimeSeconds} + ${Number(readTime)}`
-          if (deviceType) updates.deviceType = deviceType
-
-          // Mark as completed if position is >= 95%
-          if (position !== undefined && Number(position) >= 95) {
-            updates.completedAt = new Date()
-          }
-
-          if (Object.keys(updates).length > 0) {
-            await db
-              .update(chapterViews)
-              .set(updates)
-              .where(eq(chapterViews.id, existing.id))
-          }
-          viewId = existing.id
-        } else {
-          // Create new view record for this reader+chapter pair
-          const [view] = await db
-            .insert(chapterViews)
-            .values({
-              chapterId,
-              readerId: userId,
-              sessionId: sessionId || randomUUID(),
-              deviceType,
-              referrer,
-              readTimeSeconds: readTime ? Number(readTime) : 0,
-              lastPositionPercent: position ? Number(position) : 0
-            })
-            .returning()
-
-          if (!view) {
-            return reply.status(500).send({ error: 'Failed to create view record', correlationId })
-          }
-          viewId = view.id
-          isNewView = true
+      if (existing) {
+        const updates: Record<string, any> = {}
+        if (position !== undefined) updates.lastPositionPercent = Number(position)
+        if (readTime !== undefined) updates.readTimeSeconds = sql`${chapterViews.readTimeSeconds} + ${Number(readTime)}`
+        if (deviceType) updates.deviceType = deviceType
+        // Mark as completed if position is >= 95%
+        if (position !== undefined && Number(position) >= 95) {
+          updates.completedAt = new Date()
         }
+        if (Object.keys(updates).length > 0) {
+          await db.update(chapterViews).set(updates).where(eq(chapterViews.id, existing.id))
+        }
+        viewId = existing.id
       } else {
-        // Anonymous users: always create a new view (tracked by session)
         const [view] = await db
           .insert(chapterViews)
           .values({
             chapterId,
-            readerId: null,
+            readerId: userId ?? null,
             sessionId: sessionId || randomUUID(),
             deviceType,
             referrer,
@@ -1089,15 +767,12 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
             lastPositionPercent: position ? Number(position) : 0
           })
           .returning()
-
         if (!view) {
           return reply.status(500).send({ error: 'Failed to create view record', correlationId })
         }
         viewId = view.id
         isNewView = true
       }
-
-      // Only increment view count for new views
 
       // Only increment view count for new views
       if (isNewView) {
@@ -1565,7 +1240,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         .orderBy(desc(chapterPublications.publishedAt))
         .limit(limit * 2) // over-fetch so filtering still has enough for `limit`
 
-      const accessMap = await checkMultipleChaptersAccess(
+      const accessMap = await checkChaptersAccess(
         candidateChapters.map(c => ({
           chapterId: c.id,
           publishedAt: c.publishedAt,
@@ -2236,6 +1911,22 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Comment too long (max 5000 characters)', correlationId })
       }
 
+      const gate = await checkInteractionAllowed(chapterId, request.user.id, 'comments')
+      if (!gate.ok) {
+        return reply.status(gate.status).send({ error: gate.error, correlationId })
+      }
+
+      if (parentId) {
+        const [parent] = await db
+          .select({ id: comments.id })
+          .from(comments)
+          .where(and(eq(comments.id, parentId), eq(comments.chapterId, chapterId)))
+          .limit(1)
+        if (!parent) {
+          return reply.status(400).send({ error: 'Parent comment not found on this chapter', correlationId })
+        }
+      }
+
       const [comment] = await db
         .insert(comments)
         .values({
@@ -2308,6 +1999,11 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       const validTypes = ['heart', 'laugh', 'wow', 'sad', 'fire', 'clap']
       if (!validTypes.includes(reactionType)) {
         return reply.status(400).send({ error: 'Invalid reaction type', correlationId })
+      }
+
+      const gate = await checkInteractionAllowed(chapterId, request.user.id, 'reactions')
+      if (!gate.ok) {
+        return reply.status(gate.status).send({ error: gate.error, correlationId })
       }
 
       // Toggle: check if already exists
