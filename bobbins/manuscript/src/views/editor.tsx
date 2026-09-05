@@ -1,22 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { AuthError, ConflictError, registerShortcuts } from '@bobbinry/sdk'
 import type { BobbinrySDK } from '@bobbinry/sdk'
-import { paletteClasses, isPaletteToken, PALETTE_TOKENS } from '@bobbinry/ui-components'
-import {
-  resolveChapterColor,
-  resolveFeaturedCharacters,
-  characterInitial,
-  type ChapterColorFields,
-  type CharactersById,
-  type CharacterColorRef,
-} from '../lib/chapterColors'
-import {
-  CONTENT_TYPES,
-  CONTENT_TYPE_LABELS,
-  countsTowardWordCount,
-  isContentType,
-  type ContentType,
-} from '@bobbinry/types'
+import { paletteClasses } from '@bobbinry/ui-components'
+import { resolveChapterColor, resolveFeaturedCharacters } from '../lib/chapterColors'
+import { countsTowardWordCount, isContentType, type ContentType } from '@bobbinry/types'
 import { useEditor, EditorContent } from '@tiptap/react'
 import type { Editor } from '@tiptap/react'
 import { Extension } from '@tiptap/core'
@@ -26,7 +13,6 @@ import CharacterCount from '@tiptap/extension-character-count'
 import TextAlign from '@tiptap/extension-text-align'
 import { ImageUpload } from '../extensions/image-upload'
 import { EntityHighlight } from '../extensions/entity-highlight'
-import type { EntityEntry } from '../extensions/entity-highlight'
 import { EntityHoverCard } from '@bobbinry/ui-components'
 import {
   SearchHighlight,
@@ -42,7 +28,24 @@ import {
   sanitizeDisplaySettings,
   type PartialManuscriptDisplaySettings,
 } from '@bobbinry/types'
-import { DisplayDropdown, useDisplaySettings } from './display-settings'
+import { useDisplaySettings } from './display-settings'
+import { getDraftKey, loadDraft, saveDraft, versionDebug, type DraftEntry } from '../lib/drafts'
+import { AUTH_TOKEN_RENEWED_EVENT, getParentOrigin, type ConflictInfo, type SaveStatus } from '../lib/editor-types'
+import {
+  clearPendingHighlight,
+  getPendingSearchHighlight,
+  isPendingHighlightExpired,
+  runSearchHighlight,
+  scrollEditorToPos,
+  setApplyPendingHighlightHook,
+} from '../lib/search-highlight-bridge'
+import { EditorToolbar } from '../components/EditorToolbar'
+import { SaveIndicator } from '../components/SaveIndicator'
+import { ConflictDialog, SessionExpiredBanner } from '../components/EditorOverlays'
+import { ContentTypeMenu } from '../components/ContentTypeMenu'
+import { ChapterMetaMenu, type ChapterMetaPatch } from '../components/ChapterMetaMenu'
+import { useEntityHighlightNames } from '../hooks/useEntityHighlightNames'
+import { useChapterCharacters } from '../hooks/useChapterCharacters'
 
 interface EditorViewProps {
   projectId: string
@@ -52,460 +55,6 @@ interface EditorViewProps {
   entityType?: string
   entityId?: string
   metadata?: Record<string, any>
-}
-
-interface ToolbarButtonProps {
-  onClick: () => void
-  isActive?: boolean
-  disabled?: boolean
-  title: string
-  children: React.ReactNode
-}
-
-// --- Local draft cache ---
-// Stores content per-entity in localStorage so we never lose edits,
-// even if the server save hasn't completed when the user navigates away.
-
-const DRAFT_PREFIX = 'bobbinry:draft:'
-
-interface DraftEntry {
-  html: string
-  title: string
-  wordCount: number
-  savedToServer: boolean
-  timestamp: number
-  version: number | null
-  containerId: string | null
-}
-
-function getParentOrigin(): string {
-  if (typeof window === 'undefined') {
-    return '*'
-  }
-
-  try {
-    return document.referrer ? new URL(document.referrer).origin : window.location.origin
-  } catch {
-    return window.location.origin
-  }
-}
-
-function getDraftKey(entityId: string): string {
-  return `${DRAFT_PREFIX}${entityId}`
-}
-
-function saveDraft(entityId: string, draft: Partial<DraftEntry> & { html: string }) {
-  try {
-    const existing = loadDraft(entityId)
-    const entry: DraftEntry = {
-      html: draft.html,
-      title: draft.title ?? existing?.title ?? '',
-      wordCount: draft.wordCount ?? existing?.wordCount ?? 0,
-      savedToServer: draft.savedToServer ?? existing?.savedToServer ?? false,
-      timestamp: Date.now(),
-      version: draft.version !== undefined ? draft.version : (existing?.version ?? null),
-      containerId: draft.containerId !== undefined ? draft.containerId : (existing?.containerId ?? null),
-    }
-    localStorage.setItem(getDraftKey(entityId), JSON.stringify(entry))
-  } catch {
-    // localStorage full or unavailable — degrade gracefully
-  }
-}
-
-function loadDraft(entityId: string): DraftEntry | null {
-  try {
-    const raw = localStorage.getItem(getDraftKey(entityId))
-    if (!raw) return null
-    return JSON.parse(raw) as DraftEntry
-  } catch {
-    return null
-  }
-}
-
-// --- Version-conflict debug trail ---
-// The "Editing conflict" dialog is hard to reproduce, so every version-related
-// decision is logged to the console AND to a localStorage ring buffer. When the
-// dialog appears unexpectedly, the trail can be inspected after the fact with:
-//   JSON.parse(localStorage.getItem('bobbinry:version-debug'))
-const VERSION_DEBUG_KEY = 'bobbinry:version-debug'
-const VERSION_DEBUG_MAX = 100
-
-function versionDebug(
-  site: string,
-  data: Record<string, unknown>,
-  level: 'debug' | 'info' | 'warn' = 'info'
-) {
-  console[level]('[manuscript:version]', site, data)
-  try {
-    const raw = localStorage.getItem(VERSION_DEBUG_KEY)
-    const trail: unknown[] = raw ? JSON.parse(raw) : []
-    trail.push({ t: new Date().toISOString(), site, ...data })
-    if (trail.length > VERSION_DEBUG_MAX) trail.splice(0, trail.length - VERSION_DEBUG_MAX)
-    localStorage.setItem(VERSION_DEBUG_KEY, JSON.stringify(trail))
-  } catch {
-    // localStorage full or unavailable — console output still happened
-  }
-}
-
-// --- Save state ---
-type SaveStatus = 'clean' | 'dirty' | 'saving' | 'saved' | 'error' | 'offline' | 'conflict' | 'auth'
-
-/** Dispatched by the shell once the API token has been renewed after a 401. */
-const AUTH_TOKEN_RENEWED_EVENT = 'bobbinry:auth-token-renewed'
-
-interface ConflictInfo {
-  serverVersion: number
-  localVersion: number | null
-}
-
-function ToolbarButton({ onClick, isActive, disabled, title, children }: ToolbarButtonProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      className={`px-2 py-1 rounded text-sm font-medium transition-colors ${
-        isActive
-          ? 'bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-gray-100'
-          : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
-      } ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
-    >
-      {children}
-    </button>
-  )
-}
-
-function ToolbarDivider() {
-  return <div className="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-1" />
-}
-
-function EditorToolbar({
-  editor,
-  onFocusMode,
-  onInsertImage,
-  displayState,
-}: {
-  editor: Editor | null
-  onFocusMode: () => void
-  onInsertImage: () => void
-  displayState: ReturnType<typeof useDisplaySettings>
-}) {
-  const [, setForceUpdate] = useState(0)
-  const rafRef = useRef(0)
-
-  // Re-render toolbar when editor state changes (selection, formatting).
-  // Batched with rAF so rapid transactions (e.g. during setContent) only
-  // trigger one re-render per frame instead of one per transaction.
-  useEffect(() => {
-    if (!editor) return
-    const handler = () => {
-      cancelAnimationFrame(rafRef.current)
-      rafRef.current = requestAnimationFrame(() => setForceUpdate(n => n + 1))
-    }
-    editor.on('selectionUpdate', handler)
-    editor.on('transaction', handler)
-    return () => {
-      cancelAnimationFrame(rafRef.current)
-      editor.off('selectionUpdate', handler)
-      editor.off('transaction', handler)
-    }
-  }, [editor])
-
-  if (!editor) return null
-
-  return (
-    <div className="flex items-center gap-0.5 px-4 py-1.5 border-b border-gray-200/50 dark:border-gray-700/40 flex-wrap">
-      {/* Undo / Redo */}
-      <ToolbarButton
-        onClick={() => editor.chain().focus().undo().run()}
-        disabled={!editor.can().undo()}
-        title="Undo (Ctrl+Z)"
-      >
-        ↩
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().redo().run()}
-        disabled={!editor.can().redo()}
-        title="Redo (Ctrl+Shift+Z)"
-      >
-        ↪
-      </ToolbarButton>
-
-      <ToolbarDivider />
-
-      {/* Text formatting */}
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleBold().run()}
-        isActive={editor.isActive('bold')}
-        title="Bold (Ctrl+B)"
-      >
-        <strong>B</strong>
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleItalic().run()}
-        isActive={editor.isActive('italic')}
-        title="Italic (Ctrl+I)"
-      >
-        <em>I</em>
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleStrike().run()}
-        isActive={editor.isActive('strike')}
-        title="Strikethrough (Ctrl+Shift+X)"
-      >
-        <s>S</s>
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleCode().run()}
-        isActive={editor.isActive('code')}
-        title="Inline code (Ctrl+E)"
-      >
-        <code className="text-xs">&lt;/&gt;</code>
-      </ToolbarButton>
-
-      <ToolbarDivider />
-
-      {/* Headings */}
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-        isActive={editor.isActive('heading', { level: 1 })}
-        title="Heading 1"
-      >
-        H1
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-        isActive={editor.isActive('heading', { level: 2 })}
-        title="Heading 2"
-      >
-        H2
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-        isActive={editor.isActive('heading', { level: 3 })}
-        title="Heading 3"
-      >
-        H3
-      </ToolbarButton>
-
-      <ToolbarDivider />
-
-      {/* Lists */}
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleBulletList().run()}
-        isActive={editor.isActive('bulletList')}
-        title="Bullet list"
-      >
-        •&thinsp;List
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleOrderedList().run()}
-        isActive={editor.isActive('orderedList')}
-        title="Numbered list"
-      >
-        1.&thinsp;List
-      </ToolbarButton>
-
-      <ToolbarDivider />
-
-      {/* Block elements */}
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleBlockquote().run()}
-        isActive={editor.isActive('blockquote')}
-        title="Blockquote"
-      >
-        &ldquo;&thinsp;Quote
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-        isActive={editor.isActive('codeBlock')}
-        title="Code block"
-      >
-        Code
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().setHorizontalRule().run()}
-        title="Horizontal rule"
-      >
-        ―
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={onInsertImage}
-        title="Insert image"
-      >
-        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-        </svg>
-      </ToolbarButton>
-
-      <div className="flex-1" />
-
-      <ToolbarButton
-        onClick={() => displayState.toggleFormattingMarks()}
-        isActive={displayState.showFormattingMarks}
-        title={displayState.showFormattingMarks ? 'Hide formatting marks' : 'Show formatting marks (¶, ↵)'}
-      >
-        <span className="text-sm leading-none">¶</span>
-      </ToolbarButton>
-
-      <DisplayDropdown state={displayState} />
-
-      <ToolbarDivider />
-
-      <ToolbarButton
-        onClick={onFocusMode}
-        title="Focus mode (Ctrl+Shift+F)"
-      >
-        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-        </svg>
-      </ToolbarButton>
-    </div>
-  )
-}
-
-function SaveIndicator({ status, focusMode }: { status: SaveStatus; focusMode: boolean }) {
-  return (
-    <div className={`flex items-center gap-1.5 transition-opacity duration-300 ${focusMode ? 'opacity-20 hover:opacity-50' : 'opacity-60 hover:opacity-100'}`}>
-      {status === 'dirty' && (
-        <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" title="Unsaved changes" />
-      )}
-      {status === 'saving' && (
-        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" title="Saving..." />
-      )}
-      {status === 'saved' && (
-        <span className="w-1.5 h-1.5 rounded-full bg-green-400" title="Saved" />
-      )}
-      {status === 'error' && (
-        <span className="w-1.5 h-1.5 rounded-full bg-red-400" title="Save failed — will retry" />
-      )}
-      {status === 'offline' && (
-        <span className="flex items-center gap-1" title="Offline — changes saved locally">
-          <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
-          <span className="text-[10px] text-orange-400 font-medium">Offline</span>
-        </span>
-      )}
-      {status === 'auth' && (
-        <span className="flex items-center gap-1" title="Signed out — changes are saved on this device only">
-          <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-          <span className="text-[10px] text-red-500 font-medium">Not syncing</span>
-        </span>
-      )}
-      {status === 'conflict' && (
-        <span className="flex items-center gap-1" title="Conflict — this scene was edited elsewhere">
-          <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-          <span className="text-[10px] text-red-500 font-medium">Conflict</span>
-        </span>
-      )}
-    </div>
-  )
-}
-
-// --- Search & replace: scroll to a clicked match ---
-// The search panel dispatches `bobbinry:search-highlight` after navigating to a
-// chapter. The destination editor often hasn't mounted/loaded yet when the
-// event fires, so we stash the request at module scope (it survives the view
-// remount) and apply it once the matching chapter's content is in the editor.
-
-interface SearchHighlightRequest {
-  entityId: string
-  field: string
-  index: number
-  query: string
-  caseSensitive: boolean
-  wholeWord: boolean
-}
-
-// Kept until the active chapter navigates away or a grace window elapses, so a
-// background content reconcile (a second applyContent after the server version
-// check) re-applies the highlight rather than clobbering it.
-let pendingSearchHighlight: SearchHighlightRequest | null = null
-let pendingHighlightExpiry = 0
-const HIGHLIGHT_GRACE_MS = 4000
-
-function setPendingHighlight(req: SearchHighlightRequest, now: number): void {
-  pendingSearchHighlight = req
-  pendingHighlightExpiry = now + HIGHLIGHT_GRACE_MS
-}
-
-function clearPendingHighlight(): void {
-  pendingSearchHighlight = null
-  pendingHighlightExpiry = 0
-}
-
-// The listener lives at module scope (not in a component effect) so the stash
-// is written even when NO editor is mounted — e.g. a match clicked from the
-// outline view dispatches navigate + search-highlight before this view's
-// dynamic import has even resolved. A mounted editor registers itself here to
-// be poked when a request arrives while it's already showing the chapter.
-let applyPendingHighlightHook: (() => void) | null = null
-
-if (typeof window !== 'undefined') {
-  window.addEventListener('bobbinry:search-highlight', (e: Event) => {
-    const detail = (e as CustomEvent<SearchHighlightRequest>).detail
-    if (!detail?.entityId || !detail.query) return
-    setPendingHighlight(detail, Date.now())
-    applyPendingHighlightHook?.()
-  })
-}
-
-// Scroll the editor's `.overflow-y-auto` container so the given document
-// position is visible (centered). The second pass catches the load-settle
-// race where a re-render resets scrollTop right after the first scroll.
-function scrollEditorToPos(editor: Editor, from: number): void {
-  const doScroll = () => {
-    try {
-      // Prefer the active-match decoration span: it wraps exactly the matched
-      // text, so centering it is precise even inside paragraphs taller than
-      // the scroll viewport (centering the whole <p> can leave the match
-      // off-screen).
-      const activeEl = editor.view.dom.querySelector('.search-match-active')
-      if (activeEl) {
-        activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        return
-      }
-      const domAtPos = editor.view.domAtPos(from)
-      const node = domAtPos.node instanceof HTMLElement ? domAtPos.node : domAtPos.node.parentElement
-      node?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    } catch {
-      const coords = editor.view.coordsAtPos(from)
-      const scrollParent = editor.view.dom.closest('.overflow-y-auto')
-      if (scrollParent) {
-        const parentRect = scrollParent.getBoundingClientRect()
-        scrollParent.scrollTo({
-          top: scrollParent.scrollTop + (coords.top - parentRect.top) - parentRect.height / 3,
-          behavior: 'smooth',
-        })
-      }
-    }
-  }
-  requestAnimationFrame(doScroll)
-  window.setTimeout(() => {
-    if (editor.isDestroyed) return
-    const scrollParent = editor.view.dom.closest('.overflow-y-auto')
-    // Retry only if something yanked us back to the top after the first pass.
-    if (scrollParent && scrollParent.scrollTop === 0) doScroll()
-  }, 250)
-}
-
-// Select and scroll to the req.index-th occurrence of the query, and light up
-// every occurrence via the SearchHighlight decorations. Occurrence numbering
-// matches the server's match indices (see search-highlight.ts header).
-function runSearchHighlight(editor: Editor, req: SearchHighlightRequest): void {
-  // Only the chapter body lives in this editor; other fields just open.
-  if (req.field !== 'body') return
-  const opts = { query: req.query, caseSensitive: req.caseSensitive, wholeWord: req.wholeWord }
-  const ranges = findMatchRanges(editor.state.doc, opts)
-  if (ranges.length === 0) return
-  const activeIndex = Math.min(req.index, ranges.length - 1)
-  setSearchHighlight(editor, { ...opts, activeIndex })
-  const target = ranges[activeIndex]!
-  // Explicit click on a match = intent to edit there, so place the caret too
-  // (unlike Enter-cycling, which keeps focus in the search input).
-  editor.commands.setTextSelection(target)
-  editor.commands.focus()
-  scrollEditorToPos(editor, target.from)
 }
 
 /**
@@ -554,90 +103,8 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
 
   const [focusMode, setFocusMode] = useState(false)
 
-  // Chapter color fields + character lookup, used to render the top stripe
-  // and the inline POV/featured/color picker.
-  const [chapterColor, setChapterColor] = useState<ChapterColorFields>({})
-  const [editorCharacters, setEditorCharacters] = useState<CharactersById>(() => new Map())
-  const [chapterMetaMenuOpen, setChapterMetaMenuOpen] = useState(false)
-  const [chapterMetaView, setChapterMetaView] = useState<'main' | 'pov' | 'featured' | 'color'>('main')
-
-  // Load characters once per project for the color cascade. Also re-runs when
-  // the entities module reports a change to the characters collection so the
-  // POV cascade stays in sync after a color edit.
-  useEffect(() => {
-    let cancelled = false
-
-    function refresh() {
-      sdk.entities.query({ collection: 'characters', limit: 1000 })
-        .then(res => {
-          if (cancelled) return
-          const map: CharactersById = new Map()
-          for (const c of (res.data as any[]) ?? []) {
-            if (!c?.id) continue
-            map.set(c.id, {
-              id: c.id,
-              name: typeof c.name === 'string' ? c.name : undefined,
-              color: isPaletteToken(c.color) ? c.color : null,
-            })
-          }
-          setEditorCharacters(map)
-        })
-        .catch(() => {
-          if (!cancelled) setEditorCharacters(new Map())
-        })
-    }
-
-    function handleEntitiesChanged(e: Event) {
-      const detail = (e as CustomEvent).detail
-      if (detail?.collection !== 'characters') return
-      refresh()
-    }
-
-    refresh()
-    window.addEventListener('bobbinry:entities-changed', handleEntitiesChanged)
-    return () => {
-      cancelled = true
-      window.removeEventListener('bobbinry:entities-changed', handleEntitiesChanged)
-    }
-  }, [projectId, sdk])
-
-  // Pull color fields off the chapter entity when it loads/changes.
-  useEffect(() => {
-    if (entityType !== 'content' || !entityId) {
-      setChapterColor({})
-      return
-    }
-    let cancelled = false
-    sdk.entities.get('content', entityId)
-      .then((result: any) => {
-        if (cancelled) return
-        setChapterColor({
-          pov_character_id: result?.pov_character_id ?? null,
-          featured_character_ids: Array.isArray(result?.featured_character_ids)
-            ? result.featured_character_ids
-            : [],
-          manual_color: result?.manual_color ?? null,
-        })
-      })
-      .catch(() => {
-        if (!cancelled) setChapterColor({})
-      })
-    return () => { cancelled = true }
-  }, [entityId, entityType, sdk])
-
-  // Sync stripe when the user changes color/POV from the navigation panel.
-  useEffect(() => {
-    function handleChapterColorChanged(e: Event) {
-      const detail = (e as CustomEvent).detail
-      if (!detail?.entityId || detail.entityId !== entityId) return
-      setChapterColor(prev => ({
-        ...prev,
-        ...(detail.patch ?? {}),
-      }))
-    }
-    window.addEventListener('bobbinry:chapter-color-changed', handleChapterColorChanged)
-    return () => window.removeEventListener('bobbinry:chapter-color-changed', handleChapterColorChanged)
-  }, [entityId])
+  // Characters (POV colour cascade) + this chapter's colour fields.
+  const { characters: editorCharacters, chapterColor, setChapterColor } = useChapterCharacters(sdk, projectId, entityId, entityType)
 
   // Content-level manuscript display overrides — fed from the loaded entity's
   // `entityData.displaySettings`. Combined with user + project levels via
@@ -899,7 +366,8 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
     activeEntityRef.current = entityId ?? null
 
     // Drop a stale search-highlight aimed at a chapter we just left.
-    if (pendingSearchHighlight && pendingSearchHighlight.entityId !== entityId) {
+    const pendingHighlight = getPendingSearchHighlight()
+    if (pendingHighlight && pendingHighlight.entityId !== entityId) {
       clearPendingHighlight()
     }
 
@@ -1042,85 +510,7 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [])
 
-  // --- Entity highlight: load entity names for decoration ---
-  useEffect(() => {
-    if (!editor || !projectId) return
-
-    async function loadEntityNames() {
-      try {
-        const typeDefsRes = await sdk.entities.query({
-          collection: 'entity_type_definitions',
-          limit: 100,
-        })
-        const typeDefs = (typeDefsRes.data as any[]) || []
-
-        const entityResults = await Promise.all(
-          typeDefs.map(async (td) => {
-            const typeId = (td.typeId || td.type_id) as string
-            const typeIcon = (td.icon || '') as string
-            const typeLabel = (td.label || typeId) as string
-            try {
-              const entitiesRes = await sdk.entities.query({
-                collection: typeId,
-                limit: 500,
-              })
-              return ((entitiesRes.data as any[]) || [])
-                .filter((entity: any) => entity.name)
-                .flatMap((entity: any) => {
-                  const base = {
-                    id: entity.id,
-                    typeId,
-                    typeIcon,
-                    typeLabel,
-                    // Only used by the hover card. Already on the record we
-                    // fetched, so carrying it costs nothing extra.
-                    ...(typeof entity.description === 'string'
-                      ? { description: entity.description }
-                      : {}),
-                    ...(typeof entity.image_url === 'string'
-                      ? { imageUrl: entity.image_url }
-                      : {}),
-                  }
-                  const out: EntityEntry[] = [{ ...base, name: entity.name }]
-                  if (Array.isArray(entity.aliases)) {
-                    for (const alias of entity.aliases) {
-                      if (typeof alias === 'string' && alias.trim()) {
-                        out.push({ ...base, name: alias.trim() })
-                      }
-                    }
-                  }
-                  return out
-                })
-            } catch {
-              return [] // Skip types that fail to query
-            }
-          })
-        )
-        const entries: EntityEntry[] = entityResults.flat()
-
-        // Update extension storage and trigger decoration rebuild
-        if (!editor) return
-        ;(editor.storage as any).entityHighlight.entityList = entries
-        editor.view.dispatch(
-          editor.state.tr.setMeta('entityListUpdated', true)
-        )
-      } catch (err) {
-        console.error('[EditorView] Failed to load entity names:', err)
-      }
-    }
-
-    loadEntityNames()
-
-    // Re-load when entities are added/renamed/deleted.
-    // Skip editor-originated title changes — those don't affect entity names.
-    function handleEntityUpdated(e: Event) {
-      const detail = (e as CustomEvent).detail
-      if (detail?.source === 'editor') return
-      loadEntityNames()
-    }
-    window.addEventListener('bobbinry:entity-updated', handleEntityUpdated)
-    return () => window.removeEventListener('bobbinry:entity-updated', handleEntityUpdated)
-  }, [editor, projectId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEntityHighlightNames(editor, sdk, projectId)
 
   // Sync title when another view (e.g. sidebar) renames the current entity.
   // Events with source === 'editor' are ones we dispatched ourselves — skip them
@@ -1168,10 +558,10 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
   // Called both when the event arrives and after a chapter's content loads.
   const tryApplySearchHighlightRef = useRef<() => void>(() => {})
   tryApplySearchHighlightRef.current = () => {
-    const req = pendingSearchHighlight
+    const req = getPendingSearchHighlight()
     const ed = editorRef.current
     if (!req || !ed || req.entityId !== activeEntityRef.current) return
-    if (Date.now() > pendingHighlightExpiry) {
+    if (isPendingHighlightExpired()) {
       clearPendingHighlight()
       return
     }
@@ -1258,8 +648,8 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
   // aren't lost while this view is unmounted; register to be poked when a
   // request arrives while we're already showing the chapter.
   useEffect(() => {
-    applyPendingHighlightHook = () => tryApplySearchHighlightRef.current()
-    return () => { applyPendingHighlightHook = null }
+    setApplyPendingHighlightHook(() => tryApplySearchHighlightRef.current())
+    return () => setApplyPendingHighlightHook(null)
   }, [])
 
   // --- Live find session (browser-style Ctrl+F, driven by the shell) ---
@@ -2085,15 +1475,8 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
     ? editorCharacters.get(chapterColor.pov_character_id) ?? null
     : null
   const featuredCharacters = resolveFeaturedCharacters(chapterColor, editorCharacters)
-  const characterList: CharacterColorRef[] = Array.from(editorCharacters.values()).sort((a, b) =>
-    (a.name ?? '').localeCompare(b.name ?? ''),
-  )
 
-  async function applyChapterMetaPatch(patch: {
-    pov_character_id?: string | null
-    featured_character_ids?: string[]
-    manual_color?: string | null
-  }) {
+  async function applyChapterMetaPatch(patch: ChapterMetaPatch) {
     if (!entityId || entityType !== 'content') return
     setChapterColor(prev => ({ ...prev, ...patch }))
     try {
@@ -2130,11 +1513,6 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
     } catch (err) {
       console.error('[EditorView] Failed to update chapter color fields:', err)
     }
-  }
-
-  function closeChapterMetaMenu() {
-    setChapterMetaMenuOpen(false)
-    setChapterMetaView('main')
   }
 
   return (
@@ -2252,298 +1630,23 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
               surface's onClick, which would focus('end') and scroll the
               editor to the bottom of the document. */}
           <div className="flex flex-wrap items-center gap-2 mb-6" onClick={(e) => e.stopPropagation()}>
-            <div className="relative inline-block">
-              <button
-                type="button"
-                onClick={() => setContentTypeMenuOpen(o => !o)}
-                disabled={savingContentType}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ring-1 ring-inset transition-colors disabled:opacity-50 ${
-                  countsForWords
-                    ? 'bg-blue-50 text-blue-700 ring-blue-200 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:ring-blue-800 dark:hover:bg-blue-900/50'
-                    : 'bg-amber-50 text-amber-700 ring-amber-200 hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300 dark:ring-amber-800 dark:hover:bg-amber-900/50'
-                }`}
-                title="Change content type"
-              >
-                <span>{CONTENT_TYPE_LABELS[contentType]}</span>
-                {!countsForWords && (
-                  <span className="opacity-70">· not counted</span>
-                )}
-                <svg className="w-3 h-3 opacity-60" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
-                  <path d="M2 4l4 4 4-4z" />
-                </svg>
-              </button>
-              {contentTypeMenuOpen && (
-                <>
-                  <div
-                    className="fixed inset-0 z-10"
-                    onClick={() => setContentTypeMenuOpen(false)}
-                    aria-hidden="true"
-                  />
-                  <div className="absolute left-0 top-full mt-1 z-20 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg py-1">
-                    {CONTENT_TYPES.map(t => (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => handleContentTypeChange(t)}
-                        disabled={t === contentType || savingContentType}
-                        className={`flex w-full items-center justify-between px-3 py-1.5 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 disabled:cursor-default ${
-                          t === contentType
-                            ? 'font-semibold text-gray-900 dark:text-gray-100'
-                            : 'text-gray-700 dark:text-gray-300'
-                        }`}
-                      >
-                        <span>{CONTENT_TYPE_LABELS[t]}</span>
-                        {t === contentType && <span className="text-blue-500">✓</span>}
-                        {!countsTowardWordCount(t) && t !== contentType && (
-                          <span className="text-[10px] text-gray-400">not counted</span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* POV character + color picker. Combined dropdown: pick POV character,
-                add featured characters, or set a manual color override. Mirrors the
-                right-click menu in the navigation panel; either path works. */}
+            <ContentTypeMenu
+              contentType={contentType}
+              open={contentTypeMenuOpen}
+              saving={savingContentType}
+              onToggle={() => setContentTypeMenuOpen(o => !o)}
+              onClose={() => setContentTypeMenuOpen(false)}
+              onChange={handleContentTypeChange}
+            />
             {entityType === 'content' && (
-              <div className="relative inline-block">
-                <button
-                  type="button"
-                  onClick={() => { setChapterMetaMenuOpen(o => !o); setChapterMetaView('main') }}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ring-1 ring-inset bg-white text-gray-700 ring-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200 dark:ring-gray-700 dark:hover:bg-gray-700/60 transition-colors"
-                  title={povCharacter?.name ? `POV: ${povCharacter.name}` : 'Set POV character'}
-                >
-                  <span
-                    aria-hidden
-                    className={`inline-block h-3 w-3 rounded-full ${chapterColorClasses?.swatchBg ?? 'bg-gray-300 dark:bg-gray-600'}`}
-                  />
-                  <span>
-                    {povCharacter?.name
-                      ? `POV: ${povCharacter.name}`
-                      : isPaletteToken(chapterColor.manual_color)
-                        ? 'Custom color'
-                        : 'POV'}
-                  </span>
-                  {featuredCharacters.length > 0 && (
-                    <span className="flex items-center gap-0.5 ml-1">
-                      {featuredCharacters.slice(0, 3).map(c => {
-                        const cls = paletteClasses(c.color)
-                        return (
-                          <span
-                            key={c.id}
-                            title={c.name ?? 'Unnamed'}
-                            className={`inline-flex items-center justify-center h-3 w-3 rounded-full text-[7px] font-semibold text-white ring-1 ring-white dark:ring-gray-800 ${cls?.chipBg ?? 'bg-gray-300 dark:bg-gray-600'}`}
-                          >
-                            {characterInitial(c.name)}
-                          </span>
-                        )
-                      })}
-                      {featuredCharacters.length > 3 && (
-                        <span className="text-[10px] text-gray-500 dark:text-gray-400">+{featuredCharacters.length - 3}</span>
-                      )}
-                    </span>
-                  )}
-                  <svg className="w-3 h-3 opacity-60" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
-                    <path d="M2 4l4 4 4-4z" />
-                  </svg>
-                </button>
-                {chapterMetaMenuOpen && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-10"
-                      onClick={closeChapterMetaMenu}
-                      aria-hidden="true"
-                    />
-                    <div className="absolute left-0 top-full mt-1 z-20 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg overflow-hidden">
-                      {chapterMetaView === 'main' && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => setChapterMetaView('pov')}
-                            className="flex w-full items-center justify-between px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
-                          >
-                            <span className="flex items-center gap-2">
-                              <span>🎭</span>
-                              <span>POV character</span>
-                            </span>
-                            <span className="flex items-center gap-1 text-gray-400">
-                              {povCharacter ? (
-                                <>
-                                  <span className={`h-2.5 w-2.5 rounded-full ${paletteClasses(povCharacter.color)?.swatchBg ?? 'bg-gray-300 dark:bg-gray-600'}`} />
-                                  <span className="truncate max-w-[100px]">{povCharacter.name}</span>
-                                </>
-                              ) : (
-                                <span className="italic">none</span>
-                              )}
-                              <span className="ml-1">▸</span>
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setChapterMetaView('featured')}
-                            className="flex w-full items-center justify-between px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 border-t border-gray-200 dark:border-gray-700"
-                          >
-                            <span className="flex items-center gap-2">
-                              <span>👥</span>
-                              <span>Featured characters</span>
-                            </span>
-                            <span className="flex items-center gap-0.5 text-gray-400">
-                              <span>{featuredCharacters.length || '—'}</span>
-                              <span className="ml-1">▸</span>
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setChapterMetaView('color')}
-                            className="flex w-full items-center justify-between px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 border-t border-gray-200 dark:border-gray-700"
-                          >
-                            <span className="flex items-center gap-2">
-                              <span>🎨</span>
-                              <span>Custom color</span>
-                            </span>
-                            <span className="flex items-center gap-1 text-gray-400">
-                              {isPaletteToken(chapterColor.manual_color) ? (
-                                <>
-                                  <span className={`h-2.5 w-2.5 rounded-full ${paletteClasses(chapterColor.manual_color)?.swatchBg}`} />
-                                  <span>{paletteClasses(chapterColor.manual_color)?.label}</span>
-                                </>
-                              ) : (
-                                <span className="italic">none</span>
-                              )}
-                              <span className="ml-1">▸</span>
-                            </span>
-                          </button>
-                        </>
-                      )}
-
-                      {chapterMetaView === 'pov' && (
-                        <div className="max-h-72 overflow-y-auto">
-                          <button
-                            type="button"
-                            onClick={() => setChapterMetaView('main')}
-                            className="w-full text-left px-3 py-2 text-[11px] text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-200 dark:border-gray-700"
-                          >
-                            ← POV character
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => { void applyChapterMetaPatch({ pov_character_id: null }); closeChapterMetaMenu() }}
-                            className={`flex w-full items-center gap-2 px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 ${chapterColor.pov_character_id == null ? 'font-semibold' : ''}`}
-                          >
-                            <span className="h-3 w-3 rounded-full border border-gray-300 dark:border-gray-600" />
-                            <span className="italic text-gray-500 dark:text-gray-400">(none)</span>
-                          </button>
-                          {characterList.length === 0 && (
-                            <div className="px-3 py-2 text-[11px] text-gray-500 dark:text-gray-400 italic">No characters yet</div>
-                          )}
-                          {characterList.map(char => {
-                            const cls = paletteClasses(char.color)
-                            const isCurrent = char.id === chapterColor.pov_character_id
-                            return (
-                              <button
-                                key={char.id}
-                                type="button"
-                                onClick={() => { void applyChapterMetaPatch({ pov_character_id: char.id, manual_color: null }); closeChapterMetaMenu() }}
-                                className={`flex w-full items-center gap-2 px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 ${isCurrent ? 'font-semibold' : ''}`}
-                              >
-                                <span className={`h-3 w-3 rounded-full ${cls?.swatchBg ?? 'bg-gray-300 dark:bg-gray-600'}`} />
-                                <span className="truncate flex-1 text-left">{char.name ?? 'Unnamed'}</span>
-                                {isCurrent && <span className="text-blue-500">✓</span>}
-                              </button>
-                            )
-                          })}
-                        </div>
-                      )}
-
-                      {chapterMetaView === 'featured' && (
-                        <div className="max-h-72 overflow-y-auto">
-                          <button
-                            type="button"
-                            onClick={() => setChapterMetaView('main')}
-                            className="w-full text-left px-3 py-2 text-[11px] text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-200 dark:border-gray-700"
-                          >
-                            ← Featured characters
-                          </button>
-                          {characterList.length === 0 && (
-                            <div className="px-3 py-2 text-[11px] text-gray-500 dark:text-gray-400 italic">No characters yet</div>
-                          )}
-                          {characterList.map(char => {
-                            const cls = paletteClasses(char.color)
-                            const current = new Set(chapterColor.featured_character_ids ?? [])
-                            const isOn = current.has(char.id)
-                            return (
-                              <button
-                                key={char.id}
-                                type="button"
-                                onClick={() => {
-                                  const next = new Set(current)
-                                  if (isOn) next.delete(char.id)
-                                  else next.add(char.id)
-                                  void applyChapterMetaPatch({ featured_character_ids: Array.from(next) })
-                                }}
-                                className="flex w-full items-center gap-2 px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
-                              >
-                                <span className={`inline-flex items-center justify-center h-3.5 w-3.5 rounded border ${isOn ? 'bg-gray-900 dark:bg-gray-100 border-gray-900 dark:border-gray-100 text-white dark:text-gray-900' : 'border-gray-400 dark:border-gray-500'}`}>
-                                  {isOn && <span className="text-[10px] leading-none">✓</span>}
-                                </span>
-                                <span className={`h-3 w-3 rounded-full ${cls?.swatchBg ?? 'bg-gray-300 dark:bg-gray-600'}`} />
-                                <span className="truncate flex-1 text-left">{char.name ?? 'Unnamed'}</span>
-                              </button>
-                            )
-                          })}
-                          <button
-                            type="button"
-                            onClick={closeChapterMetaMenu}
-                            className="w-full text-left px-3 py-2 text-[11px] text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 border-t border-gray-200 dark:border-gray-700"
-                          >
-                            Done
-                          </button>
-                        </div>
-                      )}
-
-                      {chapterMetaView === 'color' && (
-                        <div>
-                          <button
-                            type="button"
-                            onClick={() => setChapterMetaView('main')}
-                            className="w-full text-left px-3 py-2 text-[11px] text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-200 dark:border-gray-700"
-                          >
-                            ← Custom color
-                          </button>
-                          <div className="px-3 py-2 text-[11px] text-gray-500 dark:text-gray-400">
-                            Overrides POV character color.
-                          </div>
-                          <div className="px-3 pb-3 grid grid-cols-6 gap-2">
-                            {PALETTE_TOKENS.map(token => {
-                              const cls = paletteClasses(token)
-                              if (!cls) return null
-                              const isCurrent = token === chapterColor.manual_color
-                              return (
-                                <button
-                                  key={token}
-                                  type="button"
-                                  title={cls.label}
-                                  onClick={() => { void applyChapterMetaPatch({ manual_color: token }); closeChapterMetaMenu() }}
-                                  className={`h-6 w-6 rounded-full ${cls.swatchBg} ring-offset-2 ring-offset-white dark:ring-offset-gray-800 transition ${isCurrent ? 'ring-2 ring-gray-900 dark:ring-gray-100' : 'hover:ring-2 hover:ring-gray-300 dark:hover:ring-gray-500'}`}
-                                />
-                              )
-                            })}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => { void applyChapterMetaPatch({ manual_color: null }); closeChapterMetaMenu() }}
-                            className="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 border-t border-gray-200 dark:border-gray-700"
-                          >
-                            Clear custom color
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
+              <ChapterMetaMenu
+                chapterColor={chapterColor}
+                characters={editorCharacters}
+                colorClasses={chapterColorClasses}
+                povCharacter={povCharacter}
+                featuredCharacters={featuredCharacters}
+                onPatch={patch => { void applyChapterMetaPatch(patch) }}
+              />
             )}
           </div>
 
@@ -2552,74 +1655,15 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
         </div>
       </div>
 
-      {/* Session expired banner — unmissable, unlike the status dot */}
-      {saveStatus === 'auth' && (
-        <div className="absolute top-0 inset-x-0 z-40 flex items-center justify-center gap-3 px-4 py-2 bg-red-50 dark:bg-red-900/40 border-b border-red-200 dark:border-red-800 text-sm text-red-800 dark:text-red-200">
-          <span>
-            <strong>Your session has expired.</strong> Your writing is saved on this device but isn&apos;t syncing.
-          </span>
-          <button
-            type="button"
-            onClick={() => {
-              const here = window.location.pathname + window.location.search
-              window.location.assign(`/login?callbackUrl=${encodeURIComponent(here)}`)
-            }}
-            className="px-3 py-1 rounded-md text-xs font-medium bg-red-600 hover:bg-red-700 text-white transition-colors cursor-pointer"
-          >
-            Sign in to keep saving
-          </button>
-        </div>
-      )}
+      {saveStatus === 'auth' && <SessionExpiredBanner />}
 
-      {/* Conflict resolution dialog */}
       {conflictInfo && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-[2px]">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full mx-4 p-6 border border-gray-200 dark:border-gray-700">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  Editing conflict
-                </h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  This scene was edited in another session. Your local changes can't be saved without resolving this.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setConflictInfo(null)}
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 -mt-1 -mr-1 p-1"
-                title="Dismiss (conflict will resurface on next save)"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={handleConflictReload}
-                className="w-full px-4 py-2.5 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors cursor-pointer"
-              >
-                Reload server version
-              </button>
-              <button
-                type="button"
-                onClick={handleConflictSaveAsNew}
-                className="w-full px-4 py-2.5 rounded-lg text-sm font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 transition-colors cursor-pointer"
-              >
-                Save as new scene
-              </button>
-              <button
-                type="button"
-                onClick={handleConflictOverwrite}
-                className="w-full px-4 py-2.5 rounded-lg text-sm font-medium bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 transition-colors cursor-pointer"
-              >
-                Overwrite server version
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConflictDialog
+          onDismiss={() => setConflictInfo(null)}
+          onReload={handleConflictReload}
+          onSaveAsNew={handleConflictSaveAsNew}
+          onOverwrite={handleConflictOverwrite}
+        />
       )}
 
       {/* Floating status - word count + save indicator */}
