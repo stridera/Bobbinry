@@ -32,6 +32,7 @@ import { entityChanges } from '../db/schema'
 import { eq, and, gt, lte, sql, asc } from 'drizzle-orm'
 import { requireAuth, requireProjectOwnership, requireScope } from '../middleware/auth'
 import { coalesceChanges } from '../lib/entity-changes'
+import { env } from '../lib/env'
 
 const ChangesParamsSchema = z.object({
   projectId: z.string().uuid('Invalid project ID format'),
@@ -50,9 +51,9 @@ const ChangesQuerySchema = z.object({
 /** How old a row must be before the cursor may advance past it (see header).
  * Overridable for tests; 0 disables the horizon. */
 function horizonMs(): number {
-  const raw = process.env.ENTITY_CHANGES_HORIZON_MS
+  const raw = env.ENTITY_CHANGES_HORIZON_MS
   if (raw !== undefined) return Math.max(0, Number(raw) || 0)
-  return process.env.NODE_ENV === 'test' ? 0 : 15_000
+  return env.NODE_ENV === 'test' ? 0 : 15_000
 }
 
 const entityChangesPlugin: FastifyPluginAsync = async (fastify) => {

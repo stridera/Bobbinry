@@ -12,6 +12,7 @@
  */
 
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto'
+import { env } from './env'
 
 const VERSION = 'v1'
 const ALGO = 'aes-256-gcm'
@@ -19,7 +20,7 @@ const IV_LEN = 12
 const TAG_LEN = 16
 
 function deriveKey(): Buffer {
-  const material = process.env.NEXTAUTH_SECRET || process.env.API_JWT_SECRET
+  const material = env.NEXTAUTH_SECRET || env.API_JWT_SECRET
   if (!material) {
     // No silent fallback: if the secret is unset we can't safely encrypt or
     // decrypt anyone's data — failing loud matches middleware/auth.ts.

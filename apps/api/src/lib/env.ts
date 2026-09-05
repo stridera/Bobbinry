@@ -13,6 +13,8 @@ interface EnvConfig {
   WEB_ORIGIN: string
   API_ORIGIN: string
   API_JWT_SECRET: string | undefined
+  /** NextAuth signing secret, shared with the shell; falls back to API_JWT_SECRET where used. */
+  NEXTAUTH_SECRET: string | undefined
   INTERNAL_API_AUTH_TOKEN: string | undefined
   INTERNAL_API_AUTH_TOKEN_PREVIOUS: string | undefined
   S3_ENDPOINT: string
@@ -27,6 +29,8 @@ interface EnvConfig {
   GOOGLE_SECRET: string | undefined
   ADMIN_EMAIL: string
   PLATFORM_FEE_PERCENT: number
+  /** Change-feed horizon override (ms); tests set 0. */
+  ENTITY_CHANGES_HORIZON_MS: number | undefined
   STRIPE_SECRET_KEY: string | undefined
   STRIPE_WEBHOOK_SECRET: string | undefined
   STRIPE_SUPPORTER_MONTHLY_PRICE_ID: string | undefined
@@ -64,6 +68,14 @@ const recommendedEnvVars: Record<string, string[]> = {
   ],
 }
 
+/** parseInt with a fallback for missing or non-numeric values (parseInt alone yields NaN). */
+function intFromEnv(name: string, fallback: number): number {
+  const raw = process.env[name]
+  if (raw === undefined || raw === '') return fallback
+  const n = parseInt(raw, 10)
+  return Number.isNaN(n) ? fallback : n
+}
+
 export function validateEnv(): EnvConfig {
   const nodeEnv = process.env.NODE_ENV || 'development'
   const required = requiredEnvVars[nodeEnv as keyof typeof requiredEnvVars] || []
@@ -96,12 +108,13 @@ export function validateEnv(): EnvConfig {
 
   return {
     DATABASE_URL: process.env.DATABASE_URL || 'postgres://bobbinry:bobbinry@localhost:5432/bobbinry',
-    PORT: parseInt(process.env.PORT || '4100', 10),
+    PORT: intFromEnv('PORT', 4100),
     NODE_ENV: nodeEnv,
     LOG_LEVEL: process.env.LOG_LEVEL || 'info',
     WEB_ORIGIN: process.env.WEB_ORIGIN || 'http://localhost:3100',
-    API_ORIGIN: process.env.API_ORIGIN || `http://localhost:${parseInt(process.env.PORT || '4100', 10)}`,
+    API_ORIGIN: process.env.API_ORIGIN || `http://localhost:${intFromEnv('PORT', 4100)}`,
     API_JWT_SECRET: process.env.API_JWT_SECRET,
+    NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET,
     INTERNAL_API_AUTH_TOKEN: process.env.INTERNAL_API_AUTH_TOKEN,
     INTERNAL_API_AUTH_TOKEN_PREVIOUS: process.env.INTERNAL_API_AUTH_TOKEN_PREVIOUS,
     S3_ENDPOINT: process.env.S3_ENDPOINT || 'http://127.0.0.1:9100',
@@ -115,7 +128,8 @@ export function validateEnv(): EnvConfig {
     GOOGLE_ID: process.env.GOOGLE_ID,
     GOOGLE_SECRET: process.env.GOOGLE_SECRET,
     ADMIN_EMAIL: process.env.ADMIN_EMAIL || 'strider@bobbinry.dev',
-    PLATFORM_FEE_PERCENT: parseInt(process.env.PLATFORM_FEE_PERCENT || '5', 10),
+    PLATFORM_FEE_PERCENT: intFromEnv('PLATFORM_FEE_PERCENT', 5),
+    ENTITY_CHANGES_HORIZON_MS: process.env.ENTITY_CHANGES_HORIZON_MS === undefined ? undefined : intFromEnv('ENTITY_CHANGES_HORIZON_MS', 0),
     STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
     STRIPE_SUPPORTER_MONTHLY_PRICE_ID: process.env.STRIPE_SUPPORTER_MONTHLY_PRICE_ID,

@@ -19,8 +19,9 @@ import { requireAuth, requireSelf, requireVerified, denyApiKeyAuth } from '../mi
 import { serverEventBus, subscriptionChanged } from '../lib/event-bus'
 import { getStripe, getSubscriptionPeriod, createExpressAccount, createOnboardingLink } from '../lib/stripe'
 import { isUuid as isValidUUID } from '../lib/slugs'
+import { env } from '../lib/env'
 
-const PLATFORM_FEE_PERCENT = parseInt(process.env.PLATFORM_FEE_PERCENT || '5', 10)
+const PLATFORM_FEE_PERCENT = env.PLATFORM_FEE_PERCENT
 
 const stripePlugin: FastifyPluginAsync = async (fastify) => {
   // ============================================================================
@@ -237,7 +238,7 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
       let statePayload: { userId: string }
       try {
         const secret = new TextEncoder().encode(
-          process.env.NEXTAUTH_SECRET || process.env.API_JWT_SECRET || ''
+          env.NEXTAUTH_SECRET || env.API_JWT_SECRET || ''
         )
         if (secret.byteLength === 0) {
           return reply.status(500).send({ error: 'Server signing secret not configured' })
@@ -612,7 +613,7 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
       if (!stripe) return reply.status(503).send({ error: 'Stripe not configured' })
 
       const signature = request.headers['stripe-signature'] as string
-      const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
+      const webhookSecret = env.STRIPE_WEBHOOK_SECRET
       let event: Stripe.Event
 
       if (signature && webhookSecret && request.rawBody) {
@@ -622,7 +623,7 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
           signature,
           webhookSecret
         )
-      } else if (process.env.NODE_ENV === 'development') {
+      } else if (env.NODE_ENV === 'development') {
         // Development only: trust the payload when webhook secret isn't configured
         fastify.log.warn('Stripe webhook received without signature verification (dev mode)')
         event = request.body as Stripe.Event

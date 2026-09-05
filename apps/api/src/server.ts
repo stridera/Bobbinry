@@ -244,9 +244,7 @@ export function build(opts = {}): FastifyInstance {
 
   // CORS configuration - environment-aware origins
   server.register(cors, {
-    origin: env.NODE_ENV === 'production'
-      ? [env.WEB_ORIGIN]
-      : [env.WEB_ORIGIN],
+    origin: [env.WEB_ORIGIN],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Correlation-ID'],

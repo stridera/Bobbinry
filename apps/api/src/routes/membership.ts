@@ -19,6 +19,7 @@ import { getUserMembershipTier, getUserBadges } from '../lib/membership'
 import { getStripe } from '../lib/stripe'
 import type { Checkout } from 'stripe/cjs/resources/Checkout/Sessions.js'
 import { isUuid as isValidUUID } from '../lib/slugs'
+import { env } from '../lib/env'
 
 const membershipPlugin: FastifyPluginAsync = async (fastify) => {
 
@@ -88,8 +89,8 @@ const membershipPlugin: FastifyPluginAsync = async (fastify) => {
 
       // Get the right price ID
       const priceId = billingPeriod === 'yearly'
-        ? process.env.STRIPE_SUPPORTER_YEARLY_PRICE_ID
-        : process.env.STRIPE_SUPPORTER_MONTHLY_PRICE_ID
+        ? env.STRIPE_SUPPORTER_YEARLY_PRICE_ID
+        : env.STRIPE_SUPPORTER_MONTHLY_PRICE_ID
 
       if (!priceId) {
         return reply.status(503).send({ error: 'Supporter pricing not configured' })

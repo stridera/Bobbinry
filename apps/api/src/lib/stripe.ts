@@ -11,7 +11,7 @@ import { env } from './env'
 
 /** Single Stripe client factory. Returns null if STRIPE_SECRET_KEY is unset. */
 export function getStripe(): Stripe | null {
-  const key = process.env.STRIPE_SECRET_KEY
+  const key = env.STRIPE_SECRET_KEY
   if (!key) return null
   // StripeSDK's CJS types declare a plain function instead of a class,
   // but at runtime it is constructable. Cast to get proper typing.

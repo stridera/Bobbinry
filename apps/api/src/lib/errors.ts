@@ -3,6 +3,7 @@
  */
 
 import { FastifyReply } from 'fastify'
+import { env } from './env'
 
 export class ApiError extends Error {
   constructor(
@@ -61,13 +62,13 @@ export function handleError(reply: FastifyReply, error: unknown, correlationId?:
       error: error.message,
       code: error.code,
       correlationId,
-      ...(process.env.NODE_ENV === 'development' && error.context && { context: error.context })
+      ...(env.NODE_ENV === 'development' && error.context && { context: error.context })
     })
   }
 
   // Handle unknown errors
   const message = error instanceof Error ? error.message : 'Internal server error'
-  const isDevelopment = process.env.NODE_ENV === 'development'
+  const isDevelopment = env.NODE_ENV === 'development'
 
   return reply.status(500).send({
     error: isDevelopment ? message : 'Internal server error',
