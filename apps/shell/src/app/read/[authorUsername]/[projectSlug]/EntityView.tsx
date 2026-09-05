@@ -17,6 +17,7 @@ import { ResolvedEntityNamesProvider, ResolvedEntityDetailsProvider, EntityNavPr
 import { config } from '@/lib/config'
 import type { PublishedType, PublishedEntity } from './entities-data'
 import { resolveEntityForVariant, variantConfigForType } from './entities-data'
+import { fetchPublishedEntityNames } from './published-names'
 
 interface EntityViewProps {
   type: PublishedType
@@ -84,14 +85,13 @@ export default function EntityView({ type, entity, projectId, apiToken, bare = f
   useEffect(() => {
     if (!projectId) return
     let cancelled = false
-    const headers: Record<string, string> = {}
-    if (apiToken) headers['Authorization'] = `Bearer ${apiToken}`
-    fetch(`${config.apiUrl}/api/public/projects/${projectId}/entities/published-names`, { headers })
-      .then(r => (r.ok ? r.json() : null))
-      .then((data: { entities?: Array<{ id: string; name: string }> } | null) => {
-        if (cancelled || !data?.entities) return
+    // Shared, cached with the chapter page's highlight pass — one request per
+    // project + viewer per minute instead of one per opened entity.
+    fetchPublishedEntityNames(projectId, apiToken)
+      .then(entries => {
+        if (cancelled || !entries) return
         const map = new Map<string, string>()
-        for (const row of data.entities) {
+        for (const row of entries) {
           if (!map.has(row.id)) map.set(row.id, row.name)
         }
         setRelationNames(map)

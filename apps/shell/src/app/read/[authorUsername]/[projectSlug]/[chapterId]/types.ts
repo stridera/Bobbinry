@@ -54,14 +54,7 @@ export interface Annotation {
   createdAt: string
 }
 
-export interface PublishedEntityName {
-  id: string
-  slug: string | null
-  name: string
-  typeId: string
-  typeIcon: string
-  typeLabel: string
-}
+export type { PublishedEntityName } from '../published-names'
 
 export type FontSize = 'small' | 'medium' | 'large' | 'xlarge'
 export type ReaderTheme = 'light' | 'dark' | 'sepia'

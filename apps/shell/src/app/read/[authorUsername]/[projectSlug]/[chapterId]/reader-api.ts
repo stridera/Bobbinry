@@ -8,6 +8,7 @@
  */
 import { config } from '@/lib/config'
 import type { Annotation, Comment, PublishedEntityName, ReactionCount } from './types'
+import { fetchPublishedEntityNames } from '../published-names'
 import type { TextAnchor } from '@/components/AnnotationSelectionPopover'
 
 export function publicFetch(path: string, token?: string | null, init: RequestInit = {}): Promise<Response> {
@@ -67,12 +68,9 @@ export const readerApi = {
     return data ? data.annotations ?? [] : null
   },
 
-  /** Null when the entities bobbin is not installed or the request failed. */
-  async fetchPublishedEntityNames(projectId: string, token?: string): Promise<PublishedEntityName[] | null> {
-    const data = await jsonOrNull<{ installed?: boolean; entities?: PublishedEntityName[] }>(
-      await publicFetch(`/public/projects/${projectId}/entities/published-names`, token),
-    )
-    return data?.installed && Array.isArray(data.entities) ? data.entities : null
+  /** Null when the entities bobbin is not installed or the request failed. Cached per project + viewer. */
+  fetchPublishedEntityNames(projectId: string, token?: string): Promise<PublishedEntityName[] | null> {
+    return fetchPublishedEntityNames(projectId, token)
   },
 
   viewUrl(projectId: string, chapterId: string): string {
