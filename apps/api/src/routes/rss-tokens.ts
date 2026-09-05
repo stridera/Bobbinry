@@ -14,6 +14,7 @@ import { rssFeedTokens } from '../db/schema'
 import { eq, and, isNull, desc, sql } from 'drizzle-orm'
 import { requireAuth, requireVerified, denyApiKeyAuth } from '../middleware/auth'
 import { randomBase62 } from '../lib/random-token'
+import { isUuid } from '../lib/slugs'
 
 const RSS_TOKEN_LIMIT_PER_USER = 10
 
@@ -100,8 +101,7 @@ export default async function rssTokensPlugin(fastify: FastifyInstance) {
     const userId = request.user!.id
     const { tokenId } = request.params
 
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    if (!uuidRegex.test(tokenId)) {
+    if (!isUuid(tokenId)) {
       return reply.status(400).send({ error: 'Invalid token ID format' })
     }
 

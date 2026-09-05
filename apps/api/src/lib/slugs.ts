@@ -27,6 +27,11 @@ export const RESERVED_PROJECT_CHILD_SLUGS = new Set([
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+/** True for a canonical 8-4-4-4-12 UUID string (any case). */
+export function isUuid(value: string): boolean {
+  return UUID_RE.test(value)
+}
+
 export const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,148}[a-z0-9])?$/
 
 const MAX_SLUG_LENGTH = 150

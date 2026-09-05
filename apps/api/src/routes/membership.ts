@@ -18,10 +18,7 @@ import { requireAuth } from '../middleware/auth'
 import { getUserMembershipTier, getUserBadges } from '../lib/membership'
 import { getStripe } from '../lib/stripe'
 import type { Checkout } from 'stripe/cjs/resources/Checkout/Sessions.js'
-
-function isValidUUID(uuid: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid)
-}
+import { isUuid as isValidUUID } from '../lib/slugs'
 
 const membershipPlugin: FastifyPluginAsync = async (fastify) => {
 

@@ -5,6 +5,7 @@ import { ZipArchive } from 'archiver'
 import EPub from 'epub-gen-memory'
 import HTMLtoDOCX from '@turbodocx/html-to-docx'
 import type { ExportFormat } from '@bobbinry/types'
+import { escapeHtml } from './text'
 
 // ============================================
 // TYPES
@@ -89,13 +90,6 @@ export function chapterToHtml(chapter: Chapter, opts?: { pageBreak?: boolean }):
   return parts.join('\n')
 }
 
-export function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
 
 export async function generatePdf(
   projectName: string,

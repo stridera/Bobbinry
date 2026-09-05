@@ -17,16 +17,11 @@ import type {
 } from './index'
 import { sanitizeImportedHtml } from '../sanitize-html'
 import { countWords } from '../text'
+import { escapeHtmlText as escapeHtml } from '../text'
 
 const CHAPTER_PATTERN = /^\s*(chapter|prologue|epilogue|part|book)\b.*$/i
 const FIRST_LINE_LIMIT = 140
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-}
 
 function paragraphize(bodyLines: string[]): string {
   const paragraphs: string[] = []

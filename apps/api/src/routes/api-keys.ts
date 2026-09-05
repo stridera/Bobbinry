@@ -13,6 +13,7 @@ import { sql } from 'drizzle-orm'
 import { requireAuth, requireVerified, denyApiKeyAuth, requireProjectOwnership, hashApiKey, clearApiKeyCache } from '../middleware/auth'
 import { getUserMembershipTier } from '../lib/membership'
 import { randomBase62 } from '../lib/random-token'
+import { isUuid } from '../lib/slugs'
 
 const VALID_SCOPES = [
   'projects:read',
@@ -198,8 +199,7 @@ export default async function apiKeysPlugin(fastify: FastifyInstance) {
       const { keyId } = request.params
 
       // UUID validation
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-      if (!uuidRegex.test(keyId)) {
+      if (!isUuid(keyId)) {
         return reply.status(400).send({ error: 'Invalid key ID format' })
       }
 

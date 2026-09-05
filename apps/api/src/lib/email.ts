@@ -26,14 +26,6 @@ function getClient(): Resend | null {
 }
 
 /** Escape user-controlled strings before interpolating into HTML email bodies */
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
 
 // ---------------------------------------------------------------------------
 // Design tokens
@@ -350,6 +342,7 @@ export async function sendBetaReaderJoinedEmail(
 // ---------------------------------------------------------------------------
 
 import type { AdminDailyReport } from '../jobs/admin-daily-report'
+import { escapeHtml } from './text'
 
 export interface AdminDailyReportWindow {
   since: Date

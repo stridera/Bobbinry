@@ -16,12 +16,7 @@ import {
 import { eq, and, or, desc, sql, isNull } from 'drizzle-orm'
 import { requireAuth, requireSelf, requireOwner, denyApiKeyAuth } from '../middleware/auth'
 import { sendEmail } from '../lib/email'
-
-// Helper to validate UUID
-function isValidUUID(uuid: string): boolean {
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-  return uuidRegex.test(uuid)
-}
+import { isUuid as isValidUUID } from '../lib/slugs'
 
 const subscriptionsPlugin: FastifyPluginAsync = async (fastify) => {
   // ============================================================================

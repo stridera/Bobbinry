@@ -29,16 +29,9 @@ import { getStripe, createExpressAccount, createOnboardingLink } from '../lib/st
 import { verifyUnsubscribeToken, sendBetaReaderJoinedEmail } from '../lib/email'
 import { randomBytes } from 'crypto'
 import { liveEntity, notDeleted } from '../lib/entity-scope'
+import { isUuid as isValidUUID } from '../lib/slugs'
+import { escapeHtml } from '../lib/text'
 
-function escapeHtml(str: string): string {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-}
-
-// Helper to validate UUID
-function isValidUUID(uuid: string): boolean {
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-  return uuidRegex.test(uuid)
-}
 
 const usersPlugin: FastifyPluginAsync = async (fastify) => {
   // ============================================================================
@@ -152,7 +145,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
         }
 
         // Reject anything that looks like a UUID (prevents ambiguity with user ID URLs)
-        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uname)) {
+        if (isValidUUID(uname)) {
           return reply.status(400).send({ error: 'Username cannot be a UUID' })
         }
 

@@ -199,3 +199,28 @@ export function htmlToParagraphs(html: string | null | undefined): string[] {
   }
   return paragraphs
 }
+
+// ─── HTML escaping ───────────────────────────────────────────────────────────
+// One home for what used to be seven private copies that disagreed on which
+// characters they escaped.
+
+/** Escape for use inside an attribute value or anywhere quotes matter. */
+export function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+/**
+ * Escape for a text node (between tags). Quotes are legal there, and leaving
+ * them alone keeps imported manuscript HTML closer to the author's source.
+ */
+export function escapeHtmlText(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}

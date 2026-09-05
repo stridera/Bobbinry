@@ -18,11 +18,7 @@ import { jwtVerify as joseJwtVerify } from 'jose'
 import { requireAuth, requireSelf, requireVerified, denyApiKeyAuth } from '../middleware/auth'
 import { serverEventBus, subscriptionChanged } from '../lib/event-bus'
 import { getStripe, getSubscriptionPeriod, createExpressAccount, createOnboardingLink } from '../lib/stripe'
-
-function isValidUUID(uuid: string): boolean {
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-  return uuidRegex.test(uuid)
-}
+import { isUuid as isValidUUID } from '../lib/slugs'
 
 const PLATFORM_FEE_PERCENT = parseInt(process.env.PLATFORM_FEE_PERCENT || '5', 10)
 

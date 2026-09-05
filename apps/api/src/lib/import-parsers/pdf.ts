@@ -26,6 +26,7 @@ import type {
 } from './index'
 import { sanitizeImportedHtml } from '../sanitize-html'
 import { countWords } from '../text'
+import { escapeHtmlText as escapeHtml } from '../text'
 
 const FIRST_LINE_LIMIT = 140
 const TITLE_FALLBACK_LIMIT = 80
@@ -145,12 +146,6 @@ function isTitleLine(line: PdfLine, bodySize: number): boolean {
   return false
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-}
 
 function linesToHtml(lines: PdfLine[], bodySize: number): string {
   const out: string[] = []

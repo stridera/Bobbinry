@@ -31,6 +31,7 @@ import {
 import { countWordsFromHtml, htmlWordDelta } from '../lib/text'
 import { notDeleted } from '../lib/entity-scope'
 import { diffHtmlBodies } from '../lib/entity-diff'
+import { UUID_RE } from '../lib/slugs'
 
 /** Word delta between two possibly-absent bodies, as change-event fields. */
 function htmlWordDeltaFor(before: unknown, after: unknown) {
@@ -39,7 +40,6 @@ function htmlWordDeltaFor(before: unknown, after: unknown) {
   return { wordsAdded: added, wordsRemoved: removed }
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const DiffQuerySchema = z.object({
   from: z.string().uuid(),

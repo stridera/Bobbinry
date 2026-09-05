@@ -3,11 +3,7 @@ import { db } from '../db/connection'
 import { notifications, users } from '../db/schema'
 import { eq, and, desc, count } from 'drizzle-orm'
 import { requireAuth } from '../middleware/auth'
-
-function isValidUUID(uuid: string): boolean {
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-  return uuidRegex.test(uuid)
-}
+import { isUuid as isValidUUID } from '../lib/slugs'
 
 const notificationsPlugin: FastifyPluginAsync = async (fastify) => {
   // Get paginated notifications for current user

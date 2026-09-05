@@ -25,6 +25,7 @@ import type {
 } from './index'
 import { sanitizeImportedHtml } from '../sanitize-html'
 import { countWords } from '../text'
+import { escapeHtmlText as escapeHtml } from '../text'
 
 const FIRST_LINE_LIMIT = 140
 const TITLE_FALLBACK_LIMIT = 80
@@ -70,12 +71,6 @@ function appendText(state: ParserState, text: string) {
   state.buf.push(text)
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-}
 
 /** Decode the byte from `\\'XX` as Windows-1252 (the most common RTF
  *  character set; full Unicode passes through `\\uN` separately). */

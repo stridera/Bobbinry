@@ -1,11 +1,11 @@
 import { describe, it, expect } from '@jest/globals'
 import JSZip from 'jszip'
+import { escapeHtml } from '../../lib/text'
 import {
   type Chapter,
   chapterToPlainText,
   chapterToMarkdown,
   chapterToHtml,
-  escapeHtml,
   generatePdf,
   generateEpub,
   generateDocx,

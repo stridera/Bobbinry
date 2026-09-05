@@ -1,6 +1,7 @@
 import { sql, eq } from 'drizzle-orm'
 import { bobbinsInstalled, manifestsVersions } from '../db/schema'
 import type { db as dbType } from '../db/connection'
+import { UUID_RE } from './slugs'
 
 export interface Migration {
   version: string
@@ -20,7 +21,6 @@ export interface UpgradeResult {
 
 type DB = typeof dbType
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
  * Deterministic JSON string for deep comparison.

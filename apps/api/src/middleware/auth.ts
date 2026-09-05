@@ -14,6 +14,7 @@ import { users, projects, apiKeys } from '../db/schema'
 import { eq, and, isNull, isNotNull, or } from 'drizzle-orm'
 import { sql } from 'drizzle-orm'
 import { getUserBadges, getUserMembershipTier, type MembershipTier } from '../lib/membership'
+import { isUuid } from '../lib/slugs'
 
 // User context attached to authenticated requests
 export interface AuthenticatedUser {
@@ -450,8 +451,7 @@ async function checkProjectOwnership(
     return false
   }
 
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-  if (!uuidRegex.test(projectId)) {
+  if (!isUuid(projectId)) {
     reply.status(400).send({ error: 'Invalid project ID format' })
     return false
   }
@@ -524,8 +524,7 @@ export function requireSelf(
   }
 
   // Validate UUID format
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-  if (!uuidRegex.test(userId)) {
+  if (!isUuid(userId)) {
     reply.status(400).send({ error: 'Invalid user ID format' })
     return false
   }

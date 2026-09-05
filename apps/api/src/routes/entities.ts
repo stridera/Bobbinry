@@ -23,7 +23,7 @@ import {
   recordEntityChangesSafe,
   type EntityChangeEvent,
 } from '../lib/entity-changes'
-import { renameSlug, resolveSlugProjects } from '../lib/slugs'
+import { renameSlug, resolveSlugProjects, UUID_RE } from '../lib/slugs'
 import { findBobbinForCollectionAcrossScopes } from '../lib/disk-manifests'
 import { getEffectiveBobbins, getCollectionIdsForProject, buildScopeCondition } from '../lib/effective-bobbins'
 import { ApiError, ValidationError, NotFoundError } from '../lib/errors'
@@ -247,7 +247,6 @@ async function loadVariantConfig(
 }
 
 const FIELD_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function parseFieldsParam(raw: string | undefined): Set<string> | undefined {
   if (!raw) return undefined

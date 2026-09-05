@@ -30,6 +30,7 @@ import { sanitizeImportedHtml } from '../sanitize-html'
 import { countWords } from '../text'
 import { uploadImportImage } from './images'
 import { assertSafeZip } from './zip-safe'
+import { escapeHtmlText as escapeHtml } from '../text'
 
 const PAGE_BREAK_MARKER = '☃___bbnr_odt_pb___☃'
 const FIRST_LINE_LIMIT = 140
@@ -50,13 +51,6 @@ interface ImageRef {
 
 type XmlNode = Record<string, unknown>
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
 
 function escapeAttr(s: string): string {
   return s.replace(/"/g, '&quot;')

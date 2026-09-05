@@ -4,11 +4,7 @@ import { projectFollows, projects, subscriptions, users, userNotificationPrefere
 import { eq, and, count, isNull } from 'drizzle-orm'
 import { requireAuth, optionalAuth, requireVerified, requireSelf } from '../middleware/auth'
 import { sendNewFollowerEmail } from '../lib/email'
-
-function isValidUUID(uuid: string): boolean {
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-  return uuidRegex.test(uuid)
-}
+import { isUuid as isValidUUID } from '../lib/slugs'
 
 const projectFollowsPlugin: FastifyPluginAsync = async (fastify) => {
   // Follow a project
