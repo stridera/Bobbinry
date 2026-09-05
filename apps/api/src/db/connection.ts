@@ -42,23 +42,8 @@ const client = postgres(connectionString, {
 // Create drizzle instance
 export const db = drizzle(client, { schema })
 
-// Graceful shutdown handling
-const gracefulShutdown = async (signal: string) => {
-  console.log(`Received ${signal}, closing database connections...`)
-  try {
-    await client.end()
-    console.log('Database connections closed successfully')
-    process.exit(0)
-  } catch (error) {
-    console.error('Error closing database connections:', error)
-    process.exit(1)
-  }
-}
-
-// Register shutdown handlers
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
-process.on('SIGINT', () => gracefulShutdown('SIGINT'))
-process.on('SIGUSR2', () => gracefulShutdown('SIGUSR2')) // Nodemon restart
+// Shutdown is owned by src/index.ts: it closes the Fastify server (draining
+// in-flight requests) and then calls `closeConnection()`.
 
 // ─── Health check + self-healing on stuck pool ──────────────────────
 //
