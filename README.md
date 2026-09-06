@@ -132,6 +132,7 @@ Browse the [`bobbins/`](bobbins/) directory for the full list. Each bobbin has i
 - **[View Routing](docs/VIEW_ROUTING_ARCHITECTURE.md)** - View management and navigation
 - **[Compiler Spec](docs/bobbinry_compiler_spec_tiered_storage.md)** - Tiered storage architecture
 - **[Bobbin Development Guide](docs/BOBBIN_DEVELOPMENT_GUIDE.md)** - Creating custom bobbins
+- **[Engineering Backlog](docs/BACKLOG.md)** - Known, not-yet-done work with context for picking it up
 
 ## 🛠️ Development
 
