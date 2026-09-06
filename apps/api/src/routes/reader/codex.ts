@@ -1,7 +1,8 @@
 /** Published entities (reader codex). Registered by ./index.ts under the /api prefix. */
 import type { FastifyPluginAsync } from 'fastify'
 import { db } from '../../db/connection'
-import { entities, projects, subscriptions, subscriptionTiers } from '../../db/schema'
+import { entities, projects } from '../../db/schema'
+import { findActiveSubscription } from '../../lib/chapter-access'
 import { effectiveOverrides, resolveEntityForVariant, sortedVariantIds, variantConfigFromTypeData, versionableFieldNames, type VariantResolutionConfig } from '@bobbinry/types'
 import { eq, and, asc, sql, inArray } from 'drizzle-orm'
 import { optionalAuth } from '../../middleware/auth'
@@ -28,19 +29,7 @@ const codexRoutes: FastifyPluginAsync = async (fastify) => {
     if (!project) return 0
     if (project.ownerId === callerId) return Number.POSITIVE_INFINITY
 
-    const [sub] = await db
-      .select({ tierLevel: subscriptionTiers.tierLevel })
-      .from(subscriptions)
-      .innerJoin(subscriptionTiers, eq(subscriptionTiers.id, subscriptions.tierId))
-      .where(and(
-        eq(subscriptions.subscriberId, callerId),
-        eq(subscriptions.authorId, project.ownerId),
-        eq(subscriptions.status, 'active'),
-        sql`${subscriptions.currentPeriodEnd} > NOW()`
-      ))
-      .orderBy(sql`${subscriptionTiers.tierLevel} DESC`)
-      .limit(1)
-
+    const sub = await findActiveSubscription(callerId, project.ownerId)
     return sub?.tierLevel ?? 0
   }
 
@@ -463,8 +452,13 @@ const codexRoutes: FastifyPluginAsync = async (fastify) => {
         ))
         .limit(1)
       if (!typeRow) return reply.status(404).send({ error: 'Entity type not found' })
-      if (!isOwner && (!typeRow.isPublished || typeRow.minimumTierLevel > callerTier)) {
-        return reply.status(403).send({ error: 'Subscription required', minimumTierLevel: typeRow.minimumTierLevel })
+      if (!isOwner) {
+        // An unpublished type hides its entities entirely (matching the listing);
+        // only a tier gap is a paywall.
+        if (!typeRow.isPublished) return reply.status(404).send({ error: 'Entity not found' })
+        if (typeRow.minimumTierLevel > callerTier) {
+          return reply.status(403).send({ error: 'Subscription required', minimumTierLevel: typeRow.minimumTierLevel })
+        }
       }
 
       const typeData = typeRow.entityData as Record<string, any>

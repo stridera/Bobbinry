@@ -7,7 +7,7 @@
  * project + token. A short TTL keeps a sidebar open/close from refetching
  * while still picking up newly published entities on the next chapter.
  */
-import { config } from '@/lib/config'
+import { publicFetch } from './public-fetch'
 
 export interface PublishedEntityName {
   id: string
@@ -31,9 +31,7 @@ export function fetchPublishedEntityNames(projectId: string, token?: string | nu
   const hit = cache.get(key)
   if (hit && Date.now() - hit.at < TTL_MS) return hit.promise
 
-  const headers: Record<string, string> = {}
-  if (token) headers['Authorization'] = `Bearer ${token}`
-  const promise = fetch(`${config.apiUrl}/api/public/projects/${projectId}/entities/published-names`, { headers })
+  const promise = publicFetch(`/public/projects/${projectId}/entities/published-names`, token)
     .then(async res => {
       if (!res.ok) return null
       const data = (await res.json()) as { installed?: boolean; entities?: PublishedEntityName[] }

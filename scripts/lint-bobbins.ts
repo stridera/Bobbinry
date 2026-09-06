@@ -353,6 +353,15 @@ function checkNoRawApiAccess(ctx: BobbinContext): Diagnostic[] {
         severity: "warning",
       });
     }
+    // Reading the base URL or auth headers off the SDK to hand-roll a fetch
+    // bypasses the SDK's 401 handling just as surely as a literal header.
+    if (/\.apiBaseUrl\b/.test(content) || /\.getAuthHeaders\(/.test(content)) {
+      diags.push({
+        rule: "no-raw-api-access",
+        message: `${rel} builds its own request from sdk.api.apiBaseUrl / getAuthHeaders() — use sdk.api.request()/fetch()`,
+        severity: "warning",
+      });
+    }
   }
   return diags;
 }

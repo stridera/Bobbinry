@@ -121,9 +121,7 @@ export default function ReleaseConfig({ sdk, projectId }: ReleaseConfigProps) {
 
     try {
       const [publishConfigRes, projectResult] = await Promise.all([
-        fetch(`${sdk.api.apiBaseUrl}/projects/${projectId}/publish-config`, {
-          headers: sdk.api.getAuthHeaders()
-        }),
+        sdk.api.fetch(`/projects/${projectId}/publish-config`),
         sdk.api.getProject(projectId)
       ])
 
@@ -186,9 +184,9 @@ export default function ReleaseConfig({ sdk, projectId }: ReleaseConfigProps) {
     try {
       const releaseDay = scheduleConfig.releaseDays.join(',')
 
-      const publishConfigResponse = await fetch(`${sdk.api.apiBaseUrl}/projects/${projectId}/publish-config`, {
+      const publishConfigResponse = await sdk.api.fetch(`/projects/${projectId}/publish-config`, {
         method: 'PUT',
-        headers: sdk.api.getAuthHeaders({ 'Content-Type': 'application/json' }),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           autoReleaseEnabled: scheduleConfig.autoReleaseEnabled,
           releaseFrequency: scheduleConfig.releaseFrequency,

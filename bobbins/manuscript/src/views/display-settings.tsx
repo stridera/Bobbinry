@@ -49,7 +49,6 @@ export function useDisplaySettings(
   const [user, setUser] = useState<UserSettings>({})
   const [project, setProject] = useState<PartialManuscriptDisplaySettings>({})
   const [loading, setLoading] = useState(true)
-  const apiUrl = sdk.api.apiBaseUrl
   const lastEntityIdRef = useRef<string | undefined>(undefined)
 
   // Track latest contentDisplay locally so saves can optimistic-update before
@@ -66,14 +65,10 @@ export function useDisplaySettings(
     let cancelled = false
     setLoading(true)
     Promise.all([
-      fetch(`${apiUrl}/users/me/manuscript-display-settings`, {
-        headers: sdk.api.getAuthHeaders(),
-      })
+      sdk.api.fetch('/users/me/manuscript-display-settings')
         .then(r => (r.ok ? r.json() : { settings: {} }))
         .catch(() => ({ settings: {} })),
-      fetch(`${apiUrl}/projects/${projectId}/manuscript-display-settings`, {
-        headers: sdk.api.getAuthHeaders(),
-      })
+      sdk.api.fetch(`/projects/${projectId}/manuscript-display-settings`)
         .then(r => (r.ok ? r.json() : { settings: {} }))
         .catch(() => ({ settings: {} })),
     ]).then(([userRes, projectRes]) => {
@@ -89,23 +84,23 @@ export function useDisplaySettings(
     return () => {
       cancelled = true
     }
-  }, [sdk, apiUrl, projectId])
+  }, [sdk, projectId])
 
   const saveUser = useCallback(
     async (patch: UserSettings) => {
       const next = { ...user, ...patch }
       setUser(next)
       try {
-        await fetch(`${apiUrl}/users/me/manuscript-display-settings`, {
+        await sdk.api.fetch('/users/me/manuscript-display-settings', {
           method: 'PUT',
-          headers: sdk.api.getAuthHeaders({ 'Content-Type': 'application/json' }),
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(patch),
         })
       } catch (err) {
         console.error('[manuscript] Failed to save user display settings', err)
       }
     },
-    [user, apiUrl, sdk],
+    [user, sdk],
   )
 
   const saveProject = useCallback(
@@ -113,16 +108,16 @@ export function useDisplaySettings(
       const next = { ...project, ...patch }
       setProject(next)
       try {
-        await fetch(`${apiUrl}/projects/${projectId}/manuscript-display-settings`, {
+        await sdk.api.fetch(`/projects/${projectId}/manuscript-display-settings`, {
           method: 'PUT',
-          headers: sdk.api.getAuthHeaders({ 'Content-Type': 'application/json' }),
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(patch),
         })
       } catch (err) {
         console.error('[manuscript] Failed to save project display settings', err)
       }
     },
-    [project, apiUrl, sdk, projectId],
+    [project, sdk, projectId],
   )
 
   const saveContent = useCallback(

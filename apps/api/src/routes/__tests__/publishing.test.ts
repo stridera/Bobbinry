@@ -713,6 +713,44 @@ describe('Publishing API', () => {
     })
   })
 
+  describe('Reader interactions on chapters the caller cannot open', () => {
+    it('hides comments, reactions and view tracking for a scheduled (embargoed) chapter', async () => {
+      const { project, token, chapter } = await setupPublishingScenario()
+      const scheduledFor = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
+      const publishRes = await app.inject({
+        method: 'POST',
+        url: `/api/projects/${project.id}/chapters/${chapter.id}/publish`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { publishStatus: 'scheduled', scheduledFor }
+      })
+      expect([200, 201]).toContain(publishRes.statusCode)
+
+      // Anonymous: the chapter is not readable, so neither is anything around it.
+      const anon = await Promise.all([
+        app.inject({ method: 'GET', url: `/api/public/chapters/${chapter.id}/comments` }),
+        app.inject({ method: 'GET', url: `/api/public/chapters/${chapter.id}/reactions` }),
+        app.inject({
+          method: 'POST',
+          url: `/api/public/projects/${project.id}/chapters/${chapter.id}/view`,
+          payload: { sessionId: 'embargo-session', deviceType: 'desktop' }
+        }),
+      ])
+      expect(anon.map(r => r.statusCode)).toEqual([404, 404, 404])
+
+      // The owner passes the same gate the chapter read uses.
+      const owner = await Promise.all([
+        app.inject({ method: 'GET', url: `/api/public/chapters/${chapter.id}/comments`, headers: { authorization: `Bearer ${token}` } }),
+        app.inject({
+          method: 'POST',
+          url: `/api/public/projects/${project.id}/chapters/${chapter.id}/view`,
+          headers: { authorization: `Bearer ${token}` },
+          payload: { deviceType: 'desktop' }
+        }),
+      ])
+      expect(owner.map(r => r.statusCode)).toEqual([200, 201])
+    })
+  })
+
   // ──────────────────────────────────────────
   // CHAPTER VIEWS / ANALYTICS
   // ──────────────────────────────────────────

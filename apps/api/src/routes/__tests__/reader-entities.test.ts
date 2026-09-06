@@ -757,6 +757,22 @@ describe('Public Reader — Entities', () => {
       expect(Object.keys(body.entity.entityData._variants.items)).toEqual(['book1'])
       expect(res.payload).not.toContain('SPOILER')
     })
+
+    it('returns 404 rather than a paywall for an entity whose type is unpublished', async () => {
+      const author = await createTestUser()
+      const project = await createTestProject(author.id)
+      await installEntitiesBobbin(project.id)
+
+      await seedType(project.id, 'factions', { isPublished: false })
+      const faction = await seedEntity(project.id, 'factions', 'The Guild', { isPublished: true })
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/public/projects/${project.id}/entities/${faction.id}`,
+      })
+      expect(res.statusCode).toBe(404)
+      expect(JSON.parse(res.payload).minimumTierLevel).toBeUndefined()
+    })
   })
 
   describe('GET /public/projects/:projectId/entities/published-names', () => {

@@ -109,15 +109,14 @@ export function useReadingProgress({ contentRef, chapterId, projectId, userId, a
   }, [progress, projectId, chapterId, userId, apiToken])
 
   // Save progress when leaving the page (back button, link click, tab close).
-  // sendBeacon cannot carry an Authorization header, so this ping is matched
-  // to the reader server-side by session cookie where available.
+  // A keepalive fetch carries the bearer header (sendBeacon could not), so the
+  // server matches the signed-in reader's existing view row.
   useEffect(() => {
     if (!projectId || !chapterId || !userId) return
 
     const saveOnLeave = () => {
       if (progressRef.current === 0) return
-      const data = JSON.stringify({ position: progressRef.current, deviceType: deviceType() })
-      navigator.sendBeacon(readerApi.viewUrl(projectId, chapterId), new Blob([data], { type: 'application/json' }))
+      readerApi.postViewOnLeave(projectId, chapterId, apiToken, { position: progressRef.current, deviceType: deviceType() })
     }
 
     window.addEventListener('beforeunload', saveOnLeave)
@@ -125,7 +124,7 @@ export function useReadingProgress({ contentRef, chapterId, projectId, userId, a
       window.removeEventListener('beforeunload', saveOnLeave)
       saveOnLeave()  // Also fire on component unmount (SPA navigation)
     }
-  }, [projectId, chapterId, userId])
+  }, [projectId, chapterId, userId, apiToken])
 
   return { progress, isBookmarked, saveBookmark, removeBookmark, restoreBookmark }
 }

@@ -129,9 +129,7 @@ export default function DictionaryPanel({ context }: DictionaryPanelProps) {
       // no CORS headers and so surfaced as unexplained failures. Datamuse is called
       // directly -- it's healthy and its CORS is already scoped to us.
       const [dictionaryResult, synonymResult, antonymResult] = await Promise.allSettled([
-        fetch(`${sdk.api.apiBaseUrl}/dictionary/${encodeURIComponent(word)}`, {
-          headers: sdk.api.getAuthHeaders(),
-        }),
+        sdk.api.fetch(`/dictionary/${encodeURIComponent(word)}`),
         fetch(`https://api.datamuse.com/words?rel_syn=${encodeURIComponent(word)}&max=20`),
         fetch(`https://api.datamuse.com/words?rel_ant=${encodeURIComponent(word)}&max=12`),
       ])

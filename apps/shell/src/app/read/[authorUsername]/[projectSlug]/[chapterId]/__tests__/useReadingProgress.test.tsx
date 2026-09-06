@@ -25,7 +25,6 @@ describe('useReadingProgress', () => {
     trackEventMock.mockReset()
     Object.defineProperty(window, 'innerHeight', { value: 500, configurable: true })
     global.fetch = jest.fn().mockResolvedValue({ ok: true }) as unknown as typeof fetch
-    Object.defineProperty(navigator, 'sendBeacon', { value: jest.fn(), configurable: true })
     jest.spyOn(window, 'requestAnimationFrame').mockImplementation(cb => { cb(0); return 0 })
   })
 
@@ -53,6 +52,17 @@ describe('useReadingProgress', () => {
     act(() => scrollTo(1100))
     expect(trackEventMock).toHaveBeenCalledTimes(1)
     expect(trackEventMock).toHaveBeenCalledWith('chapter_completed', { projectId: 'p1', chapterId: 'ch1' })
+  })
+
+  it('sends the leave ping as a keepalive fetch carrying the bearer token', () => {
+    const { unmount } = renderHook(() => useReadingProgress(args()))
+    act(() => scrollTo(600))
+    unmount()
+    const leave = (global.fetch as jest.Mock).mock.calls.find(([, init]) => init?.keepalive)
+    expect(leave).toBeDefined()
+    expect(leave![0]).toBe('https://api.test/api/public/projects/p1/chapters/ch1/view')
+    expect(leave![1].headers.Authorization).toBe('Bearer tok')
+    expect(JSON.parse(leave![1].body).position).toBeGreaterThan(0)
   })
 
   it('does nothing while inactive', () => {

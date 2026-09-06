@@ -31,17 +31,9 @@ export interface SubscriptionTier {
   earlyAccessDays: number
 }
 
-function baseUrl(sdk: BobbinrySDK): string {
-  // BobbinryAPI exposes apiBaseUrl (e.g. "http://localhost:4100/api").
-  // The endpoints we call are nested at /api/... so apiBaseUrl is right.
-  return (sdk as any).api.apiBaseUrl as string
-}
-
-function headers(sdk: BobbinrySDK, withBody = false): Record<string, string> {
-  const h = (sdk as any).api.getAuthHeaders(
-    withBody ? { 'Content-Type': 'application/json' } : undefined
-  ) as Record<string, string>
-  return h
+/** Authenticated request through the SDK; `path` is relative to the API base. */
+function apiFetch(sdk: BobbinrySDK, path: string, init?: RequestInit): Promise<Response> {
+  return sdk.api.fetch(path, init)
 }
 
 async function handle<T>(res: Response, action: string): Promise<T> {
@@ -66,9 +58,9 @@ export async function patchEntityPublish(
     variantAccessLevels?: Record<string, number>
   }
 ): Promise<PublishState> {
-  const res = await fetch(`${baseUrl(sdk)}/entities/${entityId}/publish`, {
+  const res = await apiFetch(sdk, `/entities/${entityId}/publish`, {
     method: 'PATCH',
-    headers: headers(sdk, true),
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ projectId, collection, ...patch }),
   })
   return handle<PublishState>(res, 'Update entity publish state')
@@ -80,11 +72,12 @@ export async function patchTypePublish(
   typeId: string,
   patch: { isPublished?: boolean; publishOrder?: number; minimumTierLevel?: number }
 ): Promise<PublishState> {
-  const res = await fetch(
-    `${baseUrl(sdk)}/projects/${projectId}/entity-types/${typeId}/publish`,
+  const res = await apiFetch(
+    sdk,
+    `/projects/${projectId}/entity-types/${typeId}/publish`,
     {
       method: 'PATCH',
-      headers: headers(sdk, true),
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     }
   )
@@ -97,9 +90,9 @@ export async function reorderEntities(
   collection: string,
   orderedIds: string[]
 ): Promise<{ reordered: number }> {
-  const res = await fetch(`${baseUrl(sdk)}/projects/${projectId}/entities/reorder`, {
+  const res = await apiFetch(sdk, `/projects/${projectId}/entities/reorder`, {
     method: 'POST',
-    headers: headers(sdk, true),
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ collection, orderedIds }),
   })
   return handle<{ success: boolean; reordered: number }>(res, 'Reorder entities')
@@ -110,9 +103,9 @@ export async function reorderTypes(
   projectId: string,
   orderedTypeIds: string[]
 ): Promise<{ reordered: number }> {
-  const res = await fetch(`${baseUrl(sdk)}/projects/${projectId}/entity-types/reorder`, {
+  const res = await apiFetch(sdk, `/projects/${projectId}/entity-types/reorder`, {
     method: 'POST',
-    headers: headers(sdk, true),
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ orderedTypeIds }),
   })
   return handle<{ success: boolean; reordered: number }>(res, 'Reorder entity types')
@@ -122,9 +115,7 @@ export async function fetchSubscriptionTiers(
   sdk: BobbinrySDK,
   authorId: string
 ): Promise<{ tiers: SubscriptionTier[]; acceptsPayments: boolean }> {
-  const res = await fetch(`${baseUrl(sdk)}/users/${authorId}/subscription-tiers`, {
-    headers: headers(sdk),
-  })
+  const res = await apiFetch(sdk, `/users/${authorId}/subscription-tiers`)
   return handle<{ tiers: SubscriptionTier[]; acceptsPayments: boolean }>(
     res,
     'Fetch subscription tiers'

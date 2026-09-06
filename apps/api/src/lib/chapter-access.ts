@@ -16,7 +16,7 @@ import {
   subscriptions,
   subscriptionTiers,
 } from '../db/schema'
-import { eq, and, or, isNull, inArray, sql } from 'drizzle-orm'
+import { eq, and, or, isNull, inArray, sql, desc } from 'drizzle-orm'
 
 /**
  * Owner preview ("view as"): substitutes a simulated audience for the real
@@ -39,6 +39,34 @@ export interface ChapterAccessInput {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
+
+export interface ActiveSubscription {
+  tierLevel: number
+  earlyAccessDays: number | null
+}
+
+/**
+ * The one definition of "active subscriber": the caller's highest-tier
+ * subscription to an author that is `active` and inside its paid period.
+ * Chapter access, codex tier gating and annotation permissions all use this,
+ * so a change to the lifecycle rule (grace periods, trialing, past_due) lands
+ * everywhere at once.
+ */
+export async function findActiveSubscription(subscriberId: string, authorId: string): Promise<ActiveSubscription | null> {
+  const [sub] = await db
+    .select({ tierLevel: subscriptionTiers.tierLevel, earlyAccessDays: subscriptionTiers.earlyAccessDays })
+    .from(subscriptions)
+    .innerJoin(subscriptionTiers, eq(subscriptionTiers.id, subscriptions.tierId))
+    .where(and(
+      eq(subscriptions.subscriberId, subscriberId),
+      eq(subscriptions.authorId, authorId),
+      eq(subscriptions.status, 'active'),
+      sql`${subscriptions.currentPeriodEnd} > NOW()`,
+    ))
+    .orderBy(desc(subscriptionTiers.tierLevel))
+    .limit(1)
+  return sub ?? null
+}
 
 /** Subscriber early-access window relative to the public publish date. */
 function tierAccess(publishedAt: Date | null, earlyAccessDays: number | null, now: Date): AccessCheckResult {
@@ -114,20 +142,7 @@ export async function checkChaptersAccess(
     }
 
     // Active subscription to the project's author.
-    if (project) {
-      const [sub] = await db
-        .select({ earlyAccessDays: subscriptionTiers.earlyAccessDays })
-        .from(subscriptions)
-        .innerJoin(subscriptionTiers, eq(subscriptionTiers.id, subscriptions.tierId))
-        .where(and(
-          eq(subscriptions.subscriberId, userId),
-          eq(subscriptions.authorId, project.ownerId),
-          eq(subscriptions.status, 'active'),
-          sql`${subscriptions.currentPeriodEnd} > NOW()`,
-        ))
-        .limit(1)
-      if (sub) subscription = sub
-    }
+    if (project) subscription = await findActiveSubscription(userId, project.ownerId)
   }
 
   for (const ch of chapters) {

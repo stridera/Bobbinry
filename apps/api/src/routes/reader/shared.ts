@@ -4,10 +4,10 @@
  */
 
 import { db } from '../../db/connection'
-import { chapterPublications, entities, betaReaders, accessGrants, projects, projectPublishConfig, subscriptions, subscriptionTiers, userProfiles, users } from '../../db/schema'
+import { chapterPublications, entities, betaReaders, accessGrants, projects, projectPublishConfig, subscriptionTiers, userProfiles, users } from '../../db/schema'
 import { eq, and, asc, sql, isNull, or } from 'drizzle-orm'
 import { env } from '../../lib/env'
-import { type ViewSimulation } from '../../lib/chapter-access'
+import { checkChaptersAccess, findActiveSubscription, type ViewSimulation } from '../../lib/chapter-access'
 import { UUID_RE } from '../../lib/slugs'
 
 // ============================================
@@ -148,20 +148,7 @@ export async function canUserAnnotate(
       .where(eq(projects.id, projectId))
       .limit(1)
 
-    if (project) {
-      const [sub] = await db
-        .select({ id: subscriptions.id })
-        .from(subscriptions)
-        .where(and(
-          eq(subscriptions.subscriberId, userId),
-          eq(subscriptions.authorId, project.ownerId),
-          eq(subscriptions.status, 'active'),
-          sql`${subscriptions.currentPeriodEnd} > NOW()`
-        ))
-        .limit(1)
-
-      if (sub) return true
-    }
+    if (project && await findActiveSubscription(userId, project.ownerId)) return true
   }
 
   return false
@@ -274,38 +261,73 @@ export async function canViewProject(
   return !!grant
 }
 
-/** Look up the projectId a published chapter belongs to (for chapter-scoped routes). */
+export interface ReadableChapter {
+  projectId: string
+  enableComments: boolean | null
+  enableReactions: boolean | null
+}
+
 /**
- * Gate for reader interactions on a public chapter: it must be published, the
- * caller must be able to view the project, and the author must not have
- * switched the feature off in the publish config.
+ * Whether the caller may read a public chapter at all: the project must be
+ * visible to them and the chapter must pass the full access rules in
+ * lib/chapter-access (published, not embargoed, subscribers-only, tier early
+ * access). Comment and reaction reads, interaction writes and view tracking
+ * all gate on this, so nothing leaks from — or can be pushed onto — a chapter
+ * the reader could not open. `projectId`, when given, must match the row.
+ */
+export async function resolveReadableChapter(
+  chapterId: string,
+  userId: string | undefined,
+  projectId?: string,
+): Promise<ReadableChapter | null> {
+  const [row] = await db
+    .select({
+      projectId: chapterPublications.projectId,
+      isPublished: chapterPublications.isPublished,
+      publishedAt: chapterPublications.publishedAt,
+      publicReleaseDate: chapterPublications.publicReleaseDate,
+      defaultVisibility: projectPublishConfig.defaultVisibility,
+      enableComments: projectPublishConfig.enableComments,
+      enableReactions: projectPublishConfig.enableReactions,
+    })
+    .from(chapterPublications)
+    .leftJoin(projectPublishConfig, eq(projectPublishConfig.projectId, chapterPublications.projectId))
+    .where(projectId
+      ? and(eq(chapterPublications.chapterId, chapterId), eq(chapterPublications.projectId, projectId))
+      : eq(chapterPublications.chapterId, chapterId))
+    .limit(1)
+
+  if (!row?.isPublished) return null
+  if (!(await canViewProject(row.projectId, userId))) return null
+
+  const access = await checkChaptersAccess(
+    [{ chapterId, publishedAt: row.publishedAt, publicReleaseDate: row.publicReleaseDate }],
+    row.projectId, userId, row.defaultVisibility ?? 'public',
+  )
+  if (!access.get(chapterId)?.canAccess) return null
+
+  return { projectId: row.projectId, enableComments: row.enableComments, enableReactions: row.enableReactions }
+}
+
+/**
+ * Gate for reader interactions on a public chapter: the caller must be able
+ * to read it, and the author must not have switched the feature off.
  */
 export async function checkInteractionAllowed(
   chapterId: string,
   userId: string | undefined,
   feature: 'comments' | 'reactions'
 ): Promise<{ ok: true } | { ok: false; status: 403 | 404; error: string }> {
-  const [row] = await db
-    .select({
-      projectId: chapterPublications.projectId,
-      isPublished: chapterPublications.isPublished,
-      enableComments: projectPublishConfig.enableComments,
-      enableReactions: projectPublishConfig.enableReactions,
-    })
-    .from(chapterPublications)
-    .leftJoin(projectPublishConfig, eq(projectPublishConfig.projectId, chapterPublications.projectId))
-    .where(eq(chapterPublications.chapterId, chapterId))
-    .limit(1)
-
-  if (!row?.isPublished || !(await canViewProject(row.projectId, userId))) {
-    return { ok: false, status: 404, error: 'Chapter not found' }
-  }
-  const enabled = feature === 'comments' ? row.enableComments : row.enableReactions
+  const readable = await resolveReadableChapter(chapterId, userId)
+  if (!readable) return { ok: false, status: 404, error: 'Chapter not found' }
+  const enabled = feature === 'comments' ? readable.enableComments : readable.enableReactions
   if (enabled === false) {
     return { ok: false, status: 403, error: `${feature === 'comments' ? 'Comments' : 'Reactions'} are disabled for this project` }
   }
   return { ok: true }
 }
+
+/** Look up the projectId a published chapter belongs to (for chapter-scoped routes). */
 
 export async function getChapterProjectId(chapterId: string): Promise<string | null> {
   const [row] = await db

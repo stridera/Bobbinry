@@ -124,10 +124,8 @@ export default function AnnotationPanel({ context }: AnnotationPanelProps) {
     if (!projectId || !activeChapter || !context?.apiToken) return
     setLoading(true)
     try {
-      const baseUrl = sdk.api.apiBaseUrl
-      const res = await fetch(
-        `${baseUrl}/projects/${projectId}/annotations?chapterId=${activeChapter.entityId}`,
-        { headers: sdk.api.getAuthHeaders() }
+      const res = await sdk.api.fetch(
+        `/projects/${projectId}/annotations?chapterId=${activeChapter.entityId}`
       )
       if (res.ok) {
         const data = await res.json()
@@ -147,12 +145,11 @@ export default function AnnotationPanel({ context }: AnnotationPanelProps) {
   const updateStatus = async (annotationId: string, status: string, response?: string) => {
     if (!projectId) return
     try {
-      const baseUrl = sdk.api.apiBaseUrl
-      const res = await fetch(
-        `${baseUrl}/projects/${projectId}/annotations/${annotationId}/status`,
+      const res = await sdk.api.fetch(
+        `/projects/${projectId}/annotations/${annotationId}/status`,
         {
           method: 'PUT',
-          headers: sdk.api.getAuthHeaders({ 'Content-Type': 'application/json' }),
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status, authorResponse: response })
         }
       )
@@ -172,12 +169,11 @@ export default function AnnotationPanel({ context }: AnnotationPanelProps) {
     setAcceptError(null)
     const ann = annotations.find(a => a.id === annotationId)
     try {
-      const baseUrl = sdk.api.apiBaseUrl
-      const res = await fetch(
-        `${baseUrl}/projects/${projectId}/annotations/${annotationId}/accept`,
+      const res = await sdk.api.fetch(
+        `/projects/${projectId}/annotations/${annotationId}/accept`,
         {
           method: 'POST',
-          headers: sdk.api.getAuthHeaders({ 'Content-Type': 'application/json' }),
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ editorWillApply: true })
         }
       )

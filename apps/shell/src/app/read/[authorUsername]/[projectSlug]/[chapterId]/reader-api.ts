@@ -1,21 +1,13 @@
 /**
- * Every API call the public chapter reader makes, in one place.
- *
- * The reader endpoints are optional-auth: anonymous readers get public
- * chapters, signed-in readers get their beta/subscriber perks. So the bearer
- * header is attached only when a token is present. `lib/api.ts#apiFetch`
- * requires a token and refreshes on 401, which is the wrong shape here.
+ * Every API call the public chapter reader makes, in one place, all through
+ * `publicFetch` (optional bearer; see ../public-fetch.ts).
  */
-import { config } from '@/lib/config'
 import type { Annotation, Comment, PublishedEntityName, ReactionCount } from './types'
 import { fetchPublishedEntityNames } from '../published-names'
+import { publicFetch } from '../public-fetch'
 import type { TextAnchor } from '@/components/AnnotationSelectionPopover'
 
-export function publicFetch(path: string, token?: string | null, init: RequestInit = {}): Promise<Response> {
-  const headers: Record<string, string> = { ...(init.headers as Record<string, string> | undefined) }
-  if (token) headers['Authorization'] = `Bearer ${token}`
-  return fetch(`${config.apiUrl}/api${path}`, { ...init, headers })
-}
+export { publicFetch }
 
 function json(method: 'POST' | 'DELETE', body?: unknown): RequestInit {
   return {
@@ -73,13 +65,19 @@ export const readerApi = {
     return fetchPublishedEntityNames(projectId, token)
   },
 
-  viewUrl(projectId: string, chapterId: string): string {
-    return `${config.apiUrl}/api/public/projects/${projectId}/chapters/${chapterId}/view`
-  },
-
   /** Fire-and-forget view / progress ping. */
   postView(projectId: string, chapterId: string, token: string | undefined, body: Record<string, unknown>): void {
     publicFetch(`/public/projects/${projectId}/chapters/${chapterId}/view`, token, json('POST', body)).catch(() => {})
+  },
+
+  /**
+   * Progress ping as the reader leaves. `keepalive` lets the request outlive
+   * the page (what sendBeacon offered) while still carrying the bearer
+   * header, so the server updates the reader's own view row instead of
+   * inserting an anonymous one and counting the chapter twice.
+   */
+  postViewOnLeave(projectId: string, chapterId: string, token: string | undefined, body: Record<string, unknown>): void {
+    publicFetch(`/public/projects/${projectId}/chapters/${chapterId}/view`, token, { ...json('POST', body), keepalive: true }).catch(() => {})
   },
 
   /** The endpoint toggles; resolves to what it did, or null on failure. */

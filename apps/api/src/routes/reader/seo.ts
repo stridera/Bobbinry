@@ -6,7 +6,7 @@ import { eq, and, desc, sql, isNull } from 'drizzle-orm'
 import { env } from '../../lib/env'
 import { optionalAuth } from '../../middleware/auth'
 import { hashRssToken } from '../rss-tokens'
-import { escapeXml } from '../../lib/text'
+import { escapeXml, htmlToPlainText } from '../../lib/text'
 import { notDeleted } from '../../lib/entity-scope'
 import { checkChaptersAccess } from '../../lib/chapter-access'
 import { resolveSlug, getSlugsForEntities } from '../../lib/slugs'
@@ -199,8 +199,8 @@ const seoRoutes: FastifyPluginAsync = async (fastify) => {
         ? `${baseUrl}/read/${authorSegment}/${project.shortUrl}/${resolved.currentSlug ?? chapterId}`
         : `${baseUrl}/projects/${projectId}/chapters/${chapterId}`
 
-      // Generate excerpt from content
-      const excerpt = (chapter.content || '').substring(0, 200).replace(/\n/g, ' ') + '...'
+      // Excerpt from the prose, not the stored HTML.
+      const excerpt = htmlToPlainText(chapter.content).replace(/\s+/g, ' ').trim().substring(0, 200) + '...'
 
       const metadata = {
         title: `${chapter.title} - ${projectData?.title || 'Untitled Project'}`,
@@ -443,7 +443,7 @@ const seoRoutes: FastifyPluginAsync = async (fastify) => {
 
       // Build RSS feed items
       const items = chapters.map(chapter => {
-        const excerpt = (chapter.content || '').substring(0, 500).replace(/\n/g, ' ')
+        const excerpt = htmlToPlainText(chapter.content).replace(/\s+/g, ' ').trim().substring(0, 500)
         const pubDate = (chapter.publishedAt || new Date()).toUTCString()
         const link = readerBase
           ? `${readerBase}/${slugMap.get(chapter.id) ?? chapter.id}`
@@ -456,8 +456,8 @@ const seoRoutes: FastifyPluginAsync = async (fastify) => {
         return `
     <item>
       <title>${escapeXml(chapter.title || 'Untitled')}</title>
-      <link>${link}</link>
-      <guid isPermaLink="true">${guid}</guid>
+      <link>${escapeXml(link)}</link>
+      <guid isPermaLink="true">${escapeXml(guid)}</guid>
       <pubDate>${pubDate}</pubDate>
       <description>${escapeXml(excerpt)}...</description>
       <author>${escapeXml(projectData.author || 'Unknown Author')}</author>
@@ -472,7 +472,7 @@ const seoRoutes: FastifyPluginAsync = async (fastify) => {
     <description>${escapeXml(projectData.description || 'No description')}</description>
     <language>en</language>
     <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
-    <atom:link href="${baseUrl}/projects/${projectId}/feed.xml" rel="self" type="application/rss+xml" />
+    <atom:link href="${escapeXml(`${baseUrl}/projects/${projectId}/feed.xml`)}" rel="self" type="application/rss+xml" />
     <image>
       <url>${escapeXml(projectData.coverImage || `${baseUrl}/default-cover.jpg`)}</url>
       <title>${escapeXml(projectData.title || 'Untitled Project')}</title>

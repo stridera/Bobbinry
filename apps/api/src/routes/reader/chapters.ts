@@ -9,7 +9,7 @@ import { optionalAuth } from '../../middleware/auth'
 import { notDeleted } from '../../lib/entity-scope'
 import { checkChapterAccess, checkChaptersAccess } from '../../lib/chapter-access'
 import { resolveSlug, getSlugsForEntities } from '../../lib/slugs'
-import { getChapterOrderClauses, resolveViewAs, canViewProject } from './shared'
+import { getChapterOrderClauses, resolveViewAs, canViewProject, resolveReadableChapter } from './shared'
 
 const chaptersRoutes: FastifyPluginAsync = async (fastify) => {
   // ============================================
@@ -299,15 +299,8 @@ const chaptersRoutes: FastifyPluginAsync = async (fastify) => {
       // to other accounts.
       const userId = request.user?.id
 
-      const [pub] = await db
-        .select({ isPublished: chapterPublications.isPublished })
-        .from(chapterPublications)
-        .where(and(
-          eq(chapterPublications.chapterId, chapterId),
-          eq(chapterPublications.projectId, request.params.projectId)
-        ))
-        .limit(1)
-      if (!pub?.isPublished || !(await canViewProject(request.params.projectId, userId))) {
+      // A view only counts on a chapter this reader could actually open.
+      if (!(await resolveReadableChapter(chapterId, userId, request.params.projectId))) {
         return reply.status(404).send({ error: 'Chapter not found', correlationId })
       }
 

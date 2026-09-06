@@ -4,7 +4,7 @@ import { db } from '../../db/connection'
 import { users, comments, reactions } from '../../db/schema'
 import { eq, and, asc, isNull, count } from 'drizzle-orm'
 import { optionalAuth } from '../../middleware/auth'
-import { canViewProject, checkInteractionAllowed, getChapterProjectId } from './shared'
+import { checkInteractionAllowed, resolveReadableChapter } from './shared'
 
 const socialRoutes: FastifyPluginAsync = async (fastify) => {
   // ============================================
@@ -27,8 +27,9 @@ const socialRoutes: FastifyPluginAsync = async (fastify) => {
       const limit = Number(request.query.limit ?? 50)
       const offset = Number(request.query.offset ?? 0)
 
-      const commentProjectId = await getChapterProjectId(chapterId)
-      if (commentProjectId && !(await canViewProject(commentProjectId, request.user?.id))) {
+      // Same gate as reading the chapter: an embargoed or tier-locked chapter
+      // must not leak its discussion either.
+      if (!(await resolveReadableChapter(chapterId, request.user?.id))) {
         return reply.status(404).send({ error: 'Chapter not found', correlationId })
       }
 
@@ -164,8 +165,7 @@ const socialRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const { chapterId } = request.params
 
-      const reactionProjectId = await getChapterProjectId(chapterId)
-      if (reactionProjectId && !(await canViewProject(reactionProjectId, request.user?.id))) {
+      if (!(await resolveReadableChapter(chapterId, request.user?.id))) {
         return reply.status(404).send({ error: 'Chapter not found', correlationId })
       }
 
