@@ -1,6 +1,6 @@
 id: feedback
 name: Reader Feedback
-version: 1.0.2
+version: 1.0.3
 author: "Bobbins Core"
 description: "View and manage reader annotations, error reports, and suggestions in the editor"
 tags: [feedback, annotations, beta-readers, editing]
@@ -12,6 +12,7 @@ capabilities:
   external: false
   ai: false
   customViews: true
+  annotationInbox: true
 
 data:
   collections: []

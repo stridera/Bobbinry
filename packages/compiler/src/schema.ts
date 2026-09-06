@@ -96,7 +96,8 @@ export const manifestSchema = {
         "readerBobbinType": {
           "type": "string",
           "enum": ["automation", "reader"]
-        }
+        },
+        "annotationInbox": { "type": "boolean" }
       },
       "additionalProperties": false
     },

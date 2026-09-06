@@ -512,7 +512,8 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
             description: manifest?.description || '',
             icon: typeof manifest?.icon === 'string' ? manifest.icon : undefined,
             hasLeftPanel,
-            core: manifest?.core === true
+            core: manifest?.core === true,
+            annotationInbox: manifest?.capabilities?.annotationInbox === true
           }
         }
       })

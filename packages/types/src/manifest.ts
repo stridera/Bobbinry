@@ -47,6 +47,8 @@ export interface Manifest {
     backup?: boolean
     publisherCategory?: 'audience' | 'distribution'
     readerBobbinType?: 'automation' | 'reader'
+    /** This bobbin gives the author an inbox for reader annotations; the project dashboard links to it. */
+    annotationInbox?: boolean
   }
 
   // Data definitions - collections, fields, relationships

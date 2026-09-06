@@ -109,6 +109,8 @@ interface DashboardData {
       icon?: string
       hasLeftPanel: boolean
       core?: boolean
+      /** Declared via `capabilities.annotationInbox`; drives the feedback dashboard link. */
+      annotationInbox?: boolean
     }
   }>
   bobbinStats: Record<string, number>
@@ -194,6 +196,9 @@ export default function ProjectDashboardPage() {
       </div>
     )
   }
+
+  // Whichever installed bobbin declares `capabilities.annotationInbox` owns the feedback dashboard.
+  const hasAnnotationInbox = data.bobbins.some(b => b.manifest.annotationInbox)
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
@@ -375,7 +380,7 @@ export default function ProjectDashboardPage() {
                       Enable in Publisher &rarr;
                     </Link>
                   )}
-                  {data.publishConfig.enableAnnotations && data.bobbins.some(b => b.bobbinId === 'feedback') && (
+                  {data.publishConfig.enableAnnotations && hasAnnotationInbox && (
                     <Link
                       href={`/projects/${projectId}/feedback`}
                       className="text-xs text-blue-600 dark:text-blue-400 hover:underline inline-block"
@@ -383,7 +388,7 @@ export default function ProjectDashboardPage() {
                       View feedback dashboard &rarr;
                     </Link>
                   )}
-                  {data.publishConfig.enableAnnotations && !data.bobbins.some(b => b.bobbinId === 'feedback') && (
+                  {data.publishConfig.enableAnnotations && !hasAnnotationInbox && (
                     <Link
                       href={`/projects/${projectId}/bobbins`}
                       className="text-xs text-blue-600 dark:text-blue-400 hover:underline inline-block"
