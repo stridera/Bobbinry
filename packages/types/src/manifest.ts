@@ -512,6 +512,14 @@ export interface ExtensionContribution {
     entityId: string
     metadata?: Record<string, any>
   }
+  /**
+   * Window event names that should surface this panel when dispatched (e.g.
+   * `bobbinry:entity-preview` on a shell.rightPanel contribution). The shell
+   * reveals the panel and, when the event carries `source: 'editor'`, may
+   * float it over a focus-mode editor. Lets a bobbin say "show me when X
+   * happens" without the shell knowing the bobbin.
+   */
+  revealOn?: string[]
   pubsub?: {
     produces?: TopicReference[]
     consumes?: TopicReference[]

@@ -12,6 +12,7 @@ import type { Crumb } from '@/hooks/useBreadcrumb'
 import { UserMenu } from './UserMenu'
 import { BobbinManagerPopover } from './bobbins'
 import { UnifiedSearch } from './search/UnifiedSearch'
+import { extensionRegistry, panelsRevealedBy, revealEventNames } from '@/lib/extensions'
 
 const DEFAULT_LEFT_WIDTH = 256   // current w-64
 const DEFAULT_RIGHT_WIDTH = 320  // current w-80
@@ -19,7 +20,6 @@ const MIN_PANEL_WIDTH = 200
 const MAX_PANEL_WIDTH = 600
 const RESIZE_HANDLE_WIDTH = 4
 /** The one panel focus mode will float, and only on an editor gesture. */
-const FOCUS_PANEL_ID = 'entities.entity-preview'
 
 interface InstalledBobbin {
   id: string
@@ -215,31 +215,38 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
     focusPanelOpenRef.current = focusPanelOpen
   }, [focusPanelOpen])
 
-  // Clicking a highlighted entity in an editor should surface the preview,
-  // not load it invisibly behind a collapsed right panel. In focus mode the
-  // right panel is squeezed to zero width, so float it over the manuscript
-  // instead of dropping the user out of focus mode.
+  // Panels can ask to be surfaced when an event fires (manifest `revealOn`,
+  // e.g. the entity preview on bobbinry:entity-preview). Reveal the right
+  // panel and re-dispatch the event to the target panel. Focus mode admits
+  // user-initiated surfaces only: an event carrying source:'editor' may float
+  // the panel over the manuscript; other dispatchers may reveal the panel but
+  // not break the writer's focus.
+  const [focusPanelId, setFocusPanelId] = useState<string | null>(null)
+  const [revealVersion, setRevealVersion] = useState(0)
+  useEffect(() => extensionRegistry.onSlotChange('shell.rightPanel', () => setRevealVersion(v => v + 1)), [])
   useEffect(() => {
-    const handleEntityPreview = (event: Event) => {
-      const detail = (event as CustomEvent).detail
-      setRightPanelCollapsed(false)
-      // Focus mode admits user-initiated surfaces only. The same event is also
-      // dispatched by the entities navigation panel; that one may reveal the
-      // panel, but it may not float anything over the manuscript.
-      if (focusModeRef.current && detail?.source === 'editor') setFocusPanelOpen(true)
-      window.dispatchEvent(
-        new CustomEvent('bobbinry:reveal-panel', {
-          detail: {
-            slotId: 'shell.rightPanel',
-            panelId: FOCUS_PANEL_ID,
-            replay: { type: 'bobbinry:entity-preview', detail },
-          },
-        })
-      )
-    }
-    window.addEventListener('bobbinry:entity-preview', handleEntityPreview)
-    return () => window.removeEventListener('bobbinry:entity-preview', handleEntityPreview)
-  }, [])
+    const listeners = revealEventNames().map(eventName => {
+      const handler = (event: Event) => {
+        const detail = (event as CustomEvent).detail
+        const targets = panelsRevealedBy(eventName).filter(e => e.contribution.slot === 'shell.rightPanel')
+        if (targets.length === 0) return
+        setRightPanelCollapsed(false)
+        const panelId = targets[0]!.id
+        if (focusModeRef.current && detail?.source === 'editor') {
+          setFocusPanelId(panelId)
+          setFocusPanelOpen(true)
+        }
+        window.dispatchEvent(
+          new CustomEvent('bobbinry:reveal-panel', {
+            detail: { slotId: 'shell.rightPanel', panelId, replay: { type: eventName, detail } },
+          })
+        )
+      }
+      window.addEventListener(eventName, handler)
+      return () => window.removeEventListener(eventName, handler)
+    })
+    return () => listeners.forEach(off => off())
+  }, [revealVersion])
 
   // Focus mode keyboard shortcuts
   useEffect(() => {
@@ -501,7 +508,7 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
               animate={resizingPanel !== 'right'}
               onToggleCollapse={() => setRightPanelCollapsed(prev => !prev)}
               onOpenMarketplace={onOpenMarketplace ? () => onOpenMarketplace('shell.rightPanel') : undefined}
-              soloPanelId={focusMode && focusPanelOpen ? FOCUS_PANEL_ID : undefined}
+              soloPanelId={focusMode && focusPanelOpen && focusPanelId ? focusPanelId : undefined}
               emptyFallback={
                 <EmptySlotFallback
                   icon={

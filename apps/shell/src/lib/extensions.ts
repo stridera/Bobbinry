@@ -404,6 +404,22 @@ export interface BobbinHomeDetail {
  * to know a specific bobbin's "main" view. Null when the bobbin declares none
  * or is not registered yet.
  */
+/** Registered contributions that asked to be surfaced when `eventName` fires. */
+export function panelsRevealedBy(eventName: string): RegisteredExtension[] {
+  return extensionRegistry
+    .getAllExtensions()
+    .filter(e => e.isActive && Array.isArray(e.contribution.revealOn) && e.contribution.revealOn.includes(eventName))
+}
+
+/** Every distinct event name any registered contribution wants to be revealed on. */
+export function revealEventNames(): string[] {
+  const names = new Set<string>()
+  for (const e of extensionRegistry.getAllExtensions()) {
+    for (const name of e.contribution.revealOn ?? []) names.add(name)
+  }
+  return Array.from(names)
+}
+
 export function resolveBobbinHome(bobbinId: string): BobbinHomeDetail | null {
   const ext = extensionRegistry
     .getExtensionsForBobbin(bobbinId)

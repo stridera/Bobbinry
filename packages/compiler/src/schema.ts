@@ -217,6 +217,7 @@ export const manifestSchema = {
                 },
                 "required": ["entityType", "entityId"]
               },
+              "revealOn": { "type": "array", "items": { "type": "string" } },
               "pubsub": {
                 "type": "object",
                 "properties": {

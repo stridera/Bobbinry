@@ -1,4 +1,4 @@
-import { extensionRegistry, resolveBobbinHome } from '../extensions'
+import { extensionRegistry, panelsRevealedBy, resolveBobbinHome, revealEventNames } from '../extensions'
 
 describe('resolveBobbinHome', () => {
   afterEach(() => {
@@ -23,5 +23,19 @@ describe('resolveBobbinHome', () => {
     })
     expect(resolveBobbinHome('plain')).toBeNull()
     expect(resolveBobbinHome('never-registered')).toBeNull()
+  })
+})
+
+describe('panelsRevealedBy / revealEventNames', () => {
+  afterEach(() => extensionRegistry.unregisterBobbin('peek'))
+
+  it('finds the panels that asked to be surfaced on an event', () => {
+    extensionRegistry.registerExtension('peek', {
+      slot: 'shell.rightPanel', type: 'panel', id: 'peek-panel', title: 'Peek',
+      revealOn: ['bobbinry:thing-selected', 'bobbinry:thing-hovered'],
+    })
+    expect(panelsRevealedBy('bobbinry:thing-selected').map(e => e.id)).toEqual(['peek.peek-panel'])
+    expect(panelsRevealedBy('bobbinry:nothing')).toEqual([])
+    expect(revealEventNames()).toEqual(expect.arrayContaining(['bobbinry:thing-selected', 'bobbinry:thing-hovered']))
   })
 })

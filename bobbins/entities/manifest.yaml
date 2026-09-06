@@ -1,6 +1,6 @@
 id: entities
 name: Entities
-version: 1.8.1
+version: 1.8.2
 author: "Bobbins Core"
 description: "Configurable entity system for characters, spells, locations, items, and more"
 tags: [worldbuilding, rpg, entities, configurable]
@@ -83,6 +83,9 @@ extensions:
       id: entity-preview
       title: "Entity Preview"
       entry: panels/entity-preview
+      # Surface this panel when an entity is clicked in the editor or the
+      # navigation panel — the shell has no other knowledge of this bobbin.
+      revealOn: ['bobbinry:entity-preview']
       when:
         entityType: content
 

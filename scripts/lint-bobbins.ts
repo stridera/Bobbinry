@@ -647,6 +647,29 @@ function checkSlotKnown(ctx: BobbinContext): Diagnostic[] {
   return diags;
 }
 
+/**
+ * Declarative shell hooks only make sense on the slot they target:
+ * `revealOn` surfaces a right panel; `home`, `search` and `quickOpen`
+ * describe the bobbin's records and live on its left-panel contribution.
+ */
+function checkContributionFieldPlacement(ctx: BobbinContext): Diagnostic[] {
+  if (!ctx.manifest?.extensions?.contributions) return [];
+  const diags: Diagnostic[] = [];
+  const allowed: Record<string, string> = { revealOn: "shell.rightPanel", home: "shell.leftPanel", search: "shell.leftPanel", quickOpen: "shell.leftPanel" };
+  for (const contrib of ctx.manifest.extensions.contributions) {
+    for (const [field, slot] of Object.entries(allowed)) {
+      if (contrib[field] !== undefined && contrib.slot !== slot) {
+        diags.push({
+          rule: "contribution-field-placement",
+          message: `contribution '${contrib.id}' declares '${field}', which only applies to ${slot} contributions`,
+          severity: "error",
+        });
+      }
+    }
+  }
+  return diags;
+}
+
 function checkPanelIdNamespaced(ctx: BobbinContext): Diagnostic[] {
   if (!ctx.manifest?.extensions?.contributions) return [];
   const diags: Diagnostic[] = [];
@@ -869,6 +892,7 @@ const perBobbinRules = [
   checkEntryExists,
   checkViewFileExists,
   checkSlotKnown,
+  checkContributionFieldPlacement,
   checkPanelIdNamespaced,
   checkTsconfigExists,
   checkTsconfigNoIncremental,
