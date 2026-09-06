@@ -97,9 +97,9 @@ Use these slots intentionally:
 ### Shell Integration Declared in the Manifest
 
 The shell has no list of "special" bobbins. Everything the core bobbins get
-from the shell — a landing view, a panel that pops open on an event, the
-top-bar search, the Ctrl+K palette, the feedback link on the project
-dashboard — comes from fields on their manifest contributions, and a
+from the shell — a landing view, breadcrumbs, a panel that pops open on an
+event, the top-bar search, the Ctrl+K palette, the feedback link on the
+project dashboard — comes from fields on their manifest contributions, and a
 third-party bobbin gets the same treatment by declaring the same fields.
 `bun run lint:bobbins` checks that each field sits on the right slot.
 
@@ -130,23 +130,32 @@ On a `shell.leftPanel` contribution:
         collections:
           - { name: widgets, entityType: widgets, metadata: { view: editor } }
 
-      # What Ctrl+K should index. Items are grouped under `label`.
+      # The collections this bobbin navigates. Ctrl+K indexes them and the
+      # breadcrumb resolves the current record against them.
+      records:
+        # A fixed collection. titleField defaults to "title"; entityType
+        # defaults to the collection name; metadata rides on every navigate.
+        - collection: widgets
+          metadata: { view: editor }
+          # Crumb between the project and the record: the list view. Without
+          # entityId the crumb is just a label.
+          group: { label: Widgets, entityId: list, metadata: { view: list } }
+        # A hierarchy: parentField (and parentCollection when the parent
+        # lives elsewhere) builds "Book › Part" — both the quick-open
+        # subtitle and the ancestor crumbs.
+        - collection: sections
+          parentField: parent_id
+        # Collections discovered at runtime, one per definition record (how
+        # entities lists each entity type). In group.metadata, "$collection",
+        # "$label" and "$icon" expand from the definition record.
+        - discover: { collection: widget_types, idField: type_id, labelField: label, iconField: icon }
+          titleField: name
+          group: { entityId: list, metadata: { view: list, typeId: $collection, typeLabel: $label } }
+
+      # Ctrl+K group heading for `records`; omit to keep records out of the palette.
       quickOpen:
         label: Widgets
         icon: document            # document | person | note
-        sources:
-          # A fixed collection. titleField defaults to "title"; entityType
-          # defaults to the collection name.
-          - collection: widgets
-            metadata: { view: editor }
-          # A hierarchy: parentField (and parentCollection when the parent
-          # lives elsewhere) builds a "Book › Part" path subtitle.
-          - collection: sections
-            parentField: parent_id
-          # Collections discovered at runtime, one per definition record
-          # (how entities lists each entity type by its label).
-          - discover: { collection: widget_types, idField: type_id, labelField: label }
-            titleField: name
 ```
 
 On a `shell.rightPanel` contribution:
