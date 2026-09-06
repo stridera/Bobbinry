@@ -156,6 +156,9 @@ class ExtensionRegistry {
     const extension = this.extensions.get(extensionId)
     if (extension) {
       this.extensions.delete(extensionId)
+      // A clean unregister must allow a clean re-register: the attempt counter
+      // guards against registration loops, not against uninstall/reinstall.
+      this.registrationAttempts.delete(extensionId)
       this.notifySlotListeners(extension.contribution.slot)
       this.notifyChangeListeners()
     }
