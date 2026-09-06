@@ -1,6 +1,6 @@
 id: notes
 name: Notes & Research
-version: 1.2.2
+version: 1.2.3
 author: "Bobbins Core"
 description: "Rich-text research notes with folders, tagging, entity linking, and pinboard"
 tags: [notes, research, organization, writing]
@@ -70,11 +70,12 @@ extensions:
         entityType: notes
         entityId: pinboard
         metadata: { view: pinboard }
-      quickOpen:
-        label: Notes
-        icon: note
-        sources:
-          - { collection: notes, entityType: notes, metadata: { view: note-editor } }
+      records:
+        - collection: notes
+          entityType: notes
+          metadata: { view: note-editor }
+          group: { label: Notes }   # inert crumb; folders are not navigable
+      quickOpen: { label: Notes, icon: note }
       title: "Project Notes"
       entry: panels/navigation
     - slot: shell.rightPanel

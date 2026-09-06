@@ -1,24 +1,20 @@
 import { buildQuickOpenItems } from '../quick-open-sources'
-import type { QuickOpenDeclaration } from '@bobbinry/types'
+import type { RecordSource } from '@bobbinry/types'
 
 // Mirrors what bobbins/{manuscript,entities,notes}/manifest.yaml declare. Kept
 // inline so the test pins the shape the palette relied on before the sources
 // moved into manifests.
-const MANUSCRIPT: QuickOpenDeclaration = {
-  label: 'Manuscript', icon: 'document',
-  sources: [
-    { collection: 'containers', entityType: 'container', parentField: 'parent_id', metadata: { type: 'container' } },
-    { collection: 'content', entityType: 'content', parentField: 'container_id', parentCollection: 'containers', metadata: { type: 'content' } },
-  ],
-}
-const ENTITIES: QuickOpenDeclaration = {
-  label: 'Entities', icon: 'person',
-  sources: [{ discover: { collection: 'entity_type_definitions', idField: 'type_id', labelField: 'label' }, titleField: 'name', metadata: { view: 'entity-editor' } }],
-}
-const NOTES: QuickOpenDeclaration = {
-  label: 'Notes', icon: 'note',
-  sources: [{ collection: 'notes', entityType: 'notes', metadata: { view: 'note-editor' } }],
-}
+export const MANUSCRIPT_RECORDS: RecordSource[] = [
+  { collection: 'containers', entityType: 'container', parentField: 'parent_id', metadata: { type: 'container' } },
+  { collection: 'content', entityType: 'content', parentField: 'container_id', parentCollection: 'containers', metadata: { type: 'content' } },
+]
+export const ENTITIES_RECORDS: RecordSource[] = [
+  { discover: { collection: 'entity_type_definitions', idField: 'type_id', labelField: 'label', iconField: 'icon' }, titleField: 'name', metadata: { view: 'entity-editor' },
+    group: { entityId: 'list', metadata: { view: 'entity-list', typeId: '$collection', typeLabel: '$label', typeIcon: '$icon' } } },
+]
+export const NOTES_RECORDS: RecordSource[] = [
+  { collection: 'notes', entityType: 'notes', metadata: { view: 'note-editor' }, group: { label: 'Notes' } },
+]
 
 const DB: Record<string, any[]> = {
   containers: [
@@ -49,9 +45,9 @@ const entityApi = {
 describe('buildQuickOpenItems', () => {
   it('reproduces the palette items the shell used to hardcode for the core bobbins', async () => {
     const { items, groups } = await buildQuickOpenItems(entityApi as any, [
-      { bobbinId: 'manuscript', quickOpen: MANUSCRIPT },
-      { bobbinId: 'entities', quickOpen: ENTITIES },
-      { bobbinId: 'notes', quickOpen: NOTES },
+      { bobbinId: 'manuscript', records: MANUSCRIPT_RECORDS, quickOpen: { label: 'Manuscript', icon: 'document' } },
+      { bobbinId: 'entities', records: ENTITIES_RECORDS, quickOpen: { label: 'Entities', icon: 'person' } },
+      { bobbinId: 'notes', records: NOTES_RECORDS, quickOpen: { label: 'Notes', icon: 'note' } },
     ])
 
     expect(groups).toEqual([
@@ -82,7 +78,7 @@ describe('buildQuickOpenItems', () => {
 
   it('skips failing collections and uses the collection name as entityType by default', async () => {
     const { items } = await buildQuickOpenItems(entityApi as any, [
-      { bobbinId: 'third', quickOpen: { label: 'Third', sources: [{ collection: 'broken' }, { collection: 'notes' }] } },
+      { bobbinId: 'third', records: [{ collection: 'broken' }, { collection: 'notes' }], quickOpen: { label: 'Third' } },
     ])
     expect(items).toEqual([
       { id: 'n1', title: 'Ideas', kind: 'third', subtitle: 'Third',
@@ -92,7 +88,7 @@ describe('buildQuickOpenItems', () => {
 
   it('resolves the path across the same collection when parent ids chain', async () => {
     const { items } = await buildQuickOpenItems(entityApi as any, [
-      { bobbinId: 'm', quickOpen: { label: 'M', sources: [{ collection: 'containers', parentField: 'parent_id' }] } },
+      { bobbinId: 'm', records: [{ collection: 'containers', parentField: 'parent_id' }], quickOpen: { label: 'M' } },
     ])
     expect(items.map(i => [i.title, i.subtitle])).toEqual([['The Book', ''], ['Part One', 'The Book']])
   })

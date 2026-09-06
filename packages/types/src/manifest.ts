@@ -528,7 +528,13 @@ export interface ExtensionContribution {
    * shell.leftPanel contribution.
    */
   search?: SearchDeclaration
-  /** What the shell's Ctrl+K quick-open should index from this bobbin. Declared on the shell.leftPanel contribution. */
+  /**
+   * The record collections this bobbin navigates — what the shell's Ctrl+K
+   * palette indexes and what the breadcrumb resolves against. Declared on the
+   * shell.leftPanel contribution.
+   */
+  records?: RecordSource[]
+  /** Group heading and icon for this bobbin's `records` in the Ctrl+K palette. Requires `records`. */
   quickOpen?: QuickOpenDeclaration
   pubsub?: {
     produces?: TopicReference[]
@@ -552,8 +558,11 @@ export interface SearchDeclaration {
   collections?: SearchCollectionRule[]
 }
 
-/** One collection (or a family of them) the quick-open palette should list. */
-export interface QuickOpenSource {
+/**
+ * One collection (or a family of them) a bobbin's records live in: how to
+ * list them, title them, chain them to parents, and open them.
+ */
+export interface RecordSource {
   /** A fixed collection name... */
   collection?: string
   /** ...or discover collections from a definitions collection (one per record). */
@@ -561,8 +570,10 @@ export interface QuickOpenSource {
     collection: string
     /** Field on each definition record holding the collection name. */
     idField: string
-    /** Field holding the human label (used as the item subtitle). */
+    /** Field holding the human label (quick-open subtitle, breadcrumb group). */
     labelField?: string
+    /** Field holding an icon for the group (available as `$icon`). */
+    iconField?: string
   }
   /** Record field for the item title (default "title"). */
   titleField?: string
@@ -573,6 +584,18 @@ export interface QuickOpenSource {
   /** entityType for bobbinry:navigate; "$collection" (default) uses the collection name. */
   entityType?: string
   metadata?: Record<string, any>
+  /**
+   * Breadcrumb shown between the project and a record's ancestors — the
+   * collection's list/home view. Without `entityId` the crumb is inert. In
+   * `metadata`, the strings "$collection", "$label" and "$icon" expand to the
+   * discovered type's id, label and icon.
+   */
+  group?: {
+    /** Defaults to the discovered type label, else the quickOpen label. */
+    label?: string
+    entityId?: string
+    metadata?: Record<string, any>
+  }
 }
 
 export interface QuickOpenDeclaration {
@@ -580,7 +603,6 @@ export interface QuickOpenDeclaration {
   label: string
   /** Icon family for the group: document (default), person, note. */
   icon?: 'document' | 'person' | 'note'
-  sources: QuickOpenSource[]
 }
 
 export interface ExtensionCondition {

@@ -239,36 +239,45 @@ export const manifestSchema = {
                 },
                 "required": ["kind"]
               },
-              "quickOpen": {
-                "type": "object",
-                "properties": {
-                  "label": { "type": "string" },
-                  "icon": { "enum": ["document", "person", "note"] },
-                  "sources": {
-                    "type": "array",
-                    "items": {
+              "records": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "collection": { "type": "string" },
+                    "discover": {
                       "type": "object",
                       "properties": {
                         "collection": { "type": "string" },
-                        "discover": {
-                          "type": "object",
-                          "properties": {
-                            "collection": { "type": "string" },
-                            "idField": { "type": "string" },
-                            "labelField": { "type": "string" }
-                          },
-                          "required": ["collection", "idField"]
-                        },
-                        "titleField": { "type": "string" },
-                        "parentField": { "type": "string" },
-                        "parentCollection": { "type": "string" },
-                        "entityType": { "type": "string" },
+                        "idField": { "type": "string" },
+                        "labelField": { "type": "string" },
+                        "iconField": { "type": "string" }
+                      },
+                      "required": ["collection", "idField"]
+                    },
+                    "titleField": { "type": "string" },
+                    "parentField": { "type": "string" },
+                    "parentCollection": { "type": "string" },
+                    "entityType": { "type": "string" },
+                    "metadata": { "type": "object" },
+                    "group": {
+                      "type": "object",
+                      "properties": {
+                        "label": { "type": "string" },
+                        "entityId": { "type": "string" },
                         "metadata": { "type": "object" }
                       }
                     }
                   }
+                }
+              },
+              "quickOpen": {
+                "type": "object",
+                "properties": {
+                  "label": { "type": "string" },
+                  "icon": { "enum": ["document", "person", "note"] }
                 },
-                "required": ["label", "sources"]
+                "required": ["label"]
               },
               "pubsub": {
                 "type": "object",

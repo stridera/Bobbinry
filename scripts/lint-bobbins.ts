@@ -658,14 +658,22 @@ function checkSlotKnown(ctx: BobbinContext): Diagnostic[] {
 
 /**
  * Declarative shell hooks only make sense on the slot they target:
- * `revealOn` surfaces a right panel; `home`, `search` and `quickOpen`
- * describe the bobbin's records and live on its left-panel contribution.
+ * `revealOn` surfaces a right panel; `home`, `search`, `records` and
+ * `quickOpen` describe the bobbin's records and live on its left-panel
+ * contribution. `quickOpen` only labels what `records` declares.
  */
 function checkContributionFieldPlacement(ctx: BobbinContext): Diagnostic[] {
   if (!ctx.manifest?.extensions?.contributions) return [];
   const diags: Diagnostic[] = [];
-  const allowed: Record<string, string> = { revealOn: "shell.rightPanel", home: "shell.leftPanel", search: "shell.leftPanel", quickOpen: "shell.leftPanel" };
+  const allowed: Record<string, string> = { revealOn: "shell.rightPanel", home: "shell.leftPanel", search: "shell.leftPanel", records: "shell.leftPanel", quickOpen: "shell.leftPanel" };
   for (const contrib of ctx.manifest.extensions.contributions) {
+    if (contrib.quickOpen !== undefined && contrib.records === undefined) {
+      diags.push({
+        rule: "contribution-field-placement",
+        message: `contribution '${contrib.id}' declares 'quickOpen' without 'records' — there is nothing for the palette to index`,
+        severity: "error",
+      });
+    }
     for (const [field, slot] of Object.entries(allowed)) {
       if (contrib[field] !== undefined && contrib.slot !== slot) {
         diags.push({

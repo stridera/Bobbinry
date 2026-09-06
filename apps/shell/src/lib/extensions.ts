@@ -1,7 +1,7 @@
 // Extensions and Slots system for Bobbinry Shell
 // Manages bobbin contributions to shell UI slots
 
-import { ExtensionContribution, ExtensionCondition, ExtensionSlotDefinition, QuickOpenDeclaration, SearchDeclaration, BUILTIN_SLOTS as SHARED_BUILTIN_SLOTS } from '@bobbinry/types'
+import { ExtensionContribution, ExtensionCondition, ExtensionSlotDefinition, QuickOpenDeclaration, RecordSource, SearchDeclaration, BUILTIN_SLOTS as SHARED_BUILTIN_SLOTS } from '@bobbinry/types'
 
 export interface RegisteredExtension {
   id: string
@@ -445,12 +445,36 @@ export function resolveSearchNavigation(collection: string): BobbinHomeDetail | 
   return wildcard
 }
 
-/** Bobbins that asked to be indexed by the quick-open palette, highest-priority left panel first. */
-export function quickOpenDeclarations(): Array<{ bobbinId: string; quickOpen: QuickOpenDeclaration }> {
+export interface RecordDeclaration {
+  bobbinId: string
+  records: RecordSource[]
+  quickOpen?: QuickOpenDeclaration
+}
+
+/** Bobbins that declared their record collections, highest-priority left panel first. */
+export function recordDeclarations(): RecordDeclaration[] {
   return extensionRegistry
     .getExtensionsForSlot('shell.leftPanel')
-    .filter(e => e.contribution.quickOpen)
-    .map(e => ({ bobbinId: e.bobbinId, quickOpen: e.contribution.quickOpen! }))
+    .filter(e => e.contribution.records)
+    .map(e => ({
+      bobbinId: e.bobbinId,
+      records: e.contribution.records!,
+      ...(e.contribution.quickOpen ? { quickOpen: e.contribution.quickOpen } : {}),
+    }))
+}
+
+/** The subset of record declarations that asked to be listed in the Ctrl+K palette. */
+export function quickOpenDeclarations(): Array<RecordDeclaration & { quickOpen: QuickOpenDeclaration }> {
+  return recordDeclarations().filter((d): d is RecordDeclaration & { quickOpen: QuickOpenDeclaration } => !!d.quickOpen)
+}
+
+/** The highest-priority `home` any left panel declares — the shell's fallback landing when a bobbin has none. */
+export function resolveAnyHome(): BobbinHomeDetail | null {
+  for (const e of extensionRegistry.getExtensionsForSlot('shell.leftPanel')) {
+    const home = resolveBobbinHome(e.bobbinId)
+    if (home) return home
+  }
+  return null
 }
 
 export function resolveBobbinHome(bobbinId: string): BobbinHomeDetail | null {

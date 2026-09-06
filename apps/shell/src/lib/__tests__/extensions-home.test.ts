@@ -1,4 +1,4 @@
-import { extensionRegistry, panelsRevealedBy, resolveBobbinHome, resolveSearchNavigation, revealEventNames, searchDeclarations } from '../extensions'
+import { extensionRegistry, panelsRevealedBy, quickOpenDeclarations, recordDeclarations, resolveAnyHome, resolveBobbinHome, resolveSearchNavigation, revealEventNames, searchDeclarations } from '../extensions'
 
 describe('resolveBobbinHome', () => {
   afterEach(() => {
@@ -59,5 +59,33 @@ describe('resolveSearchNavigation', () => {
 
   it('returns null when nothing claims the collection', () => {
     expect(resolveSearchNavigation('unknown')).toBeNull()
+  })
+})
+
+describe('recordDeclarations / quickOpenDeclarations / resolveAnyHome', () => {
+  afterEach(() => {
+    extensionRegistry.unregisterBobbin('alpha')
+    extensionRegistry.unregisterBobbin('beta')
+  })
+
+  it('lists left panels that declare records, and only those with quickOpen for the palette', () => {
+    extensionRegistry.registerExtension('alpha', {
+      slot: 'shell.leftPanel', type: 'panel', id: 'alpha-nav', title: 'Alpha', priority: 10,
+      records: [{ collection: 'widgets' }], quickOpen: { label: 'Widgets' },
+      home: { entityType: 'widgets', entityId: 'board' },
+    })
+    extensionRegistry.registerExtension('beta', {
+      slot: 'shell.leftPanel', type: 'panel', id: 'beta-nav', title: 'Beta', priority: 5,
+      records: [{ collection: 'gadgets' }],
+    })
+    expect(recordDeclarations().map(d => d.bobbinId)).toEqual(['alpha', 'beta'])
+    expect(quickOpenDeclarations().map(d => [d.bobbinId, d.quickOpen.label])).toEqual([['alpha', 'Widgets']])
+    // Fallback landing = the top-priority home in the registry.
+    expect(resolveAnyHome()).toEqual({ bobbinId: 'alpha', entityType: 'widgets', entityId: 'board' })
+  })
+
+  it('returns null for the fallback home when no left panel declares one', () => {
+    extensionRegistry.registerExtension('beta', { slot: 'shell.leftPanel', type: 'panel', id: 'beta-nav', title: 'Beta' })
+    expect(resolveAnyHome()).toBeNull()
   })
 })

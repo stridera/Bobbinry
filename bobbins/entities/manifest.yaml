@@ -1,6 +1,6 @@
 id: entities
 name: Entities
-version: 1.8.4
+version: 1.8.5
 author: "Bobbins Core"
 description: "Configurable entity system for characters, spells, locations, items, and more"
 tags: [worldbuilding, rpg, entities, configurable]
@@ -81,14 +81,17 @@ extensions:
         placeholder: "Search characters, places & lore…"
         collections:
           - { name: "*", entityType: "$collection", metadata: { view: entity-editor, isNew: false } }
-      # Ctrl+K quick-open: one collection per entity type definition.
-      quickOpen:
-        label: Entities
-        icon: person
-        sources:
-          - discover: { collection: entity_type_definitions, idField: type_id, labelField: label }
-            titleField: name
-            metadata: { view: entity-editor }
+      # One record collection per entity type definition. The breadcrumb's
+      # group crumb is the type's list view, in the same shape the Types view
+      # dispatches ($collection/$label/$icon come from the definition record).
+      records:
+        - discover: { collection: entity_type_definitions, idField: type_id, labelField: label, iconField: icon }
+          titleField: name
+          metadata: { view: entity-editor }
+          group:
+            entityId: list
+            metadata: { view: entity-list, typeId: $collection, typeLabel: $label, typeIcon: $icon }
+      quickOpen: { label: Entities, icon: person }
       title: "Entities"
       entry: panels/navigation
     - slot: shell.rightPanel

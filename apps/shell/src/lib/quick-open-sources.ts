@@ -1,12 +1,18 @@
 /**
- * Builds the Ctrl+K quick-open index from the bobbins' manifest `quickOpen`
- * declarations. The palette itself knows nothing about which bobbins exist:
- * each declaration names the collections to list, the title field, an
- * optional parent field (for "Book › Part" path subtitles), and how a pick
- * navigates.
+ * Builds the Ctrl+K quick-open index from the bobbins' manifest `records`
+ * declarations (labelled by `quickOpen`). The palette itself knows nothing
+ * about which bobbins exist: each source names a collection to list, the
+ * title field, an optional parent field (for "Book › Part" path subtitles),
+ * and how a pick navigates.
  */
 import type { EntityAPI } from '@bobbinry/sdk'
-import type { QuickOpenDeclaration, QuickOpenSource } from '@bobbinry/types'
+import type { QuickOpenDeclaration, RecordSource } from '@bobbinry/types'
+
+export interface QuickOpenInput {
+  bobbinId: string
+  records: RecordSource[]
+  quickOpen: QuickOpenDeclaration
+}
 
 export interface QuickOpenItem {
   id: string
@@ -34,7 +40,7 @@ type Query = (collection: string) => Promise<AnyRecord[]>
 /** A source expanded to one concrete collection, with its records loaded. */
 interface LoadedCollection {
   collection: string
-  source: QuickOpenSource
+  source: RecordSource
   records: AnyRecord[]
   byId: Map<string, AnyRecord>
   /** Subtitle for flat (non-hierarchical) sources. */
@@ -50,13 +56,13 @@ function field(record: AnyRecord, name: string): any {
 }
 
 /** A declared titleField still falls back to `title` so mixed records read sensibly. */
-function titleOf(record: AnyRecord, source: QuickOpenSource): string {
+function titleOf(record: AnyRecord, source: RecordSource): string {
   return field(record, source.titleField ?? 'title') || record.title || 'Untitled'
 }
 
 async function loadCollection(
   query: Query,
-  source: QuickOpenSource,
+  source: RecordSource,
   collection: string,
   subtitle: string,
   extraMetadata: AnyRecord = {},
@@ -66,8 +72,8 @@ async function loadCollection(
 }
 
 /** Expand a declaration's sources into concrete collections (discover → one per definition record). */
-async function loadDeclaration(query: Query, quickOpen: QuickOpenDeclaration): Promise<LoadedCollection[]> {
-  const perSource = await Promise.all(quickOpen.sources.map(async source => {
+async function loadDeclaration(query: Query, sources: RecordSource[], label: string): Promise<LoadedCollection[]> {
+  const perSource = await Promise.all(sources.map(async source => {
     if (source.discover) {
       const { collection, idField, labelField } = source.discover
       const defs = await query(collection)
@@ -78,7 +84,7 @@ async function loadDeclaration(query: Query, quickOpen: QuickOpenDeclaration): P
         loadCollection(query, source, t.id!, t.label || t.id!, { typeId: t.id, typeLabel: t.label || t.id }),
       ))
     }
-    if (source.collection) return [await loadCollection(query, source, source.collection, quickOpen.label)]
+    if (source.collection) return [await loadCollection(query, source, source.collection, label)]
     return []
   }))
   return perSource.flat()
@@ -135,7 +141,7 @@ function itemsFor(bobbinId: string, loaded: LoadedCollection, index: Map<string,
  */
 export async function buildQuickOpenItems(
   entityApi: Pick<EntityAPI, 'query'>,
-  declarations: Array<{ bobbinId: string; quickOpen: QuickOpenDeclaration }>,
+  declarations: QuickOpenInput[],
 ): Promise<{ items: QuickOpenItem[]; groups: QuickOpenGroup[] }> {
   const query: Query = collection =>
     entityApi.query({ collection, limit: 1000 }).then(r => (r.data as AnyRecord[]) ?? []).catch(() => [])
@@ -146,8 +152,8 @@ export async function buildQuickOpenItems(
     icon: d.quickOpen.icon ?? 'document',
   }))
 
-  const perDeclaration = await Promise.all(declarations.map(async ({ bobbinId, quickOpen }) => {
-    const loaded = await loadDeclaration(query, quickOpen)
+  const perDeclaration = await Promise.all(declarations.map(async ({ bobbinId, records, quickOpen }) => {
+    const loaded = await loadDeclaration(query, records, quickOpen.label)
     const index = new Map(loaded.map(l => [l.collection, l]))
     return loaded.flatMap(l => itemsFor(bobbinId, l, index))
   }))
