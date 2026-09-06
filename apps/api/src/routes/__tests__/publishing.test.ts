@@ -416,7 +416,12 @@ describe('Publishing API', () => {
         payload: {
           publishingMode: 'manual',
           enableComments: true,
-          enableReactions: true
+          enableReactions: true,
+          // Reader-experience toggles the publisher dashboard writes; the
+          // handler allow-lists columns, so every dashboard field must be listed.
+          enableAnnotations: true,
+          annotationAccess: 'subscribers',
+          projectId: '00000000-0000-0000-0000-000000000000' // must be ignored, not re-point the row
         }
       })
 
@@ -424,6 +429,9 @@ describe('Publishing API', () => {
       const body = JSON.parse(putRes.payload)
       expect(body.config.publishingMode).toBe('manual')
       expect(body.config.enableComments).toBe(true)
+      expect(body.config.enableAnnotations).toBe(true)
+      expect(body.config.annotationAccess).toBe('subscribers')
+      expect(body.config.projectId).toBe(project.id)
 
       const verifyRes = await app.inject({
         method: 'GET',

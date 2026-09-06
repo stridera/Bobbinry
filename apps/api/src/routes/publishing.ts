@@ -513,6 +513,8 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       ogImageUrl?: string
       enableComments?: boolean
       enableReactions?: boolean
+      enableAnnotations?: boolean
+      annotationAccess?: string
       moderationMode?: string
       useManuscriptOrder?: boolean
     }
@@ -528,7 +530,8 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
         'publishingMode', 'defaultVisibility', 'projectVisibility',
         'autoReleaseEnabled', 'releaseFrequency', 'releaseDay', 'releaseTime',
         'slugPrefix', 'seoDescription', 'ogImageUrl',
-        'enableComments', 'enableReactions', 'moderationMode', 'useManuscriptOrder',
+        'enableComments', 'enableReactions', 'enableAnnotations', 'annotationAccess',
+        'moderationMode', 'useManuscriptOrder',
       ] as const)
 
       if (updates.projectVisibility !== undefined

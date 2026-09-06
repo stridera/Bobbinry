@@ -23,7 +23,9 @@ const socialRoutes: FastifyPluginAsync = async (fastify) => {
     const correlationId = request.id
     try {
       const { chapterId } = request.params
-      const { limit = 50, offset = 0 } = request.query
+      // No querystring schema on this route, so these arrive as strings.
+      const limit = Number(request.query.limit ?? 50)
+      const offset = Number(request.query.offset ?? 0)
 
       const commentProjectId = await getChapterProjectId(chapterId)
       if (commentProjectId && !(await canViewProject(commentProjectId, request.user?.id))) {

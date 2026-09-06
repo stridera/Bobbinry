@@ -316,6 +316,38 @@ describe('Public Reader — Annotations', () => {
       expect(chapter!.version).toBe(victimChapter.version)
     })
 
+    it('inserts a suggestion literally even when it contains $-replacement patterns', async () => {
+      const author = await createTestUser()
+      const project = await createTestProject(author.id)
+      const chapter = await seedChapter(project.id)
+      const token = await createTestToken(author.id)
+
+      const [annotation] = await db.insert(chapterAnnotations).values({
+        chapterId: chapter.id,
+        projectId: project.id,
+        authorId: author.id,
+        anchorQuote: 'The reactor hummed',
+        annotationType: 'suggestion',
+        content: 'literal dollars',
+        // `$&` would re-insert the match and `$$` collapse to `$` under String.replace
+        suggestedText: 'It cost $$5 ($&)',
+        chapterVersion: 1,
+      }).returning()
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/projects/${project.id}/annotations/${annotation!.id}/accept`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(res.statusCode).toBe(200)
+
+      const [updated] = await db
+        .select({ entityData: entities.entityData })
+        .from(entities)
+        .where(eq(entities.id, chapter.id))
+      expect((updated!.entityData as { body: string }).body).toBe('<p>It cost $$5 ($&), and then it did not.</p>')
+    })
+
     it('does not leak other projects\' chapter titles into the author dashboard', async () => {
       const attacker = await createTestUser()
       const victim = await createTestUser()

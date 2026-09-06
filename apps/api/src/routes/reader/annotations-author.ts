@@ -332,7 +332,10 @@ const annotationsAuthorRoutes: FastifyPluginAsync = async (fastify) => {
           const data = chapter.entityData as Record<string, any>
           const chapterBody = data?.body as string | undefined
           if (chapterBody?.includes(annotation.anchorQuote)) {
-            const updatedBody = chapterBody.replace(annotation.anchorQuote, annotation.suggestedText)
+            // Replacer function: a reader's suggestion may contain `$&`, `$'` or `$$`,
+            // which String.replace would otherwise expand as patterns.
+            const suggested = annotation.suggestedText
+            const updatedBody = chapterBody.replace(annotation.anchorQuote, () => suggested)
             const newWordCount = countWordsFromHtml(updatedBody)
             await db
               .update(entities)
