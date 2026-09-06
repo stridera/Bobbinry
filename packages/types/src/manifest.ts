@@ -520,10 +520,32 @@ export interface ExtensionContribution {
    * happens" without the shell knowing the bobbin.
    */
   revealOn?: string[]
+  /**
+   * How the shell's top-bar search should behave while this bobbin's views are
+   * active, and how a hit in one of its collections navigates. Declared on the
+   * shell.leftPanel contribution.
+   */
+  search?: SearchDeclaration
   pubsub?: {
     produces?: TopicReference[]
     consumes?: TopicReference[]
   }
+}
+
+/** One collection the bobbin's records live in, and how a search hit opens. */
+export interface SearchCollectionRule {
+  /** Collection name, or "*" for every collection the search returns for this bobbin. */
+  name: string
+  /** entityType for bobbinry:navigate; "$collection" (default) uses the collection name. */
+  entityType?: string
+  metadata?: Record<string, any>
+}
+
+export interface SearchDeclaration {
+  /** 'text': manuscript-style prose search with replace + in-chapter find. 'records': find-only. */
+  kind: 'text' | 'records'
+  placeholder?: string
+  collections?: SearchCollectionRule[]
 }
 
 export interface ExtensionCondition {

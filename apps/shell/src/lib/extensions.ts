@@ -1,7 +1,7 @@
 // Extensions and Slots system for Bobbinry Shell
 // Manages bobbin contributions to shell UI slots
 
-import { ExtensionContribution, ExtensionCondition, ExtensionSlotDefinition, BUILTIN_SLOTS as SHARED_BUILTIN_SLOTS } from '@bobbinry/types'
+import { ExtensionContribution, ExtensionCondition, ExtensionSlotDefinition, SearchDeclaration, BUILTIN_SLOTS as SHARED_BUILTIN_SLOTS } from '@bobbinry/types'
 
 export interface RegisteredExtension {
   id: string
@@ -418,6 +418,31 @@ export function revealEventNames(): string[] {
     for (const name of e.contribution.revealOn ?? []) names.add(name)
   }
   return Array.from(names)
+}
+
+/** Every bobbin that declared how the top-bar search should treat its records. */
+export function searchDeclarations(): Array<{ bobbinId: string; search: SearchDeclaration }> {
+  return extensionRegistry
+    .getAllExtensions()
+    .filter(e => e.isActive && e.contribution.slot === 'shell.leftPanel' && e.contribution.search)
+    .map(e => ({ bobbinId: e.bobbinId, search: e.contribution.search! }))
+}
+
+/**
+ * Where a search hit in `collection` should navigate. Exact collection rules
+ * win over "*" wildcards; null when no registered bobbin claims the collection.
+ */
+export function resolveSearchNavigation(collection: string): BobbinHomeDetail | null {
+  let wildcard: BobbinHomeDetail | null = null
+  for (const { bobbinId, search } of searchDeclarations()) {
+    for (const rule of search.collections ?? []) {
+      const entityType = !rule.entityType || rule.entityType === '$collection' ? collection : rule.entityType
+      const detail: BobbinHomeDetail = { bobbinId, entityType, entityId: '', ...(rule.metadata ? { metadata: rule.metadata } : {}) }
+      if (rule.name === collection) return detail
+      if (rule.name === '*' && !wildcard) wildcard = detail
+    }
+  }
+  return wildcard
 }
 
 export function resolveBobbinHome(bobbinId: string): BobbinHomeDetail | null {

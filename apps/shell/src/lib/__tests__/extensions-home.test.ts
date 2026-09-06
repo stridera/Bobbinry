@@ -1,4 +1,4 @@
-import { extensionRegistry, panelsRevealedBy, resolveBobbinHome, revealEventNames } from '../extensions'
+import { extensionRegistry, panelsRevealedBy, resolveBobbinHome, resolveSearchNavigation, revealEventNames, searchDeclarations } from '../extensions'
 
 describe('resolveBobbinHome', () => {
   afterEach(() => {
@@ -37,5 +37,27 @@ describe('panelsRevealedBy / revealEventNames', () => {
     expect(panelsRevealedBy('bobbinry:thing-selected').map(e => e.id)).toEqual(['peek.peek-panel'])
     expect(panelsRevealedBy('bobbinry:nothing')).toEqual([])
     expect(revealEventNames()).toEqual(expect.arrayContaining(['bobbinry:thing-selected', 'bobbinry:thing-hovered']))
+  })
+})
+
+describe('resolveSearchNavigation', () => {
+  afterEach(() => { extensionRegistry.unregisterBobbin('prose'); extensionRegistry.unregisterBobbin('codex') })
+
+  it('prefers an exact collection rule and falls back to a wildcard with $collection', () => {
+    extensionRegistry.registerExtension('prose', {
+      slot: 'shell.leftPanel', type: 'panel', id: 'prose-nav', title: 'Prose',
+      search: { kind: 'text', collections: [{ name: 'content', entityType: 'content' }, { name: 'containers', entityType: 'container' }] },
+    })
+    extensionRegistry.registerExtension('codex', {
+      slot: 'shell.leftPanel', type: 'panel', id: 'codex-nav', title: 'Codex',
+      search: { kind: 'records', collections: [{ name: '*', entityType: '$collection', metadata: { view: 'entity-editor' } }] },
+    })
+    expect(resolveSearchNavigation('containers')).toEqual({ bobbinId: 'prose', entityType: 'container', entityId: '' })
+    expect(resolveSearchNavigation('characters')).toEqual({ bobbinId: 'codex', entityType: 'characters', entityId: '', metadata: { view: 'entity-editor' } })
+    expect(searchDeclarations().map(d => d.bobbinId).sort()).toEqual(['codex', 'prose'])
+  })
+
+  it('returns null when nothing claims the collection', () => {
+    expect(resolveSearchNavigation('unknown')).toBeNull()
   })
 })

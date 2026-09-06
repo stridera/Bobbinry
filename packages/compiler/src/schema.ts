@@ -218,6 +218,26 @@ export const manifestSchema = {
                 "required": ["entityType", "entityId"]
               },
               "revealOn": { "type": "array", "items": { "type": "string" } },
+              "search": {
+                "type": "object",
+                "properties": {
+                  "kind": { "enum": ["text", "records"] },
+                  "placeholder": { "type": "string" },
+                  "collections": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": { "type": "string" },
+                        "entityType": { "type": "string" },
+                        "metadata": { "type": "object" }
+                      },
+                      "required": ["name"]
+                    }
+                  }
+                },
+                "required": ["kind"]
+              },
               "pubsub": {
                 "type": "object",
                 "properties": {

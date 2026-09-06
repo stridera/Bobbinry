@@ -1,6 +1,6 @@
 id: manuscript
 name: Manuscript
-version: 1.0.9
+version: 1.0.10
 author: Bobbinry Team
 description: Complete manuscript management with books, chapters, and scenes
 tags:
@@ -26,6 +26,14 @@ extensions:
         entityType: container
         entityId: ROOT
         metadata: { type: root, view: outline }
+      # Top-bar search while a manuscript view is active: prose search with
+      # replace and in-chapter find. Hits open in the editor / outline.
+      search:
+        kind: text
+        placeholder: "Search manuscript…"
+        collections:
+          - { name: content, entityType: content }
+          - { name: containers, entityType: container }
       title: "Manuscript"
       entry: panels/navigation
       priority: 10

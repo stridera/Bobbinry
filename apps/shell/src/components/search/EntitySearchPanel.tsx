@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { useSearchReplace, type SearchMatch } from '@/hooks/useSearchReplace'
 import { MatchPreviewList } from './MatchPreviewList'
 import type { SearchPanelProps } from './providers'
+import { resolveSearchNavigation } from '@/lib/extensions'
 
 const MIN_QUERY_LENGTH = 2
 const DEBOUNCE_MS = 300
@@ -13,7 +14,7 @@ const DEBOUNCE_MS = 300
  * bobbin (characters, places, lore, custom types). Clicking a result opens
  * that entity in its editor.
  */
-export function EntitySearchPanel({ ctx, query, onClose }: SearchPanelProps) {
+export function EntitySearchPanel({ ctx, provider, query, onClose }: SearchPanelProps) {
   const { preview, previewing, runPreview, error, reset } = useSearchReplace({
     projectId: ctx.projectId,
     apiToken: ctx.apiToken,
@@ -33,21 +34,18 @@ export function EntitySearchPanel({ ctx, query, onClose }: SearchPanelProps) {
         caseSensitive: false,
         wholeWord: false,
         scope: { type: 'project' },
-        bobbinIds: ['entities'],
+        ...(provider.bobbinId ? { bobbinIds: [provider.bobbinId] } : {}),
       })
     }, DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [trimmed, runPreview, reset])
+  }, [trimmed, runPreview, reset, provider.bobbinId])
 
   const handleMatchClick = (m: SearchMatch) => {
-    window.dispatchEvent(new CustomEvent('bobbinry:navigate', {
-      detail: {
-        entityType: m.collection,
-        entityId: m.entityId,
-        bobbinId: 'entities',
-        metadata: { view: 'entity-editor', isNew: false },
-      },
-    }))
+    const target = resolveSearchNavigation(m.collection)
+    const detail = target
+      ? { ...target, entityId: m.entityId }
+      : { entityType: m.collection, entityId: m.entityId, bobbinId: provider.bobbinId }
+    window.dispatchEvent(new CustomEvent('bobbinry:navigate', { detail }))
     onClose()
   }
 

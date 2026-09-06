@@ -1,6 +1,6 @@
 id: entities
 name: Entities
-version: 1.8.2
+version: 1.8.3
 author: "Bobbins Core"
 description: "Configurable entity system for characters, spells, locations, items, and more"
 tags: [worldbuilding, rpg, entities, configurable]
@@ -74,6 +74,13 @@ extensions:
         entityType: entity_type_definitions
         entityId: publishing
         metadata: { view: publishing, typeLabel: Types, typeIcon: "📚" }
+      # Top-bar search while an entities view is active: find-only across
+      # every entity type; a hit opens that entity's editor.
+      search:
+        kind: records
+        placeholder: "Search characters, places & lore…"
+        collections:
+          - { name: "*", entityType: "$collection", metadata: { view: entity-editor, isNew: false } }
       title: "Entities"
       entry: panels/navigation
     - slot: shell.rightPanel

@@ -3,6 +3,8 @@
 import type { ComponentType } from 'react'
 import { ManuscriptSearchPanel } from './ManuscriptSearchPanel'
 import { EntitySearchPanel } from './EntitySearchPanel'
+import type { SearchDeclaration } from '@bobbinry/types'
+import { searchDeclarations } from '@/lib/extensions'
 
 export interface ActiveChapter {
   id: string
@@ -21,6 +23,8 @@ export interface ShellSearchContext {
 
 export interface SearchPanelProps {
   ctx: ShellSearchContext
+  /** The resolved provider — carries the declaring bobbin's id. */
+  provider: SearchProviderDef
   /** Live value of the top-bar input — the panel's "Find" field. */
   query: string
   /** 'replace' when opened via Ctrl+Shift+H; find-only panels ignore it. */
@@ -30,6 +34,8 @@ export interface SearchPanelProps {
 
 export interface SearchProviderDef {
   id: string
+  /** Bobbin that declared this search; undefined for the built-in fallback. */
+  bobbinId?: string
   placeholder: string
   supportsReplace: boolean
   /** Live debounced search vs explicit Enter-to-search. */
@@ -39,33 +45,38 @@ export interface SearchProviderDef {
   Panel: ComponentType<SearchPanelProps>
 }
 
-export const manuscriptSearchProvider: SearchProviderDef = {
-  id: 'manuscript',
-  placeholder: 'Search manuscript…',
-  supportsReplace: true,
-  searchTrigger: 'live',
-  supportsInChapterFind: true,
-  Panel: ManuscriptSearchPanel,
+/** Shell-owned panel per search kind; the bobbin picks the kind in its manifest. */
+const PANEL_FOR_KIND: Record<SearchDeclaration['kind'], Pick<SearchProviderDef, 'supportsReplace' | 'searchTrigger' | 'supportsInChapterFind' | 'Panel'>> = {
+  text: { supportsReplace: true, searchTrigger: 'live', supportsInChapterFind: true, Panel: ManuscriptSearchPanel },
+  records: { supportsReplace: false, searchTrigger: 'live', supportsInChapterFind: false, Panel: EntitySearchPanel },
 }
 
-export const entitySearchProvider: SearchProviderDef = {
-  id: 'entities',
-  placeholder: 'Search characters, places & lore…',
-  supportsReplace: false,
-  searchTrigger: 'live',
-  supportsInChapterFind: false,
-  Panel: EntitySearchPanel,
+const DEFAULT_TEXT_PROVIDER: SearchProviderDef = {
+  id: 'text',
+  placeholder: 'Search…',
+  ...PANEL_FOR_KIND.text,
+}
+
+function providerFrom(bobbinId: string, search: SearchDeclaration): SearchProviderDef {
+  return {
+    id: bobbinId,
+    bobbinId,
+    placeholder: search.placeholder ?? 'Search…',
+    ...PANEL_FOR_KIND[search.kind],
+  }
 }
 
 /**
- * Pick the search behavior for the current workspace view. Defaults to the
- * manuscript provider so search keeps working on views we don't recognize.
- * Future surfaces (explore, reader) plug in by adding a provider def and a
- * branch here.
+ * Pick the search behaviour for the current workspace view from the active
+ * bobbin's manifest `search` declaration (on its shell.leftPanel
+ * contribution). Views of a bobbin that declares nothing fall back to the
+ * first registered text search so the bar keeps working everywhere.
  */
 export function resolveSearchProvider(ctx: { currentView?: string | undefined; bobbinId?: string | undefined }): SearchProviderDef {
-  if (ctx.bobbinId === 'entities' || ctx.currentView?.startsWith('entities.')) {
-    return entitySearchProvider
-  }
-  return manuscriptSearchProvider
+  const declarations = searchDeclarations()
+  const activeBobbin = ctx.bobbinId ?? ctx.currentView?.split('.')[0]
+  const own = activeBobbin ? declarations.find(d => d.bobbinId === activeBobbin) : undefined
+  if (own) return providerFrom(own.bobbinId, own.search)
+  const text = declarations.find(d => d.search.kind === 'text') ?? declarations[0]
+  return text ? providerFrom(text.bobbinId, text.search) : DEFAULT_TEXT_PROVIDER
 }

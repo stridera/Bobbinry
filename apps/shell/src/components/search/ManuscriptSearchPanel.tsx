@@ -10,6 +10,7 @@ import {
 import { MatchPreviewList, type GroupedMatches } from './MatchPreviewList'
 import { requestSearchHighlight } from './pendingFind'
 import type { SearchPanelProps } from './providers'
+import { resolveSearchNavigation } from '@/lib/extensions'
 
 const MIN_QUERY_LENGTH = 2
 const DEBOUNCE_MS = 300
@@ -22,7 +23,7 @@ const DEBOUNCE_MS = 300
  * optimistic-concurrency contract for replace still holds — apply always uses
  * the versions of the preview it was invoked on.
  */
-export function ManuscriptSearchPanel({ ctx, query, initialMode, onClose }: SearchPanelProps) {
+export function ManuscriptSearchPanel({ ctx, query, initialMode, onClose, provider }: SearchPanelProps) {
   const [replacement, setReplacement] = useState('')
   const [showReplace, setShowReplace] = useState(initialMode === 'replace')
   const [caseSensitive, setCaseSensitive] = useState(false)
@@ -169,14 +170,15 @@ export function ManuscriptSearchPanel({ ctx, query, initialMode, onClose }: Sear
   const handleMatchClick = (m: SearchMatch) => {
     // Clicking a match in the chapter that's already open just scrolls to it;
     // re-navigating would pointlessly remount the editor.
-    const isOpenChapter = m.collection === 'content' && m.entityId === ctx.activeChapter?.id
+    const isOpenChapter = m.entityId === ctx.activeChapter?.id
     if (!isOpenChapter) {
-      const detail =
-        m.collection === 'content'
-          ? { entityType: 'content', entityId: m.entityId, bobbinId: 'manuscript' }
-          : m.collection === 'containers'
-            ? { entityType: 'container', entityId: m.entityId, bobbinId: 'manuscript' }
-            : { entityType: m.collection, entityId: m.entityId, bobbinId: 'entities', metadata: { view: 'entity-editor', isNew: false } }
+      // Which bobbin owns this collection, and how it wants a hit opened, comes
+      // from the manifests (`search.collections`); fall back to the declaring
+      // bobbin with the collection as the entity type.
+      const target = resolveSearchNavigation(m.collection)
+      const detail = target
+        ? { ...target, entityId: m.entityId }
+        : { entityType: m.collection, entityId: m.entityId, bobbinId: provider.bobbinId }
       window.dispatchEvent(new CustomEvent('bobbinry:navigate', { detail }))
     }
     // Ask the manuscript editor to select & scroll to this occurrence. `index`

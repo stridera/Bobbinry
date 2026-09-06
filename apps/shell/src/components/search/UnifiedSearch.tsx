@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { extensionRegistry } from '@/lib/extensions'
 import {
   resolveSearchProvider,
   type ActiveChapter,
@@ -60,9 +61,13 @@ export function UnifiedSearch({ projectId, shellContext }: UnifiedSearchProps) {
   // Mirrors `inChapterFind` (defined below) for the stable openSearch callback.
   const inChapterFindRef = useRef(false)
 
+  // Re-resolve when bobbins (un)register: manifests arrive after first paint.
+  const [registryVersion, setRegistryVersion] = useState(0)
+  useEffect(() => extensionRegistry.onSlotChange('shell.leftPanel', () => setRegistryVersion(v => v + 1)), [])
   const provider = useMemo(
     () => resolveSearchProvider({ currentView, bobbinId }),
-    [currentView, bobbinId],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- registryVersion invalidates the registry read
+    [currentView, bobbinId, registryVersion],
   )
 
   // Close the panel when the view flips to a different provider (manuscript ↔
@@ -397,6 +402,7 @@ export function UnifiedSearch({ projectId, shellContext }: UnifiedSearchProps) {
         <div className={`absolute top-full mt-1.5 left-1/2 -translate-x-1/2 w-[28rem] max-w-[calc(100vw-2rem)] z-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl animate-fade-in-scale overflow-hidden flex-col ${open ? 'flex' : 'hidden'}`}>
           <Panel
             key={provider.id}
+            provider={provider}
             ctx={ctx}
             query={query}
             initialMode={mode}
