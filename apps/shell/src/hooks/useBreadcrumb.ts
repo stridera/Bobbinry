@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
-import { extensionRegistry } from '@/lib/extensions'
+import { resolveBobbinHome } from '@/lib/extensions'
 
 export interface Crumb {
   id: string
@@ -70,12 +70,8 @@ async function getContainersMap(sdk: BobbinrySDK, projectId: string): Promise<Ma
 // within the active module instead of jumping to the manuscript. Falls back
 // to manuscript ROOT for bobbins that declare no home.
 function bobbinHomeDetail(bobbinId: string): NonNullable<Crumb['navDetail']> {
-  const ext = extensionRegistry
-    .getAllExtensions()
-    .find(e => e.contribution.slot === 'shell.leftPanel' && e.bobbinId === bobbinId && e.contribution.home)
-  if (ext?.contribution.home) {
-    return { ...ext.contribution.home, bobbinId }
-  }
+  const home = resolveBobbinHome(bobbinId)
+  if (home) return home
   return {
     entityType: 'container',
     entityId: 'ROOT',

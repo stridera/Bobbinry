@@ -389,4 +389,26 @@ declare global {
 
 export const extensionRegistry = globalThis.__extensionRegistry ?? (globalThis.__extensionRegistry = new ExtensionRegistry())
 
+/** A bobbinry:navigate detail for a bobbin's default view. */
+export interface BobbinHomeDetail {
+  bobbinId: string
+  entityType: string
+  entityId: string
+  metadata?: Record<string, any>
+}
+
+/**
+ * The bobbin's manifest-declared landing view: the `home` field on its
+ * shell.leftPanel contribution. Used by the left rail, the project breadcrumb
+ * and bobbin-only deep links (/projects/:id/:bobbinId) so the shell never has
+ * to know a specific bobbin's "main" view. Null when the bobbin declares none
+ * or is not registered yet.
+ */
+export function resolveBobbinHome(bobbinId: string): BobbinHomeDetail | null {
+  const ext = extensionRegistry
+    .getExtensionsForBobbin(bobbinId)
+    .find(e => e.contribution.slot === 'shell.leftPanel' && e.contribution.home)
+  return ext?.contribution.home ? { ...ext.contribution.home, bobbinId } : null
+}
+
 export default ExtensionRegistry

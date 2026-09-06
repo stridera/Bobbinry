@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, memo, ReactNode, useSyncExternalStore } from 'react'
 import { PanelActionsProvider } from '@bobbinry/sdk'
-import { extensionRegistry, RegisteredExtension } from '@/lib/extensions'
+import { extensionRegistry, resolveBobbinHome, RegisteredExtension } from '@/lib/extensions'
 import { useExtensions } from './ExtensionProvider'
 import { PanelIcon } from './icons/PanelIcon'
 
@@ -144,9 +144,7 @@ export function LeftPanelRail({
         // fall through to home
       }
     }
-    if (!detail && ext.contribution.home) {
-      detail = { ...ext.contribution.home, bobbinId: ext.bobbinId }
-    }
+    if (!detail) detail = resolveBobbinHome(ext.bobbinId)
     if (detail) {
       window.dispatchEvent(new CustomEvent('bobbinry:navigate', { detail }))
     }
