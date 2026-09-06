@@ -16,7 +16,6 @@ A bobbin is a reviewed package that extends the shell with one or more of:
 - data collections
 - native views
 - shell panels
-- custom server actions
 - publishing or backup capabilities
 
 Good examples in the repo:
@@ -44,7 +43,6 @@ bobbins/my-bobbin/
 
 Notes:
 
-- `actions/index.ts` is only needed when the manifest declares custom actions
 - `src/views/*` and `src/panels/*` should use kebab-case file names
 - contribution entries in the manifest point to `views/...` or `panels/...` without file extensions
 - do not add root-level `bobbins/<id>.manifest.yaml` files
@@ -56,8 +54,6 @@ Every manifest must include:
 - `id`, `name`, `version`, `author`, `description`, `tags`, `license`
 - `capabilities`
 - `compatibility.minShellVersion`
-
-Use `custom` actions only for server-executed handlers. If an action is purely local UI state, do not model it as a custom server action.
 
 ```yaml
 id: my-bobbin
@@ -97,6 +93,81 @@ Use these slots intentionally:
 - `shell.projectBackup`: project backup status and controls
 - `shell.publishDashboard`: publishing and analytics surfaces
 - `shell.editorFooter`: compact editor-adjacent tools
+
+### Shell Integration Declared in the Manifest
+
+The shell has no list of "special" bobbins. Everything the core bobbins get
+from the shell — a landing view, a panel that pops open on an event, the
+top-bar search, the Ctrl+K palette, the feedback link on the project
+dashboard — comes from fields on their manifest contributions, and a
+third-party bobbin gets the same treatment by declaring the same fields.
+`bun run lint:bobbins` checks that each field sits on the right slot.
+
+On a `shell.leftPanel` contribution:
+
+```yaml
+    - slot: shell.leftPanel
+      type: panel
+      id: widgets-navigation
+      title: "Widgets"
+      entry: panels/navigation
+
+      # Where /projects/:id/<bobbin> lands; also the breadcrumb root and the
+      # rail's click target. Dispatched as a bobbinry:navigate detail.
+      home:
+        entityType: widgets
+        entityId: board
+        metadata: { view: board }
+
+      # Top-bar search while one of this bobbin's views is active.
+      # kind: text    → prose search with replace and in-chapter find
+      # kind: records → find-only list of matching records
+      # collections map a hit's collection to a navigate target; "*" matches
+      # any collection and "$collection" uses the collection name as entityType.
+      search:
+        kind: records
+        placeholder: "Search widgets…"
+        collections:
+          - { name: widgets, entityType: widgets, metadata: { view: editor } }
+
+      # What Ctrl+K should index. Items are grouped under `label`.
+      quickOpen:
+        label: Widgets
+        icon: document            # document | person | note
+        sources:
+          # A fixed collection. titleField defaults to "title"; entityType
+          # defaults to the collection name.
+          - collection: widgets
+            metadata: { view: editor }
+          # A hierarchy: parentField (and parentCollection when the parent
+          # lives elsewhere) builds a "Book › Part" path subtitle.
+          - collection: sections
+            parentField: parent_id
+          # Collections discovered at runtime, one per definition record
+          # (how entities lists each entity type by its label).
+          - discover: { collection: widget_types, idField: type_id, labelField: label }
+            titleField: name
+```
+
+On a `shell.rightPanel` contribution:
+
+```yaml
+    - slot: shell.rightPanel
+      type: panel
+      id: widget-preview
+      title: "Widget Preview"
+      entry: panels/preview
+      # Window events that should surface this panel (and, in focus mode,
+      # float it when the event's detail.source is "editor").
+      revealOn: ['bobbinry:widget-preview']
+```
+
+Under `capabilities`, `annotationInbox: true` tells the project dashboard
+this bobbin owns the reader-annotation inbox, so the "View feedback
+dashboard" link points at it.
+
+Installed manifests only re-sync when `version` changes, so bump it when you
+add or edit any of these fields.
 
 ### Panel Pattern
 

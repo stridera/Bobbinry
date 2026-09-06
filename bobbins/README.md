@@ -4,6 +4,13 @@ Plugin modules that contribute panels, views, collections, and actions to
 the Bobbinry shell. Each subdirectory is a self-contained bobbin with its
 own `manifest.yaml`, `package.json`, and (preferably) `README.md`.
 
+The shell does not special-case any of these bobbins. Landing views
+(`home`), event-revealed panels (`revealOn`), top-bar search (`search`),
+the Ctrl+K palette (`quickOpen`) and the dashboard's feedback link
+(`capabilities.annotationInbox`) are all declared on manifest
+contributions — see "Shell Integration Declared in the Manifest" in
+[`docs/BOBBIN_DEVELOPMENT_GUIDE.md`](../docs/BOBBIN_DEVELOPMENT_GUIDE.md).
+
 ## Writing surface
 
 | Bobbin | What it does |
