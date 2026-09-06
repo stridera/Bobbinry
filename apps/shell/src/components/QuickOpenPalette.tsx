@@ -4,20 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BobbinryAPI, EntityAPI, fuzzyMatch } from '@bobbinry/sdk'
 import { ModalFrame } from '@bobbinry/ui-components'
 
-type ItemKind = 'manuscript' | 'entity' | 'note'
-
-interface QuickOpenItem {
-  id: string
-  title: string
-  kind: ItemKind
-  subtitle: string
-  navDetail: {
-    entityType: string
-    entityId: string
-    bobbinId: string
-    metadata?: Record<string, any>
-  }
-}
+import { extensionRegistry, quickOpenDeclarations } from '@/lib/extensions'
+import { buildQuickOpenItems, type QuickOpenGroup, type QuickOpenItem } from '@/lib/quick-open-sources'
 
 interface ScoredItem {
   item: QuickOpenItem
@@ -29,130 +17,9 @@ const CACHE_TTL_MS = 60_000
 const MAX_RESULTS = 50
 
 // Module-level cache so reopening the palette is instant; refreshed in the
-// background when stale.
-let itemsCache: { projectId: string; at: number; items: QuickOpenItem[] } | null = null
-
-const KIND_LABEL: Record<ItemKind, string> = {
-  manuscript: 'Manuscript',
-  entity: 'Entities',
-  note: 'Notes',
-}
-
-const KIND_ORDER: ItemKind[] = ['manuscript', 'entity', 'note']
-
-async function fetchItems(entityApi: EntityAPI): Promise<QuickOpenItem[]> {
-  const safeQuery = (collection: string) =>
-    entityApi.query({ collection, limit: 1000 }).catch(() => ({ data: [], total: 0 }))
-
-  const [containers, content, typeDefs, notes] = await Promise.all([
-    safeQuery('containers'),
-    safeQuery('content'),
-    safeQuery('entity_type_definitions'),
-    safeQuery('notes'),
-  ])
-
-  const containerMap = new Map<string, { title: string; parentId: string | null }>()
-  for (const c of (containers.data as any[]) ?? []) {
-    if (!c?.id) continue
-    containerMap.set(c.id, {
-      title: c.title || 'Untitled',
-      parentId: c.parent_id || c.parentId || null,
-    })
-  }
-
-  const pathTo = (startId: string | null): string => {
-    const parts: string[] = []
-    let cursor = startId
-    for (let i = 0; cursor && i < 32; i++) {
-      const record = containerMap.get(cursor)
-      if (!record) break
-      parts.unshift(record.title)
-      cursor = record.parentId
-    }
-    return parts.join(' › ')
-  }
-
-  const items: QuickOpenItem[] = []
-
-  for (const [id, c] of containerMap) {
-    items.push({
-      id,
-      title: c.title,
-      kind: 'manuscript',
-      subtitle: pathTo(c.parentId),
-      navDetail: {
-        entityType: 'container',
-        entityId: id,
-        bobbinId: 'manuscript',
-        metadata: { type: 'container' },
-      },
-    })
-  }
-
-  for (const record of (content.data as any[]) ?? []) {
-    if (!record?.id) continue
-    const containerId = record.containerId || record.container_id || null
-    items.push({
-      id: record.id,
-      title: record.title || 'Untitled',
-      kind: 'manuscript',
-      subtitle: pathTo(containerId),
-      navDetail: {
-        entityType: 'content',
-        entityId: record.id,
-        bobbinId: 'manuscript',
-        metadata: { type: 'content', parentId: containerId },
-      },
-    })
-  }
-
-  const types = ((typeDefs.data as any[]) ?? [])
-    .map(t => ({ typeId: t.type_id || t.typeId, label: t.label || t.type_id || t.typeId }))
-    .filter(t => t.typeId)
-
-  const perType = await Promise.all(
-    types.map(async type => {
-      const result = await safeQuery(type.typeId)
-      return { type, records: (result.data as any[]) ?? [] }
-    })
-  )
-
-  for (const { type, records } of perType) {
-    for (const record of records) {
-      if (!record?.id) continue
-      items.push({
-        id: record.id,
-        title: record.name || record.title || 'Untitled',
-        kind: 'entity',
-        subtitle: type.label,
-        navDetail: {
-          entityType: type.typeId,
-          entityId: record.id,
-          bobbinId: 'entities',
-          metadata: { view: 'entity-editor', typeId: type.typeId, typeLabel: type.label },
-        },
-      })
-    }
-  }
-
-  for (const record of (notes.data as any[]) ?? []) {
-    if (!record?.id) continue
-    items.push({
-      id: record.id,
-      title: record.title || 'Untitled',
-      kind: 'note',
-      subtitle: 'Notes',
-      navDetail: {
-        entityType: 'notes',
-        entityId: record.id,
-        bobbinId: 'notes',
-        metadata: { view: 'note-editor' },
-      },
-    })
-  }
-
-  return items
-}
+// background when stale. Keyed by project and by which bobbins declared
+// quickOpen sources, so an install/uninstall invalidates it.
+let itemsCache: { key: string; at: number; items: QuickOpenItem[]; groups: QuickOpenGroup[] } | null = null
 
 function Highlighted({ text, indices }: { text: string; indices: number[] }) {
   if (indices.length === 0) return <>{text}</>
@@ -170,15 +37,15 @@ function Highlighted({ text, indices }: { text: string; indices: number[] }) {
   )
 }
 
-function KindIcon({ kind }: { kind: ItemKind }) {
+function KindIcon({ icon }: { icon: QuickOpenGroup['icon'] }) {
   const paths = {
-    manuscript: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /></>,
-    entity: <><circle cx="12" cy="8" r="4" /><path d="M20 21v-2a6 6 0 0 0-6-6h-4a6 6 0 0 0-6 6v2" /></>,
+    document: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /></>,
+    person: <><circle cx="12" cy="8" r="4" /><path d="M20 21v-2a6 6 0 0 0-6-6h-4a6 6 0 0 0-6 6v2" /></>,
     note: <><path d="M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5z" /><path d="M15 3v6h6" /></>,
   }
   return (
     <svg className="w-4 h-4 shrink-0 text-gray-400 dark:text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      {paths[kind]}
+      {paths[icon]}
     </svg>
   )
 }
@@ -192,7 +59,11 @@ export function QuickOpenPalette({ projectId, apiToken }: QuickOpenPaletteProps)
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [items, setItems] = useState<QuickOpenItem[]>([])
+  const [groups, setGroups] = useState<QuickOpenGroup[]>([])
   const [loading, setLoading] = useState(false)
+  // Bobbins register their panels asynchronously; re-index when the set changes.
+  const [registryVersion, setRegistryVersion] = useState(0)
+  useEffect(() => extensionRegistry.onSlotChange('shell.leftPanel', () => setRegistryVersion(v => v + 1)), [])
   const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -244,21 +115,25 @@ export function QuickOpenPalette({ projectId, apiToken }: QuickOpenPaletteProps)
   useEffect(() => {
     if (!open || !entityApi) return
     let cancelled = false
+    const declarations = quickOpenDeclarations()
+    const cacheKey = `${projectId}|${declarations.map(d => d.bobbinId).join(',')}`
 
     /* eslint-disable react-hooks/set-state-in-effect -- hydrate from module cache on open */
-    if (itemsCache && itemsCache.projectId === projectId) {
+    if (itemsCache && itemsCache.key === cacheKey) {
       setItems(itemsCache.items)
+      setGroups(itemsCache.groups)
       if (Date.now() - itemsCache.at < CACHE_TTL_MS) return
     } else {
       setLoading(true)
     }
     /* eslint-enable react-hooks/set-state-in-effect */
 
-    fetchItems(entityApi)
+    buildQuickOpenItems(entityApi, declarations)
       .then(fetched => {
-        itemsCache = { projectId, at: Date.now(), items: fetched }
+        itemsCache = { key: cacheKey, at: Date.now(), ...fetched }
         if (!cancelled) {
-          setItems(fetched)
+          setItems(fetched.items)
+          setGroups(fetched.groups)
           setLoading(false)
         }
       })
@@ -269,7 +144,7 @@ export function QuickOpenPalette({ projectId, apiToken }: QuickOpenPaletteProps)
     return () => {
       cancelled = true
     }
-  }, [open, entityApi, projectId])
+  }, [open, entityApi, projectId, registryVersion])
 
   useEffect(() => {
     if (open) {
@@ -292,12 +167,12 @@ export function QuickOpenPalette({ projectId, apiToken }: QuickOpenPaletteProps)
     return scored.slice(0, MAX_RESULTS)
   }, [items, query])
 
-  // Stable flat order grouped by kind — keyboard selection follows this order
-  const grouped: { kind: ItemKind; entries: ScoredItem[] }[] = useMemo(() => {
-    return KIND_ORDER
-      .map(kind => ({ kind, entries: results.filter(r => r.item.kind === kind) }))
-      .filter(group => group.entries.length > 0)
-  }, [results])
+  // Stable flat order grouped by declaring bobbin — keyboard selection follows this order
+  const grouped: { group: QuickOpenGroup; entries: ScoredItem[] }[] = useMemo(() => {
+    return groups
+      .map(group => ({ group, entries: results.filter(r => r.item.kind === group.kind) }))
+      .filter(g => g.entries.length > 0)
+  }, [results, groups])
 
   const flatResults = useMemo(() => grouped.flatMap(g => g.entries), [grouped])
 
@@ -365,12 +240,12 @@ export function QuickOpenPalette({ projectId, apiToken }: QuickOpenPaletteProps)
               {query ? <>No matches for &ldquo;{query}&rdquo;</> : 'Nothing to show yet'}
             </div>
           ) : (
-            grouped.map(group => (
+            grouped.map(({ group, entries }) => (
               <div key={group.kind}>
                 <div className="px-2.5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
-                  {KIND_LABEL[group.kind]}
+                  {group.label}
                 </div>
-                {group.entries.map(entry => {
+                {entries.map(entry => {
                   flatIndex++
                   const isSelected = flatIndex === selectedIndex
                   const myIndex = flatIndex
@@ -384,7 +259,7 @@ export function QuickOpenPalette({ projectId, apiToken }: QuickOpenPaletteProps)
                         isSelected ? 'bg-gray-100 dark:bg-gray-700' : ''
                       }`}
                     >
-                      <KindIcon kind={entry.item.kind} />
+                      <KindIcon icon={group.icon} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm text-gray-800 dark:text-gray-100">
                           <Highlighted text={entry.item.title} indices={entry.indices} />

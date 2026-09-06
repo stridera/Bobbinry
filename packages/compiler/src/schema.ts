@@ -238,6 +238,37 @@ export const manifestSchema = {
                 },
                 "required": ["kind"]
               },
+              "quickOpen": {
+                "type": "object",
+                "properties": {
+                  "label": { "type": "string" },
+                  "icon": { "enum": ["document", "person", "note"] },
+                  "sources": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "collection": { "type": "string" },
+                        "discover": {
+                          "type": "object",
+                          "properties": {
+                            "collection": { "type": "string" },
+                            "idField": { "type": "string" },
+                            "labelField": { "type": "string" }
+                          },
+                          "required": ["collection", "idField"]
+                        },
+                        "titleField": { "type": "string" },
+                        "parentField": { "type": "string" },
+                        "parentCollection": { "type": "string" },
+                        "entityType": { "type": "string" },
+                        "metadata": { "type": "object" }
+                      }
+                    }
+                  }
+                },
+                "required": ["label", "sources"]
+              },
               "pubsub": {
                 "type": "object",
                 "properties": {

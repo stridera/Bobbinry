@@ -1,6 +1,6 @@
 id: manuscript
 name: Manuscript
-version: 1.0.10
+version: 1.0.11
 author: Bobbinry Team
 description: Complete manuscript management with books, chapters, and scenes
 tags:
@@ -34,6 +34,13 @@ extensions:
         collections:
           - { name: content, entityType: content }
           - { name: containers, entityType: container }
+      # Ctrl+K quick-open: books/parts (with their path) and chapters.
+      quickOpen:
+        label: Manuscript
+        icon: document
+        sources:
+          - { collection: containers, entityType: container, parentField: parent_id, metadata: { type: container } }
+          - { collection: content, entityType: content, parentField: container_id, parentCollection: containers, metadata: { type: content } }
       title: "Manuscript"
       entry: panels/navigation
       priority: 10

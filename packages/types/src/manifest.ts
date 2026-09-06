@@ -526,6 +526,8 @@ export interface ExtensionContribution {
    * shell.leftPanel contribution.
    */
   search?: SearchDeclaration
+  /** What the shell's Ctrl+K quick-open should index from this bobbin. Declared on the shell.leftPanel contribution. */
+  quickOpen?: QuickOpenDeclaration
   pubsub?: {
     produces?: TopicReference[]
     consumes?: TopicReference[]
@@ -546,6 +548,37 @@ export interface SearchDeclaration {
   kind: 'text' | 'records'
   placeholder?: string
   collections?: SearchCollectionRule[]
+}
+
+/** One collection (or a family of them) the quick-open palette should list. */
+export interface QuickOpenSource {
+  /** A fixed collection name... */
+  collection?: string
+  /** ...or discover collections from a definitions collection (one per record). */
+  discover?: {
+    collection: string
+    /** Field on each definition record holding the collection name. */
+    idField: string
+    /** Field holding the human label (used as the item subtitle). */
+    labelField?: string
+  }
+  /** Record field for the item title (default "title"). */
+  titleField?: string
+  /** Record field pointing at a parent record; builds a "Book › Part" path subtitle. */
+  parentField?: string
+  /** Collection the parent lives in when it is not this one (chapters → containers). Must be another source of the same declaration. */
+  parentCollection?: string
+  /** entityType for bobbinry:navigate; "$collection" (default) uses the collection name. */
+  entityType?: string
+  metadata?: Record<string, any>
+}
+
+export interface QuickOpenDeclaration {
+  /** Group heading in the palette, e.g. "Manuscript". */
+  label: string
+  /** Icon family for the group: document (default), person, note. */
+  icon?: 'document' | 'person' | 'note'
+  sources: QuickOpenSource[]
 }
 
 export interface ExtensionCondition {

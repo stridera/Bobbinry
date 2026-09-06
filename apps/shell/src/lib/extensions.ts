@@ -1,7 +1,7 @@
 // Extensions and Slots system for Bobbinry Shell
 // Manages bobbin contributions to shell UI slots
 
-import { ExtensionContribution, ExtensionCondition, ExtensionSlotDefinition, SearchDeclaration, BUILTIN_SLOTS as SHARED_BUILTIN_SLOTS } from '@bobbinry/types'
+import { ExtensionContribution, ExtensionCondition, ExtensionSlotDefinition, QuickOpenDeclaration, SearchDeclaration, BUILTIN_SLOTS as SHARED_BUILTIN_SLOTS } from '@bobbinry/types'
 
 export interface RegisteredExtension {
   id: string
@@ -443,6 +443,14 @@ export function resolveSearchNavigation(collection: string): BobbinHomeDetail | 
     }
   }
   return wildcard
+}
+
+/** Bobbins that asked to be indexed by the quick-open palette, highest-priority left panel first. */
+export function quickOpenDeclarations(): Array<{ bobbinId: string; quickOpen: QuickOpenDeclaration }> {
+  return extensionRegistry
+    .getExtensionsForSlot('shell.leftPanel')
+    .filter(e => e.contribution.quickOpen)
+    .map(e => ({ bobbinId: e.bobbinId, quickOpen: e.contribution.quickOpen! }))
 }
 
 export function resolveBobbinHome(bobbinId: string): BobbinHomeDetail | null {
