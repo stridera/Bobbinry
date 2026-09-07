@@ -18,12 +18,12 @@
   "dependencies": {
     "@bobbinry/types": "workspace:*",
     "ajv": "^8.20.0",
-    "yaml": "^2.8.1"
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
-    "@types/node": "^26",
-    "jest": "^30.3.0",
-    "ts-jest": "^29.4.6"
+    "@types/node": "^26.4.1",
+    "jest": "^30.5.1",
+    "ts-jest": "^29.4.12"
   }
 }

@@ -16,14 +16,14 @@
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "react": "^19.0.0"
+    "react": "^19.2.8"
   },
   "dependencies": {
     "@bobbinry/sdk": "workspace:*",
     "@bobbinry/types": "workspace:*",
     "@bobbinry/ui-components": "workspace:*",
-    "@tiptap/core": "^3.30.2",
-    "@tiptap/pm": "^3.30.2"
+    "@tiptap/core": "^3.31.3",
+    "@tiptap/pm": "^3.31.3"
   },
   "devDependencies": {
     "@types/react": "^19.2.18",
