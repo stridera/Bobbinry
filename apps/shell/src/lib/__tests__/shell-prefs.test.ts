@@ -110,6 +110,18 @@ describe('shell-prefs store', () => {
     expect(JSON.parse(localStorage.getItem(SHELL_PREFS_MIRROR_KEY)!).lastNav.p3.__NA).toBeUndefined()
   })
 
+  it('cleans navigation junk coming back from the server and re-uploads the cleaned keys', async () => {
+    const junk = { entityType: 'content', entityId: 'c1', bobbinId: 'manuscript', __NA: true }
+    apiFetchMock.mockImplementation((_p: string, _t: string, init?: RequestInit) =>
+      init?.method === 'PATCH' ? ok({ prefs: {} }) : ok({ prefs: { lastNav: { p1: junk } } }))
+    startShellPrefsSync('tok')
+    await flushPromises()
+    expect(getShellPref('lastNav', 'p1', null)).toEqual({ entityType: 'content', entityId: 'c1', bobbinId: 'manuscript' })
+    jest.advanceTimersByTime(1000)
+    await flushPromises()
+    expect(patchBodies()).toEqual([{ prefs: { lastNav: { p1: { entityType: 'content', entityId: 'c1', bobbinId: 'manuscript' } } } }])
+  })
+
   it('does nothing on the network without a token', async () => {
     setShellPref('panelWidth', 'left', 1)
     jest.advanceTimersByTime(1000)

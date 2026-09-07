@@ -249,6 +249,9 @@ export function startShellPrefsSync(token: string): () => void {
           }
         }
         prefs = merged
+        // The server copy may predate sanitizing; clean it here too and queue
+        // the cleaned keys so the account row shrinks on this flush.
+        normalizeLoaded(prefs)
         writeMirror()
         notify()
         if (Object.keys(pending).length) scheduleFlush()
