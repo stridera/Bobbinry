@@ -617,12 +617,19 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
       let event: Stripe.Event
 
       if (signature && webhookSecret && request.rawBody) {
-        // Verify webhook signature
-        event = stripe.webhooks.constructEvent(
-          request.rawBody as string,
-          signature,
-          webhookSecret
-        )
+        // Verify webhook signature. A bad signature is a client error, not a
+        // server failure: Stripe retries 5xx, and retrying a forged or stale
+        // payload is exactly what we do not want.
+        try {
+          event = stripe.webhooks.constructEvent(
+            request.rawBody as string,
+            signature,
+            webhookSecret
+          )
+        } catch (err) {
+          fastify.log.warn({ err }, 'Stripe webhook signature verification failed')
+          return reply.status(400).send({ error: 'Invalid webhook signature' })
+        }
       } else if (env.NODE_ENV === 'development') {
         // Development only: trust the payload when webhook secret isn't configured
         fastify.log.warn('Stripe webhook received without signature verification (dev mode)')
@@ -821,6 +828,7 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription, fast
     const period = getSubscriptionPeriod(subscription)
     await db.update(subscriptions).set({
       status: subscription.status as string,
+      currentPeriodStart: period.start,
       currentPeriodEnd: period.end,
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
       updatedAt: new Date()
