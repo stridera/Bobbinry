@@ -490,8 +490,10 @@ describe('Publishing API', () => {
         })
       ])
 
-      expect(beforeCompleteARes.statusCode).toBe(404)
-      expect(beforeCompleteBRes.statusCode).toBe(404)
+      expect(beforeCompleteARes.statusCode).toBe(200)
+      expect(JSON.parse(beforeCompleteARes.payload).publication).toBeNull()
+      expect(beforeCompleteBRes.statusCode).toBe(200)
+      expect(JSON.parse(beforeCompleteBRes.payload).publication).toBeNull()
 
       await app.inject({
         method: 'POST',

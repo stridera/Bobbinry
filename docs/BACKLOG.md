@@ -46,30 +46,6 @@ directly because tests mutate them at runtime. Fix: expose lazy getters on
 `RESEND_*`, `INTERNAL_API_AUTH_TOKEN`, `NEXTAUTH_SECRET`) and forbid direct
 `process.env` outside `env.ts` with a lint rule.
 
-## B. Small pre-existing bugs
-
-### B1. Manuscript panel looks up non-manuscript ids as containers
-Navigating to an entity or note (Ctrl+K, breadcrumb) makes the manuscript
-navigation panel request `/api/entities/<id>?collection=containers` and log a
-404. Harmless but noisy. Likely a `bobbinry:navigate` listener in
-`bobbins/manuscript/src/panels/navigation.tsx` that does not filter on
-`detail.bobbinId === 'manuscript'`.
-
-### B2. Unpublished chapter logs two 404s
-Opening an unpublished chapter in the editor requests its publication status
-and logs two 404s (`/api/projects/:id/chapters/:id/…`). The caller should
-treat 404 as "not published" without surfacing an error, or the API should
-return 200 with `published: false`.
-
-## C. Guard rails
-
-### C1. ESLint rule banning browser dialogs
-`confirm()`, `alert()`, `prompt()` and their `window.` forms are banned by
-convention (they break the design language and cannot be themed); the
-codebase currently has zero uses. Add `no-restricted-globals` /
-`no-restricted-properties` entries to `apps/shell/eslint.config.mjs` and the
-bobbins lint so it stays that way.
-
 ## D. Verify / housekeeping
 
 ### D1. `entities.last_edited_at` may not be written on update

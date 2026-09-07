@@ -52,7 +52,11 @@ export function ViewRouter({ projectId, sdk, projectName }: ViewRouterProps) {
   // publishBreadcrumb helper); overrides the shell-computed trail until the
   // next navigation.
   const [viewCrumbs, setViewCrumbs] = useState<Crumb[] | null>(null)
-  const [ViewComponent, setViewComponent] = useState<React.ComponentType<any> | null>(null)
+  // The loaded view *and the navigation it was loaded for*, set together.
+  // Rendering from `active.nav` rather than `currentNav` means a view never
+  // sees the next target's ids for the frame before its replacement loads —
+  // the outline view used to fetch `containers/<note id>` that way.
+  const [active, setActive] = useState<{ Component: React.ComponentType<any>; nav: NavigationState } | null>(null)
   const [compatibleViews, setCompatibleViews] = useState<ViewRegistryEntry[]>([])
   const [activeViewId, setActiveViewId] = useState<string | null>(null)
   const activeViewIdRef = useRef<string | null>(null)
@@ -211,11 +215,13 @@ export function ViewRouter({ projectId, sdk, projectName }: ViewRouterProps) {
     if (entry.componentLoader) {
       entry.componentLoader()
         .then((component) => {
-          setViewComponent(() => component as React.ComponentType<any>)
+          // Navigation may have moved on while the loader was in flight.
+          if (loadingViewRef.current !== viewKey) return
+          setActive({ Component: component as React.ComponentType<any>, nav })
         })
         .catch((error: unknown) => {
           console.error('[ViewRouter] Failed to load component:', error)
-          setViewComponent(null)
+          if (loadingViewRef.current === viewKey) setActive(null)
         })
     }
   }, [])
@@ -226,7 +232,7 @@ export function ViewRouter({ projectId, sdk, projectName }: ViewRouterProps) {
       /* eslint-disable react-hooks/set-state-in-effect -- reset view state when navigation clears */
       setCompatibleViews([])
       setActiveViewId(null)
-      setViewComponent(null)
+      setActive(null)
       /* eslint-enable react-hooks/set-state-in-effect */
       lastDispatchedViewRef.current = null
       loadingViewRef.current = null
@@ -296,18 +302,15 @@ export function ViewRouter({ projectId, sdk, projectName }: ViewRouterProps) {
     if (!selected) {
       console.warn(`[ViewRouter] No views found for entity type: ${entityType}`)
       setActiveViewId(null)
-      setViewComponent(null)
+      setActive(null)
       return
     }
 
-    // If we're switching to a *different* view component, unmount the
-    // current one immediately. Otherwise the old component keeps rendering
-    // with the new currentNav's entityType/entityId until the async load
-    // resolves — which can fire requests like
-    // sdk.entities.get('entity_type_definitions', 'publishing') from a
-    // stale EntityEditorView and 500 on a non-UUID id.
+    // Switching to a *different* view: unmount the current one now rather
+    // than showing it for the load's duration. (Same view, new target: the
+    // old props stay on screen until the new nav is loaded — see `active`.)
     if (selected.viewId !== activeViewIdRef.current) {
-      setViewComponent(null)
+      setActive(null)
     }
 
     setActiveViewId(selected.viewId)
@@ -422,7 +425,7 @@ export function ViewRouter({ projectId, sdk, projectName }: ViewRouterProps) {
   }, [switcherViews, handleViewSwitch])
 
   // Placeholder when no entity selected
-  if (!currentNav || !ViewComponent) {
+  if (!currentNav || !active) {
     if (currentNav && compatibleViews.length === 0) {
       return (
         <div className="flex-1 flex items-center justify-center">
@@ -460,14 +463,14 @@ export function ViewRouter({ projectId, sdk, projectName }: ViewRouterProps) {
 
       {/* View content */}
       <div className="flex-1 overflow-hidden">
-        <ViewComponent
+        <active.Component
           projectId={projectId}
-          bobbinId={currentNav.bobbinId}
+          bobbinId={active.nav.bobbinId}
           viewId="router"
           sdk={sdk}
-          entityType={currentNav.entityType}
-          entityId={currentNav.entityId}
-          metadata={currentNav.metadata}
+          entityType={active.nav.entityType}
+          entityId={active.nav.entityId}
+          metadata={active.nav.metadata}
         />
       </div>
     </div>

@@ -378,11 +378,9 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
         .where(and(eq(chapterPublications.chapterId, chapterId), eq(chapterPublications.projectId, projectId)))
         .limit(1)
 
-      if (!publication) {
-        return reply.status(404).send({ error: 'Chapter publication not found', correlationId })
-      }
-
-      return reply.send({ publication, correlationId })
+      // "Not published yet" is a normal state, not a missing resource — a 404
+      // here made every unpublished chapter log a console error in the editor.
+      return reply.send({ publication: publication ?? null, correlationId })
     } catch (error) {
       fastify.log.error({ error, correlationId }, 'Failed to get publication status')
       return reply.status(500).send({ error: 'Failed to get publication status', correlationId })
