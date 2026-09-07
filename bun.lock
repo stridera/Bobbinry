@@ -120,7 +120,7 @@
         "next-auth": "5.0.0-beta.32",
         "postcss": "^8.5.26",
         "postgres": "^3.4.9",
-        "posthog-js": "1.422.1",
+        "posthog-js": "1.426.2",
         "react": "19.2.8",
         "react-dom": "19.2.8",
         "tailwindcss": "^4.3.3",
@@ -1088,11 +1088,11 @@
 
     "@pkgr/core": ["@pkgr/core@0.2.9", "", {}, "sha512-QNqXyfVS2wm9hweSYD2O7F0G06uurj9kZ96TRQE5Y9hU7+tgdZwIkbAKc5Ocy1HxEY2kuDQa6cQ1WRs/O5LFKA=="],
 
-    "@posthog/browser-common": ["@posthog/browser-common@0.6.2", "", { "dependencies": { "@posthog/core": "^1.49.1", "@posthog/types": "^1.407.1" } }, "sha512-AZRETXzMXoCqNLGftKN7wtyhI+Da8y3WSYLrVzCyd7CSA2pIas1OjT4wsO3ncvX+Ezg0FJw5iSr84VtyVUcZ0g=="],
+    "@posthog/browser-common": ["@posthog/browser-common@0.7.2", "", { "dependencies": { "@posthog/core": "^1.50.4", "@posthog/types": "^1.408.1" } }, "sha512-ukDmETXy6fTBE4ZpaO8ccscrNz5SvTaUnhQ0Ze2JX/oYILa89rrNwqUH7lDAuhFKa+NY6EoJ9kZMuOvuu4WwLQ=="],
 
-    "@posthog/core": ["@posthog/core@1.50.2", "", { "dependencies": { "@posthog/types": "^1.407.1" } }, "sha512-El7y/ipZ45OFBRTN/+ixat9Nw21bW+pKKnX0G+rG4rWxBtDA47Ub/ZUnHvZNhAufNInQr4AYCUeWQsuJsTcoKg=="],
+    "@posthog/core": ["@posthog/core@1.50.5", "", { "dependencies": { "@posthog/types": "^1.409.0" } }, "sha512-afEchuShDaVIoxAIj76kDZQ1DhfesDmgfVp+mtTzsA3wlc8DF5uoz8YjuTjnxOicWkpP5HCDqYidK/1kT125Cg=="],
 
-    "@posthog/types": ["@posthog/types@1.407.1", "", {}, "sha512-WhbkXPC2rgylXqmxHqv70ffI3k+KxyR6s7DBIfr5NvIqHkxp6v0pk31D/jbz0DNVbzwkLjyll2pxr4FNbJiYzg=="],
+    "@posthog/types": ["@posthog/types@1.409.0", "", {}, "sha512-239umoaZVb2GBaXeEyJpwFvjhrrChJH8NHCwiao23EBSu3NA6EN0MTMoaHSmMEf4yjiXEFFoYJA6FjJAXF5HGA=="],
 
     "@rtsao/scc": ["@rtsao/scc@1.1.0", "", {}, "sha512-zt6OdqaDoOnJ1ZYsCYGt9YmWzDXl4vQdKTyJev62gFhRGKdx7mcT54V9KIjg+d2wi9EXsPvAPKe7i7WjfVWB8g=="],
 
@@ -2352,7 +2352,7 @@
 
     "postgres": ["postgres@3.4.9", "", {}, "sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw=="],
 
-    "posthog-js": ["posthog-js@1.422.1", "", { "dependencies": { "@posthog/browser-common": "^0.6.1", "@posthog/core": "^1.49.1", "@posthog/types": "^1.407.0", "core-js": "^3.49.0", "dompurify": "^3.4.13", "fflate": "^0.4.8", "preact": "^10.29.3", "query-selector-shadow-dom": "^1.0.1", "web-vitals": "^5.3.0", "web-vitals-soft-navs": "npm:web-vitals@6.0.0" }, "peerDependencies": { "@types/react": ">=16.8.0", "react": ">=16.8.0" }, "optionalPeers": ["@types/react", "react"] }, "sha512-T0jOnq85RV0tvlmoFTShqulU753Yd9v5QdfbT7mxZnloky9feTqtUULxl28KHQdhpbgfZnj4WJkMBXhNH2z+TA=="],
+    "posthog-js": ["posthog-js@1.426.2", "", { "dependencies": { "@posthog/browser-common": "^0.7.2", "@posthog/core": "^1.50.4", "@posthog/types": "^1.408.1", "core-js": "^3.49.0", "dompurify": "^3.4.13", "fflate": "^0.4.8", "preact": "^10.29.3", "query-selector-shadow-dom": "^1.0.1", "web-vitals": "^6.2.1", "web-vitals-soft-navs": "npm:web-vitals@6.2.1" }, "peerDependencies": { "@types/react": ">=16.8.0", "react": ">=16.8.0" }, "optionalPeers": ["@types/react", "react"] }, "sha512-dYs3GTLn3NxQIqsxIdMPsvJcnn9515YkTKHxuxrtMmnduIWiIoXdR5aqdd0GWjP2cx6cEVYO3OxZ8U/1bOVFBQ=="],
 
     "preact": ["preact@10.24.3", "", {}, "sha512-Z2dPnBnMUfyQfSQ+GBdsGa16hz35YmLmtTLhM169uW944hYL6xzTYkJjC07j+Wosz733pMWx0fgON3JNw1jJQA=="],
 
@@ -2712,9 +2712,9 @@
 
     "walker": ["walker@1.0.8", "", { "dependencies": { "makeerror": "1.0.12" } }, "sha512-ts/8E8l5b7kY0vlWLewOkDXMmPdLcVV4GmOQLyxuSswIJsweeFZtAsMF7k1Nszz+TYBQrlYRmzOnr398y1JemQ=="],
 
-    "web-vitals": ["web-vitals@5.3.0", "", {}, "sha512-q6LWsLatGYZp5VGBIOvbTj6JBV2nOmC8KvWztXBmwJcfFAzhwKwbOxhUH306XY3CcaZDUlSmSuNPBsCn0bFu+g=="],
+    "web-vitals": ["web-vitals@6.2.1", "", {}, "sha512-rLcLXA2sx6+9dE88NHFubwTtGxpK4yYBLj6qHPdFoCaLr0cXGb4efOqtKLlm4loGA4OEKHIQKMKzZkKyOh5ctw=="],
 
-    "web-vitals-soft-navs": ["web-vitals@6.0.0", "", {}, "sha512-Guaibvy/+uNtL6Bsu4jmMJGzuSl91oeRH5iO9pPRbYftnFUr3yqT1TUNX/OE4o9HexuEMU3Kb/Wg7iKhlffZUA=="],
+    "web-vitals-soft-navs": ["web-vitals@6.2.1", "", {}, "sha512-rLcLXA2sx6+9dE88NHFubwTtGxpK4yYBLj6qHPdFoCaLr0cXGb4efOqtKLlm4loGA4OEKHIQKMKzZkKyOh5ctw=="],
 
     "webidl-conversions": ["webidl-conversions@7.0.0", "", {}, "sha512-VwddBukDzu71offAQR975unBIGqfKZpM+8ZX6ySk8nYhVoo5CYaZyzt3YBvYtRtO+aoGlqxPg/B87NGVZ/fu6g=="],
 
