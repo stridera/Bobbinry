@@ -29,11 +29,9 @@ import { extensionRegistry, RegisteredExtension } from '@/lib/extensions'
 import { useExtensions } from './ExtensionProvider'
 import { PanelIcon } from './icons/PanelIcon'
 import { RAIL_WIDTH } from './LeftPanelRail'
+import { useShellPref } from '@/lib/shell-prefs'
 
 const SLOT_ID = 'shell.rightPanel'
-const ACTIVE_STORAGE_KEY = 'shellRightRail:active'
-const PINNED_STORAGE_KEY = 'shellRightRail:pinned'
-const SPLIT_STORAGE_KEY = 'shellRightRail:split'
 
 const DEFAULT_SPLIT = 0.55
 const MIN_PANE_HEIGHT = 140
@@ -57,24 +55,6 @@ interface RightPanelRailProps {
 }
 
 const noopSubscribe = () => () => {}
-
-function readStorage(key: string): string | null {
-  if (typeof window === 'undefined') return null
-  try {
-    return localStorage.getItem(key)
-  } catch {
-    return null
-  }
-}
-
-function writeStorage(key: string, value: string | null) {
-  try {
-    if (value === null) localStorage.removeItem(key)
-    else localStorage.setItem(key, value)
-  } catch {
-    // best-effort persistence
-  }
-}
 
 function clampSplit(value: number, containerHeight: number): number {
   const available = containerHeight - 2 * PANE_HEADER_HEIGHT - DIVIDER_HEIGHT
@@ -189,12 +169,12 @@ export function RightPanelRail({
   const [slotChangeVersion, setSlotChangeVersion] = useState(0)
   const isHydrated = useSyncExternalStore(noopSubscribe, () => true, () => false)
 
-  const [activeId, setActiveId] = useState<string | null>(() => readStorage(ACTIVE_STORAGE_KEY))
-  const [pinnedId, setPinnedId] = useState<string | null>(() => readStorage(PINNED_STORAGE_KEY))
-  const [split, setSplit] = useState<number>(() => {
-    const saved = Number(readStorage(SPLIT_STORAGE_KEY))
-    return saved > 0 && saved < 1 ? saved : DEFAULT_SPLIT
-  })
+  // Rail state follows the user (lib/shell-prefs); a saved split outside
+  // (0, 1) is treated as the default.
+  const [activeId, setActiveId] = useShellPref<string | null>('rightRail', 'active', null)
+  const [pinnedId, setPinnedId] = useShellPref<string | null>('rightRail', 'pinned', null)
+  const [savedSplit, setSplit] = useShellPref<number>('rightRail', 'split', DEFAULT_SPLIT)
+  const split = savedSplit > 0 && savedSplit < 1 ? savedSplit : DEFAULT_SPLIT
   const [badges, setBadges] = useState<Map<string, PanelBadge>>(() => new Map())
   const [upperActionsEl, setUpperActionsEl] = useState<HTMLDivElement | null>(null)
   const [lowerActionsEl, setLowerActionsEl] = useState<HTMLDivElement | null>(null)
@@ -239,15 +219,9 @@ export function RightPanelRail({
     [extensions, soloPanelId]
   )
 
-  const activate = useCallback((id: string) => {
-    setActiveId(id)
-    writeStorage(ACTIVE_STORAGE_KEY, id)
-  }, [])
+  const activate = useCallback((id: string) => { setActiveId(id) }, [setActiveId])
 
-  const pin = useCallback((id: string | null) => {
-    setPinnedId(id)
-    writeStorage(PINNED_STORAGE_KEY, id)
-  }, [])
+  const pin = useCallback((id: string | null) => { setPinnedId(id) }, [setPinnedId])
 
   // Reveal requests (e.g. an entity click wants Entity Preview on screen).
   useEffect(() => {
@@ -306,10 +280,6 @@ export function RightPanelRail({
       dragRef.current = null
       document.removeEventListener('mousemove', handleMove)
       document.removeEventListener('mouseup', handleUp)
-      setSplit(current => {
-        writeStorage(SPLIT_STORAGE_KEY, String(current))
-        return current
-      })
     }
     document.addEventListener('mousemove', handleMove)
     document.addEventListener('mouseup', handleUp)

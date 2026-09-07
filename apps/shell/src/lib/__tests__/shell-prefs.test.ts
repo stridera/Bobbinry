@@ -8,6 +8,7 @@ import {
 
 const apiFetchMock = apiFetch as jest.Mock
 const ok = (body: unknown) => Promise.resolve({ ok: true, status: 200, json: async () => body })
+const flushPromises = async () => { for (let i = 0; i < 6; i++) await Promise.resolve() }
 const patchBodies = () => apiFetchMock.mock.calls.filter(([, , init]) => init?.method === 'PATCH').map(([, , init]) => JSON.parse(init.body))
 
 describe('shell-prefs store', () => {
@@ -36,9 +37,9 @@ describe('shell-prefs store', () => {
 
     apiFetchMock.mockImplementation(() => ok({ prefs: {} }))
     startShellPrefsSync('tok')
-    await Promise.resolve(); await Promise.resolve()
+    await flushPromises()
     jest.advanceTimersByTime(1000)
-    await Promise.resolve()
+    await flushPromises()
     expect(patchBodies()).toHaveLength(1)
     expect(patchBodies()[0].prefs.panelWidth).toEqual({ left: 320 })
   })
@@ -49,10 +50,10 @@ describe('shell-prefs store', () => {
       init?.method === 'PATCH' ? ok({ prefs: {} }) : ok({ prefs: { panelWidth: { left: 350 } } }))
 
     startShellPrefsSync('tok')
-    await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
+    await flushPromises()
     expect(getShellPrefs().panelWidth).toEqual({ left: 350, right: 400 })
     jest.advanceTimersByTime(1000)
-    await Promise.resolve()
+    await flushPromises()
     const bodies = patchBodies()
     expect(bodies).toHaveLength(1)
     expect(bodies[0].prefs).toEqual({ panelWidth: { right: 400 }, leftRail: { active: 'a' } })
@@ -61,30 +62,35 @@ describe('shell-prefs store', () => {
   it('coalesces rapid writes into one debounced PATCH and mirrors immediately', async () => {
     apiFetchMock.mockImplementation(() => ok({ prefs: {} }))
     startShellPrefsSync('tok')
-    await Promise.resolve(); await Promise.resolve()
+    await flushPromises()
     setShellPref('panelWidth', 'left', 301)
     setShellPref('panelWidth', 'left', 302)
     setShellPref('rightRail', 'split', 0.4)
     expect(JSON.parse(localStorage.getItem(SHELL_PREFS_MIRROR_KEY)!).panelWidth.left).toBe(302)
     expect(patchBodies()).toHaveLength(0)
     jest.advanceTimersByTime(800)
-    await Promise.resolve()
+    await flushPromises()
     expect(patchBodies()).toEqual([{ prefs: { panelWidth: { left: 302 }, rightRail: { split: 0.4 } } }])
   })
 
   it('sends null to delete, retries a failed batch on the next flush, and flushes with keepalive on pagehide', async () => {
     apiFetchMock.mockImplementation(() => ok({ prefs: {} }))
     startShellPrefsSync('tok')
-    await Promise.resolve(); await Promise.resolve()
+    await flushPromises()
+    setShellPref('viewPreferences', 'container', 'manuscript.table')
+    jest.advanceTimersByTime(800)
+    await flushPromises()
+    expect(patchBodies()).toHaveLength(1)
+
     apiFetchMock.mockImplementationOnce(() => Promise.resolve({ ok: false, status: 500, json: async () => ({}) }))
     setShellPref('viewPreferences', 'container', null)
     jest.advanceTimersByTime(800)
-    await Promise.resolve(); await Promise.resolve()
-    expect(patchBodies()).toHaveLength(1)
+    await flushPromises()
+    expect(patchBodies()).toHaveLength(2)
 
     setShellPref('leftRail', 'active', 'x')
     window.dispatchEvent(new Event('pagehide'))
-    await Promise.resolve()
+    await flushPromises()
     const last = apiFetchMock.mock.calls.at(-1)!
     expect(last[2].keepalive).toBe(true)
     expect(JSON.parse(last[2].body).prefs).toEqual({ viewPreferences: { container: null }, leftRail: { active: 'x' } })

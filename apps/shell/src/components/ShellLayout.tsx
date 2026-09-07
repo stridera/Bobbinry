@@ -13,6 +13,7 @@ import { UserMenu } from './UserMenu'
 import { BobbinManagerPopover } from './bobbins'
 import { UnifiedSearch } from './search/UnifiedSearch'
 import { extensionRegistry, panelsRevealedBy, revealEventNames } from '@/lib/extensions'
+import { startShellPrefsSync, useShellPref } from '@/lib/shell-prefs'
 
 const DEFAULT_LEFT_WIDTH = 256   // current w-64
 const DEFAULT_RIGHT_WIDTH = 320  // current w-80
@@ -73,8 +74,10 @@ function EmptySlotFallback({
 }
 
 export function ShellLayout({ children, currentView = 'default', context = {}, onOpenMarketplace, projectId, projectName, user, installedBobbins = [] }: ShellLayoutProps) {
-  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
-  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false)
+  // Layout preferences follow the user (lib/shell-prefs): mirrored locally
+  // for the first paint, synced to the account once the token is known.
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useShellPref('panelCollapsed', 'left', false)
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useShellPref('panelCollapsed', 'right', false)
   const [breadcrumb, setBreadcrumb] = useState<Crumb[]>([])
   const [isHydrated, setIsHydrated] = useState(false)
   const [dynamicContext, setDynamicContext] = useState<Record<string, any>>({})
@@ -85,49 +88,23 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
   const focusModeRef = useRef(false)
   const focusPanelOpenRef = useRef(false)
 
-  const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
-    if (typeof window === 'undefined') return DEFAULT_LEFT_WIDTH
-    const saved = localStorage.getItem('shellPanelWidth:left')
-    return saved ? Number(saved) : DEFAULT_LEFT_WIDTH
-  })
-  const [rightPanelWidth, setRightPanelWidth] = useState(() => {
-    if (typeof window === 'undefined') return DEFAULT_RIGHT_WIDTH
-    const saved = localStorage.getItem('shellPanelWidth:right')
-    return saved ? Number(saved) : DEFAULT_RIGHT_WIDTH
-  })
+  const [leftPanelWidth, setLeftPanelWidth] = useShellPref('panelWidth', 'left', DEFAULT_LEFT_WIDTH)
+  const [rightPanelWidth, setRightPanelWidth] = useShellPref('panelWidth', 'right', DEFAULT_RIGHT_WIDTH)
   const [resizingPanel, setResizingPanel] = useState<'left' | 'right' | null>(null)
   const resizeDragRef = useRef<{ side: 'left' | 'right'; startX: number; startWidth: number } | null>(null)
 
   useEffect(() => {
-    // Restore persisted collapsed state before flipping isHydrated so the
-    // panels render in their saved positions on the first client paint.
-    const leftSaved = localStorage.getItem('shellPanelCollapsed:left')
-    const rightSaved = localStorage.getItem('shellPanelCollapsed:right')
-    /* eslint-disable react-hooks/set-state-in-effect -- hydration bridge */
-    if (leftSaved === 'true') setLeftPanelCollapsed(true)
-    if (rightSaved === 'true') setRightPanelCollapsed(true)
+    // Collapsed state comes from the preference store; only flip isHydrated
+    // here so the panels render in their saved positions on the first paint.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration bridge
     setIsHydrated(true)
-    /* eslint-enable react-hooks/set-state-in-effect */
   }, [])
 
-  // Persist panel widths
+  // Pull the account's layout once the API token is known; local-only keys
+  // are uploaded, later changes are PATCHed in the background.
   useEffect(() => {
-    localStorage.setItem('shellPanelWidth:left', String(leftPanelWidth))
-  }, [leftPanelWidth])
-  useEffect(() => {
-    localStorage.setItem('shellPanelWidth:right', String(rightPanelWidth))
-  }, [rightPanelWidth])
-
-  // Persist panel collapsed state (gated on isHydrated so we don't stomp
-  // the stored value with the default `false` during the initial render).
-  useEffect(() => {
-    if (!isHydrated) return
-    localStorage.setItem('shellPanelCollapsed:left', String(leftPanelCollapsed))
-  }, [leftPanelCollapsed, isHydrated])
-  useEffect(() => {
-    if (!isHydrated) return
-    localStorage.setItem('shellPanelCollapsed:right', String(rightPanelCollapsed))
-  }, [rightPanelCollapsed, isHydrated])
+    if (context?.apiToken) startShellPrefsSync(context.apiToken)
+  }, [context?.apiToken])
 
   // Drag handler
   useEffect(() => {
@@ -163,7 +140,7 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
     }
-  }, [resizingPanel])
+  }, [resizingPanel, setLeftPanelWidth, setRightPanelWidth])
 
   const handleResizeMouseDown = useCallback((side: 'left' | 'right', e: React.MouseEvent) => {
     e.preventDefault()
@@ -178,7 +155,7 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
   const handleResizeDoubleClick = useCallback((side: 'left' | 'right') => {
     if (side === 'left') setLeftPanelWidth(DEFAULT_LEFT_WIDTH)
     else setRightPanelWidth(DEFAULT_RIGHT_WIDTH)
-  }, [])
+  }, [setLeftPanelWidth, setRightPanelWidth])
 
   // Breadcrumb trail published by ViewRouter (computed or view-registered)
   useEffect(() => {
@@ -246,7 +223,7 @@ export function ShellLayout({ children, currentView = 'default', context = {}, o
       return () => window.removeEventListener(eventName, handler)
     })
     return () => listeners.forEach(off => off())
-  }, [revealVersion])
+  }, [revealVersion, setRightPanelCollapsed])
 
   // Focus mode keyboard shortcuts
   useEffect(() => {

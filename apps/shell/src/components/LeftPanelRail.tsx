@@ -3,13 +3,13 @@
 import { useEffect, useMemo, useState, memo, ReactNode, useSyncExternalStore } from 'react'
 import { PanelActionsProvider } from '@bobbinry/sdk'
 import { extensionRegistry, resolveBobbinHome, RegisteredExtension } from '@/lib/extensions'
+import { getShellPref, useShellPref } from '@/lib/shell-prefs'
 import { useExtensions } from './ExtensionProvider'
 import { PanelIcon } from './icons/PanelIcon'
 
 export const RAIL_WIDTH = 44
 
 const SLOT_ID = 'shell.leftPanel'
-const ACTIVE_STORAGE_KEY = 'shellLeftRail:active'
 
 interface LeftPanelRailProps {
   context?: any
@@ -62,10 +62,7 @@ export function LeftPanelRail({
   const [slotChangeVersion, setSlotChangeVersion] = useState(0)
   const isHydrated = useSyncExternalStore(noopSubscribe, () => true, () => false)
 
-  const [activeId, setActiveId] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null
-    return localStorage.getItem(ACTIVE_STORAGE_KEY)
-  })
+  const [activeId, setActiveId] = useShellPref<string | null>('leftRail', 'active', null)
   const [actionsEl, setActionsEl] = useState<HTMLDivElement | null>(null)
 
   const extensions = useMemo(() => {
@@ -121,15 +118,10 @@ export function LeftPanelRail({
       const match = panelExtensions.find(ext => ext.bobbinId === bobbinId)
       if (!match || match.id === activeExtension?.id) return
       setActiveId(match.id)
-      try {
-        localStorage.setItem(ACTIVE_STORAGE_KEY, match.id)
-      } catch {
-        // best-effort persistence
-      }
     }
     window.addEventListener('bobbinry:view-context-change', handler)
     return () => window.removeEventListener('bobbinry:view-context-change', handler)
-  }, [panelExtensions, activeExtension])
+  }, [panelExtensions, activeExtension, setActiveId])
 
   // The bobbin's last-visited location if we have one, else its
   // manifest-declared home.
@@ -137,12 +129,7 @@ export function LeftPanelRail({
     const projectId = context?.projectId
     let detail: Record<string, any> | null = null
     if (projectId) {
-      try {
-        const saved = localStorage.getItem(`bobbinry:lastNav:${projectId}:${ext.bobbinId}`)
-        if (saved) detail = JSON.parse(saved)
-      } catch {
-        // fall through to home
-      }
+      detail = getShellPref<Record<string, any> | null>('lastNav', `${projectId}:${ext.bobbinId}`, null)
     }
     if (!detail) detail = resolveBobbinHome(ext.bobbinId)
     if (detail) {
@@ -163,11 +150,6 @@ export function LeftPanelRail({
     }
     const isPanelSwitch = activeExtension?.id !== ext.id
     setActiveId(ext.id)
-    try {
-      localStorage.setItem(ACTIVE_STORAGE_KEY, ext.id)
-    } catch {
-      // best-effort persistence
-    }
     if (collapsed) onToggleCollapse()
 
     // Activating a module also brings up its main view

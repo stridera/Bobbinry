@@ -10,6 +10,7 @@
  */
 
 import { render, screen, act, fireEvent } from '@testing-library/react'
+import { __resetShellPrefsForTests } from '@/lib/shell-prefs'
 import '@testing-library/jest-dom'
 import { useSyncExternalStore } from 'react'
 import { usePanelBadge } from '@bobbinry/sdk'
@@ -85,8 +86,11 @@ function stateOf(text: string) {
   return screen.getByText(text).closest('[data-panel-id]')?.getAttribute('data-panel-state')
 }
 
+const rightRail = () => (JSON.parse(localStorage.getItem('bobbinry:shellPrefs') ?? '{}').rightRail ?? {}) as Record<string, unknown>
+
 beforeEach(() => {
   localStorage.clear()
+  __resetShellPrefsForTests()
   registry.extensions = PANELS
   badgeStore.count = 0
 })
@@ -109,7 +113,7 @@ describe('RightPanelRail', () => {
     expect(stateOf('NOTES BODY')).toBe('active')
     expect(stateOf('PREVIEW BODY')).toBe('hidden')
     expect(screen.getByText('SIEGE BODY')).toBe(siegeNode)
-    expect(localStorage.getItem('shellRightRail:active')).toBe('notes.chapter-notes')
+    expect(rightRail().active).toBe('notes.chapter-notes')
   })
 
   it('collapses when the active tab is clicked again', () => {
@@ -128,13 +132,13 @@ describe('RightPanelRail', () => {
     expect(stateOf('NOTES BODY')).toBe('active')
     expect(screen.getByText('PREVIEW BODY')).toBe(previewNode)
     expect(screen.getByRole('separator', { name: 'Resize panes' })).toBeInTheDocument()
-    expect(localStorage.getItem('shellRightRail:pinned')).toBe('entities.entity-preview')
+    expect(rightRail().pinned).toBe('entities.entity-preview')
 
     // Unpinning brings it back to the upper pane.
     fireEvent.click(screen.getByRole('button', { name: 'Unpin Entity Preview' }))
     expect(stateOf('PREVIEW BODY')).toBe('active')
     expect(stateOf('NOTES BODY')).toBe('hidden')
-    expect(localStorage.getItem('shellRightRail:pinned')).toBeNull()
+    expect(rightRail().pinned).toBeUndefined()
   })
 
   it('activates a panel on bobbinry:reveal-panel, but leaves a pinned one alone', () => {
@@ -162,7 +166,7 @@ describe('RightPanelRail', () => {
     localStorage.setItem('shellRightRail:active', 'uninstalled.panel')
     renderRail()
     expect(stateOf('PREVIEW BODY')).toBe('active')
-    expect(localStorage.getItem('shellRightRail:active')).toBe('uninstalled.panel')
+    expect(rightRail().active).toBe('uninstalled.panel')
   })
 
   it('shows a badge on the rail for a panel that is not on screen', () => {
@@ -187,6 +191,9 @@ describe('RightPanelRail', () => {
 
   describe('solo mode', () => {
     it('renders one chromeless panel, keeps the rest mounted, and writes nothing', () => {
+      // Seed the preference mirror so the store's first load is a read, then
+      // watch for writes: solo mode must not record an arrangement.
+      localStorage.setItem('bobbinry:shellPrefs', '{}')
       const setItem = jest.spyOn(Storage.prototype, 'setItem')
       renderRail({ soloPanelId: 'entities.entity-preview' })
 

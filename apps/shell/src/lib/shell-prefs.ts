@@ -13,7 +13,10 @@
  * Namespaces match the API's allow-list (routes/users/shell-prefs.ts).
  */
 import { useCallback, useSyncExternalStore } from 'react'
-import { apiFetch } from './api'
+
+// Loaded on first network use so components that only read preferences do
+// not pull the session/auth client into their module graph (or their tests).
+const api = () => import('./api')
 
 export type ShellPrefNamespace = 'panelWidth' | 'panelCollapsed' | 'leftRail' | 'rightRail' | 'viewPreferences' | 'lastNav'
 type Bucket = Record<string, unknown>
@@ -112,6 +115,9 @@ export function getShellPref<T>(ns: ShellPrefNamespace, key: string, fallback: T
 /** Set (or, with `null`, remove) one key. Mirrors at once; uploads debounced. */
 export function setShellPref(ns: ShellPrefNamespace, key: string, value: unknown): void {
   const current = ensureLoaded()
+  const existing = current[ns]?.[key]
+  // Effects re-run with the same value on mount; do not turn that into traffic.
+  if (JSON.stringify(existing) === JSON.stringify(value ?? undefined)) return
   const bucket = { ...(current[ns] ?? {}) }
   if (value === null || value === undefined) delete bucket[key]
   else bucket[key] = value
@@ -127,14 +133,24 @@ export function subscribeShellPrefs(fn: () => void): () => void {
   return () => { listeners.delete(fn) }
 }
 
-/** Read one preference reactively; the setter accepts `null` to clear it. */
-export function useShellPref<T>(ns: ShellPrefNamespace, key: string, fallback: T): [T, (value: T | null) => void] {
+type Updater<T> = T | null | ((prev: T) => T | null)
+
+/**
+ * Read one preference reactively. The setter takes a value, `null` to clear,
+ * or an updater like useState's. Server-side it renders `fallback`.
+ */
+export function useShellPref<T>(ns: ShellPrefNamespace, key: string, fallback: T): [T, (next: Updater<T>) => void] {
   const value = useSyncExternalStore(
     subscribeShellPrefs,
     () => getShellPref(ns, key, fallback),
     () => fallback,
   )
-  const set = useCallback((next: T | null) => setShellPref(ns, key, next), [ns, key])
+  const set = useCallback((next: Updater<T>) => {
+    const resolved = typeof next === 'function'
+      ? (next as (prev: T) => T | null)(getShellPref(ns, key, fallback))
+      : next
+    setShellPref(ns, key, resolved)
+  }, [ns, key, fallback])
   return [value, set]
 }
 
@@ -150,6 +166,7 @@ export async function flushShellPrefs(opts: { keepalive?: boolean } = {}): Promi
   const batch = pending
   pending = {}
   try {
+    const { apiFetch } = await api()
     const res = await apiFetch('/api/users/me/shell-preferences', apiToken, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -181,6 +198,7 @@ export function startShellPrefsSync(token: string): () => void {
     fetchedForToken = token
     void (async () => {
       try {
+        const { apiFetch } = await api()
         const res = await apiFetch('/api/users/me/shell-preferences', token)
         if (!res.ok) return
         const { prefs: server } = (await res.json()) as { prefs: ShellPrefs }

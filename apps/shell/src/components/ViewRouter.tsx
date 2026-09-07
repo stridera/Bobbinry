@@ -5,6 +5,7 @@ import { BobbinrySDK } from '@bobbinry/sdk'
 import { viewRegistry, ViewRegistryEntry } from '@/lib/view-registry'
 import { ViewHeaderBar } from './ViewHeaderBar'
 import { useBreadcrumb, type Crumb } from '@/hooks/useBreadcrumb'
+import { getShellPref, setShellPref } from '@/lib/shell-prefs'
 
 interface ViewRouterProps {
   projectId: string
@@ -21,22 +22,13 @@ interface NavigationState {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-/** Load and return the user's preferred viewId for an entity type, if any */
+/** The user's preferred viewId for an entity type, if any (follows the user via lib/shell-prefs). */
 function getViewPreference(entityType: string): string | null {
-  try {
-    const prefs = JSON.parse(localStorage.getItem('viewPreferences') || '{}')
-    return prefs[entityType] || null
-  } catch {
-    return null
-  }
+  return getShellPref<string | null>('viewPreferences', entityType, null)
 }
 
 function setViewPreference(entityType: string, viewId: string) {
-  try {
-    const prefs = JSON.parse(localStorage.getItem('viewPreferences') || '{}')
-    prefs[entityType] = viewId
-    localStorage.setItem('viewPreferences', JSON.stringify(prefs))
-  } catch {}
+  setShellPref('viewPreferences', entityType, viewId)
 }
 
 /**
@@ -79,7 +71,6 @@ export function ViewRouter({ projectId, sdk, projectName }: ViewRouterProps) {
     return view ? `${base}?view=${encodeURIComponent(String(view))}` : base
   }
 
-  const lastNavKey = `bobbinry:lastNav:${projectId}`
 
   function updateNav(nav: NavigationState | null) {
     const key = navKey(nav)
@@ -101,14 +92,12 @@ export function ViewRouter({ projectId, sdk, projectName }: ViewRouterProps) {
     // per-bobbin (the icon rail returns to a bobbin's last location when its
     // panel is re-activated)
     if (nav) {
-      try { localStorage.setItem(lastNavKey, JSON.stringify(nav)) } catch {}
-      if (nav.bobbinId) {
-        try { localStorage.setItem(`${lastNavKey}:${nav.bobbinId}`, JSON.stringify(nav)) } catch {}
-      }
+      setShellPref('lastNav', projectId, nav)
+      if (nav.bobbinId) setShellPref('lastNav', `${projectId}:${nav.bobbinId}`, nav)
     }
   }
 
-  // Check for initial state from history or localStorage on mount
+  // Check for initial state from history or the last-visited preference on mount
   useEffect(() => {
     if (typeof window === 'undefined') return
 
@@ -121,26 +110,20 @@ export function ViewRouter({ projectId, sdk, projectName }: ViewRouterProps) {
       }
     }
 
-    // Fall back to last-visited chapter from localStorage — but only on
+    // Fall back to the last-visited chapter preference — but only on
     // non-deep-link pages (e.g. /projects/{id}/write). On deep-link pages
     // (/projects/{id}/{bobbinId}/{entityType}/{entityId}), the [...slug]
     // page component will dispatch the correct navigation event once bobbins
-    // finish loading. Restoring from localStorage here would race with that
+    // finish loading. Restoring from the preference here would race with that
     // dispatch and navigate to the wrong chapter.
     const pathParts = window.location.pathname.split('/').filter(Boolean)
     const isDeepLink = pathParts.length >= 5 && pathParts[0] === 'projects'
     if (!isDeepLink) {
-      try {
-        const saved = localStorage.getItem(lastNavKey)
-        if (saved) {
-          const state = JSON.parse(saved) as NavigationState
-          if (state.entityType && state.entityId && state.bobbinId) {
-            console.log('[ViewRouter] Restoring last-visited from localStorage:', state)
-            window.history.replaceState(state, '')
-            updateNav(state)
-          }
-        }
-      } catch {}
+      const state = getShellPref<NavigationState | null>('lastNav', projectId, null)
+      if (state?.entityType && state.entityId && state.bobbinId) {
+        window.history.replaceState(state, '')
+        updateNav(state)
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
