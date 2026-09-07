@@ -4,10 +4,36 @@ import { env } from '../../lib/env'
 import { db } from '../../db/connection'
 import { userProfiles, subscriptionTiers, projects, projectCollections, users, entities, userPaymentConfig } from '../../db/schema'
 import { eq, and, or, inArray } from 'drizzle-orm'
-import { requireAuth, requireSelf } from '../../middleware/auth'
+import { requireAuth, requireSelf, optionalAuth } from '../../middleware/auth'
 import { getStripe, createExpressAccount, createOnboardingLink } from '../../lib/stripe'
 import { notDeleted } from '../../lib/entity-scope'
 import { isUuid as isValidUUID } from '../../lib/slugs'
+
+/**
+ * Numeric tier fields arrive as strings or numbers from the settings UI.
+ * `Number('abc')` is NaN and `Number(undefined)` is 0, so unchecked values
+ * used to land in the table as NaN or silently zeroed prices. Returns the
+ * 400 message for the first bad field, or null.
+ */
+function invalidTierNumbers(
+  body: { priceMonthly?: unknown; priceYearly?: unknown; tierLevel?: unknown; earlyAccessDays?: unknown },
+  opts: { requireTierLevel: boolean },
+): string | null {
+  const present = (v: unknown) => v !== undefined && v !== null && v !== ''
+  for (const field of ['priceMonthly', 'priceYearly'] as const) {
+    const v = body[field]
+    if (present(v) && !(Number.isFinite(Number(v)) && Number(v) >= 0)) return `${field} must be a non-negative number`
+  }
+  for (const field of ['tierLevel', 'earlyAccessDays'] as const) {
+    const v = body[field]
+    if (!present(v)) {
+      if (field === 'tierLevel' && opts.requireTierLevel) return 'tierLevel must be a non-negative integer'
+      continue
+    }
+    if (!(Number.isInteger(Number(v)) && Number(v) >= 0)) return `${field} must be a non-negative integer`
+  }
+  return null
+}
 
 const tiersRoutes: FastifyPluginAsync = async (fastify) => {
   // ============================================================================
@@ -17,7 +43,7 @@ const tiersRoutes: FastifyPluginAsync = async (fastify) => {
   // Get all tiers for an author (public - visible for potential subscribers)
   fastify.get<{
     Params: { userId: string }
-  }>('/users/:userId/subscription-tiers', async (request, reply) => {
+  }>('/users/:userId/subscription-tiers', { preHandler: optionalAuth }, async (request, reply) => {
     try {
       const { userId } = request.params
 
@@ -25,11 +51,16 @@ const tiersRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Invalid user ID format' })
       }
 
+      // Readers see what they can subscribe to; the author also sees the
+      // tiers they have deactivated, so they can manage or restore them.
+      const isAuthor = request.user?.id === userId
       const [tiers, paymentConfigResult] = await Promise.all([
         db
           .select()
           .from(subscriptionTiers)
-          .where(eq(subscriptionTiers.authorId, userId))
+          .where(isAuthor
+            ? eq(subscriptionTiers.authorId, userId)
+            : and(eq(subscriptionTiers.authorId, userId), eq(subscriptionTiers.isActive, true)))
           .orderBy(subscriptionTiers.tierLevel),
         db
           .select()
@@ -205,6 +236,8 @@ const tiersRoutes: FastifyPluginAsync = async (fastify) => {
       if (!tierData.name || tierData.name.trim().length === 0) {
         return reply.status(400).send({ error: 'Tier name is required' })
       }
+      const numberError = invalidTierNumbers(tierData, { requireTierLevel: true })
+      if (numberError) return reply.status(400).send({ error: numberError })
 
       const [tier] = await db
         .insert(subscriptionTiers)
@@ -292,6 +325,8 @@ const tiersRoutes: FastifyPluginAsync = async (fastify) => {
       if (!isValidUUID(tierId)) {
         return reply.status(400).send({ error: 'Invalid tier ID format' })
       }
+      const numberError = invalidTierNumbers(tierData, { requireTierLevel: false })
+      if (numberError) return reply.status(400).send({ error: numberError })
 
       const [updated] = await db
         .update(subscriptionTiers)
