@@ -171,6 +171,27 @@ describe('Collections API', () => {
       const body = JSON.parse(res.payload)
       expect(body.collection.name).toBe('Updated')
     })
+
+    it('ignores id, owner and soft-delete fields smuggled into the body', async () => {
+      const user = await createTestUser()
+      const other = await createTestUser()
+      const token = await createTestToken(user.id)
+      const createRes = await app.inject({
+        method: 'POST', url: '/api/collections',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { name: 'Mine' }
+      })
+      const collectionId = JSON.parse(createRes.payload).collection.id
+
+      const res = await app.inject({
+        method: 'PUT', url: `/api/collections/${collectionId}`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { name: 'Still mine', userId: other.id, id: '00000000-0000-0000-0000-000000000000', deletedAt: new Date().toISOString() }
+      })
+      expect(res.statusCode).toBe(200)
+      const { collection } = JSON.parse(res.payload)
+      expect(collection).toMatchObject({ id: collectionId, userId: user.id, name: 'Still mine', deletedAt: null })
+    })
   })
 
   // ──────────────────────────────────────────

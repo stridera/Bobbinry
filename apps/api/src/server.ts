@@ -1,4 +1,6 @@
 import Fastify, { FastifyInstance, FastifyRequest } from 'fastify'
+import { ZodError } from 'zod'
+import { ApiError } from './lib/errors'
 import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
 import rateLimit from '@fastify/rate-limit'
@@ -109,7 +111,10 @@ export function build(opts = {}): FastifyInstance {
     }
   })
 
-  // Global error handler
+  // Global error handler. Routes may simply `throw`: a ZodError from
+  // `Schema.parse(request.body)` becomes a 400 with the issues, an ApiError
+  // (lib/errors) keeps its status and code, anything else is a masked 500.
+  // Handlers therefore need no try/catch of their own for these cases.
   server.setErrorHandler((error: Error & { code?: string; statusCode?: number }, request, reply) => {
     // Always the Fastify request id. That is the value logged as `reqId` on every
     // request/response line, so a correlation id handed to a client can always be
@@ -119,7 +124,20 @@ export function build(opts = {}): FastifyInstance {
     const correlationId = request.id
     const clientCorrelationId = request.headers['x-correlation-id'] as string | undefined
 
-    server.log.error({
+    if (error instanceof ZodError) {
+      return reply.status(400).send({ error: 'Invalid request', issues: error.issues, correlationId })
+    }
+    if (error instanceof ApiError) {
+      return reply.status(error.statusCode).send({ error: error.message, code: error.code, correlationId })
+    }
+
+    // Rate limiter sets error.code (not statusCode) to 429
+    const isRateLimit = error.code === '429' || String(error.statusCode) === '429'
+    const statusCode = isRateLimit ? 429 : (error.statusCode || 500)
+
+    // Client errors (Fastify's own 4xx: bad JSON, payload too large, 404 route)
+    // are expected traffic; only server errors are logged as errors.
+    server.log[statusCode >= 500 ? 'error' : 'warn']({
       error: {
         message: error.message,
         stack: error.stack,
@@ -130,20 +148,16 @@ export function build(opts = {}): FastifyInstance {
       ...(clientCorrelationId && clientCorrelationId !== correlationId && { clientCorrelationId }),
       url: request.url,
       method: request.method
-    }, 'Unhandled error')
+    }, statusCode >= 500 ? 'Unhandled error' : 'Request rejected')
 
     // Don't expose internal errors in production
     const isDevelopment = process.env.NODE_ENV === 'development'
-
-    // Rate limiter sets error.code (not statusCode) to 429
-    const isRateLimit = error.code === '429' || String(error.statusCode) === '429'
-    const statusCode = isRateLimit ? 429 : (error.statusCode || 500)
 
     if (isRateLimit) {
       reply.header('Retry-After', '60')
     }
 
-    reply.status(statusCode).send({
+    return reply.status(statusCode).send({
       error: statusCode < 500 ? error.message : 'Internal Server Error',
       correlationId,
       ...(isDevelopment && {

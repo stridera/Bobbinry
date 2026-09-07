@@ -8,16 +8,6 @@ Last reviewed: 2026-09-06 (end of the `fix/slop-review-security` cleanup).
 
 ## A. Left over from the September 2026 quality review
 
-### A2. Global error handler and strict bodies on the remaining routes
-The security patch gave the reader/annotation routes Zod `.strict()` bodies
-and typed error replies. Other routes still hand-validate or spread bodies,
-and unexpected throws fall through to Fastify's default 500 with the stack in
-dev. Fix: one `setErrorHandler` in `apps/api/src/index.ts` that maps
-ZodError → 400 with issues, `ApiError` → its status, everything else → 500
-with a correlation id and a `fastify.log.error`; then convert routes to
-`schema: { body: zod… }` per module, largest first (`publishing.ts`,
-`entities.ts`).
-
 ### A3. Logger boundary
 `apps/api/src/lib/logger.ts` exists but 77 `console.*` calls remain in
 `apps/api/src/jobs` and `apps/api/src/lib`. Fix: an ESLint `no-console` rule

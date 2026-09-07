@@ -8,6 +8,7 @@
 import { FastifyPluginAsync } from 'fastify'
 import { parse as parseYAML } from 'yaml'
 import { db } from '../db/connection'
+import { pickDefined } from '../lib/pick'
 import { projectCollections, projectCollectionMemberships, projects, bobbinsInstalled, entities } from '../db/schema'
 import { eq, and, desc, sql, isNull, isNotNull, inArray } from 'drizzle-orm'
 import { randomBytes } from 'crypto'
@@ -219,7 +220,11 @@ const collectionsPlugin: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     try {
       const { collectionId } = request.params
-      const updates = request.body
+      // Allow-list the writable columns: `id`, `userId` and `deletedAt` must
+      // never come from the body.
+      const updates = pickDefined(request.body, [
+        'name', 'description', 'coverImage', 'colorTheme', 'isPublic',
+      ] as const)
 
       const owned = await requireCollectionOwnership(request, reply, collectionId)
       if (!owned) return
