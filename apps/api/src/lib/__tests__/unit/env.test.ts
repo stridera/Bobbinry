@@ -56,17 +56,23 @@ describe('API env validator', () => {
     delete process.env.STRIPE_SUPPORTER_MONTHLY_PRICE_ID
     delete process.env.STRIPE_SUPPORTER_YEARLY_PRICE_ID
 
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
+    // env.ts warns through the shared pino logger (lib/logger.ts), which is
+    // silent under jest, so capture the child logger instead of console.
+    const warn = jest.fn()
+    jest.doMock('../../logger', () => ({
+      logger: {},
+      moduleLogger: () => ({ warn, info: jest.fn(), error: jest.fn(), debug: jest.fn() }),
+    }))
     try {
       // Loading the module triggers `export const env = validateEnv()` once.
       // It must not throw when the recommended vars are missing.
       expect(() => loadEnvModule()).not.toThrow()
       // It should warn about the missing recommended vars instead.
-      expect(warnSpy).toHaveBeenCalledWith(
+      expect(warn).toHaveBeenCalledWith(
         expect.stringContaining('STRIPE_SUPPORTER_MONTHLY_PRICE_ID')
       )
     } finally {
-      warnSpy.mockRestore()
+      jest.dontMock('../../logger')
     }
   })
 })
