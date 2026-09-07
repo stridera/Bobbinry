@@ -11,6 +11,10 @@ try {
 }
 
 const nextConfig: NextConfig = {
+  // The pre-commit hook builds while `next dev` is running from this same
+  // directory; sharing `.next` crashed the dev server (Turbopack panic) three
+  // times. The hook sets NEXT_DIST_DIR so its build lands elsewhere.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   generateBuildId: () => buildId,
   poweredByHeader: false,
   productionBrowserSourceMaps: false,

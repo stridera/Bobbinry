@@ -23,7 +23,11 @@
       "outputs": [
         "dist/**",
         ".next/**",
-        "build/**"
+        "build/**",
+        ".next-precommit/**"
+      ],
+      "env": [
+        "NEXT_DIST_DIR"
       ]
     },
     "typecheck": {

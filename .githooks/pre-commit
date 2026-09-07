@@ -35,7 +35,7 @@ echo "  [7/9] Dockerfile workspaces..."
 echo "  [8/9] Typecheck..."
 bun run typecheck
 
-echo "  [9/9] Build..."
-bun run build
+echo "  [9/9] Build (into .next-precommit so a running dev server is untouched)..."
+NEXT_DIST_DIR=.next-precommit bun run build
 
 echo "All pre-commit checks passed."

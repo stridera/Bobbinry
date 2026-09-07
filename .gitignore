@@ -2,6 +2,7 @@
 node_modules/
 .pnp.*
 .next/
+.next-precommit/
 .out/
 dist/
 build/
