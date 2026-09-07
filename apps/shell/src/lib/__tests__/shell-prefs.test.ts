@@ -96,6 +96,20 @@ describe('shell-prefs store', () => {
     expect(JSON.parse(last[2].body).prefs).toEqual({ viewPreferences: { container: null }, leftRail: { active: 'x' } })
   })
 
+  it('keeps only the navigation fields the shell needs, on write, on import and on load', async () => {
+    const junk = { entityType: 'content', entityId: 'c1', bobbinId: 'manuscript', __NA: true, __PRIVATE_NEXTJS_INTERNALS_TREE: { tree: [] } }
+    localStorage.setItem('bobbinry:lastNav:p1', JSON.stringify(junk))
+    expect(getShellPref('lastNav', 'p1', null)).toEqual({ entityType: 'content', entityId: 'c1', bobbinId: 'manuscript' })
+    setShellPref('lastNav', 'p2', { ...junk, metadata: { view: 'editor' } })
+    expect(getShellPref('lastNav', 'p2', null)).toEqual({ entityType: 'content', entityId: 'c1', bobbinId: 'manuscript', metadata: { view: 'editor' } })
+
+    __resetShellPrefsForTests()
+    localStorage.clear()
+    localStorage.setItem(SHELL_PREFS_MIRROR_KEY, JSON.stringify({ lastNav: { p3: junk } }))
+    expect(getShellPref('lastNav', 'p3', null)).toEqual({ entityType: 'content', entityId: 'c1', bobbinId: 'manuscript' })
+    expect(JSON.parse(localStorage.getItem(SHELL_PREFS_MIRROR_KEY)!).lastNav.p3.__NA).toBeUndefined()
+  })
+
   it('does nothing on the network without a token', async () => {
     setShellPref('panelWidth', 'left', 1)
     jest.advanceTimersByTime(1000)

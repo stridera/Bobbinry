@@ -55,7 +55,7 @@ function importLegacyKeys(): ShellPrefs {
   const out: ShellPrefs = {}
   const put = (ns: ShellPrefNamespace, key: string, value: unknown) => {
     if (value === undefined || value === null || value === '') return
-    ;(out[ns] ??= {})[key] = value
+    ;(out[ns] ??= {})[key] = sanitizeValue(ns, value)
   }
   try {
     const num = (k: string) => { const v = localStorage.getItem(k); return v === null ? undefined : Number(v) }
@@ -92,6 +92,7 @@ function ensureLoaded(): ShellPrefs {
   const mirrored = readMirror()
   if (mirrored) {
     prefs = mirrored
+    if (normalizeLoaded(prefs)) { writeMirror(); scheduleFlush() }
   } else {
     prefs = importLegacyKeys()
     pending = structuredClonePrefs(prefs)
@@ -99,6 +100,40 @@ function ensureLoaded(): ShellPrefs {
     if (Object.keys(pending).length) scheduleFlush()
   }
   return prefs
+}
+
+const NAV_KEYS = ['entityType', 'entityId', 'bobbinId', 'metadata'] as const
+
+/**
+ * A navigation target as the shell needs it. Values that arrive via
+ * window.history.state carry Next.js internals (`__NA`,
+ * `__PRIVATE_NEXTJS_INTERNALS_TREE`) that must never reach the store — they
+ * are large, opaque, and would push the blob past the server's size cap.
+ */
+function sanitizeNav(value: unknown): unknown {
+  if (!value || typeof value !== 'object') return value
+  const nav = value as Record<string, unknown>
+  const out: Record<string, unknown> = {}
+  for (const k of NAV_KEYS) if (nav[k] !== undefined) out[k] = nav[k]
+  return out
+}
+
+function sanitizeValue(ns: ShellPrefNamespace, value: unknown): unknown {
+  return ns === 'lastNav' ? sanitizeNav(value) : value
+}
+
+/** Rewrite lastNav entries that were stored before sanitizing existed; returns true if anything changed. */
+function normalizeLoaded(p: ShellPrefs): boolean {
+  let changed = false
+  for (const [key, value] of Object.entries(p.lastNav ?? {})) {
+    const clean = sanitizeNav(value)
+    if (JSON.stringify(clean) !== JSON.stringify(value)) {
+      p.lastNav![key] = clean
+      ;(pending.lastNav ??= {})[key] = clean
+      changed = true
+    }
+  }
+  return changed
 }
 
 function structuredClonePrefs(p: ShellPrefs): ShellPrefs {
@@ -113,8 +148,9 @@ export function getShellPref<T>(ns: ShellPrefNamespace, key: string, fallback: T
 }
 
 /** Set (or, with `null`, remove) one key. Mirrors at once; uploads debounced. */
-export function setShellPref(ns: ShellPrefNamespace, key: string, value: unknown): void {
+export function setShellPref(ns: ShellPrefNamespace, key: string, rawValue: unknown): void {
   const current = ensureLoaded()
+  const value = sanitizeValue(ns, rawValue)
   const existing = current[ns]?.[key]
   // Effects re-run with the same value on mount; do not turn that into traffic.
   if (JSON.stringify(existing) === JSON.stringify(value ?? undefined)) return
