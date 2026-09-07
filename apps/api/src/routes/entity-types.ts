@@ -13,7 +13,7 @@ import { z } from 'zod'
 import { db } from '../db/connection'
 import { entities } from '../db/schema'
 import { eq, and, sql } from 'drizzle-orm'
-import { requireAuth, requireProjectOwnership, requireScope } from '../middleware/auth'
+import { requireAuth, requireScope , ownsProject } from '../middleware/auth'
 import { getEffectiveBobbins, getCollectionIdsForProject, buildScopeCondition } from '../lib/effective-bobbins'
 
 const COLLECTION = 'entity_type_definitions'
@@ -160,13 +160,10 @@ const entityTypesPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string }
   }>('/projects/:projectId/entity-types', {
-    preHandler: [requireAuth, requireScope('entities:read')],
+    preHandler: [requireAuth, requireScope('entities:read'), ownsProject()],
   }, async (request, reply) => {
     try {
       const { projectId } = ProjectParamsSchema.parse(request.params)
-
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       const userId = request.user!.id
       const collectionIds = await getCollectionIdsForProject(projectId)
@@ -196,13 +193,10 @@ const entityTypesPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string; typeId: string }
   }>('/projects/:projectId/entity-types/:typeId', {
-    preHandler: [requireAuth, requireScope('entities:read')],
+    preHandler: [requireAuth, requireScope('entities:read'), ownsProject()],
   }, async (request, reply) => {
     try {
       const { projectId, typeId } = TypeParamsSchema.parse(request.params)
-
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       const userId = request.user!.id
       const collectionIds = await getCollectionIdsForProject(projectId)
@@ -235,14 +229,11 @@ const entityTypesPlugin: FastifyPluginAsync = async (fastify) => {
     Params: { projectId: string }
     Body: z.infer<typeof EntityTypeBodySchema>
   }>('/projects/:projectId/entity-types', {
-    preHandler: [requireAuth, requireScope('entities:write')],
+    preHandler: [requireAuth, requireScope('entities:write'), ownsProject()],
   }, async (request, reply) => {
     try {
       const { projectId } = ProjectParamsSchema.parse(request.params)
       const body = EntityTypeBodySchema.parse(request.body)
-
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       const userId = request.user!.id
       const collectionIds = await getCollectionIdsForProject(projectId)
@@ -328,14 +319,11 @@ const entityTypesPlugin: FastifyPluginAsync = async (fastify) => {
     Params: { projectId: string; typeId: string }
     Body: Partial<z.infer<typeof EntityTypeBodySchema>>
   }>('/projects/:projectId/entity-types/:typeId', {
-    preHandler: [requireAuth, requireScope('entities:write')],
+    preHandler: [requireAuth, requireScope('entities:write'), ownsProject()],
   }, async (request, reply) => {
     try {
       const { projectId, typeId } = TypeParamsSchema.parse(request.params)
       const body = UpdateBodySchema.parse(request.body)
-
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       const userId = request.user!.id
       const collectionIds = await getCollectionIdsForProject(projectId)
@@ -439,13 +427,10 @@ const entityTypesPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.post<{
     Params: { projectId: string; typeId: string }
   }>('/projects/:projectId/entity-types/:typeId/detach', {
-    preHandler: [requireAuth, requireScope('entities:write')],
+    preHandler: [requireAuth, requireScope('entities:write'), ownsProject()],
   }, async (request, reply) => {
     try {
       const { projectId, typeId } = TypeParamsSchema.parse(request.params)
-
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       const userId = request.user!.id
       const collectionIds = await getCollectionIdsForProject(projectId)
@@ -524,13 +509,10 @@ const entityTypesPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.delete<{
     Params: { projectId: string; typeId: string }
   }>('/projects/:projectId/entity-types/:typeId', {
-    preHandler: [requireAuth, requireScope('entities:write')],
+    preHandler: [requireAuth, requireScope('entities:write'), ownsProject()],
   }, async (request, reply) => {
     try {
       const { projectId, typeId } = TypeParamsSchema.parse(request.params)
-
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       const userId = request.user!.id
       const collectionIds = await getCollectionIdsForProject(projectId)

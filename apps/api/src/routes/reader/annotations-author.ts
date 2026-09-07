@@ -3,7 +3,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { db } from '../../db/connection'
 import { entities, projects, userProfiles, users, chapterAnnotations } from '../../db/schema'
 import { eq, and, desc, sql, or, count, inArray } from 'drizzle-orm'
-import { requireAuth, requireProjectOwnership, ownsProject } from '../../middleware/auth'
+import { requireAuth, ownsProject } from '../../middleware/auth'
 import { countWordsFromHtml } from '../../lib/text'
 import { liveProjectEntity, notDeleted } from '../../lib/entity-scope'
 import { changeEventFromRow, extractWordCount, recordEntityChangesSafe } from '../../lib/entity-changes'
@@ -161,14 +161,11 @@ const annotationsAuthorRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string }
   }>('/projects/:projectId/annotations/stats', {
-    preHandler: requireAuth
+    preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { projectId } = request.params
-
-      const isOwner = await requireProjectOwnership(request, reply, projectId)
-      if (!isOwner) return
 
       const byStatus = await db
         .select({
@@ -222,15 +219,12 @@ const annotationsAuthorRoutes: FastifyPluginAsync = async (fastify) => {
   }>({
     method: ['PUT', 'PATCH'],
     url: '/projects/:projectId/annotations/:annotationId/status',
-    preHandler: requireAuth,
+    preHandler: [requireAuth, ownsProject()],
     handler: async (request, reply) => {
       const correlationId = request.id
       try {
         const { projectId, annotationId } = request.params
         const { status: newStatus, authorResponse } = request.body
-
-        const isOwner = await requireProjectOwnership(request, reply, projectId)
-        if (!isOwner) return
 
         const validStatuses = ['open', 'acknowledged', 'resolved', 'dismissed']
         if (!validStatuses.includes(newStatus)) {

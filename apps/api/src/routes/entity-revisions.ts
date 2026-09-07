@@ -16,7 +16,7 @@ import { z } from 'zod'
 import { and, desc, eq, lt } from 'drizzle-orm'
 import { db } from '../db/connection'
 import { entities, entityRevisions } from '../db/schema'
-import { requireAuth, requireProjectOwnership, assertEntityScope } from '../middleware/auth'
+import { requireAuth, assertEntityScope, ownsResolvedProject } from '../middleware/auth'
 import {
   actorKeyFor,
   captureRevision,
@@ -56,36 +56,21 @@ const ListQuerySchema = z.object({
 
 const entityRevisionsPlugin: FastifyPluginAsync = async (fastify) => {
   /**
-   * Load a live entity and confirm the caller owns its project.
-   * Returns null after having already sent the response.
+   * The live entity the `ownsResolvedProject` preHandler already loaded and
+   * authorised; revisions are a manuscript feature, so rows without a project
+   * (user- and collection-scoped) are 404 there too.
    */
-  async function loadOwnedEntity(request: any, reply: any, entityId: string) {
-    if (!UUID_RE.test(entityId)) {
-      reply.status(404).send({ error: 'Entity not found' })
-      return null
-    }
-
+  const ownsEntity = ownsResolvedProject(async (request) => {
+    const entityId = (request.params as { entityId?: string }).entityId ?? ''
+    if (!UUID_RE.test(entityId)) return null
     const [entity] = await db
       .select()
       .from(entities)
       .where(and(eq(entities.id, entityId), notDeleted()))
       .limit(1)
-
-    if (!entity) {
-      reply.status(404).send({ error: 'Entity not found' })
-      return null
-    }
-    if (!entity.projectId) {
-      // Revisions are a manuscript feature; user- and collection-scoped rows
-      // have no project to check ownership against.
-      reply.status(404).send({ error: 'Entity not found' })
-      return null
-    }
-    const hasAccess = await requireProjectOwnership(request, reply, entity.projectId)
-    if (!hasAccess) return null
-
-    return entity
-  }
+    return entity?.projectId ? { projectId: entity.projectId, row: entity } : null
+  }, 'Entity not found')
+  const ownedEntity = (request: { ownedRow?: unknown }) => request.ownedRow as typeof entities.$inferSelect
 
   /**
    * Timeline. Metadata only — never `snapshot`, which holds full chapter
@@ -93,11 +78,10 @@ const entityRevisionsPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{ Params: { entityId: string }; Querystring: { limit?: number; before?: string } }>(
     '/entities/:entityId/revisions',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, ownsEntity] },
     async (request, reply) => {
       try {
-        const entity = await loadOwnedEntity(request, reply, request.params.entityId)
-        if (!entity) return
+        const entity = ownedEntity(request)
         if (!assertEntityScope(request, reply, entity.collectionName, 'read')) return
 
         const query = ListQuerySchema.parse(request.query)
@@ -155,11 +139,10 @@ const entityRevisionsPlugin: FastifyPluginAsync = async (fastify) => {
   /** One revision's restorable fields, for preview or diff. */
   fastify.get<{ Params: { entityId: string; revisionId: string } }>(
     '/entities/:entityId/revisions/:revisionId',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, ownsEntity] },
     async (request, reply) => {
       try {
-        const entity = await loadOwnedEntity(request, reply, request.params.entityId)
-        if (!entity) return
+        const entity = ownedEntity(request)
         if (!assertEntityScope(request, reply, entity.collectionName, 'read')) return
 
         const revision = await revisionById(db, entity.id, request.params.revisionId)
@@ -208,11 +191,10 @@ const entityRevisionsPlugin: FastifyPluginAsync = async (fastify) => {
     Querystring: { from: string; to?: string; maxHunks?: number }
   }>(
     '/entities/:entityId/diff',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, ownsEntity] },
     async (request, reply) => {
       try {
-        const entity = await loadOwnedEntity(request, reply, request.params.entityId)
-        if (!entity) return
+        const entity = ownedEntity(request)
         if (!assertEntityScope(request, reply, entity.collectionName, 'read')) return
 
         const query = DiffQuerySchema.parse(request.query)
@@ -276,11 +258,10 @@ const entityRevisionsPlugin: FastifyPluginAsync = async (fastify) => {
   /** Pin the current state as a named checkpoint. Never coalesced or thinned. */
   fastify.post<{ Params: { entityId: string }; Body: { note?: string } }>(
     '/entities/:entityId/revisions',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, ownsEntity] },
     async (request, reply) => {
       try {
-        const entity = await loadOwnedEntity(request, reply, request.params.entityId)
-        if (!entity) return
+        const entity = ownedEntity(request)
         if (!assertEntityScope(request, reply, entity.collectionName, 'write')) return
 
         const note = typeof request.body?.note === 'string' ? request.body.note.slice(0, 500) : null
@@ -319,11 +300,10 @@ const entityRevisionsPlugin: FastifyPluginAsync = async (fastify) => {
     Body: { expectedVersion?: number }
   }>(
     '/entities/:entityId/revisions/:revisionId/restore',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, ownsEntity] },
     async (request, reply) => {
       try {
-        const entity = await loadOwnedEntity(request, reply, request.params.entityId)
-        if (!entity) return
+        const entity = ownedEntity(request)
         if (!assertEntityScope(request, reply, entity.collectionName, 'write')) return
 
         const projectId = entity.projectId!

@@ -12,6 +12,7 @@ import { createHash } from 'crypto'
 import { db } from '../db/connection'
 import { users, projects, apiKeys } from '../db/schema'
 import { eq, and, isNull, isNotNull, or } from 'drizzle-orm'
+import type { PgTable, AnyPgColumn } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { getUserBadges, getUserMembershipTier, type MembershipTier } from '../lib/membership'
 import { isUuid } from '../lib/slugs'
@@ -96,6 +97,8 @@ declare module 'fastify' {
     apiKeyScopes?: string[]
     // When set, the API key is restricted to a single project.
     apiKeyProjectId?: string | null
+    // Row loaded and authorised by an `ownsResolvedProject` preHandler.
+    ownedRow?: unknown
   }
 }
 
@@ -489,14 +492,6 @@ async function checkProjectOwnership(
   return true
 }
 
-/** Verifies the authenticated user owns the specified active (non-trashed) project. */
-export async function requireProjectOwnership(
-  request: FastifyRequest,
-  reply: FastifyReply,
-  projectId: string
-): Promise<boolean> {
-  return checkProjectOwnership(request, reply, projectId, false)
-}
 
 /**
  * Route-level ownership guard: the authenticated user must own the active
@@ -505,16 +500,53 @@ export async function requireProjectOwnership(
  * requireProjectOwnership inside the handler — a guard that runs before the
  * handler cannot be forgotten on one code path, which is how two IDORs got in.
  */
-export function ownsProject(source: 'params' | 'body' | 'query' = 'params', key = 'projectId') {
+export function ownsProject(
+  source: 'params' | 'body' | 'query' = 'params',
+  key = 'projectId',
+  opts: { optional?: boolean } = {},
+) {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     const bag = (request[source] ?? {}) as Record<string, unknown>
+    // `optional`: the field may be absent or null (an API key with no project
+    // restriction); when present it must still name a project the caller owns.
+    if (opts.optional && (bag[key] === undefined || bag[key] === null)) return
     const projectId = typeof bag[key] === 'string' ? (bag[key] as string) : ''
     const ok = await checkProjectOwnership(request, reply, projectId, false)
     if (!ok) return reply
   }
 }
 
-/** Same as requireProjectOwnership but only matches trashed (soft-deleted) projects. */
+/**
+ * preHandler for routes whose project is only known through a row — an
+ * embargo, a destination, an entity. `resolve` returns the owning projectId
+ * (null → 404) and may hand the loaded row to the handler as
+ * `request.ownedRow`, so the handler body carries no authorization branch.
+ */
+export function ownsResolvedProject(
+  resolve: (request: FastifyRequest) => Promise<{ projectId: string | null; row?: unknown } | null>,
+  notFound = 'Not found',
+) {
+  return async (request: FastifyRequest, reply: FastifyReply) => {
+    const found = await resolve(request)
+    if (!found?.projectId) return reply.status(404).send({ error: notFound, correlationId: request.id })
+    const ok = await checkProjectOwnership(request, reply, found.projectId, false)
+    if (!ok) return reply
+    request.ownedRow = found.row
+  }
+}
+
+/** Resolver for `ownsResolvedProject`: the project of the row whose id is `request.params[param]`. */
+export function projectOfRow(table: PgTable & { id: AnyPgColumn; projectId: AnyPgColumn }, param: string) {
+  return async (request: FastifyRequest) => {
+    const id = (request.params as Record<string, string | undefined>)[param] ?? ''
+    if (!isUuid(id)) return null
+    // The intersection type confuses drizzle's select typing; the runtime object is the table.
+    const [row] = await db.select({ projectId: table.projectId }).from(table as PgTable).where(eq(table.id, id)).limit(1)
+    return row ? { projectId: (row.projectId as string | null) ?? null } : null
+  }
+}
+
+/** Ownership check for trashed (soft-deleted) projects only — restore / purge routes. */
 export async function requireDeletedProjectOwnership(
   request: FastifyRequest,
   reply: FastifyReply,

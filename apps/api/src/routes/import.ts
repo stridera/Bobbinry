@@ -19,7 +19,7 @@ import { z } from 'zod'
 import { and, eq } from 'drizzle-orm'
 import { db } from '../db/connection'
 import { entities, uploads } from '../db/schema'
-import { requireAuth, requireProjectOwnership, assertEntityScope } from '../middleware/auth'
+import { requireAuth, assertEntityScope , ownsProject } from '../middleware/auth'
 import { getObject, deleteObject } from '../lib/s3'
 import {
   findBobbinForCollectionAcrossScopes,
@@ -85,7 +85,7 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.post<{
     Body: { fileKey: string; projectId: string }
   }>('/import/parse', {
-    preHandler: [requireAuth],
+    preHandler: [requireAuth, ownsProject('body')],
   }, async (request, reply) => {
     const startedAt = Date.now()
     let resolvedFormat: string | null = null
@@ -114,9 +114,6 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
       // Import always produces manuscript content (chapters/scenes) — gate on the
       // manuscript scope so a key without it can't seed the manuscript indirectly.
       if (!assertEntityScope(request, reply, 'content', 'write')) return
-
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       // Look up the upload row — also enforces ownership and context.
       const [upload] = await db
@@ -275,7 +272,7 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
       segments: Array<{ title: string; html: string }>
     }
   }>('/import/commit', {
-    preHandler: [requireAuth],
+    preHandler: [requireAuth, ownsProject('body')],
   }, async (request, reply) => {
     const startedAt = Date.now()
     let resolvedProjectId: string | null = null
@@ -305,9 +302,6 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
 
       // Commit writes manuscript chapters — gate on the manuscript scope.
       if (!assertEntityScope(request, reply, 'content', 'write')) return
-
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       // Verify the container exists when supplied. A null containerId means
       // "land the chapters at root with no container_id" — that's a legal

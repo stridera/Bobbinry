@@ -11,7 +11,7 @@ import * as jose from 'jose'
 import { eq, and, sql, isNull } from 'drizzle-orm'
 import { db } from '../db/connection'
 import { projectDestinations, projects, userBobbinsInstalled, entities } from '../db/schema'
-import { requireAuth } from '../middleware/auth'
+import { requireAuth, ownsProject } from '../middleware/auth'
 import { env } from '../lib/env'
 import { ApiError, UnauthorizedError } from '../lib/errors'
 import { encryptSecret, decryptSecret } from '../lib/secret-storage'
@@ -388,18 +388,16 @@ const googleDrivePlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.post<{ Params: { projectId: string } }>(
     '/backups/projects/:projectId/sync',
-    { preHandler: requireAuth },
+    { preHandler: [requireAuth, ownsProject()] },
     async (request, reply) => {
       const userId = request.user!.id
       const { projectId } = request.params
 
-      // Verify project ownership
       const [project] = await db
-        .select({ id: projects.id, name: projects.name, userId: projects.ownerId })
+        .select({ id: projects.id, name: projects.name })
         .from(projects)
-        .where(and(eq(projects.id, projectId), eq(projects.ownerId, userId), isNull(projects.deletedAt)))
+        .where(eq(projects.id, projectId))
         .limit(1)
-
       if (!project) {
         return reply.status(404).send({ error: 'Project not found' })
       }
@@ -464,22 +462,10 @@ const googleDrivePlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.put<{ Params: { projectId: string }; Body: { isActive: boolean } }>(
     '/backups/projects/:projectId',
-    { preHandler: requireAuth },
+    { preHandler: [requireAuth, ownsProject()] },
     async (request, reply) => {
-      const userId = request.user!.id
       const { projectId } = request.params
       const { isActive } = request.body || {}
-
-      // Verify project ownership
-      const [project] = await db
-        .select({ id: projects.id, userId: projects.ownerId })
-        .from(projects)
-        .where(and(eq(projects.id, projectId), eq(projects.ownerId, userId), isNull(projects.deletedAt)))
-        .limit(1)
-
-      if (!project) {
-        return reply.status(404).send({ error: 'Project not found' })
-      }
 
       // Find or create destination row
       const [existing] = await db

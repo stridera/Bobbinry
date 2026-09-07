@@ -17,7 +17,7 @@ import { z } from 'zod'
 import { db } from '../db/connection'
 import { entities, subscriptionTiers, projects } from '../db/schema'
 import { and, eq, inArray, sql } from 'drizzle-orm'
-import { requireAuth, requireProjectOwnership, assertEntityScope } from '../middleware/auth'
+import { requireAuth, assertEntityScope , ownsProject } from '../middleware/auth'
 import { getCollectionIdsForProject, buildScopeCondition } from '../lib/effective-bobbins'
 import { extractTitle, recordEntityChanges, recordEntityChangesSafe, type EntityChangeEvent } from '../lib/entity-changes'
 import { ensureCurrentSlug, resolveSlugProjects } from '../lib/slugs'
@@ -97,16 +97,13 @@ const entityPublishPlugin: FastifyPluginAsync = async (fastify) => {
     Params: { entityId: string }
     Body: z.infer<typeof EntityPublishPatch>
   }>('/entities/:entityId/publish', {
-    preHandler: [requireAuth],
+    preHandler: [requireAuth, ownsProject('body')],
   }, async (request, reply) => {
     try {
       const { entityId } = request.params
       const body = EntityPublishPatch.parse(request.body)
 
       if (!assertEntityScope(request, reply, body.collection, 'write')) return
-
-      const hasAccess = await requireProjectOwnership(request, reply, body.projectId)
-      if (!hasAccess) return
 
       if (body.minimumTierLevel !== undefined) {
         const check = await validateTierLevel(body.projectId, body.minimumTierLevel)
@@ -278,7 +275,7 @@ const entityPublishPlugin: FastifyPluginAsync = async (fastify) => {
     Params: { projectId: string; typeId: string }
     Body: z.infer<typeof PublishPatchBody>
   }>('/projects/:projectId/entity-types/:typeId/publish', {
-    preHandler: [requireAuth],
+    preHandler: [requireAuth, ownsProject()],
   }, async (request, reply) => {
     try {
       const projectId = z.string().uuid().parse(request.params.projectId)
@@ -286,9 +283,6 @@ const entityPublishPlugin: FastifyPluginAsync = async (fastify) => {
       const body = PublishPatchBody.parse(request.body)
 
       if (!assertEntityScope(request, reply, TYPE_DEF_COLLECTION, 'write')) return
-
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       if (body.minimumTierLevel !== undefined) {
         const check = await validateTierLevel(projectId, body.minimumTierLevel)
@@ -351,16 +345,13 @@ const entityPublishPlugin: FastifyPluginAsync = async (fastify) => {
     Params: { projectId: string }
     Body: z.infer<typeof ReorderEntitiesBody>
   }>('/projects/:projectId/entities/reorder', {
-    preHandler: [requireAuth],
+    preHandler: [requireAuth, ownsProject()],
   }, async (request, reply) => {
     try {
       const projectId = z.string().uuid().parse(request.params.projectId)
       const body = ReorderEntitiesBody.parse(request.body)
 
       if (!assertEntityScope(request, reply, body.collection, 'write')) return
-
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       const userId = request.user!.id
       const collectionIds = await getCollectionIdsForProject(projectId)
@@ -435,16 +426,13 @@ const entityPublishPlugin: FastifyPluginAsync = async (fastify) => {
     Params: { projectId: string }
     Body: z.infer<typeof ReorderTypesBody>
   }>('/projects/:projectId/entity-types/reorder', {
-    preHandler: [requireAuth],
+    preHandler: [requireAuth, ownsProject()],
   }, async (request, reply) => {
     try {
       const projectId = z.string().uuid().parse(request.params.projectId)
       const body = ReorderTypesBody.parse(request.body)
 
       if (!assertEntityScope(request, reply, TYPE_DEF_COLLECTION, 'write')) return
-
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       const userId = request.user!.id
       const collectionIds = await getCollectionIdsForProject(projectId)

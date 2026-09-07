@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
-import { requireAuth, requireProjectOwnership, requireVerified, ownsProject } from '../middleware/auth'
+import { requireAuth, requireVerified, ownsProject, ownsResolvedProject, projectOfRow } from '../middleware/auth'
 import { db } from '../db/connection'
 import {
   chapterPublications,
@@ -699,25 +699,13 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       isPublished?: boolean
     }
   }>('/embargoes/:embargoId', {
-    preHandler: [requireAuth, requireVerified]
+    preHandler: [requireAuth, requireVerified, ownsResolvedProject(projectOfRow(embargoSchedules, 'embargoId'), 'Embargo not found')]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { embargoId } = request.params
       const updates = request.body
 
-      // Look up the embargo's projectId before allowing edits so we can
-      // verify the caller owns the project this embargo belongs to.
-      const [embargoRow] = await db
-        .select({ projectId: embargoSchedules.projectId })
-        .from(embargoSchedules)
-        .where(eq(embargoSchedules.id, embargoId))
-        .limit(1)
-      if (!embargoRow) {
-        return reply.status(404).send({ error: 'Embargo not found', correlationId })
-      }
-      const hasAccess = await requireProjectOwnership(request, reply, embargoRow.projectId)
-      if (!hasAccess) return
 
       const updateData: any = { updatedAt: new Date() }
       if (updates.publishMode) updateData.publishMode = updates.publishMode
@@ -747,22 +735,12 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.delete<{
     Params: { embargoId: string }
   }>('/embargoes/:embargoId', {
-    preHandler: [requireAuth, requireVerified]
+    preHandler: [requireAuth, requireVerified, ownsResolvedProject(projectOfRow(embargoSchedules, 'embargoId'), 'Embargo not found')]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { embargoId } = request.params
 
-      const [embargoRow] = await db
-        .select({ projectId: embargoSchedules.projectId })
-        .from(embargoSchedules)
-        .where(eq(embargoSchedules.id, embargoId))
-        .limit(1)
-      if (!embargoRow) {
-        return reply.status(404).send({ error: 'Embargo not found', correlationId })
-      }
-      const hasAccess = await requireProjectOwnership(request, reply, embargoRow.projectId)
-      if (!hasAccess) return
 
       await db.delete(embargoSchedules).where(eq(embargoSchedules.id, embargoId))
 
@@ -846,7 +824,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       lastSyncError?: string
     }
   }>('/destinations/:destinationId', {
-    preHandler: [requireAuth, requireVerified]
+    preHandler: [requireAuth, requireVerified, ownsResolvedProject(projectOfRow(projectDestinations, 'destinationId'), 'Destination not found')]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
@@ -855,16 +833,6 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
         'name', 'config', 'isActive', 'lastSyncStatus', 'lastSyncError',
       ] as const)
 
-      const [destRow] = await db
-        .select({ projectId: projectDestinations.projectId })
-        .from(projectDestinations)
-        .where(eq(projectDestinations.id, destinationId))
-        .limit(1)
-      if (!destRow) {
-        return reply.status(404).send({ error: 'Destination not found', correlationId })
-      }
-      const hasAccess = await requireProjectOwnership(request, reply, destRow.projectId)
-      if (!hasAccess) return
 
       const [updated] = await db
         .update(projectDestinations)
@@ -887,22 +855,12 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.delete<{
     Params: { destinationId: string }
   }>('/destinations/:destinationId', {
-    preHandler: [requireAuth, requireVerified]
+    preHandler: [requireAuth, requireVerified, ownsResolvedProject(projectOfRow(projectDestinations, 'destinationId'), 'Destination not found')]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { destinationId } = request.params
 
-      const [destRow] = await db
-        .select({ projectId: projectDestinations.projectId })
-        .from(projectDestinations)
-        .where(eq(projectDestinations.id, destinationId))
-        .limit(1)
-      if (!destRow) {
-        return reply.status(404).send({ error: 'Destination not found', correlationId })
-      }
-      const hasAccess = await requireProjectOwnership(request, reply, destRow.projectId)
-      if (!hasAccess) return
 
       await db.delete(projectDestinations).where(eq(projectDestinations.id, destinationId))
 
@@ -921,23 +879,13 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       error?: string
     }
   }>('/destinations/:destinationId/sync', {
-    preHandler: [requireAuth, requireVerified]
+    preHandler: [requireAuth, requireVerified, ownsResolvedProject(projectOfRow(projectDestinations, 'destinationId'), 'Destination not found')]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { destinationId } = request.params
       const { status, error } = request.body
 
-      const [destRow] = await db
-        .select({ projectId: projectDestinations.projectId })
-        .from(projectDestinations)
-        .where(eq(projectDestinations.id, destinationId))
-        .limit(1)
-      if (!destRow) {
-        return reply.status(404).send({ error: 'Destination not found', correlationId })
-      }
-      const hasAccess = await requireProjectOwnership(request, reply, destRow.projectId)
-      if (!hasAccess) return
 
       const [updated] = await db
         .update(projectDestinations)
@@ -1028,22 +976,12 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.delete<{
     Params: { warningId: string }
   }>('/content-warnings/:warningId', {
-    preHandler: [requireAuth, requireVerified]
+    preHandler: [requireAuth, requireVerified, ownsResolvedProject(projectOfRow(contentWarnings, 'warningId'), 'Content warning not found')]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
       const { warningId } = request.params
 
-      const [warningRow] = await db
-        .select({ projectId: contentWarnings.projectId })
-        .from(contentWarnings)
-        .where(eq(contentWarnings.id, warningId))
-        .limit(1)
-      if (!warningRow) {
-        return reply.status(404).send({ error: 'Content warning not found', correlationId })
-      }
-      const hasAccess = await requireProjectOwnership(request, reply, warningRow.projectId)
-      if (!hasAccess) return
 
       await db.delete(contentWarnings).where(eq(contentWarnings.id, warningId))
 

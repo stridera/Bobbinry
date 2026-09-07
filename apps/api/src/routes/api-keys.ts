@@ -10,7 +10,7 @@ import { db } from '../db/connection'
 import { apiKeys, projects } from '../db/schema'
 import { eq, and, isNull } from 'drizzle-orm'
 import { sql } from 'drizzle-orm'
-import { requireAuth, requireVerified, denyApiKeyAuth, requireProjectOwnership, hashApiKey, clearApiKeyCache } from '../middleware/auth'
+import { requireAuth, requireVerified, denyApiKeyAuth, hashApiKey, clearApiKeyCache , ownsProject } from '../middleware/auth'
 import { getUserMembershipTier } from '../lib/membership'
 import { randomBase62 } from '../lib/random-token'
 import { isUuid } from '../lib/slugs'
@@ -41,7 +41,7 @@ export default async function apiKeysPlugin(fastify: FastifyInstance) {
       projectId?: string | null
     }
   }>('/api-keys', {
-    preHandler: [requireAuth, requireVerified, denyApiKeyAuth]
+    preHandler: [requireAuth, requireVerified, denyApiKeyAuth, ownsProject('body', 'projectId', { optional: true })]
   }, async (request, reply) => {
     try {
       const { name, scopes, expiresInDays, projectId } = request.body
@@ -76,8 +76,6 @@ export default async function apiKeysPlugin(fastify: FastifyInstance) {
         if (typeof projectId !== 'string') {
           return reply.status(400).send({ error: 'projectId must be a string or null' })
         }
-        const ok = await requireProjectOwnership(request, reply, projectId)
-        if (!ok) return // requireProjectOwnership already wrote the response
         restrictedProjectId = projectId
       }
 

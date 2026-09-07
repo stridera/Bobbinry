@@ -11,7 +11,7 @@ import {
   type ContentType,
   type VariantResolutionConfig
 } from '@bobbinry/types'
-import { requireAuth, requireProjectOwnership, assertEntityScope, ownsProject } from '../middleware/auth'
+import { requireAuth, assertEntityScope, ownsProject } from '../middleware/auth'
 import { serverEventBus, contentEdited } from '../lib/event-bus'
 import {
   changeEventFromRow,
@@ -309,7 +309,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       fields?: string
     }
   }>('/collections/:collection/entities', {
-    preHandler: [requireAuth]
+    preHandler: [requireAuth, ownsProject('query')]
   }, async (request, reply) => {
     try {
       // Validate input
@@ -321,10 +321,6 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       const fieldSet = parseFieldsParam(fields)
 
       if (!assertEntityScope(request, reply, collection, 'read')) return
-
-      // Check project ownership
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       // Resolve scope: include entities from project, its collections, and global
       const userId = request.user!.id
@@ -432,7 +428,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       data: Record<string, any>
     }
   }>('/entities', {
-    preHandler: [requireAuth]
+    preHandler: [requireAuth, ownsProject('body')]
   }, async (request, reply) => {
     try {
       // Validate input
@@ -440,10 +436,6 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       const { collection, projectId, data } = body
 
       if (!assertEntityScope(request, reply, collection, 'write')) return
-
-      // Check project ownership
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       // Validate that the collection exists in an installed bobbin (across all scopes)
       const userId = request.user!.id
@@ -560,7 +552,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       expectedVersion?: number
     }
   }>('/entities/:entityId', {
-    preHandler: [requireAuth]
+    preHandler: [requireAuth, ownsProject('body')]
   }, async (request, reply) => {
     try {
       const { entityId } = request.params
@@ -574,10 +566,6 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       const { collection, projectId, data, expectedVersion } = body
 
       if (!assertEntityScope(request, reply, collection, 'write')) return
-
-      // Check project ownership
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       // Resolve scope for entity visibility
       const userId = request.user!.id
@@ -999,16 +987,13 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       items: Array<Record<string, any>>
     }
   }>('/entities/batch', {
-    preHandler: [requireAuth]
+    preHandler: [requireAuth, ownsProject('body')]
   }, async (request, reply) => {
     try {
       const body = EntityBatchCreateSchema.parse(request.body)
       const { collection, projectId, items } = body
 
       if (!assertEntityScope(request, reply, collection, 'write')) return
-
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       // Resolve the target bobbin ONCE — every item shares the collection,
       // so per-item lookups would be redundant work.
@@ -1122,7 +1107,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.post<{
     Body: z.infer<typeof atomicBatchSchema>
   }>('/entities/batch/atomic', {
-    preHandler: [requireAuth]
+    preHandler: [requireAuth, ownsProject('body')]
   }, async (request, reply) => {
     try {
       const parsed = atomicBatchSchema.safeParse(request.body)
@@ -1138,10 +1123,6 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       for (const collection of distinctCollections) {
         if (!assertEntityScope(request, reply, collection, 'write')) return
       }
-
-      // Check project ownership
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       // Resolve scope for entity visibility
       const userId = request.user!.id
@@ -1370,16 +1351,13 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       collection: string
     }
   }>('/entities/:entityId', {
-    preHandler: [requireAuth]
+    preHandler: [requireAuth, ownsProject('query')]
   }, async (request, reply) => {
     try {
       const { entityId } = request.params
       const { projectId, collection } = request.query
 
       if (!assertEntityScope(request, reply, collection, 'read')) return
-
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       const userId = request.user!.id
       const collectionIds = await getCollectionIdsForProject(projectId)
@@ -1496,13 +1474,10 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
    * caller's project, so cross-project ids in the array are silently ignored. */
   fastify.post<{ Body: { projectId: string; ids: string[] } }>(
     '/entities/bulk-archive',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, ownsProject('body')] },
     async (request, reply) => {
       try {
         const { projectId, ids } = BulkIdsSchema.parse(request.body)
-
-        const hasAccess = await requireProjectOwnership(request, reply, projectId)
-        if (!hasAccess) return
 
         const updated = await db
           .update(entities)
@@ -1536,13 +1511,10 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
   /** Clear archived_at on the listed entities. */
   fastify.post<{ Body: { projectId: string; ids: string[] } }>(
     '/entities/bulk-restore',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, ownsProject('body')] },
     async (request, reply) => {
       try {
         const { projectId, ids } = BulkIdsSchema.parse(request.body)
-
-        const hasAccess = await requireProjectOwnership(request, reply, projectId)
-        if (!hasAccess) return
 
         const updated = await db
           .update(entities)
@@ -1575,13 +1547,10 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
   /** Move entities to the trash, cascading container children where applicable. */
   fastify.post<{ Body: { projectId: string; ids: string[] } }>(
     '/entities/bulk-delete',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, ownsProject('body')] },
     async (request, reply) => {
       try {
         const { projectId, ids } = BulkIdsSchema.parse(request.body)
-
-        const hasAccess = await requireProjectOwnership(request, reply, projectId)
-        if (!hasAccess) return
 
         // One batch per request: everything deleted together comes back
         // together, including chapters pulled in by a container cascade.
@@ -1648,13 +1617,10 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.post<{ Body: { projectId: string; ids: string[] } }>(
     '/entities/bulk-untrash',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, ownsProject('body')] },
     async (request, reply) => {
       try {
         const { projectId, ids } = BulkIdsSchema.parse(request.body)
-
-        const hasAccess = await requireProjectOwnership(request, reply, projectId)
-        if (!hasAccess) return
 
         const restored = await db.transaction(async (tx) => {
           const targets = await tx
@@ -1724,13 +1690,10 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.post<{ Body: { projectId: string; ids: string[] } }>(
     '/entities/bulk-delete-permanent',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, ownsProject('body')] },
     async (request, reply) => {
       try {
         const { projectId, ids } = BulkIdsSchema.parse(request.body)
-
-        const hasAccess = await requireProjectOwnership(request, reply, projectId)
-        if (!hasAccess) return
 
         const purged = await db.transaction(async (tx) => {
           const events: EntityChangeEvent[] = []
@@ -1822,13 +1785,10 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       contentType?: string | null
       orderedIds: string[]
     }
-  }>('/entities/reorder', { preHandler: [requireAuth] }, async (request, reply) => {
+  }>('/entities/reorder', { preHandler: [requireAuth, ownsProject('body')] }, async (request, reply) => {
     try {
       const body = ReorderSchema.parse(request.body)
       const { projectId, collection, contentType, orderedIds } = body
-
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       // Validate every id belongs to this (project, collection, contentType).
       const matchConds = [

@@ -124,7 +124,8 @@ async function uploadsPlugin(fastify: FastifyInstance) {
       collection?: string
     }
   }>('/uploads/presign', {
-    preHandler: [requireAuth, ownsProject('body')],
+    // Avatars carry no projectId; every other context must name a project the caller owns.
+    preHandler: [requireAuth, ownsProject('body', 'projectId', { optional: true })],
   }, async (request, reply) => {
     const { filename, contentType, size, context, projectId, entityId, collection } = request.body
     const user = request.user!
@@ -159,11 +160,10 @@ async function uploadsPlugin(fastify: FastifyInstance) {
       return reply.status(400).send({ error: `File size must be between 1 byte and ${limitMB}MB.${hint}` })
     }
 
-    // Project ownership check (not needed for avatars)
-    if (context !== 'avatar') {
-      if (!projectId) {
-        return reply.status(400).send({ error: 'projectId is required for non-avatar uploads' })
-      }
+    // Ownership is enforced by the preHandler when projectId is present;
+    // non-avatar contexts must present one.
+    if (context !== 'avatar' && !projectId) {
+      return reply.status(400).send({ error: 'projectId is required for non-avatar uploads' })
     }
 
     // Generate S3 key
@@ -198,7 +198,7 @@ async function uploadsPlugin(fastify: FastifyInstance) {
       projectId?: string
     }
   }>('/uploads/confirm', {
-    preHandler: [requireAuth, ownsProject('body')],
+    preHandler: [requireAuth, ownsProject('body', 'projectId', { optional: true })],
   }, async (request, reply) => {
     const { fileKey, filename, contentType, size, context, projectId } = request.body
     const user = request.user!
@@ -225,12 +225,6 @@ async function uploadsPlugin(fastify: FastifyInstance) {
     })()
     if (!expectedPrefix || !fileKey.startsWith(expectedPrefix)) {
       return reply.status(400).send({ error: 'fileKey does not match the declared context/project' })
-    }
-
-    // For project-scoped uploads, re-verify ownership at confirm time too —
-    // presign already did, but the project could have changed hands between
-    // presign and confirm.
-    if (context !== 'avatar' && projectId) {
     }
 
     // Verify the object actually exists in S3

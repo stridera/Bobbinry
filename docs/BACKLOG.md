@@ -8,18 +8,6 @@ Last reviewed: 2026-09-06 (end of the `fix/slop-review-security` cleanup).
 
 ## A. Left over from the September 2026 quality review
 
-### A1. Ownership checks still inside 36 route handlers
-`apps/api/src/middleware/auth.ts#ownsProject()` runs as a preHandler on 54
-routes. The remaining 36 call `requireProjectOwnership(request, reply, id)`
-inside the handler because the project id is derived mid-request (looked up
-from an entity, upload, destination, or API key row) rather than read from
-`params`. A guard in the handler body can be skipped by an early return above
-it. Fix: for routes whose id *is* in params (`entity-types.ts`,
-`search-replace.ts`, `entity-changes.ts`, `import.ts`, `entity-publish.ts`)
-switch to the preHandler; for genuinely derived ids, add a
-`ownsEntityProject()`-style preHandler that resolves the row first, so no
-handler body carries an authorization branch.
-
 ### A2. Global error handler and strict bodies on the remaining routes
 The security patch gave the reader/annotation routes Zod `.strict()` bodies
 and typed error replies. Other routes still hand-validate or spread bodies,

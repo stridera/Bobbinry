@@ -30,7 +30,7 @@ import { z } from 'zod'
 import { db } from '../db/connection'
 import { entityChanges } from '../db/schema'
 import { eq, and, gt, lte, sql, asc } from 'drizzle-orm'
-import { requireAuth, requireProjectOwnership, requireScope } from '../middleware/auth'
+import { requireAuth, requireScope , ownsProject } from '../middleware/auth'
 import { coalesceChanges } from '../lib/entity-changes'
 import { env } from '../lib/env'
 
@@ -66,14 +66,11 @@ const entityChangesPlugin: FastifyPluginAsync = async (fastify) => {
       limit?: string
     }
   }>('/projects/:projectId/changes', {
-    preHandler: [requireAuth, requireScope('projects:read')],
+    preHandler: [requireAuth, requireScope('projects:read'), ownsProject()],
   }, async (request, reply) => {
     try {
       const { projectId } = ChangesParamsSchema.parse(request.params)
       const query = ChangesQuerySchema.parse(request.query)
-
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       // High-water mark, capped to the safety horizon: everything <= maxSeq
       // is durably visible, so a cursor of maxSeq can never strand a

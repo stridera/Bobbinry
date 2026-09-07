@@ -4,7 +4,7 @@ import { db } from '../db/connection'
 import { projects, bobbinsInstalled, entities, projectManuscriptDisplaySettings } from '../db/schema'
 import { eq, and, count, inArray, isNull } from 'drizzle-orm'
 import { ManifestCompiler } from '@bobbinry/compiler'
-import { requireAuth, requireProjectOwnership, requireVerified, requireScope, ownsProject } from '../middleware/auth'
+import { requireAuth, requireVerified, requireScope, ownsProject } from '../middleware/auth'
 import { getUserMembershipTier, getProjectLimit, getUserBadges } from '../lib/membership'
 import { checkAndUpgradeBobbin, type UpgradeResult } from '../lib/bobbin-upgrader'
 import { loadDiskManifests, loadManifestFromBobbinsPath } from '../lib/disk-manifests'
@@ -134,14 +134,10 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string }
   }>('/projects/:projectId', {
-    preHandler: [requireAuth, requireScope('projects:read')]
+    preHandler: [requireAuth, requireScope('projects:read'), ownsProject()]
   }, async (request, reply) => {
     try {
       const { projectId } = request.params
-
-      // Check ownership (also validates UUID and checks project exists)
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return // Response already sent
 
       const [project] = await db
         .select()
@@ -170,8 +166,6 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
     try {
       const { projectId } = request.params
       const { manifestPath, manifestContent, manifestType } = request.body
-
-      // Check ownership
 
       // Get manifest content
       let content: string
@@ -359,8 +353,6 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
       const { projectId } = request.params
       const userId = request.user!.id
 
-      // Check ownership
-
       // --- Project-scoped installations (with legacy migration) ---
 
       const installations = await db
@@ -481,8 +473,6 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
     try {
       const { projectId, bobbinId } = request.params
 
-      // Check ownership
-
       // Check if bobbin is installed
       const installation = await db
         .select()
@@ -546,8 +536,6 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
     try {
       const { projectId } = request.params
       const { name, description, coverImage } = request.body
-
-      // Check ownership
 
       const updates: Record<string, unknown> = {}
       if (name !== undefined) updates.name = name

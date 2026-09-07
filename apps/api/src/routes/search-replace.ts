@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { and, asc, eq, inArray, notInArray, sql } from 'drizzle-orm'
 import { db } from '../db/connection'
 import { entities } from '../db/schema'
-import { requireAuth, requireProjectOwnership, assertEntityScope } from '../middleware/auth'
+import { requireAuth, assertEntityScope , ownsProject } from '../middleware/auth'
 import { getCollectionIdsForProject, buildScopeCondition } from '../lib/effective-bobbins'
 import { serverEventBus, contentEdited } from '../lib/event-bus'
 import { diffEntityData, extractTitle, recordEntityChanges, type EntityChangeEvent } from '../lib/entity-changes'
@@ -55,14 +55,11 @@ const searchReplacePlugin: FastifyPluginAsync = async (fastify) => {
     Params: { projectId: string }
     Body: z.infer<typeof PreviewBodySchema>
   }>('/projects/:projectId/search-replace/preview', {
-    preHandler: [requireAuth],
+    preHandler: [requireAuth, ownsProject()],
   }, async (request, reply) => {
     try {
       const { projectId } = PathParamsSchema.parse(request.params)
       const body = PreviewBodySchema.parse(request.body)
-
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       // We touch both 'content' (manuscript) and entity-type collections, so
       // require read scope for both buckets.
@@ -151,14 +148,11 @@ const searchReplacePlugin: FastifyPluginAsync = async (fastify) => {
     Params: { projectId: string }
     Body: z.infer<typeof ApplyBodySchema>
   }>('/projects/:projectId/search-replace/apply', {
-    preHandler: [requireAuth],
+    preHandler: [requireAuth, ownsProject()],
   }, async (request, reply) => {
     try {
       const { projectId } = PathParamsSchema.parse(request.params)
       const body = ApplyBodySchema.parse(request.body)
-
-      const hasAccess = await requireProjectOwnership(request, reply, projectId)
-      if (!hasAccess) return
 
       if (!assertEntityScope(request, reply, 'content', 'write')) return
       if (!assertEntityScope(request, reply, 'character', 'write')) return
