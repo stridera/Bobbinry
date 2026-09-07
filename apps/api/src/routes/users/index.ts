@@ -9,6 +9,7 @@ import tiersRoutes from './tiers'
 import followsRoutes from './follows'
 import notificationPrefsRoutes from './notification-prefs'
 import readingPrefsRoutes from './reading-prefs'
+import shellPrefsRoutes from './shell-prefs'
 import displaySettingsRoutes from './display-settings'
 import betaReadersRoutes from './beta-readers'
 import betaInvitesRoutes from './beta-invites'
@@ -23,6 +24,7 @@ const usersPlugin: FastifyPluginAsync = async (fastify) => {
   await fastify.register(followsRoutes)
   await fastify.register(notificationPrefsRoutes)
   await fastify.register(readingPrefsRoutes)
+  await fastify.register(shellPrefsRoutes)
   await fastify.register(displaySettingsRoutes)
   await fastify.register(betaReadersRoutes)
   await fastify.register(betaInvitesRoutes)

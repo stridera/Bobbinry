@@ -189,6 +189,16 @@ export const userReadingPreferences = pgTable('user_reading_preferences', {
   updatedAt: timestamp('updated_at').defaultNow().notNull()
 })
 
+// Shell layout state that follows the user across devices: panel widths and
+// collapsed state, active rail panels, per-type view choice, last-visited
+// targets. One JSONB blob keyed by namespace (see routes/users/shell-prefs.ts);
+// the shell mirrors it in localStorage for the first paint.
+export const userShellPreferences = pgTable('user_shell_preferences', {
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).primaryKey(),
+  prefs: jsonb('prefs').$type<Record<string, Record<string, unknown>>>().default({}).notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull()
+})
+
 // Author-controlled manuscript display settings — base level of the
 // user → project → content cascade. Applies to the author's editor view and
 // to readers of their published work (reader font/theme/width prefs still

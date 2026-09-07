@@ -323,6 +323,13 @@
       "when": 1788740799845,
       "tag": "0046_backfill_last_edited_at",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1788759306952,
+      "tag": "0047_user_shell_preferences",
+      "breakpoints": true
     }
   ]
 }

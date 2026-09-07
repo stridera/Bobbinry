@@ -1,6 +1,6 @@
 {
-  "id": "e3ffe2e8-4be7-4dc2-95ff-4ca0d91c2799",
-  "prevId": "98d9bd4c-3a0f-402e-b6b8-d2da2ce5d1f6",
+  "id": "0383f99d-b47c-47c6-9ef5-782257968091",
+  "prevId": "e3ffe2e8-4be7-4dc2-95ff-4ca0d91c2799",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -7260,6 +7260,53 @@
         "user_reading_preferences_user_id_users_id_fk": {
           "name": "user_reading_preferences_user_id_users_id_fk",
           "tableFrom": "user_reading_preferences",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.user_shell_preferences": {
+      "name": "user_shell_preferences",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "prefs": {
+          "name": "prefs",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "user_shell_preferences_user_id_users_id_fk": {
+          "name": "user_shell_preferences_user_id_users_id_fk",
+          "tableFrom": "user_shell_preferences",
           "tableTo": "users",
           "columnsFrom": [
             "user_id"
