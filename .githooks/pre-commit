@@ -25,8 +25,8 @@ bun run lint:bobbins
 echo "  [5/9] Vercel compat..."
 ./scripts/check-vercel-compat.sh
 
-echo "  [6/9] API logging boundary..."
-./scripts/check-api-console.sh
+echo "  [6/9] API boundaries (logging, env)..."
+./scripts/check-api-boundaries.sh
 
 echo "  [7/9] Dockerfile workspaces..."
 ./scripts/check-dockerfile-workspaces.sh

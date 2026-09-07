@@ -158,7 +158,7 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
       }
 
       // Create Account Link for onboarding
-      const baseUrl = process.env.WEB_ORIGIN || 'http://localhost:3100'
+      const baseUrl = env.WEB_ORIGIN
       const accountLink = await createOnboardingLink(
         stripe,
         stripeAccountId!,
@@ -290,7 +290,7 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
         }
       }
 
-      const baseUrl = process.env.WEB_ORIGIN || 'http://localhost:3100'
+      const baseUrl = env.WEB_ORIGIN
       return reply.redirect(`${baseUrl}/settings/monetization?stripe=complete`)
     } catch (error) {
       fastify.log.error(error)
@@ -496,7 +496,7 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(200).send({ subscribed: true, subscriptionId: subscription!.id })
       }
 
-      const baseUrl = process.env.WEB_ORIGIN || 'http://localhost:3100'
+      const baseUrl = env.WEB_ORIGIN
 
       // Build subscription_data with optional trial
       const subscriptionData: Record<string, unknown> = {
@@ -588,7 +588,7 @@ const stripePlugin: FastifyPluginAsync = async (fastify) => {
       const stripeSub = await stripe.subscriptions.retrieve(sub.stripeSubscriptionId)
       const customerId = stripeSub.customer as string
 
-      const baseUrl = process.env.WEB_ORIGIN || 'http://localhost:3100'
+      const baseUrl = env.WEB_ORIGIN
       const portalSession = await stripe.billingPortal.sessions.create({
         customer: customerId,
         return_url: returnUrl || `${baseUrl}/settings/subscriptions`

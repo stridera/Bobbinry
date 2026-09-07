@@ -1,12 +1,13 @@
 import { createHash, createHmac, timingSafeEqual } from 'crypto'
 import { FastifyRequest } from 'fastify'
+import { env } from './env'
 
 const MAX_SKEW_MS = 5 * 60 * 1000
 const replayCache = new Map<string, number>()
 
 function getSigningSecrets(): string[] {
-  const current = process.env.INTERNAL_API_AUTH_TOKEN
-  const previous = process.env.INTERNAL_API_AUTH_TOKEN_PREVIOUS
+  const current = env.INTERNAL_API_AUTH_TOKEN
+  const previous = env.INTERNAL_API_AUTH_TOKEN_PREVIOUS
   return [current, previous].filter((value): value is string => Boolean(value))
 }
 
@@ -59,7 +60,7 @@ export type InternalAuthFailure =
 export function verifyInternalRequest(request: FastifyRequest): { ok: true } | { ok: false; reason: InternalAuthFailure } {
   const secrets = getSigningSecrets()
   if (secrets.length === 0) {
-    if (process.env.NODE_ENV !== 'production') {
+    if (env.NODE_ENV !== 'production') {
       return { ok: true }
     }
     return { ok: false, reason: 'missing_secret' }

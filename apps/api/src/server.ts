@@ -131,7 +131,7 @@ export function build(opts = {}): FastifyInstance {
     }, statusCode >= 500 ? 'Unhandled error' : 'Request rejected')
 
     // Don't expose internal errors in production
-    const isDevelopment = process.env.NODE_ENV === 'development'
+    const isDevelopment = env.NODE_ENV === 'development'
 
     if (isRateLimit) {
       reply.header('Retry-After', '60')
@@ -150,7 +150,7 @@ export function build(opts = {}): FastifyInstance {
 
   // Security headers with helmet
   server.register(helmet, {
-    ...(process.env.NODE_ENV !== 'production' && { contentSecurityPolicy: false }),
+    ...(env.NODE_ENV !== 'production' && { contentSecurityPolicy: false }),
     crossOriginEmbedderPolicy: false, // Allow iframe embedding for views
     crossOriginResourcePolicy: { policy: 'cross-origin' }, // Allow images/assets to load from shell on different port
     frameguard: false // Disable X-Frame-Options to allow iframe embedding
@@ -169,7 +169,7 @@ export function build(opts = {}): FastifyInstance {
           return tier === 'supporter' ? 500 : 100
         }
       }
-      return process.env.NODE_ENV === 'development' ? 1000 : 300
+      return env.NODE_ENV === 'development' ? 1000 : 300
     },
     timeWindow: '1 minute',
     keyGenerator: (request: FastifyRequest) => {
@@ -331,7 +331,7 @@ export function build(opts = {}): FastifyInstance {
     // The scheduler ticks immediately on start. Under jest that tick races the
     // per-test TRUNCATE ... CASCADE and intermittently deadlocks the suite, so
     // tests that need a job call its process*() function directly instead.
-    if (process.env.NODE_ENV !== 'test') startTriggerScheduler()
+    if (env.NODE_ENV !== 'test') startTriggerScheduler()
     initNotificationHandlers()
     initDriveSyncHandler()
     initDiscordNotifierHandler()

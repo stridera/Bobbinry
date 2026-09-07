@@ -122,7 +122,7 @@ const membershipPlugin: FastifyPluginAsync = async (fastify) => {
           .where(eq(users.id, user.id))
       }
 
-      const baseUrl = process.env.WEB_ORIGIN || 'http://localhost:3100'
+      const baseUrl = env.WEB_ORIGIN
 
       // Validate promo code if provided
       let stripeCouponId: string | null = null
@@ -242,7 +242,7 @@ const membershipPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'No Stripe customer found' })
       }
 
-      const baseUrl = process.env.WEB_ORIGIN || 'http://localhost:3100'
+      const baseUrl = env.WEB_ORIGIN
       const portalSession = await stripe.billingPortal.sessions.create({
         customer: dbUser.stripeCustomerId,
         return_url: `${baseUrl}/membership`,

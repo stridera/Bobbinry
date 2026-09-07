@@ -4,8 +4,9 @@ const log = moduleLogger('env')
 /**
  * Environment Variable Validation for API
  *
- * Single source of truth for all configuration. Every module should import
- * from here instead of reading process.env directly.
+ * Single source of truth for all configuration. Every module imports from
+ * here instead of reading process.env directly; scripts/check-api-boundaries.sh
+ * enforces it. Only this file and lib/logger.ts touch process.env.
  */
 
 interface EnvConfig {
@@ -34,6 +35,8 @@ interface EnvConfig {
   PLATFORM_FEE_PERCENT: number
   /** Change-feed horizon override (ms); tests set 0. */
   ENTITY_CHANGES_HORIZON_MS: number | undefined
+  /** Revision session-window override (ms, > 0); tests force a rollover with it. */
+  REVISION_WINDOW_MS: number | undefined
   STRIPE_SECRET_KEY: string | undefined
   STRIPE_WEBHOOK_SECRET: string | undefined
   STRIPE_SUPPORTER_MONTHLY_PRICE_ID: string | undefined
@@ -107,35 +110,51 @@ export function validateEnv(): EnvConfig {
       `The features that depend on these will be disabled.`)
   }
 
-  return {
-    DATABASE_URL: process.env.DATABASE_URL || 'postgres://bobbinry:bobbinry@localhost:5432/bobbinry',
-    PORT: intFromEnv('PORT', 4100),
-    NODE_ENV: nodeEnv,
-    LOG_LEVEL: process.env.LOG_LEVEL || 'info',
-    WEB_ORIGIN: process.env.WEB_ORIGIN || 'http://localhost:3100',
-    API_ORIGIN: process.env.API_ORIGIN || `http://localhost:${intFromEnv('PORT', 4100)}`,
-    API_JWT_SECRET: process.env.API_JWT_SECRET,
-    NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET,
-    INTERNAL_API_AUTH_TOKEN: process.env.INTERNAL_API_AUTH_TOKEN,
-    INTERNAL_API_AUTH_TOKEN_PREVIOUS: process.env.INTERNAL_API_AUTH_TOKEN_PREVIOUS,
-    S3_ENDPOINT: process.env.S3_ENDPOINT || 'http://127.0.0.1:9100',
-    S3_PUBLIC_ENDPOINT: process.env.S3_PUBLIC_ENDPOINT || process.env.S3_ENDPOINT || 'http://127.0.0.1:9100',
-    S3_REGION: process.env.S3_REGION || 'auto',
-    S3_BUCKET: process.env.S3_BUCKET || 'bobbinry',
-    S3_ACCESS_KEY: process.env.S3_ACCESS_KEY || 'admin',
-    S3_SECRET_KEY: process.env.S3_SECRET_KEY || 'adminadmin',
-    RESEND_API_KEY: process.env.RESEND_API_KEY,
-    EMAIL_FROM: process.env.EMAIL_FROM || 'Bobbinry <noreply@bobbinry.com>',
-    GOOGLE_ID: process.env.GOOGLE_ID,
-    GOOGLE_SECRET: process.env.GOOGLE_SECRET,
-    ADMIN_EMAIL: process.env.ADMIN_EMAIL || 'strider@bobbinry.dev',
-    PLATFORM_FEE_PERCENT: intFromEnv('PLATFORM_FEE_PERCENT', 5),
-    ENTITY_CHANGES_HORIZON_MS: process.env.ENTITY_CHANGES_HORIZON_MS === undefined ? undefined : intFromEnv('ENTITY_CHANGES_HORIZON_MS', 0),
-    STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
-    STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
-    STRIPE_SUPPORTER_MONTHLY_PRICE_ID: process.env.STRIPE_SUPPORTER_MONTHLY_PRICE_ID,
-    STRIPE_SUPPORTER_YEARLY_PRICE_ID: process.env.STRIPE_SUPPORTER_YEARLY_PRICE_ID,
+  const config = {} as EnvConfig
+  for (const key of Object.keys(readers) as (keyof EnvConfig)[]) {
+    Object.defineProperty(config, key, { get: readers[key], enumerable: true })
   }
+  return config
+}
+
+/**
+ * Each value is read from process.env on access, not snapshotted at import:
+ * tests set WEB_ORIGIN, INTERNAL_API_AUTH_TOKEN, DATABASE_URL and friends
+ * after the module graph is loaded. Read `env.X` where you use it rather than
+ * copying it into a module-level constant.
+ */
+const readers: { [K in keyof EnvConfig]: () => EnvConfig[K] } = {
+  DATABASE_URL: () => process.env.DATABASE_URL || 'postgres://bobbinry:bobbinry@localhost:5432/bobbinry',
+  PORT: () => intFromEnv('PORT', 4100),
+  NODE_ENV: () => process.env.NODE_ENV || 'development',
+  LOG_LEVEL: () => process.env.LOG_LEVEL || 'info',
+  WEB_ORIGIN: () => process.env.WEB_ORIGIN || 'http://localhost:3100',
+  API_ORIGIN: () => process.env.API_ORIGIN || `http://localhost:${intFromEnv('PORT', 4100)}`,
+  API_JWT_SECRET: () => process.env.API_JWT_SECRET,
+  NEXTAUTH_SECRET: () => process.env.NEXTAUTH_SECRET,
+  INTERNAL_API_AUTH_TOKEN: () => process.env.INTERNAL_API_AUTH_TOKEN,
+  INTERNAL_API_AUTH_TOKEN_PREVIOUS: () => process.env.INTERNAL_API_AUTH_TOKEN_PREVIOUS,
+  S3_ENDPOINT: () => process.env.S3_ENDPOINT || 'http://127.0.0.1:9100',
+  S3_PUBLIC_ENDPOINT: () => process.env.S3_PUBLIC_ENDPOINT || process.env.S3_ENDPOINT || 'http://127.0.0.1:9100',
+  S3_REGION: () => process.env.S3_REGION || 'auto',
+  S3_BUCKET: () => process.env.S3_BUCKET || 'bobbinry',
+  S3_ACCESS_KEY: () => process.env.S3_ACCESS_KEY || 'admin',
+  S3_SECRET_KEY: () => process.env.S3_SECRET_KEY || 'adminadmin',
+  RESEND_API_KEY: () => process.env.RESEND_API_KEY,
+  EMAIL_FROM: () => process.env.EMAIL_FROM || 'Bobbinry <noreply@bobbinry.com>',
+  GOOGLE_ID: () => process.env.GOOGLE_ID,
+  GOOGLE_SECRET: () => process.env.GOOGLE_SECRET,
+  ADMIN_EMAIL: () => process.env.ADMIN_EMAIL || 'strider@bobbinry.dev',
+  PLATFORM_FEE_PERCENT: () => intFromEnv('PLATFORM_FEE_PERCENT', 5),
+  ENTITY_CHANGES_HORIZON_MS: () => process.env.ENTITY_CHANGES_HORIZON_MS === undefined ? undefined : intFromEnv('ENTITY_CHANGES_HORIZON_MS', 0),
+  REVISION_WINDOW_MS: () => {
+    const n = intFromEnv('REVISION_WINDOW_MS', 0)
+    return n > 0 ? n : undefined
+  },
+  STRIPE_SECRET_KEY: () => process.env.STRIPE_SECRET_KEY,
+  STRIPE_WEBHOOK_SECRET: () => process.env.STRIPE_WEBHOOK_SECRET,
+  STRIPE_SUPPORTER_MONTHLY_PRICE_ID: () => process.env.STRIPE_SUPPORTER_MONTHLY_PRICE_ID,
+  STRIPE_SUPPORTER_YEARLY_PRICE_ID: () => process.env.STRIPE_SUPPORTER_YEARLY_PRICE_ID,
 }
 
 export const env = validateEnv()

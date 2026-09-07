@@ -16,6 +16,7 @@ import type { PgTable, AnyPgColumn } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { getUserBadges, getUserMembershipTier, type MembershipTier } from '../lib/membership'
 import { isUuid } from '../lib/slugs'
+import { env } from '../lib/env'
 
 // User context attached to authenticated requests
 export interface AuthenticatedUser {
@@ -111,7 +112,7 @@ declare module 'fastify' {
  * deployment ran with a publicly-known secret, letting anyone forge JWTs.
  */
 export function getJwtSecret(): Uint8Array {
-  const secret = process.env.NEXTAUTH_SECRET || process.env.API_JWT_SECRET
+  const secret = env.NEXTAUTH_SECRET || env.API_JWT_SECRET
 
   if (!secret) {
     throw new Error('JWT secret must be configured (NEXTAUTH_SECRET or API_JWT_SECRET)')

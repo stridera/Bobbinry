@@ -6,17 +6,6 @@ Items leave this file when they land; history is in git.
 
 Last reviewed: 2026-09-06 (end of the `fix/slop-review-security` cleanup).
 
-## A. Left over from the September 2026 quality review
-
-### A4. Live `process.env` reads
-`apps/api/src/lib/env.ts` snapshots at import, so `NEXTAUTH_SECRET` in
-`middleware/auth.ts#getJwtSecret()` and seven `WEB_ORIGIN` reads (with a
-duplicated `http://localhost:3100` fallback) still read `process.env`
-directly because tests mutate them at runtime. Fix: expose lazy getters on
-`env` for the mutable set (`NODE_ENV`, `WEB_ORIGIN`, `DATABASE_URL`, `S3_*`,
-`RESEND_*`, `INTERNAL_API_AUTH_TOKEN`, `NEXTAUTH_SECRET`) and forbid direct
-`process.env` outside `env.ts` with a lint rule.
-
 ## D. Verify / housekeeping
 
 ### D1. `entities.last_edited_at` may not be written on update

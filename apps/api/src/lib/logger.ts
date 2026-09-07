@@ -3,7 +3,7 @@
  * instance, so job, library and request lines share a format, a level and a
  * destination. Everything outside request handlers logs through
  * `moduleLogger('<name>')`; `console.*` is reserved for CLI scripts
- * (seeds, backfills) and is rejected elsewhere by scripts/check-api-console.sh.
+ * (seeds, backfills) and is rejected elsewhere by scripts/check-api-boundaries.sh.
  *
  * Reads process.env directly on purpose: env.ts logs through this module, so
  * this module cannot depend on env.ts.

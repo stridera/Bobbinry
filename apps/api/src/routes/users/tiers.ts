@@ -1,5 +1,6 @@
 /** Subscription tiers, Stripe onboarding, tier unlocks. Registered by ./index.ts under the /api prefix. */
 import type { FastifyPluginAsync } from 'fastify'
+import { env } from '../../lib/env'
 import { db } from '../../db/connection'
 import { userProfiles, subscriptionTiers, projects, projectCollections, users, entities, userPaymentConfig } from '../../db/schema'
 import { eq, and, or, inArray } from 'drizzle-orm'
@@ -245,7 +246,7 @@ const tiersRoutes: FastifyPluginAsync = async (fastify) => {
                 set: { stripeAccountId: account.id, stripeAccountType: 'express', updatedAt: new Date() }
               })
 
-              const baseUrl = process.env.WEB_ORIGIN || 'http://localhost:3100'
+              const baseUrl = env.WEB_ORIGIN
               const accountLink = await createOnboardingLink(
                 stripe,
                 account.id,

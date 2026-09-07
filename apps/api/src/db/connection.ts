@@ -21,7 +21,7 @@ const client = postgres(connectionString, {
   connect_timeout: 10,        // Connection timeout in seconds
 
   // Security settings
-  ssl: process.env.NODE_ENV === 'production' ? 'require' : false,
+  ssl: env.NODE_ENV === 'production' ? 'require' : false,
 
   // Performance and reliability
   // Prepared statements are incompatible with Neon's transaction-mode pooler
@@ -31,7 +31,7 @@ const client = postgres(connectionString, {
   },
 
   // Logging and monitoring (only in development)
-  ...(process.env.NODE_ENV === 'development' && { onnotice: (notice: unknown) => log.debug({ notice }, 'postgres notice') }),
+  ...(env.NODE_ENV === 'development' && { onnotice: (notice: unknown) => log.debug({ notice }, 'postgres notice') }),
 
   // Error handling
   connection: {

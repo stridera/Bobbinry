@@ -38,6 +38,7 @@
  */
 
 import { createHash } from 'crypto'
+import { env } from './env'
 import { and, eq, sql } from 'drizzle-orm'
 import type { FastifyRequest } from 'fastify'
 import { entityRevisions } from '../db/schema'
@@ -74,12 +75,7 @@ export const RESTORABLE_FIELDS = ['body', 'title', 'notes', 'synopsis'] as const
  * ENTITY_CHANGES_HORIZON_MS in the change feed.
  */
 export function revisionWindowMs(): number {
-  const raw = process.env['REVISION_WINDOW_MS']
-  if (raw !== undefined) {
-    const n = parseInt(raw, 10)
-    if (Number.isFinite(n) && n > 0) return n
-  }
-  return 15 * 60 * 1000
+  return env.REVISION_WINDOW_MS ?? 15 * 60 * 1000
 }
 
 /**
