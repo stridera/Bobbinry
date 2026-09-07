@@ -170,13 +170,13 @@ export async function sendEmail(opts: SendEmailOptions): Promise<boolean> {
   // daily Resend quota and the domain's bounce reputation. Guard here rather than
   // per-test: this is the single chokepoint every caller funnels through.
   if (env.NODE_ENV === 'test') {
-    console.log(`[email] Suppressed in tests: "${opts.subject}" → ${opts.to}`)
+    log.info(`Suppressed in tests: "${opts.subject}" → ${opts.to}`)
     return false
   }
 
   const client = getClient()
   if (!client) {
-    console.log(`[email] Skipping send (no RESEND_API_KEY): "${opts.subject}" → ${opts.to}`)
+    log.info(`Skipping send (no RESEND_API_KEY): "${opts.subject}" → ${opts.to}`)
     return false
   }
 
@@ -191,7 +191,7 @@ export async function sendEmail(opts: SendEmailOptions): Promise<boolean> {
     })
     return true
   } catch (err) {
-    console.error('[email] Failed to send:', (err as Error).message)
+    log.error({ err: (err as Error).message }, 'Failed to send')
     return false
   }
 }
@@ -343,6 +343,9 @@ export async function sendBetaReaderJoinedEmail(
 
 import type { AdminDailyReport } from '../jobs/admin-daily-report'
 import { escapeHtml } from './text'
+import { moduleLogger } from './logger'
+
+const log = moduleLogger('email')
 
 export interface AdminDailyReportWindow {
   since: Date

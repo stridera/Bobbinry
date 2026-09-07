@@ -2,6 +2,9 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import * as schema from './schema'
 import { env } from '../lib/env'
+import { moduleLogger } from '../lib/logger'
+
+const log = moduleLogger('db')
 
 // Connection configuration with security settings
 const connectionString = env.DATABASE_URL
@@ -28,7 +31,7 @@ const client = postgres(connectionString, {
   },
 
   // Logging and monitoring (only in development)
-  ...(process.env.NODE_ENV === 'development' && { onnotice: console.log }),
+  ...(process.env.NODE_ENV === 'development' && { onnotice: (notice: unknown) => log.debug({ notice }, 'postgres notice') }),
 
   // Error handling
   connection: {
@@ -82,20 +85,15 @@ export const checkDatabaseHealth = async (): Promise<boolean> => {
       ),
     ])
     if (consecutiveHealthFailures > 0) {
-      console.log(`[db] health check recovered after ${consecutiveHealthFailures} consecutive failures`)
+      log.info(`health check recovered after ${consecutiveHealthFailures} consecutive failures`)
     }
     consecutiveHealthFailures = 0
     return true
   } catch (error) {
     consecutiveHealthFailures++
-    console.error(
-      `[db] health check failed (${consecutiveHealthFailures}/${MAX_CONSECUTIVE_HEALTH_FAILURES}):`,
-      error instanceof Error ? error.message : error
-    )
+    log.error({ err: error instanceof Error ? error.message : error }, `health check failed (${consecutiveHealthFailures}/${MAX_CONSECUTIVE_HEALTH_FAILURES})`)
     if (consecutiveHealthFailures >= MAX_CONSECUTIVE_HEALTH_FAILURES) {
-      console.error(
-        `[db] ${consecutiveHealthFailures} consecutive health check failures — exiting so Fly can restart the machine with a fresh connection pool`
-      )
+      log.error(`${consecutiveHealthFailures} consecutive health check failures — exiting so Fly can restart the machine with a fresh connection pool`)
       // Give the log line a chance to flush before the process dies.
       setTimeout(() => process.exit(1), 500)
     }

@@ -1,3 +1,6 @@
+import { moduleLogger } from './logger'
+
+const log = moduleLogger('event-bus')
 /**
  * Server-side Event Bus
  *
@@ -48,11 +51,11 @@ class ServerEventBus {
         const result = handler(event)
         if (result instanceof Promise) {
           promises.push(result.catch(err => {
-            console.error(`[event-bus] Handler error for ${event.type}:`, err)
+            log.error({ err }, `Handler error for ${event.type}`)
           }))
         }
       } catch (err) {
-        console.error(`[event-bus] Sync handler error for ${event.type}:`, err)
+        log.error({ err }, `Sync handler error for ${event.type}`)
       }
     }
 
@@ -68,7 +71,7 @@ class ServerEventBus {
    */
   fire(event: DomainEvent): void {
     this.emit(event).catch(err => {
-      console.error(`[event-bus] Unhandled error in fire():`, err)
+      log.error({ err }, `Unhandled error in fire()`)
     })
   }
 

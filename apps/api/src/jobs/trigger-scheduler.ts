@@ -17,6 +17,9 @@ import { processRevisionThinning } from './revision-thinning'
 import { processSubscriptionExpiration } from './subscription-expiration'
 import { processAdminDailyReport } from './admin-daily-report'
 import { serverEventBus, contentPublished } from '../lib/event-bus'
+import { moduleLogger } from '../lib/logger'
+
+const log = moduleLogger('trigger-scheduler')
 
 
 
@@ -66,7 +69,7 @@ export async function processScheduledReleases(): Promise<void> {
       ))
     }
   } catch (err) {
-    console.error('[trigger-scheduler] Failed to process scheduled releases:', err)
+    log.error({ err }, 'Failed to process scheduled releases')
   }
 }
 
@@ -82,7 +85,7 @@ export function startTriggerScheduler(): void {
   // Initialize tier dispatch (subscribes to content:available events)
   initTierDispatch()
 
-  console.log('[trigger-scheduler] Starting trigger scheduler (1-minute interval)')
+  log.info('Starting trigger scheduler (1-minute interval)')
 
   async function tick() {
     try {
@@ -115,13 +118,13 @@ export function startTriggerScheduler(): void {
     } catch (err) {
       // Without this, a throw from getInstalledBobbins (e.g. transient DB/DNS failure)
       // becomes an unhandled promise rejection on every setInterval firing.
-      console.error('[trigger-scheduler] Tick failed:', err)
+      log.error({ err }, 'Tick failed')
     }
   }
 
   intervalId = setInterval(tick, 60 * 1000)
   // Run once immediately
-  tick().catch(err => console.error('[trigger-scheduler] Initial tick failed:', err))
+  tick().catch(err => log.error({ err }, 'Initial tick failed'))
 }
 
 /**
@@ -131,6 +134,6 @@ export function stopTriggerScheduler(): void {
   if (intervalId) {
     clearInterval(intervalId)
     intervalId = null
-    console.log('[trigger-scheduler] Stopped trigger scheduler')
+    log.info('Stopped trigger scheduler')
   }
 }

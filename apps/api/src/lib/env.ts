@@ -1,3 +1,6 @@
+import { moduleLogger } from './logger'
+
+const log = moduleLogger('env')
 /**
  * Environment Variable Validation for API
  *
@@ -100,10 +103,8 @@ export function validateEnv(): EnvConfig {
   const recommended = recommendedEnvVars[nodeEnv] || []
   const missingRecommended = recommended.filter((name) => !process.env[name])
   if (missingRecommended.length > 0) {
-    console.warn(
-      `[env] Recommended environment variables are not set: ${missingRecommended.join(', ')}. ` +
-      `The features that depend on these will be disabled.`
-    )
+    log.warn(`Recommended environment variables are not set: ${missingRecommended.join(', ')}. ` +
+      `The features that depend on these will be disabled.`)
   }
 
   return {

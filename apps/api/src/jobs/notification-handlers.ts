@@ -26,6 +26,9 @@ import { liveEntity } from '../lib/entity-scope'
 import { eq, and } from 'drizzle-orm'
 import { serverEventBus, DomainEvent } from '../lib/event-bus'
 import { sendNewChapterEmail } from '../lib/email'
+import { moduleLogger } from '../lib/logger'
+
+const log = moduleLogger('notifications')
 
 async function handleContentPublished(event: DomainEvent): Promise<void> {
   const { isPublished } = event.payload
@@ -160,7 +163,7 @@ async function handleContentPublished(event: DomainEvent): Promise<void> {
         )
       }
     })().catch(err => {
-      console.warn('[notifications] Failed to send new chapter email:', err)
+      log.warn({ err }, 'Failed to send new chapter email')
     })
   }
 }
@@ -279,7 +282,7 @@ async function handleContentAvailable(event: DomainEvent): Promise<void> {
         )
       }
     })().catch(err => {
-      console.warn('[notifications] Failed to send public release email:', err)
+      log.warn({ err }, 'Failed to send public release email')
     })
   }
 }
@@ -287,5 +290,5 @@ async function handleContentAvailable(event: DomainEvent): Promise<void> {
 export function initNotificationHandlers(): void {
   serverEventBus.on('content:published', handleContentPublished)
   serverEventBus.on('content:available', handleContentAvailable)
-  console.log('[notifications] Initialized — listening for content:published, content:available events')
+  log.info('Initialized — listening for content:published, content:available events')
 }

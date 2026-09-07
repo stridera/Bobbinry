@@ -2,6 +2,9 @@ import { sql, eq } from 'drizzle-orm'
 import { bobbinsInstalled, manifestsVersions } from '../db/schema'
 import type { db as dbType } from '../db/connection'
 import { UUID_RE } from './slugs'
+import { moduleLogger } from './logger'
+
+const log = moduleLogger('bobbin-upgrade')
 
 export interface Migration {
   version: string
@@ -82,9 +85,7 @@ export async function checkAndUpgradeBobbin(
       const diskStr = stableStringify(diskManifest)
       const dbStr = stableStringify(installedRow.manifestJson)
       if (diskStr !== dbStr) {
-        console.log(
-          `[BOBBIN UPGRADE] ${installedRow.bobbinId}: syncing drifted manifest at version ${diskVersion}`
-        )
+        log.info(`${installedRow.bobbinId}: syncing drifted manifest at version ${diskVersion}`)
         await db.update(bobbinsInstalled)
           .set({ manifestJson: diskManifest })
           .where(eq(bobbinsInstalled.id, installedRow.id))
@@ -117,11 +118,11 @@ export async function checkAndUpgradeBobbin(
           throw new Error(`Invalid project ID format: ${projectId}`)
         }
 
-        console.log(`[BOBBIN UPGRADE] ${logCtx}`)
+        log.info(`${logCtx}`)
         for (let i = 0; i < migrations.length; i++) {
           const migration = migrations[i]!
           const migrationSql = migration.up.replaceAll('{{project_id}}', projectId)
-          console.log(`  Migration ${i + 1}/${migrations.length}: "${migration.description}" — running`)
+          log.info(`  Migration ${i + 1}/${migrations.length}: "${migration.description}" — running`)
 
           // Safety: only allow whitelisted SQL statement types in bobbin migrations
           const firstWord = migrationSql.trimStart().split(/\s/)[0]?.toUpperCase()
@@ -132,7 +133,7 @@ export async function checkAndUpgradeBobbin(
 
           await tx.execute(sql.raw(migrationSql))
 
-          console.log(`  Migration ${i + 1}/${migrations.length}: "${migration.description}" — OK`)
+          log.info(`  Migration ${i + 1}/${migrations.length}: "${migration.description}" — OK`)
         }
       }
 
@@ -148,9 +149,9 @@ export async function checkAndUpgradeBobbin(
 
     const elapsed = Date.now() - startTime
     if (migrations.length > 0) {
-      console.log(`  Completed in ${elapsed}ms`)
+      log.info(`  Completed in ${elapsed}ms`)
     } else {
-      console.log(`[BOBBIN UPGRADE] ${logCtx} — no migrations, ${elapsed}ms`)
+      log.info(`${logCtx} — no migrations, ${elapsed}ms`)
     }
 
     return {
@@ -161,9 +162,9 @@ export async function checkAndUpgradeBobbin(
       success: true
     }
   } catch (error: any) {
-    console.error(`[BOBBIN UPGRADE] ${logCtx}`)
-    console.error(`  FAILED: ${error.message}`)
-    console.error(`  Transaction rolled back. Project stays on ${installedVersion}`)
+    log.error(`${logCtx}`)
+    log.error(`  FAILED: ${error.message}`)
+    log.error(`  Transaction rolled back. Project stays on ${installedVersion}`)
 
     return {
       bobbinId,

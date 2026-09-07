@@ -16,6 +16,9 @@ import { projects, projectCollections, entities } from '../db/schema'
 import { and, inArray, isNotNull, lt } from 'drizzle-orm'
 import { TRASH_RETENTION_MS } from '../lib/entity-scope'
 import { changeEventFromRow, recordEntityChanges, type EntityChangeEvent } from '../lib/entity-changes'
+import { moduleLogger } from '../lib/logger'
+
+const log = moduleLogger('trash-purge')
 
 /** Rows deleted per statement. Small enough to stay well inside the timeout. */
 const ENTITY_BATCH_SIZE = 500
@@ -95,15 +98,13 @@ export async function processTrashPurge(): Promise<void> {
 
     const total = deletedProjects.length + deletedCollections.length + purgedEntities
     if (total > 0) {
-      console.log(
-        `[trash-purge] Purged ${deletedProjects.length} projects, ` +
-        `${deletedCollections.length} collections, ${purgedEntities} entities`
-      )
+      log.info(`Purged ${deletedProjects.length} projects, ` +
+        `${deletedCollections.length} collections, ${purgedEntities} entities`)
       if (purgedEntities >= ENTITY_MAX_PER_RUN) {
-        console.log(`[trash-purge] Hit the ${ENTITY_MAX_PER_RUN}-entity cap; remainder purges next run`)
+        log.info(`Hit the ${ENTITY_MAX_PER_RUN}-entity cap; remainder purges next run`)
       }
     }
   } catch (err) {
-    console.error('[trash-purge] Failed to purge trash:', err)
+    log.error({ err }, 'Failed to purge trash')
   }
 }

@@ -32,6 +32,9 @@
 
 import { entityChanges } from '../db/schema'
 import type { db } from '../db/connection'
+import { moduleLogger } from './logger'
+
+const log = moduleLogger('entity-changes')
 
 /** Anything with Drizzle's `insert` — the db singleton or a transaction. */
 type Executor = Pick<typeof db, 'insert'>
@@ -210,7 +213,7 @@ export async function recordEntityChangesSafe(executor: Executor, events: Entity
   try {
     await recordEntityChanges(executor, events)
   } catch (err) {
-    console.error('[entity-changes] Failed to record change events:', err)
+    log.error({ err }, 'Failed to record change events')
   }
 }
 

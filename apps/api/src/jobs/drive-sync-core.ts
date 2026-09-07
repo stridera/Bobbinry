@@ -15,6 +15,9 @@ import { eq, and } from 'drizzle-orm'
 import { db } from '../db/connection'
 import { entities, projectDestinations, projects, userBobbinsInstalled } from '../db/schema'
 import { notDeleted } from '../lib/entity-scope'
+import { moduleLogger } from '../lib/logger'
+
+const log = moduleLogger('drive-sync')
 
 /** Projects with a sync currently in flight (mutual exclusion across all paths). */
 const syncingProjects = new Set<string>()
@@ -33,11 +36,6 @@ export interface RunSyncResult {
   error?: string
 }
 
-const log = {
-  info: (obj: any, msg?: string) => console.log(`[drive-sync] ${msg || ''}`, obj),
-  warn: (obj: any, msg?: string) => console.warn(`[drive-sync] ${msg || ''}`, obj),
-  error: (obj: any, msg?: string) => console.error(`[drive-sync] ${msg || ''}`, obj),
-}
 
 /**
  * Sync a project's entities to Google Drive.
@@ -201,11 +199,11 @@ export async function runProjectSync(
       failed > 0 ? `${failed} of ${rows.length} ${rows.length === 1 ? 'item' : 'items'} failed` : null
 
     await writeStatus(projectId, status, error)
-    console.log(`[drive-sync] Project ${projectId}: synced ${succeeded}/${rows.length} entities`)
+    log.info(`Project ${projectId}: synced ${succeeded}/${rows.length} entities`)
 
     return { status, succeeded, failed, total: rows.length, ...(error ? { error } : {}) }
   } catch (err) {
-    console.error(`[drive-sync] Sync failed for project ${projectId}:`, err)
+    log.error({ err }, `Sync failed for project ${projectId}`)
     await writeStatus(projectId, 'failed', 'Sync failed unexpectedly').catch(() => {})
     return { status: 'failed', succeeded: 0, failed: 0, total: 0, error: String(err) }
   } finally {

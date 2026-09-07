@@ -12,6 +12,9 @@
 
 import { serverEventBus, type DomainEvent } from '../lib/event-bus'
 import { runProjectSync } from './drive-sync-core'
+import { moduleLogger } from '../lib/logger'
+
+const log = moduleLogger('drive-sync')
 
 const DEBOUNCE_MS = 5 * 60 * 1000   // 5 minutes
 const MAX_INTERVAL_MS = 30 * 60 * 1000 // 30 minutes
@@ -49,7 +52,7 @@ async function performSync(projectId: string): Promise<void> {
       state.lastSyncedAt = Date.now()
     }
   } catch (error) {
-    console.error(`[drive-sync] Sync failed for project ${projectId}:`, error)
+    log.error({ err: error }, `Sync failed for project ${projectId}`)
     for (const id of entityIds) state.dirtyEntityIds.add(id)
   } finally {
     // Clean up state if nothing is dirty and no max-interval timer is pending
@@ -90,5 +93,5 @@ function handleContentEdited(event: DomainEvent): void {
 
 export function initDriveSyncHandler(): void {
   serverEventBus.on('content:edited', handleContentEdited)
-  console.log('[drive-sync] Initialized — listening for content:edited events')
+  log.info('Initialized — listening for content:edited events')
 }

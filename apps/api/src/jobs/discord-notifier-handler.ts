@@ -11,6 +11,9 @@ import { projects, entities, users, userProfiles, projectDestinations, embargoSc
 import { liveEntity } from '../lib/entity-scope'
 import { eq, and } from 'drizzle-orm'
 import { sendWebhook, buildChapterEmbed } from '../lib/discord-api'
+import { moduleLogger } from '../lib/logger'
+
+const log = moduleLogger('discord-notifier')
 
 async function sendToMatchingDestinations(
   projectId: string,
@@ -86,7 +89,7 @@ async function sendToMatchingDestinations(
     }).where(eq(projectDestinations.id, dest.id))
 
     if (!result.success) {
-      console.warn(`[discord-notifier] Webhook failed for destination ${dest.id}: ${result.error}`)
+      log.warn(`Webhook failed for destination ${dest.id}: ${result.error}`)
     }
   }
 }
@@ -128,5 +131,5 @@ async function handleContentAvailable(event: DomainEvent): Promise<void> {
 export function initDiscordNotifierHandler(): void {
   serverEventBus.on('content:published', handleContentPublished)
   serverEventBus.on('content:available', handleContentAvailable)
-  console.log('[discord-notifier] Initialized — listening for content:published, content:available events')
+  log.info('Initialized — listening for content:published, content:available events')
 }

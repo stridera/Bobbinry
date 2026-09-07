@@ -43,6 +43,9 @@ import type { FastifyRequest } from 'fastify'
 import { entityRevisions } from '../db/schema'
 import type { db } from '../db/connection'
 import { countWordsFromHtml } from './text'
+import { moduleLogger } from './logger'
+
+const log = moduleLogger('entity-revisions')
 
 type Executor = Pick<typeof db, 'insert' | 'select' | 'update' | 'delete'>
 
@@ -202,7 +205,7 @@ export async function captureRevisionSafe(executor: Executor, input: CaptureRevi
   try {
     return await captureRevision(executor, input)
   } catch (err) {
-    console.error('[entity-revisions] Failed to capture revision:', err)
+    log.error({ err }, 'Failed to capture revision')
     return null
   }
 }

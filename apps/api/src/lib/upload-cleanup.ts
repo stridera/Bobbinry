@@ -3,6 +3,9 @@ import { db } from '../db/connection'
 import { uploads } from '../db/schema'
 import { deleteObject } from './s3'
 import { variantKey } from './image-variants'
+import { moduleLogger } from './logger'
+
+const log = moduleLogger('upload-cleanup')
 
 /**
  * Clean up old avatar uploads for a user.
@@ -42,6 +45,6 @@ export async function cleanupOldAvatarUploads(userId: string, excludeS3Key?: str
       .set({ status: 'removed', updatedAt: new Date() })
       .where(inArray(uploads.id, oldUploads.map(u => u.id)))
   } catch (err) {
-    console.warn('cleanupOldAvatarUploads failed (best-effort):', err)
+    log.warn({ err }, 'cleanupOldAvatarUploads failed (best-effort)')
   }
 }

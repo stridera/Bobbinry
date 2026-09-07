@@ -22,6 +22,9 @@ import {
 } from '../db/schema'
 import { eq, and, sql } from 'drizzle-orm'
 import { serverEventBus, contentAvailable } from '../lib/event-bus'
+import { moduleLogger } from '../lib/logger'
+
+const log = moduleLogger('tier-dispatch')
 
 /**
  * Registry for automation bobbin handlers.
@@ -47,7 +50,7 @@ export function registerAutomationHandler(
   handler: (ctx: AutomationContext) => Promise<void>
 ): void {
   automationHandlers[bobbinId] = handler
-  console.log(`[tier-dispatch] Registered automation handler: ${bobbinId}`)
+  log.info(`Registered automation handler: ${bobbinId}`)
 }
 
 /**
@@ -65,7 +68,7 @@ async function handleContentAvailable(event: {
   const tierLevel = event.payload.tierLevel as number
 
   if (!entityId || !tierId) {
-    console.warn('[tier-dispatch] Missing entityId or tierId in content:available event')
+    log.warn('Missing entityId or tierId in content:available event')
     return
   }
 
@@ -77,7 +80,7 @@ async function handleContentAvailable(event: {
     .limit(1)
 
   if (!project) {
-    console.warn(`[tier-dispatch] Project not found: ${projectId}`)
+    log.warn(`Project not found: ${projectId}`)
     return
   }
 
@@ -97,13 +100,13 @@ async function handleContentAvailable(event: {
       sql`${subscriptionTiers.tierLevel} >= ${tierLevel}`
     ))
 
-  console.log(`[tier-dispatch] Dispatching content:available for entity ${entityId} to ${subscribers.length} subscribers (tier >= ${tierLevel})`)
+  log.info(`Dispatching content:available for entity ${entityId} to ${subscribers.length} subscribers (tier >= ${tierLevel})`)
 
   for (const sub of subscribers) {
     try {
       await dispatchToUser(sub.subscriberId, projectId, entityId, tierId, tierLevel)
     } catch (err) {
-      console.error(`[tier-dispatch] Failed to dispatch to user ${sub.subscriberId}:`, err)
+      log.error({ err }, `Failed to dispatch to user ${sub.subscriberId}`)
     }
   }
 }
@@ -146,12 +149,12 @@ async function dispatchToUser(
             tierLevel,
             bobbinConfig: bobbin.config as Record<string, unknown> | null
           })
-          console.log(`[tier-dispatch] Automation ${bobbin.bobbinId} executed for user ${userId}`)
+          log.info(`Automation ${bobbin.bobbinId} executed for user ${userId}`)
         } catch (err) {
-          console.error(`[tier-dispatch] Automation ${bobbin.bobbinId} failed for user ${userId}:`, err)
+          log.error({ err }, `Automation ${bobbin.bobbinId} failed for user ${userId}`)
         }
       } else {
-        console.log(`[tier-dispatch] No automation handler for ${bobbin.bobbinId}`)
+        log.info(`No automation handler for ${bobbin.bobbinId}`)
       }
     }
     // Reader bobbins (reader_enhancement) don't need server-side dispatch —
@@ -212,7 +215,7 @@ export async function processEmbargoReleases(): Promise<void> {
 
           tierSchedule.dispatched = true
           hasUpdates = true
-          console.log(`[tier-dispatch] Content available: entity ${embargo.entityId}, tier ${tierSchedule.tierId}`)
+          log.info(`Content available: entity ${embargo.entityId}, tier ${tierSchedule.tierId}`)
         }
       }
 
@@ -225,7 +228,7 @@ export async function processEmbargoReleases(): Promise<void> {
           'public',
           0
         ))
-        console.log(`[tier-dispatch] Content publicly available: entity ${embargo.entityId}`)
+        log.info(`Content publicly available: entity ${embargo.entityId}`)
       }
 
       // Persist dispatched flags
@@ -237,7 +240,7 @@ export async function processEmbargoReleases(): Promise<void> {
       }
     }
   } catch (err) {
-    console.error('[tier-dispatch] Failed to process embargo releases:', err)
+    log.error({ err }, 'Failed to process embargo releases')
   }
 }
 
@@ -246,5 +249,5 @@ export async function processEmbargoReleases(): Promise<void> {
  */
 export function initTierDispatch(): void {
   serverEventBus.on('content:available', handleContentAvailable)
-  console.log('[tier-dispatch] Initialized — listening for content:available events')
+  log.info('Initialized — listening for content:available events')
 }

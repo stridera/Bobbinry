@@ -13,6 +13,9 @@ import { db } from '../db/connection'
 import { subscriptions, siteMemberships } from '../db/schema'
 import { eq, and, lt, inArray, isNotNull } from 'drizzle-orm'
 import { getStripe, getSubscriptionPeriod } from '../lib/stripe'
+import { moduleLogger } from '../lib/logger'
+
+const log = moduleLogger('subscription-expiration')
 
 /** Map Stripe statuses to our local status values. */
 function mapStripeStatus(stripeStatus: string): string {
@@ -33,7 +36,7 @@ export async function processSubscriptionExpiration(): Promise<void> {
       reconcileSiteMemberships(now),
     ])
   } catch (err) {
-    console.error('[subscription-expiration] Failed:', err)
+    log.error({ err }, 'Failed')
   }
 }
 
@@ -74,7 +77,7 @@ async function reconcileAuthorSubscriptions(now: Date): Promise<void> {
         }).where(eq(subscriptions.id, sub.id))
       }
     } catch (err) {
-      console.error(`[subscription-expiration] Failed to reconcile subscription ${sub.id}:`, err)
+      log.error({ err }, `Failed to reconcile subscription ${sub.id}`)
     }
   }))
 
@@ -104,16 +107,16 @@ async function reconcileAuthorSubscriptions(now: Date): Promise<void> {
             updatedAt: now,
           }).where(eq(subscriptions.id, sub.id))
 
-          console.log(`[subscription-expiration] Restored subscription ${sub.id} to active (Stripe recovered)`)
+          log.info(`Restored subscription ${sub.id} to active (Stripe recovered)`)
         }
       } catch (err) {
-        console.error(`[subscription-expiration] Failed to check stale subscription ${sub.id}:`, err)
+        log.error({ err }, `Failed to check stale subscription ${sub.id}`)
       }
     }))
   }
 
   if (expired.length > 0) {
-    console.log(`[subscription-expiration] Reconciled ${expired.length} expired author subscriptions`)
+    log.info(`Reconciled ${expired.length} expired author subscriptions`)
   }
 }
 
@@ -159,11 +162,11 @@ async function reconcileSiteMemberships(now: Date): Promise<void> {
         }).where(eq(siteMemberships.userId, mem.userId))
       }
     } catch (err) {
-      console.error(`[subscription-expiration] Failed to reconcile membership for user ${mem.userId}:`, err)
+      log.error({ err }, `Failed to reconcile membership for user ${mem.userId}`)
     }
   }))
 
   if (expired.length > 0) {
-    console.log(`[subscription-expiration] Reconciled ${expired.length} expired site memberships`)
+    log.info(`Reconciled ${expired.length} expired site memberships`)
   }
 }

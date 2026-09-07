@@ -1,3 +1,6 @@
+import { moduleLogger } from './logger'
+
+const log = moduleLogger('discord-api')
 /**
  * Discord REST API Client
  *
@@ -83,7 +86,7 @@ async function discordFetch(
     if (resp.status === 429) {
       const body = await resp.json() as { retry_after?: number }
       const retryAfter = (body.retry_after || 1) * 1000
-      console.warn(`[discord-api] Rate limited on ${bucket}, retrying in ${retryAfter}ms`)
+      log.warn(`Rate limited on ${bucket}, retrying in ${retryAfter}ms`)
       await new Promise(resolve => setTimeout(resolve, retryAfter))
       continue
     }
@@ -182,7 +185,7 @@ export async function searchGuildMember(
 
   if (!resp.ok) {
     const text = await resp.text()
-    console.error(`[discord-api] searchGuildMember failed: ${resp.status} ${text}`)
+    log.error(`searchGuildMember failed: ${resp.status} ${text}`)
     return null
   }
 
@@ -232,7 +235,7 @@ export async function getGuildRoles(
   const resp = await discordFetch(url, { method: 'GET', botToken }, `guild:${guildId}:roles`)
 
   if (!resp.ok) {
-    console.error(`[discord-api] getGuildRoles failed: ${resp.status}`)
+    log.error(`getGuildRoles failed: ${resp.status}`)
     return null
   }
 

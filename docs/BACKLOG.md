@@ -8,13 +8,6 @@ Last reviewed: 2026-09-06 (end of the `fix/slop-review-security` cleanup).
 
 ## A. Left over from the September 2026 quality review
 
-### A3. Logger boundary
-`apps/api/src/lib/logger.ts` exists but 77 `console.*` calls remain in
-`apps/api/src/jobs` and `apps/api/src/lib`. Fix: an ESLint `no-console` rule
-scoped to `apps/api/src` (allowing `lib/logger.ts` and scripts), then
-mechanical replacement with `logger.info/warn/error`, keeping structured
-fields where the message interpolated ids.
-
 ### A4. Live `process.env` reads
 `apps/api/src/lib/env.ts` snapshots at import, so `NEXTAUTH_SECRET` in
 `middleware/auth.ts#getJwtSecret()` and seven `WEB_ORIGIN` reads (with a

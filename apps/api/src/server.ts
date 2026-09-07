@@ -1,6 +1,7 @@
-import Fastify, { FastifyInstance, FastifyRequest } from 'fastify'
+import Fastify, { FastifyInstance, FastifyRequest, FastifyBaseLogger } from 'fastify'
 import { ZodError } from 'zod'
 import { ApiError } from './lib/errors'
+import { logger } from './lib/logger'
 import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
 import rateLimit from '@fastify/rate-limit'
@@ -55,32 +56,11 @@ import sjson from 'secure-json-parse'
 
 export function build(opts = {}): FastifyInstance {
   const server = Fastify({
-    logger: process.env.NODE_ENV === 'test' ? false : {
-      level: process.env.LOG_LEVEL || 'info',
-      serializers: {
-        req: (req) => ({
-          method: req.method,
-          url: req.url,
-          hostname: req.hostname,
-          remoteAddress: req.ip,
-          headers: {
-            'user-agent': req.headers['user-agent'],
-            'x-correlation-id': req.headers['x-correlation-id'],
-            'content-type': req.headers['content-type']
-          }
-        }),
-        res: (res) => ({
-          statusCode: res.statusCode
-        }),
-        err: (err) => ({
-          type: err.constructor.name,
-          message: err.message,
-          stack: process.env.NODE_ENV === 'development' ? (err.stack || '') : '',
-          code: err.code,
-          statusCode: err.statusCode
-        })
-      }
-    },
+    // Requests log through the shared pino instance (lib/logger.ts) so job
+    // and request lines share one format. Silent under jest.
+    // Cast keeps `build()` on Fastify's default instance type; pino's Logger is
+    // structurally a FastifyBaseLogger but its generics leak into every route type.
+    loggerInstance: logger as unknown as FastifyBaseLogger,
     genReqId: () => randomUUID(),
     // Fly (prod) and Caddy (dev) are the single proxy hop in front of the API.
     // Without this `request.ip` is the proxy address, so rate limiting shares

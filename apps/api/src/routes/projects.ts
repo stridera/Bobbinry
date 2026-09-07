@@ -10,6 +10,9 @@ import { checkAndUpgradeBobbin, type UpgradeResult } from '../lib/bobbin-upgrade
 import { loadDiskManifests, loadManifestFromBobbinsPath } from '../lib/disk-manifests'
 import { getEffectiveBobbins } from '../lib/effective-bobbins'
 import { pickDefined } from '../lib/pick'
+import { moduleLogger } from '../lib/logger'
+
+const log = moduleLogger('bobbin-install')
 
 // Bobbins auto-installed on every new project and protected from uninstall.
 // Source of truth is each bobbin's manifest `core: true` flag; this list keeps
@@ -189,16 +192,16 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
 
       // Parse manifest
       let manifest
-      console.log('[BOBBIN INSTALL] Parsing manifest...')
+      log.debug('Parsing manifest...')
       try {
         if (type === 'yaml') {
           manifest = parseYAML(content)
         } else {
           manifest = JSON.parse(content)
         }
-        console.log('[BOBBIN INSTALL] Parsed manifest has extensions:', !!manifest.extensions)
+        log.debug({ hasExtensions: !!manifest.extensions }, 'Parsed manifest')
         if (manifest.extensions) {
-          console.log('[BOBBIN INSTALL] Extensions:', JSON.stringify(manifest.extensions, null, 2))
+          log.debug({ extensions: manifest.extensions }, 'Parsed extensions')
         }
       } catch (parseError) {
         return reply.status(400).send({
@@ -211,9 +214,9 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
       const compiler = new ManifestCompiler({ projectId })
       const result = await compiler.compile(manifest)
       
-      console.log('[BOBBIN INSTALL] After compilation, manifest has extensions:', !!manifest.extensions)
+      log.debug({ hasExtensions: !!manifest.extensions }, 'Compiled manifest')
       if (manifest.extensions) {
-        console.log('[BOBBIN INSTALL] Extensions after compilation:', JSON.stringify(manifest.extensions, null, 2))
+        log.debug({ extensions: manifest.extensions }, 'Compiled extensions')
       }
 
       if (!result.success) {

@@ -10,6 +10,9 @@
 import { parse as parseYAML } from 'yaml'
 import * as path from 'path'
 import * as fs from 'fs/promises'
+import { moduleLogger } from './logger'
+
+const log = moduleLogger('disk-manifest')
 
 // In-memory cache of parsed disk manifests, keyed by bobbinId.
 // Invalidated on server restart (which happens on every deploy).
@@ -116,7 +119,7 @@ export async function loadDiskManifests(bobbinIds: string[]): Promise<Map<string
       if (result.status === 'fulfilled') {
         manifestCache.set(result.value.bobbinId, result.value.manifest)
       } else if (!(result.reason as NodeJS.ErrnoException)?.code?.startsWith('ENOENT')) {
-        console.error('[DISK MANIFEST] Failed to read manifest from disk:', result.reason)
+        log.error({ err: result.reason }, 'Failed to read manifest from disk')
       }
     }
   }

@@ -18,6 +18,9 @@
 import { db } from '../db/connection'
 import { entities } from '../db/schema'
 import { eq, and, sql } from 'drizzle-orm'
+import { moduleLogger } from './logger'
+
+const log = moduleLogger('seed-templates')
 
 const COLLECTION = 'shared_templates'
 const BOBBIN_ID = 'entities'
@@ -82,7 +85,7 @@ export async function seedOfficialTemplates(): Promise<void> {
           published_at: new Date().toISOString(),
         },
       })
-      console.log(`[SeedTemplates] Created official template: ${tmpl.label} (${tmpl.shareId})`)
+      log.info(`Created official template: ${tmpl.label} (${tmpl.shareId})`)
     } else {
       // Update version if code is newer
       const dbVersion = (existing[0]!.entityData as any)?.version || 0
@@ -99,7 +102,7 @@ export async function seedOfficialTemplates(): Promise<void> {
             })}::jsonb`,
           })
           .where(eq(entities.id, existing[0]!.id))
-        console.log(`[SeedTemplates] Updated official template version: ${tmpl.label} v${dbVersion} → v${tmpl.version}`)
+        log.info(`Updated official template version: ${tmpl.label} v${dbVersion} → v${tmpl.version}`)
       }
     }
   }

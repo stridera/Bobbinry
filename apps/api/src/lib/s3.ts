@@ -8,6 +8,9 @@
 import { S3Client, HeadBucketCommand, CreateBucketCommand, PutBucketCorsCommand, HeadObjectCommand, DeleteObjectCommand, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { env } from './env'
+import { moduleLogger } from './logger'
+
+const log = moduleLogger('s3')
 
 let _client: S3Client | null = null
 let _presignClient: S3Client | null = null
@@ -72,10 +75,10 @@ export async function ensureBucketExists(): Promise<void> {
           },
         }))
       } catch (corsErr) {
-        console.warn(`Could not set CORS on bucket ${bucket} (expected on R2):`, (corsErr as Error).message)
+        log.warn({ err: (corsErr as Error).message }, `Could not set CORS on bucket ${bucket} (expected on R2)`)
       }
 
-      console.log(`Created S3 bucket: ${bucket}`)
+      log.info(`Created S3 bucket: ${bucket}`)
     } else {
       throw err
     }

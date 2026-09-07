@@ -38,6 +38,9 @@ import { eq, and, sql, count, gt, isNull, notInArray } from 'drizzle-orm'
 import { sendEmail, buildAdminDailyReportHtml, buildAdminDailyReportText } from '../lib/email'
 import { env } from '../lib/env'
 import { notDeleted } from '../lib/entity-scope'
+import { moduleLogger } from '../lib/logger'
+
+const log = moduleLogger('admin-daily-report')
 
 const JOB_NAME = 'admin_daily_report'
 const FIRE_HOUR_UTC = 14
@@ -294,14 +297,14 @@ export async function processAdminDailyReport(
       report.pendingComments > 0
 
     if (!hasGrowth && !hasErrors) {
-      console.log('[admin-daily-report] Nothing to report, skipping email')
+      log.info('Nothing to report, skipping email')
       await recordTerminal('skipped', null)
       return { ok: true, claimed: true, skipped: 'no_growth' }
     }
 
     const adminEmails = await getAdminEmails()
     if (adminEmails.length === 0) {
-      console.log('[admin-daily-report] No admin emails found, skipping')
+      log.info('No admin emails found, skipping')
       await recordTerminal('skipped', null)
       return { ok: true, claimed: true, skipped: 'no_admins' }
     }
@@ -333,18 +336,18 @@ export async function processAdminDailyReport(
     })
 
     if (sent) {
-      console.log(`[admin-daily-report] Sent report to ${adminEmails.length} admin(s)`)
+      log.info(`Sent report to ${adminEmails.length} admin(s)`)
       await recordTerminal('success', null, now)
       return { ok: true, claimed: true, sent: true }
     }
 
     const errMsg = 'sendEmail returned false (missing RESEND_API_KEY or upstream error)'
-    console.error(`[admin-daily-report] ${errMsg}`)
+    log.error(`${errMsg}`)
     await recordTerminal('failed', errMsg)
     return { ok: false, claimed: true, sent: false, error: errMsg }
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err)
-    console.error('[admin-daily-report] Failed to send daily report:', err)
+    log.error({ err }, 'Failed to send daily report')
     await recordTerminal('failed', errMsg).catch(() => {})
     return { ok: false, claimed: true, error: errMsg }
   }

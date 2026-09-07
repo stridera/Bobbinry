@@ -10,6 +10,9 @@ import { db } from '../db/connection'
 import { userProfiles, userBobbinsInstalled } from '../db/schema'
 import { eq, and } from 'drizzle-orm'
 import { searchGuildMember, addRole, removeRole } from '../lib/discord-api'
+import { moduleLogger } from '../lib/logger'
+
+const log = moduleLogger('discord-roles')
 
 async function getAuthorRolesConfig(authorId: string) {
   const [bobbin] = await db
@@ -68,7 +71,7 @@ async function handleSubscriptionChanged(event: DomainEvent): Promise<void> {
         if (m.roleId) {
           const result = await removeRole(config.botToken, config.guildId, member.user.id, m.roleId)
           if (!result.success) {
-            console.warn(`[discord-roles] Failed to remove role ${m.roleId} from ${subscriberId}: ${result.error}`)
+            log.warn(`Failed to remove role ${m.roleId} from ${subscriberId}: ${result.error}`)
           }
         }
       }
@@ -102,7 +105,7 @@ async function handleSubscriptionChanged(event: DomainEvent): Promise<void> {
     if (roleMapping?.roleId) {
       const result = await addRole(config.botToken, config.guildId, member.user.id, roleMapping.roleId)
       if (!result.success) {
-        console.warn(`[discord-roles] Failed to assign role ${roleMapping.roleId} to ${subscriberId}: ${result.error}`)
+        log.warn(`Failed to assign role ${roleMapping.roleId} to ${subscriberId}: ${result.error}`)
       }
     }
 
@@ -134,5 +137,5 @@ async function handleSubscriptionChanged(event: DomainEvent): Promise<void> {
 
 export function initDiscordRolesHandler(): void {
   serverEventBus.on('subscription:changed', handleSubscriptionChanged)
-  console.log('[discord-roles] Initialized — listening for subscription:changed events')
+  log.info('Initialized — listening for subscription:changed events')
 }

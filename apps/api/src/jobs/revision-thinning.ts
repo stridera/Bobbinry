@@ -32,6 +32,9 @@ import {
   SUPPORTER_REVISION_CAP,
   SUPPORTER_REVISION_DAILY_DAYS,
 } from '../lib/membership'
+import { moduleLogger } from '../lib/logger'
+
+const log = moduleLogger('revision-thinning')
 
 const JOB_NAME = 'revision-thinning'
 
@@ -86,7 +89,7 @@ async function runPass(name: string, statement: () => Promise<number>): Promise<
     if (removed < BATCH_SIZE) break
   }
   if (total >= MAX_PER_PASS) {
-    console.log(`[revision-thinning] ${name} hit the ${MAX_PER_PASS} cap; remainder next run`)
+    log.info(`${name} hit the ${MAX_PER_PASS} cap; remainder next run`)
   }
   return total
 }
@@ -243,13 +246,11 @@ export async function processRevisionThinning(options?: { force?: boolean }): Pr
 
     const total = duplicates + free + supporter + capped + cappedLabeled
     if (total > 0) {
-      console.log(
-        `[revision-thinning] Removed ${total} revisions ` +
+      log.info(`Removed ${total} revisions ` +
         `(duplicates ${duplicates}, free ${free}, supporter ${supporter}, ` +
-        `caps ${capped}, labeled caps ${cappedLabeled})`
-      )
+        `caps ${capped}, labeled caps ${cappedLabeled})`)
     }
   } catch (err) {
-    console.error('[revision-thinning] Failed:', err)
+    log.error({ err }, 'Failed')
   }
 }
