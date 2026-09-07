@@ -18,29 +18,29 @@
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "react": "^19.0.0"
+    "react": "^19.2.8"
   },
   "dependencies": {
     "@bobbinry/sdk": "workspace:*",
     "@bobbinry/types": "workspace:*",
     "@bobbinry/ui-components": "workspace:*",
-    "@tiptap/core": "^3.30.2",
-    "@tiptap/extension-character-count": "^3.30.2",
-    "@tiptap/extension-image": "^3.30.2",
-    "@tiptap/extension-placeholder": "^3.30.2",
-    "@tiptap/extension-text-align": "^3.30.2",
-    "@tiptap/pm": "^3.30.2",
-    "@tiptap/react": "^3.30.2",
-    "@tiptap/starter-kit": "^3.30.2"
+    "@tiptap/core": "^3.31.3",
+    "@tiptap/extension-character-count": "^3.31.3",
+    "@tiptap/extension-image": "^3.31.3",
+    "@tiptap/extension-placeholder": "^3.31.3",
+    "@tiptap/extension-text-align": "^3.31.3",
+    "@tiptap/pm": "^3.31.3",
+    "@tiptap/react": "^3.31.3",
+    "@tiptap/starter-kit": "^3.31.3"
   },
   "devDependencies": {
-    "@jest/globals": "^30.3.0",
-    "@testing-library/jest-dom": "^7.0.0",
-    "@testing-library/react": "^16.3.0",
+    "@jest/globals": "^30.5.1",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
     "@types/jest": "^30.0.0",
     "@types/react": "^19.2.18",
-    "jest": "^30.3.0",
-    "ts-jest": "^29.4.6",
+    "jest": "^30.5.1",
+    "ts-jest": "^29.4.12",
     "typescript": "6.0.3"
   }
 }
