@@ -189,12 +189,18 @@ const betaReadersRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Invalid beta reader ID format' })
       }
 
-      await db
+      const deleted = await db
         .delete(betaReaders)
         .where(and(
           eq(betaReaders.id, betaReaderId),
           eq(betaReaders.authorId, userId)
         ))
+        .returning({ id: betaReaders.id })
+      // Like PUT and invite revocation: a row the caller does not own is a 404,
+      // not a success that deleted nothing.
+      if (deleted.length === 0) {
+        return reply.status(404).send({ error: 'Beta reader not found' })
+      }
 
       return reply.status(200).send({ success: true })
     } catch (error) {
