@@ -4,17 +4,9 @@ Known work that is understood but not yet done. Each item says what is wrong,
 why it matters, and what the fix looks like, so it can be picked up cold.
 Items leave this file when they land; history is in git.
 
-Last reviewed: 2026-09-06 (end of the `fix/slop-review-security` cleanup).
+Last reviewed: 2026-09-07 (after the `fix/slop-review-security` cleanup and its follow-ups).
 
 ## D. Verify / housekeeping
-
-### D1. `entities.last_edited_at` may not be written on update
-Single-row observation on prod (2026-08-06): `updated_at` current,
-`last_edited_at` at creation time. `entities_last_edited_idx` exists to serve
-"recently edited" sorts, which would silently return creation order. Check
-the update path in `apps/api/src/routes/entities.ts`; if confirmed, set
-`lastEditedAt` there and backfill
-`SET last_edited_at = updated_at WHERE last_edited_at < updated_at`.
 
 ### D2. `@types/html-to-text` pinned to 9.x while runtime is 10.x
 No v10 typings on DefinitelyTyped yet; compiles because the API is

@@ -316,6 +316,13 @@
       "when": 1788581985750,
       "tag": "0045_drop_unused_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1788740799845,
+      "tag": "0046_backfill_last_edited_at",
+      "breakpoints": true
     }
   ]
 }

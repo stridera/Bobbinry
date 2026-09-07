@@ -262,6 +262,9 @@ const searchReplacePlugin: FastifyPluginAsync = async (fastify) => {
               entityData: nextData,
               version: row.version + 1,
               updatedAt: new Date(),
+              // A replacement is a content edit, so the recently-edited lists must see it.
+              lastEditedAt: new Date(),
+              lastEditedBy: userId,
             })
             .where(and(
               eq(entities.id, entityId),
