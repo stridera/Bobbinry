@@ -67,8 +67,10 @@ export async function resolveAuthor(identifier: string): Promise<ResolvedAuthor 
     .where(eq(userProfiles.username, identifier))
     .limit(1)
 
-  // 2. Try as a user ID
-  if (!author) {
+  // 2. Try as a user ID. Only for UUID-shaped identifiers: Postgres rejects a
+  // plain unknown username as invalid uuid input, which surfaced as a 500 on
+  // anonymous traffic instead of the 404 below.
+  if (!author && UUID_RE.test(identifier)) {
     [author] = await db
       .select({
         userId: userProfiles.userId,
@@ -85,7 +87,7 @@ export async function resolveAuthor(identifier: string): Promise<ResolvedAuthor 
   }
 
   // 3. Last resort: users table directly (no profile created yet)
-  if (!author) {
+  if (!author && UUID_RE.test(identifier)) {
     const [user] = await db
       .select({ id: users.id, name: users.name })
       .from(users)
