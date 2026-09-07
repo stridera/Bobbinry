@@ -18,20 +18,20 @@
     "@bobbinry/types": "workspace:*"
   },
   "peerDependencies": {
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   },
   "devDependencies": {
     "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
-    "@jest/globals": "^30.3.0",
-    "@testing-library/jest-dom": "^7.0.0",
-    "@testing-library/react": "^16.3.0",
+    "@types/react-dom": "^19.2.7",
+    "@jest/globals": "^30.5.1",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
     "@types/jest": "^30.0.0",
-    "@types/node": "^26",
-    "jest": "^30.3.0",
-    "jest-environment-jsdom": "^30.3.0",
-    "ts-jest": "^29.4.6",
+    "@types/node": "^26.4.1",
+    "jest": "^30.5.1",
+    "jest-environment-jsdom": "^30.5.1",
+    "ts-jest": "^29.4.12",
     "typescript": "6.0.3"
   }
 }
