@@ -2,7 +2,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { db } from '../../db/connection'
 import { userProfiles, users } from '../../db/schema'
-import { eq, inArray } from 'drizzle-orm'
+import { eq, and, ne, inArray } from 'drizzle-orm'
 import { requireAuth, requireSelf } from '../../middleware/auth'
 import { cleanupOldAvatarUploads } from '../../lib/upload-cleanup'
 import { isUuid as isValidUUID } from '../../lib/slugs'
@@ -132,6 +132,18 @@ const profilesRoutes: FastifyPluginAsync = async (fastify) => {
         const reserved = ['admin', 'api', 'read', 'explore', 'dashboard', 'settings', 'publish', 'login', 'signup', 'marketplace', 'library', 'u', 'auth', 'null', 'undefined']
         if (reserved.includes(uname.toLowerCase())) {
           return reply.status(400).send({ error: 'This username is reserved' })
+        }
+
+        // Claiming a name someone else holds is a conflict, not a server
+        // error: without this the unique index threw and the generic catch
+        // turned an everyday signup collision into a 500.
+        const [taken] = await db
+          .select({ userId: userProfiles.userId })
+          .from(userProfiles)
+          .where(and(eq(userProfiles.username, uname), ne(userProfiles.userId, userId)))
+          .limit(1)
+        if (taken) {
+          return reply.status(409).send({ error: 'This username is already taken' })
         }
       }
 
