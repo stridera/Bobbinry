@@ -249,7 +249,14 @@ const dashboardPlugin: FastifyPluginAsync = async (fastify) => {
             total: sql<string>`COUNT(*)::text`
           })
           .from(entities)
-          .where(and(inArray(entities.projectId, projectIds), notDeleted()))
+          // Type definitions are the project's schema, not content the author
+          // wrote; the recently-edited list below excludes them for the same
+          // reason, and counting them here inflated the headline figure.
+          .where(and(
+            inArray(entities.projectId, projectIds),
+            ne(entities.collectionName, 'entity_type_definitions'),
+            notDeleted()
+          ))
         
         if (stats) {
           entityStats = stats

@@ -12,3 +12,9 @@ Last reviewed: 2026-09-07 (after the `fix/slop-review-security` cleanup and its 
 No v10 typings on DefinitelyTyped yet; compiles because the API is
 compatible. Check `npm view @types/html-to-text version` occasionally and
 bump `apps/api/package.json` when 10.x appears.
+
+## Test coverage log
+
+Routes and modules that gained tests, newest last. Bugs found while writing
+them are fixed in the same commit.
+- 2026-09-08 `routes/dashboard.ts` (35 cases: stats, project lists and grouping, recent activity, archive, short URLs, trash lifecycle) — dashboard entity count no longer includes `entity_type_definitions`, which the same file treats as internal elsewhere.
