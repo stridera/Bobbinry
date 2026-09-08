@@ -28,6 +28,7 @@ them are fixed in the same commit.
 - 2026-09-08 `routes/user-bobbins.ts` (20 cases: global-scope enforcement, schema validation, path traversal refused outside bobbins/, idempotent re-install, per-user isolation on list and uninstall, rows whose manifest left disk). No route changes needed.
 - 2026-09-08 `lib/release-schedule.ts` + `jobs/subscription-expiration.ts` + `jobs/tier-dispatch.ts` (44 cases: every cadence and slot-search branch, expiry reconciliation against a mocked Stripe, embargo dispatch) — an expired site membership backed by a Stripe subscription is no longer force-expired when Stripe is simply unconfigured.
 - 2026-09-08 `routes/google-drive.ts` (22 cases: signed OAuth state, encrypted token storage, status, per-project opt-in, manual sync success and failure). No route changes needed.
+- 2026-09-08 `components/ShellLayout.tsx` (8 cases: panel geometry from stored preferences, collapse persistence, account sync started once with the token, revealOn dispatch and re-subscription, focus mode and its Esc exit and floating panel). No component changes needed.
 
 ## Open questions from test writing
 
