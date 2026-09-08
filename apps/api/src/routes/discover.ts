@@ -497,7 +497,13 @@ async function enrichProjects(rows: Array<{
       totalViews: sql<number>`COALESCE(SUM(${chapterPublications.viewCount}), 0)`
     })
     .from(chapterPublications)
-    .where(sql`${chapterPublications.projectId} IN (${sql.join(projectIds.map(id => sql`${id}`), sql`, `)})`)
+    // Published rows only: this is an anonymous browse listing, so counting a
+    // retracted or not-yet-published chapter both overstates the total and
+    // tells the world an unpublished chapter exists.
+    .where(and(
+      sql`${chapterPublications.projectId} IN (${sql.join(projectIds.map(id => sql`${id}`), sql`, `)})`,
+      eq(chapterPublications.isPublished, true)
+    ))
     .groupBy(chapterPublications.projectId)
 
   const statsByProject = new Map<string, { chapterCount: number; totalViews: number }>()
