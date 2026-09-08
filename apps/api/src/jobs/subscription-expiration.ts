@@ -154,7 +154,18 @@ async function reconcileSiteMemberships(now: Date): Promise<void> {
             updatedAt: now,
           }).where(eq(siteMemberships.userId, mem.userId))
         }
+      } else if (mem.stripeSubscriptionId) {
+        // Stripe-backed, but our client is not configured, so we cannot tell
+        // whether it renewed. Leave it alone — downgrading a paying member
+        // because of our own missing configuration is not recoverable from
+        // here, and it is what reconcileAuthorSubscriptions already does.
+        log.warn(
+          { userId: mem.userId },
+          'Skipping expired site membership: Stripe is not configured, cannot verify renewal'
+        )
       } else {
+        // No Stripe subscription behind it (admin-granted, comped): nothing
+        // can renew it, so the period end is authoritative.
         await db.update(siteMemberships).set({
           tier: 'free',
           status: 'expired',
