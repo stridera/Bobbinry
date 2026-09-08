@@ -270,10 +270,16 @@ const templatesPlugin: FastifyPluginAsync = async (fastify) => {
       const isAuthor = templateData.author_id === user.id
       let isAdmin = false
       if (!isAuthor) {
+        // Revoked and expired badges must not carry rights — the same filter
+        // lib/membership.ts#getUserBadges applies everywhere else.
         const badges = await db
           .select({ badge: userBadges.badge })
           .from(userBadges)
-          .where(eq(userBadges.userId, user.id))
+          .where(and(
+            eq(userBadges.userId, user.id),
+            eq(userBadges.isActive, true),
+            sql`(${userBadges.expiresAt} IS NULL OR ${userBadges.expiresAt} > NOW())`
+          ))
         isAdmin = badges.some(b => b.badge === 'owner' || b.badge === 'moderator')
       }
 

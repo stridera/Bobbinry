@@ -22,6 +22,9 @@ import { getSlugsForEntities } from '../lib/slugs'
 import { countsTowardWordCount, type ContentType } from '@bobbinry/types'
 import { notDeleted, TRASH_RETENTION_MS } from '../lib/entity-scope'
 
+/** Matches the content_tags.tag_name column width. */
+const MAX_TAG_NAME_LENGTH = 100
+
 const VALID_TAG_CATEGORIES = ['genre', 'theme', 'trope', 'setting', 'custom'] as const
 
 const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
@@ -82,6 +85,14 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
       }
 
       const trimmedName = tagName.trim()
+      // content_tags.tag_name is varchar(100); without this the insert threw a
+      // Postgres "value too long" error that surfaced as a 500.
+      if (trimmedName.length > MAX_TAG_NAME_LENGTH) {
+        return reply.status(400).send({
+          error: `Tag name must be ${MAX_TAG_NAME_LENGTH} characters or fewer`,
+          correlationId
+        })
+      }
 
       // Check for duplicate
       const [existing] = await db
