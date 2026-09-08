@@ -9,6 +9,7 @@ import { db } from '../db/connection'
 import { users, projects, userBadges, userProfiles, siteMemberships } from '../db/schema'
 import { eq, sql, ilike, or, and, count, desc, isNull } from 'drizzle-orm'
 import { requireAuth, requireOwner, denyApiKeyAuth } from '../middleware/auth'
+import { isUuid } from '../lib/slugs'
 import { processAdminDailyReport } from '../jobs/admin-daily-report'
 
 type CronHandler = (opts: { force?: boolean }) => Promise<unknown>
@@ -161,6 +162,9 @@ const adminPlugin: FastifyPluginAsync = async (fastify) => {
     const { userId } = request.params
     const { badge, label } = request.body
 
+    if (!isUuid(userId)) {
+      return reply.status(400).send({ error: 'Invalid user ID format' })
+    }
     if (!badge) {
       return reply.status(400).send({ error: 'Badge name is required' })
     }
@@ -171,6 +175,28 @@ const adminPlugin: FastifyPluginAsync = async (fastify) => {
       return reply.status(404).send({ error: 'User not found' })
     }
 
+    // (userId, badge) is unique regardless of isActive, so a revoked badge
+    // leaves the row behind. Only an *active* badge is a conflict; an inactive
+    // one is re-granted by reactivating it, as the supporter route does.
+    const [existing] = await db
+      .select({ isActive: userBadges.isActive })
+      .from(userBadges)
+      .where(and(eq(userBadges.userId, userId), eq(userBadges.badge, badge)))
+      .limit(1)
+
+    if (existing?.isActive) {
+      return reply.status(409).send({ error: 'User already has this badge' })
+    }
+
+    if (existing) {
+      const [reactivated] = await db
+        .update(userBadges)
+        .set({ isActive: true, label: label || null, grantedBy: request.user!.id })
+        .where(and(eq(userBadges.userId, userId), eq(userBadges.badge, badge)))
+        .returning()
+      return reply.status(201).send(reactivated)
+    }
+
     const [inserted] = await db
       .insert(userBadges)
       .values({
@@ -179,12 +205,7 @@ const adminPlugin: FastifyPluginAsync = async (fastify) => {
         label: label || null,
         grantedBy: request.user!.id,
       })
-      .onConflictDoNothing()
       .returning()
-
-    if (!inserted) {
-      return reply.status(409).send({ error: 'User already has this badge' })
-    }
 
     return reply.status(201).send(inserted)
   })
@@ -202,6 +223,9 @@ const adminPlugin: FastifyPluginAsync = async (fastify) => {
     const { userId } = request.params
     const { grant } = request.body
 
+    if (!isUuid(userId)) {
+      return reply.status(400).send({ error: 'Invalid user ID format' })
+    }
     if (typeof grant !== 'boolean') {
       return reply.status(400).send({ error: '"grant" (boolean) is required' })
     }
@@ -318,6 +342,10 @@ const adminPlugin: FastifyPluginAsync = async (fastify) => {
     preHandler: adminPreHandler,
   }, async (request, reply) => {
     const { userId, badge } = request.params
+
+    if (!isUuid(userId)) {
+      return reply.status(400).send({ error: 'Invalid user ID format' })
+    }
 
     const result = await db
       .delete(userBadges)

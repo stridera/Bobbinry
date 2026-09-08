@@ -43,6 +43,20 @@ describe('Revision thinning', () => {
     chapterId = chapter!.id
   })
 
+  /**
+   * Midday UTC of a day that has already started. The thinning job groups by
+   * UTC calendar date, and the per-suffix offsets below reach three hours, so
+   * anchoring to `Date.now()` merged "45 days ago" and "46 days ago" into one
+   * UTC day whenever the suite ran within three hours of midnight UTC — the
+   * supporter newest-per-day test then saw one row instead of two.
+   */
+  const ANCHOR = (() => {
+    const a = new Date()
+    a.setUTCHours(12, 0, 0, 0)
+    if (a.getTime() > Date.now() - 60 * 60 * 1000) a.setUTCDate(a.getUTCDate() - 1)
+    return a.getTime()
+  })()
+
   /** Seed a revision at a given age. */
   async function seed(opts: {
     daysAgo: number
@@ -52,7 +66,7 @@ describe('Revision thinning', () => {
   }) {
     // Offset by the suffix so same-day rows land in *different* session
     // buckets — the unique index would (correctly) reject two rows sharing one.
-    const at = new Date(Date.now() - opts.daysAgo * DAY + (opts.bucketSuffix ?? 0) * 20 * 60 * 1000)
+    const at = new Date(ANCHOR - opts.daysAgo * DAY + (opts.bucketSuffix ?? 0) * 20 * 60 * 1000)
     const label = opts.label ?? null
     const [row] = await db.insert(entityRevisions).values({
       projectId,
