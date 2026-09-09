@@ -408,6 +408,45 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
     }
   })
 
+  /**
+   * Preview the dates the configured cadence actually produces.
+   *
+   * The release-config screen otherwise only names a frequency, so an author
+   * cannot tell which days their chapters land on — biweekly especially, where
+   * which of the two weeks is "on" follows the calendar rather than anything
+   * they chose. Showing the computed dates makes the schedule self-evident.
+   */
+  fastify.get<{
+    Params: { projectId: string }
+    Querystring: { count?: string }
+  }>('/projects/:projectId/release-preview', {
+    preHandler: [requireAuth, ownsProject()]
+  }, async (request, reply) => {
+    const correlationId = request.id
+    try {
+      const { projectId } = request.params
+      const requested = Number(request.query.count ?? 4)
+      const count = Number.isFinite(requested) ? Math.min(Math.max(Math.trunc(requested), 1), 12) : 4
+
+      // Walk forward slot by slot: each call skips dates already taken by a
+      // scheduled chapter, so the preview shows the dates a chapter would
+      // really be given, not an idealised cadence.
+      const slots: string[] = []
+      let after: Date | undefined
+      for (let i = 0; i < count; i++) {
+        const slot = await getNextAvailableReleaseSlot(projectId, after ? { after } : {})
+        if (!slot) break
+        slots.push(slot.toISOString())
+        after = new Date(slot.getTime() + 1)
+      }
+
+      return reply.send({ slots, correlationId })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to build release preview')
+      return reply.status(500).send({ error: 'Failed to build release preview', correlationId })
+    }
+  })
+
   // List all published chapters for a project
   fastify.get<{
     Params: { projectId: string }

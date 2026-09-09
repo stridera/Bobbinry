@@ -441,6 +441,72 @@ describe('Publishing API', () => {
       expect(JSON.parse(verifyRes.payload).config.publishingMode).toBe('manual')
     })
 
+    it('previews the dates a cadence produces, keeping each biweekly week together', async () => {
+      const { project, token } = await setupPublishingScenario()
+
+      const setSchedule = (payload: Record<string, unknown>) => app.inject({
+        method: 'PUT',
+        url: `/api/projects/${project.id}/publish-config`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { autoReleaseEnabled: true, releaseTime: '12:00', ...payload }
+      })
+      const preview = (query = '') => app.inject({
+        method: 'GET',
+        url: `/api/projects/${project.id}/release-preview${query}`,
+        headers: { authorization: `Bearer ${token}` }
+      })
+
+      // Manual (the default) produces no dates at all.
+      const manual = await preview()
+      expect(manual.statusCode).toBe(200)
+      expect(JSON.parse(manual.payload).slots).toEqual([])
+
+      await setSchedule({ releaseFrequency: 'biweekly', releaseDay: 'mon,fri' })
+      const res = await preview()
+      expect(res.statusCode).toBe(200)
+      const slots: string[] = JSON.parse(res.payload).slots
+      expect(slots).toHaveLength(4)
+
+      const dates = slots.map(s => new Date(s))
+      // Every slot is a chosen day at the chosen time, in order.
+      for (const d of dates) {
+        expect([1, 5]).toContain(d.getUTCDay())
+        expect(d.toISOString().slice(11, 16)).toBe('12:00')
+      }
+      expect([...dates].sort((a, b) => a.getTime() - b.getTime())).toEqual(dates)
+
+      // Which day the preview opens on depends on today, so assert the
+      // invariant instead: the same weekday recurs a fortnight later, and the
+      // only gaps are the four days inside an "on" week and the ten that skip
+      // the week after it — the whole point of "every 2 weeks".
+      const DAY = 24 * 60 * 60 * 1000
+      expect(dates[2]!.getTime() - dates[0]!.getTime()).toBe(14 * DAY)
+      expect(dates[3]!.getTime() - dates[1]!.getTime()).toBe(14 * DAY)
+      const gaps = dates.slice(1).map((d, i) => (d.getTime() - dates[i]!.getTime()) / DAY)
+      expect(new Set(gaps)).toEqual(new Set([4, 10]))
+
+      // The count is clamped rather than trusted.
+      expect(JSON.parse((await preview('?count=50')).payload).slots).toHaveLength(12)
+      expect(JSON.parse((await preview('?count=0')).payload).slots).toHaveLength(1)
+      expect(JSON.parse((await preview('?count=abc')).payload).slots).toHaveLength(4)
+    })
+
+    it('refuses a release preview for a project the caller does not own', async () => {
+      const { project } = await setupPublishingScenario()
+      const stranger = await createTestUser()
+      const strangerToken = await createTestToken(stranger.id)
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/projects/${project.id}/release-preview`,
+        headers: { authorization: `Bearer ${strangerToken}` }
+      })
+      expect(res.statusCode).toBe(403)
+
+      const anon = await app.inject({ method: 'GET', url: `/api/projects/${project.id}/release-preview` })
+      expect(anon.statusCode).toBe(401)
+    })
+
     it('auto-schedules completed chapters into the next open cadence slot', async () => {
       const { project, token } = await setupPublishingScenario()
 

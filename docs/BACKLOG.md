@@ -30,15 +30,17 @@ them are fixed in the same commit.
 - 2026-09-08 `routes/google-drive.ts` (22 cases: signed OAuth state, encrypted token storage, status, per-project opt-in, manual sync success and failure). No route changes needed.
 - 2026-09-08 `components/ShellLayout.tsx` (8 cases: panel geometry from stored preferences, collapse persistence, account sync started once with the token, revealOn dispatch and re-subscription, focus mode and its Esc exit and floating panel). No component changes needed.
 - 2026-09-08 `routes/ai-tools.ts` (65 cases: per-user encrypted key storage, every analysis route's auth/ownership/validation, model failures as 502 with no half-written rows, upstream 401/429 passthrough). No route changes needed; the routes have no quota or tier gate to test.
+- 2026-09-09 `routes/publishing.ts` release preview endpoint + the publisher's release-config screen now list the next four computed dates (2 cases: the biweekly fortnight invariant and count clamping, plus the ownership guard).
 
 ## Open questions from test writing
 
-### Which fortnight is an "on" week is still arbitrary
-`isMatchingCadence` in `apps/api/src/lib/release-schedule.ts` now anchors
-biweekly parity to Monday, so every selected day of a week fires together.
-Which of the two weeks is the "on" one is still decided by the calendar
-rather than by the author's schedule, so enabling biweekly gives a first
-release either this week or next with nothing in the UI explaining which.
-Fixing that properly means storing a schedule anchor (when auto-release was
-switched on) and counting fortnights from it — a column plus a decision about
-what happens to schedules already running.
+### Should a biweekly schedule start on the author's chosen week?
+`isMatchingCadence` in `apps/api/src/lib/release-schedule.ts` anchors biweekly
+parity to Monday, so every selected day of a week fires together. Which of the
+two weeks is the "on" one still follows the calendar rather than anything the
+author picked, so enabling biweekly gives a first release either this week or
+next. The release-config screen now previews the actual dates, which is what
+authors were really missing; anchoring to a stored schedule start would only be
+worth it if someone asks for "start my fortnight this week" specifically, and it
+means a new column plus rules for what happens when the days or frequency
+change under a running schedule.

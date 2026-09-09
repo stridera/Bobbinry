@@ -24,6 +24,19 @@ interface ReleaseConfigProps {
   projectId: string
 }
 
+/** A preview slot rendered in whichever zone the author is editing in. */
+function formatSlot(iso: string, mode: ReleaseTimeMode): string {
+  const date = new Date(iso)
+  return date.toLocaleString(undefined, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    ...(mode === 'utc' ? { timeZone: 'UTC' } : {}),
+  })
+}
+
 const DAY_OPTIONS = [
   { code: 'mon', label: 'Mon' },
   { code: 'tue', label: 'Tue' },
@@ -100,9 +113,15 @@ export default function ReleaseConfig({ sdk, projectId }: ReleaseConfigProps) {
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [releaseTimeMode, setReleaseTimeMode] = useState<ReleaseTimeMode>('local')
+  // The dates the saved cadence actually produces. A frequency label alone
+  // does not tell an author when their chapters go out — biweekly especially,
+  // where which of the two weeks is "on" follows the calendar.
+  const [previewSlots, setPreviewSlots] = useState<string[] | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
 
   useEffect(() => {
     void loadSettings()
+    void loadPreview()
   }, [projectId])
 
   useEffect(() => {
@@ -115,6 +134,18 @@ export default function ReleaseConfig({ sdk, projectId }: ReleaseConfigProps) {
   useEffect(() => {
     window.localStorage.setItem('bobbinry.publisher.release-time-mode', releaseTimeMode)
   }, [releaseTimeMode])
+
+  const loadPreview = async () => {
+    setPreviewLoading(true)
+    try {
+      const res = await sdk.api.fetch(`/projects/${projectId}/release-preview?count=4`)
+      setPreviewSlots(res.ok ? (await res.json()).slots ?? [] : [])
+    } catch {
+      setPreviewSlots([])
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
 
   const loadSettings = async () => {
     setLoading(true)
@@ -202,6 +233,8 @@ export default function ReleaseConfig({ sdk, projectId }: ReleaseConfigProps) {
 
       setMessage({ type: 'success', text: 'Release settings saved.' })
       setTimeout(() => setMessage(null), 3000)
+      // The cadence just changed, so the previewed dates are stale.
+      void loadPreview()
     } catch (err: any) {
       setMessage({ type: 'error', text: err.message || 'Failed to save release settings' })
     } finally {
@@ -383,6 +416,35 @@ export default function ReleaseConfig({ sdk, projectId }: ReleaseConfigProps) {
           <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
             Scheduled chapters are placed into the next free slot, so a Mon/Wed/Fri cadence can queue an entire finished book automatically.
           </p>
+
+          <div className="mt-4 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900/40">
+            <div className="mb-2 flex items-baseline justify-between gap-3">
+              <h4 className="text-xs font-medium text-gray-700 dark:text-gray-300">Next release dates</h4>
+              <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                {releaseTimeMode === 'utc' ? 'UTC' : 'your local time'}
+              </span>
+            </div>
+            {previewLoading ? (
+              <p className="text-xs text-gray-400 dark:text-gray-500">Working them out…</p>
+            ) : !previewSlots || previewSlots.length === 0 ? (
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {scheduleConfig.autoReleaseEnabled && scheduleConfig.releaseFrequency !== 'manual'
+                  ? 'Save the schedule to see the dates it produces.'
+                  : 'Turn on auto-scheduling and pick a cadence to see upcoming dates.'}
+              </p>
+            ) : (
+              <ol className="space-y-1">
+                {previewSlots.map((slot) => (
+                  <li key={slot} className="text-xs text-gray-700 dark:text-gray-300">
+                    {formatSlot(slot, releaseTimeMode)}
+                  </li>
+                ))}
+              </ol>
+            )}
+            <p className="mt-2 text-[11px] text-gray-400 dark:text-gray-500">
+              Slots already taken by a scheduled chapter are skipped, so these are the dates the next chapters would get.
+            </p>
+          </div>
         </div>
 
         <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-900/30">
