@@ -554,7 +554,7 @@ async function canUserAnnotate(
  */
 type ViewSimulation =
   | { kind: 'beta' }
-  | { kind: 'tier'; earlyAccessDays: number }
+  | { kind: 'tier'; earlyAccessDays: number; tierLevel: number }
 
 interface EffectiveViewer {
   userId?: string | undefined
@@ -587,7 +587,10 @@ async function resolveViewAs(
     const tierId = viewAsRaw.slice('tier:'.length)
     if (UUID_RE.test(tierId)) {
       const [tier] = await db
-        .select({ earlyAccessDays: subscriptionTiers.earlyAccessDays })
+        .select({
+          earlyAccessDays: subscriptionTiers.earlyAccessDays,
+          tierLevel: subscriptionTiers.tierLevel,
+        })
         .from(subscriptionTiers)
         .where(and(
           eq(subscriptionTiers.id, tierId),
@@ -595,7 +598,15 @@ async function resolveViewAs(
         ))
         .limit(1)
       if (tier) {
-        return { userId, simulate: { kind: 'tier', earlyAccessDays: tier.earlyAccessDays ?? 0 } }
+        return {
+          userId,
+          simulate: {
+            kind: 'tier',
+            earlyAccessDays: tier.earlyAccessDays ?? 0,
+            // Chapter embargo reads earlyAccessDays; the codex gates on tier level.
+            tierLevel: tier.tierLevel ?? 0,
+          },
+        }
       }
     }
   }
@@ -2403,6 +2414,19 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
     return sub?.tierLevel ?? 0
   }
 
+  /**
+   * Codex tier level for an effective viewer, honoring ?viewAs=.
+   *
+   * Under a simulation the owner must lose their Infinity bypass, or "view as
+   * visitor" would still hand them every tier-gated entity and every locked
+   * variant. Beta resolves to 0 because the codex has no beta concept — a real
+   * beta reader with no subscription sits at 0 too.
+   */
+  async function resolveViewerTierLevel(projectId: string, viewer: EffectiveViewer): Promise<number> {
+    if (viewer.simulate) return viewer.simulate.kind === 'tier' ? viewer.simulate.tierLevel : 0
+    return resolveCallerTierLevel(projectId, viewer.userId)
+  }
+
   interface ReaderVariantItem {
     label?: string | undefined
     axis_value?: unknown
@@ -2560,6 +2584,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{
     Params: { projectId: string }
+    Querystring: { viewAs?: string }
   }>('/public/projects/:projectId/entities', {
     preHandler: optionalAuth
   }, async (request, reply) => {
@@ -2577,7 +2602,9 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(404).send({ error: 'Project not found' })
       }
 
-      if (!(await canViewProject(projectId, request.user?.id))) {
+      const viewer = await resolveViewAs(projectId, request.user?.id, request.query.viewAs)
+
+      if (!(await canViewProject(projectId, viewer.userId, viewer.simulate))) {
         return reply.status(404).send({ error: 'Project not found' })
       }
 
@@ -2587,7 +2614,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         return { installed: false, callerTierLevel: 0, types: [], lockedPreviews: { types: 0, entities: 0, variants: 0 } }
       }
 
-      const callerTier = await resolveCallerTierLevel(projectId, request.user?.id)
+      const callerTier = await resolveViewerTierLevel(projectId, viewer)
       const isOwner = callerTier === Number.POSITIVE_INFINITY
 
       // Resolve entity-visibility scope for this project: project, any
@@ -2760,6 +2787,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{
     Params: { projectId: string; entityId: string }
+    Querystring: { viewAs?: string }
   }>('/public/projects/:projectId/entities/:entityId', {
     preHandler: optionalAuth
   }, async (request, reply) => {
@@ -2778,7 +2806,9 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         .limit(1)
       if (!project) return reply.status(404).send({ error: 'Project not found' })
 
-      if (!(await canViewProject(projectId, request.user?.id))) {
+      const viewer = await resolveViewAs(projectId, request.user?.id, request.query.viewAs)
+
+      if (!(await canViewProject(projectId, viewer.userId, viewer.simulate))) {
         return reply.status(404).send({ error: 'Project not found' })
       }
 
@@ -2786,7 +2816,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       const installed = effective.find(b => b.bobbinId === 'entities' && b.enabled)
       if (!installed) return reply.status(404).send({ error: 'Entities not available' })
 
-      const callerTier = await resolveCallerTierLevel(projectId, request.user?.id)
+      const callerTier = await resolveViewerTierLevel(projectId, viewer)
       const isOwner = callerTier === Number.POSITIVE_INFINITY
 
       const collectionIds = await getCollectionIdsForProject(projectId)
@@ -2900,6 +2930,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{
     Params: { projectId: string }
+    Querystring: { viewAs?: string }
   }>('/public/projects/:projectId/entities/published-names', {
     preHandler: optionalAuth
   }, async (request, reply) => {
@@ -2913,7 +2944,9 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
         .limit(1)
       if (!project) return reply.status(404).send({ error: 'Project not found' })
 
-      if (!(await canViewProject(projectId, request.user?.id))) {
+      const viewer = await resolveViewAs(projectId, request.user?.id, request.query.viewAs)
+
+      if (!(await canViewProject(projectId, viewer.userId, viewer.simulate))) {
         return reply.status(404).send({ error: 'Project not found' })
       }
 
@@ -2921,7 +2954,7 @@ const readerPlugin: FastifyPluginAsync = async (fastify) => {
       const installed = effective.find(b => b.bobbinId === 'entities' && b.enabled)
       if (!installed) return { installed: false, entities: [] }
 
-      const callerTier = await resolveCallerTierLevel(projectId, request.user?.id)
+      const callerTier = await resolveViewerTierLevel(projectId, viewer)
       const isOwner = callerTier === Number.POSITIVE_INFINITY
 
       const collectionIds = await getCollectionIdsForProject(projectId)

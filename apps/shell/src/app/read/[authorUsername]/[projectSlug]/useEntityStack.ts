@@ -11,6 +11,7 @@
 
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { config } from '@/lib/config'
+import { withViewAs } from './view-as'
 import type { PublishedEntity, PublishedType } from './entities-data'
 
 export type EntityStackEntry =
@@ -21,11 +22,13 @@ export type EntityStackEntry =
 interface UseEntityStackOptions {
   projectId: string
   apiToken?: string | undefined
+  /** Owner-only audience preview, forwarded so a peek can't outrun the preview. */
+  viewAs?: string | undefined
   /** Resolve an entity id from already-loaded data before falling back to a fetch. */
   resolveLocal?: (entityId: string) => { type: PublishedType; entity: PublishedEntity } | null
 }
 
-export function useEntityStack({ projectId, apiToken, resolveLocal }: UseEntityStackOptions) {
+export function useEntityStack({ projectId, apiToken, viewAs, resolveLocal }: UseEntityStackOptions) {
   const [stack, setStack] = useState<EntityStackEntry[]>([])
   const [fetching, setFetching] = useState(false)
   const cacheRef = useRef(new Map<string, EntityStackEntry>())
@@ -61,7 +64,10 @@ export function useEntityStack({ projectId, apiToken, resolveLocal }: UseEntityS
         const headers: Record<string, string> = {}
         if (apiToken) headers['Authorization'] = `Bearer ${apiToken}`
         const res = await fetch(
-          `${config.apiUrl}/api/public/projects/${projectId}/entities/${encodeURIComponent(entityId)}`,
+          withViewAs(
+            `${config.apiUrl}/api/public/projects/${projectId}/entities/${encodeURIComponent(entityId)}`,
+            viewAs
+          ),
           { headers }
         )
         let entry: EntityStackEntry
@@ -83,7 +89,7 @@ export function useEntityStack({ projectId, apiToken, resolveLocal }: UseEntityS
         if (track) setFetching(false)
       }
     },
-    [projectId, apiToken, resolveLocal]
+    [projectId, apiToken, viewAs, resolveLocal]
   )
 
   const navigate = useCallback(

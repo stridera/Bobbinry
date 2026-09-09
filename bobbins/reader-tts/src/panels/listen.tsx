@@ -8,7 +8,7 @@
  * to the next chapter when the current one finishes.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { collectSegments, titleSegment, type Segment } from '../lib/segments'
 import {
   createSpeechController,
@@ -81,6 +81,7 @@ export default function ListenPanel(props: ListenPanelProps) {
   const navigate = ctx.navigate ?? props.navigate
 
   const [supported] = useState(hasSpeechSynthesis)
+  const voiceSelectId = useId()
   const [prefs, setPrefs] = useState<TtsPrefs>(() => readTtsPrefs())
   const [state, setState] = useState<SpeechState>('idle')
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
@@ -301,9 +302,13 @@ export default function ListenPanel(props: ListenPanelProps) {
           aria-label="Read aloud settings"
           className={`absolute left-0 top-full mt-1 z-20 w-72 rounded-lg border p-3 shadow-lg space-y-3 text-sm ${popoverSurface}`}
         >
-          <label className="block">
-            <span className={`block text-xs mb-1 ${mutedText}`}>Voice</span>
+          {/* Label is a sibling with htmlFor: a <select> nested inside its own
+              <label> receives the label's forwarded activation on top of its
+              own click, which shuts the popup the moment it opens. */}
+          <div className="block">
+            <label htmlFor={voiceSelectId} className={`block text-xs mb-1 ${mutedText}`}>Voice</label>
             <select
+              id={voiceSelectId}
               value={selectedVoice?.voiceURI ?? ''}
               onChange={event => updatePrefs({ voiceURI: event.target.value || null })}
               className={`w-full rounded border px-2 py-1 text-sm ${inputSurface}`}
@@ -315,7 +320,7 @@ export default function ListenPanel(props: ListenPanelProps) {
                 </option>
               ))}
             </select>
-          </label>
+          </div>
 
           <label className="block">
             <span className={`flex justify-between text-xs mb-1 ${mutedText}`}>

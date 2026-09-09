@@ -5,7 +5,7 @@
  * editor header and the Publishing view rows.
  */
 
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import type { SubscriptionTier } from '../publish-api'
 
 export interface VariantOption {
@@ -94,6 +94,7 @@ export function PublishControl({
   disabledReason,
 }: PublishControlProps) {
   const [pending, setPending] = useState<'publish' | 'tier' | 'variants' | null>(null)
+  const tierSelectId = useId()
   const [error, setError] = useState<string | null>(null)
   const [variantPickerOpen, setVariantPickerOpen] = useState(false)
 
@@ -203,9 +204,13 @@ export function PublishControl({
         {hasTiers && (
           <>
             <span className="text-xs text-gray-400 dark:text-gray-500">·</span>
-            <label className="flex items-center gap-1.5 text-xs">
-              <span className="text-gray-500 dark:text-gray-400">Tier</span>
+            {/* Label is a sibling with htmlFor: a <select> nested inside its
+                own <label> receives the label's forwarded activation on top of
+                its own click, which shuts the popup the moment it opens. */}
+            <span className="flex items-center gap-1.5 text-xs">
+              <label htmlFor={tierSelectId} className="text-gray-500 dark:text-gray-400">Tier</label>
               <select
+                id={tierSelectId}
                 value={minimumTierLevel}
                 onChange={handleTierChange}
                 disabled={pending === 'tier' || isExternallyDisabled}
@@ -227,7 +232,7 @@ export function PublishControl({
                   </option>
                 ))}
               </select>
-            </label>
+            </span>
           </>
         )}
       </div>

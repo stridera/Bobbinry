@@ -1,12 +1,14 @@
 'use client'
 
 import { Suspense, useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { config } from '@/lib/config'
 import { ReaderNav } from '@/components/ReaderNav'
 import EntityView from '../../EntityView'
+import ViewAsBar from '../../ViewAsBar'
+import { withViewAs } from '../../view-as'
 import type { PublishedEntity, PublishedType } from '../../entities-data'
 
 interface EntityPayload {
@@ -26,16 +28,24 @@ export default function EntitySubpage() {
 function EntitySubpageContent() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const authorUsername = params.authorUsername as string
   const projectSlug = params.projectSlug as string
   // Slug, old-slug alias, or legacy UUID — the API resolves all three.
   const entityId = params.entityId as string
   const { data: session } = useSession()
   const apiToken = (session as any)?.apiToken as string | undefined
+  const userId = session?.user?.id
+  // Owner-only audience preview, carried in from the codex tab. Without it the
+  // API hands the owner their full-access view and the preview ends here.
+  const viewAs = searchParams.get('viewAs') || ''
+  /** Project links that keep the preview alive. */
+  const projectHref = (query: string) => withViewAs(`/read/${authorUsername}/${projectSlug}?${query}`, viewAs)
 
   const [authorName, setAuthorName] = useState<string>('')
   const [projectName, setProjectName] = useState<string>('')
   const [projectId, setProjectId] = useState<string>('')
+  const [ownerId, setOwnerId] = useState<string>('')
   const [payload, setPayload] = useState<EntityPayload | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -45,7 +55,10 @@ function EntitySubpageContent() {
   useEffect(() => {
     let cancelled = false
     fetch(
-      `${config.apiUrl}/api/public/projects/by-author-and-slug/${encodeURIComponent(authorUsername)}/${encodeURIComponent(projectSlug)}`
+      withViewAs(
+        `${config.apiUrl}/api/public/projects/by-author-and-slug/${encodeURIComponent(authorUsername)}/${encodeURIComponent(projectSlug)}`,
+        viewAs
+      )
     )
       .then(async r => (r.ok ? r.json() : Promise.reject(new Error(`Project not found (${r.status})`))))
       .then(data => {
@@ -53,12 +66,13 @@ function EntitySubpageContent() {
         setAuthorName(data.author?.displayName || data.author?.username || authorUsername)
         setProjectName(data.project?.name || projectSlug)
         setProjectId(data.project?.id || '')
+        setOwnerId(data.project?.ownerId || data.author?.userId || '')
       })
       .catch(err => {
         if (!cancelled) setError(err?.message ?? 'Project not found')
       })
     return () => { cancelled = true }
-  }, [authorUsername, projectSlug])
+  }, [authorUsername, projectSlug, viewAs])
 
   useEffect(() => {
     if (!projectId) return
@@ -69,7 +83,7 @@ function EntitySubpageContent() {
     /* eslint-enable react-hooks/set-state-in-effect */
     const headers: Record<string, string> = {}
     if (apiToken) headers['Authorization'] = `Bearer ${apiToken}`
-    fetch(`${config.apiUrl}/api/public/projects/${projectId}/entities/${encodeURIComponent(entityId)}`, { headers })
+    fetch(withViewAs(`${config.apiUrl}/api/public/projects/${projectId}/entities/${encodeURIComponent(entityId)}`, viewAs), { headers })
       .then(async r => {
         if (r.status === 403) {
           const body = await r.json().catch(() => ({}))
@@ -86,7 +100,11 @@ function EntitySubpageContent() {
           // Shallow replaceState so the route param doesn't change and
           // re-trigger this effect.
           if (data.entity.slug && entityId !== data.entity.slug) {
-            window.history.replaceState(null, '', `/read/${authorUsername}/${projectSlug}/entity/${data.entity.slug}`)
+            window.history.replaceState(
+              null,
+              '',
+              withViewAs(`/read/${authorUsername}/${projectSlug}/entity/${data.entity.slug}`, viewAs)
+            )
           }
         }
       })
@@ -97,11 +115,11 @@ function EntitySubpageContent() {
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [projectId, entityId, apiToken, authorUsername, projectSlug])
+  }, [projectId, entityId, apiToken, viewAs, authorUsername, projectSlug])
 
   const crumbs = [
     { label: authorName || authorUsername, href: `/read/${authorUsername}` },
-    { label: projectName || projectSlug, href: `/read/${authorUsername}/${projectSlug}?tab=entities` },
+    { label: projectName || projectSlug, href: projectHref('tab=entities') },
     { label: payload?.entity.name || 'Entity' },
   ]
 
@@ -109,10 +127,22 @@ function EntitySubpageContent() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       <ReaderNav crumbs={crumbs} />
 
+      {projectId && ownerId && (
+        <div className="mx-auto max-w-3xl px-4 pt-6 sm:px-6 lg:px-8">
+          <ViewAsBar
+            projectId={projectId}
+            ownerId={ownerId}
+            userId={userId}
+            viewAs={viewAs}
+            basePath={`/read/${authorUsername}/${projectSlug}/entity/${entityId}`}
+          />
+        </div>
+      )}
+
       {(loading || error || tierRequired !== null) && (
         <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 lg:px-8">
           <Link
-            href={`/read/${authorUsername}/${projectSlug}?tab=entities`}
+            href={projectHref('tab=entities')}
             className="mb-4 inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
           >
             <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -133,7 +163,7 @@ function EntitySubpageContent() {
             <div className="rounded-lg border border-purple-200 bg-purple-50 p-6 text-sm text-purple-800 dark:border-purple-800 dark:bg-purple-900/20 dark:text-purple-200">
               <p className="font-medium">This entity is available to subscribers at tier {tierRequired} or higher.</p>
               <Link
-                href={`/read/${authorUsername}/${projectSlug}?tab=support`}
+                href={projectHref('tab=support')}
                 className="mt-3 inline-flex items-center gap-1 rounded-md bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700"
               >
                 View subscription tiers →
@@ -149,12 +179,13 @@ function EntitySubpageContent() {
           entity={payload.entity}
           projectId={projectId}
           apiToken={apiToken}
+          viewAs={viewAs}
           entityHrefBase={`/read/${authorUsername}/${projectSlug}/entity`}
-          onNavigateEntity={id => router.push(`/read/${authorUsername}/${projectSlug}/entity/${id}`)}
+          onNavigateEntity={id => router.push(withViewAs(`/read/${authorUsername}/${projectSlug}/entity/${id}`, viewAs))}
           stickyHeaderTopClass="top-11"
           headerAction={
             <Link
-              href={`/read/${authorUsername}/${projectSlug}?tab=entities`}
+              href={projectHref('tab=entities')}
               className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
               title="Back to codex"
             >

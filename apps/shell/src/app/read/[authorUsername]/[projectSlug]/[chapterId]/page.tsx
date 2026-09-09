@@ -21,6 +21,7 @@ import { AnnotationForm } from '@/components/AnnotationForm'
 import EntityModal from '../EntityModal'
 import EntitySidebar from '../EntitySidebar'
 import { useEntityStack } from '../useEntityStack'
+import { withViewAs } from '../view-as'
 import { resolveCardDescription, resolveCardThumbnail } from '../entities-data'
 import { EntityHoverCard, type EntityHoverDetail } from '@bobbinry/ui-components'
 
@@ -344,7 +345,7 @@ function ChapterReaderContent() {
   // Published-entity names + click-to-open modal state. The stack lets
   // relation pills inside the open entity navigate in place (no reload).
   const [publishedEntityNames, setPublishedEntityNames] = useState<PublishedEntityName[]>([])
-  const entityStack = useEntityStack({ projectId: projectId ?? '', apiToken: session?.apiToken })
+  const entityStack = useEntityStack({ projectId: projectId ?? '', apiToken: session?.apiToken, viewAs })
   const { navigate: navigateEntity } = entityStack
 
   // Progress tracking
@@ -716,7 +717,7 @@ function ChapterReaderContent() {
     let cancelled = false
     const headers: Record<string, string> = {}
     if (session?.apiToken) headers['Authorization'] = `Bearer ${session.apiToken}`
-    fetch(`${config.apiUrl}/api/public/projects/${projectId}/entities/published-names`, { headers })
+    fetch(withViewAs(`${config.apiUrl}/api/public/projects/${projectId}/entities/published-names`, viewAs), { headers })
       .then(r => (r.ok ? r.json() : null))
       .then(d => {
         if (!cancelled && d?.installed && Array.isArray(d.entities)) {
@@ -725,7 +726,7 @@ function ChapterReaderContent() {
       })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [projectId, session?.apiToken])
+  }, [projectId, session?.apiToken, viewAs])
 
   // Build + apply entity highlight spans after the chapter renders. Runs
   // AFTER the annotation pass so we don't wrap annotation-marked text.
@@ -1585,6 +1586,7 @@ function ChapterReaderContent() {
             projectId={projectId}
             apiToken={session?.apiToken}
             entityHrefBase={`/read/${authorUsername}/${projectSlug}/entity`}
+            viewAs={viewAs}
             onNavigateEntity={id => { void navigateEntity(id) }}
             onBack={entityStack.canGoBack ? entityStack.back : undefined}
             onSubscribeNudge={() => router.push(`/read/${authorUsername}/${projectSlug}?tab=support`)}
@@ -1601,6 +1603,7 @@ function ChapterReaderContent() {
           projectId={projectId}
           apiToken={session?.apiToken}
           entityHrefBase={`/read/${authorUsername}/${projectSlug}/entity`}
+          viewAs={viewAs}
           onNavigateEntity={id => { void navigateEntity(id) }}
           onBack={entityStack.canGoBack ? entityStack.back : undefined}
           onSubscribeNudge={() => router.push(`/read/${authorUsername}/${projectSlug}?tab=support`)}

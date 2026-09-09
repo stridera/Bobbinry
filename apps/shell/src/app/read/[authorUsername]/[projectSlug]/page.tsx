@@ -10,6 +10,8 @@ import { apiFetch } from '@/lib/api'
 import { ReaderNav } from '@/components/ReaderNav'
 import { OptimizedImage } from '@/components/OptimizedImage'
 import EntitiesTab from './EntitiesTab'
+import ViewAsBar from './ViewAsBar'
+import { withViewAs } from './view-as'
 import type { EntitiesPayload } from './entities-data'
 
 interface ProjectInfo {
@@ -374,7 +376,7 @@ function ProjectReadingContent() {
     let cancelled = false
     const headers: Record<string, string> = {}
     if (apiToken) headers['Authorization'] = `Bearer ${apiToken}`
-    fetch(`${config.apiUrl}/api/public/projects/${project.id}/entities`, { headers })
+    fetch(withViewAs(`${config.apiUrl}/api/public/projects/${project.id}/entities`, viewAs), { headers })
       .then(async r => (r.ok ? (r.json() as Promise<EntitiesPayload>) : null))
       .then(data => {
         if (!cancelled) setEntitiesPayload(data)
@@ -383,7 +385,7 @@ function ProjectReadingContent() {
         if (!cancelled) setEntitiesPayload(null)
       })
     return () => { cancelled = true }
-  }, [project?.id, apiToken])
+  }, [project?.id, apiToken, viewAs])
 
   // Load subscription state when author and session are ready
   useEffect(() => {
@@ -616,51 +618,13 @@ function ProjectReadingContent() {
       }`}>
 
       {/* Owner-only audience preview bar */}
-      {userId && (project.ownerId === userId || viewAs) && (
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50/50 px-4 py-2.5 dark:border-blue-800 dark:bg-blue-950/20">
-          <div className="flex items-center gap-2 text-sm text-blue-800 dark:text-blue-300">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-            </svg>
-            <span>This is your project.</span>
-            <Link
-              href={`/projects/${project.id}`}
-              className="ml-1 inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-white px-2.5 py-1 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-800 dark:bg-gray-900 dark:text-blue-300 dark:hover:bg-blue-900/40"
-            >
-              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
-              </svg>
-              Dashboard
-            </Link>
-          </div>
-          <label className="flex items-center gap-2 text-sm text-blue-800 dark:text-blue-300">
-            Viewing as
-            <select
-              value={viewAs}
-              onChange={(e) => {
-                const next = new URLSearchParams(searchParams.toString())
-                if (e.target.value) {
-                  next.set('viewAs', e.target.value)
-                } else {
-                  next.delete('viewAs')
-                }
-                router.replace(`/read/${authorUsername}/${projectSlug}${next.toString() ? `?${next.toString()}` : ''}`)
-              }}
-              className="rounded-md border border-blue-200 bg-white px-2 py-1 text-xs text-gray-900 dark:border-blue-800 dark:bg-gray-900 dark:text-gray-100"
-            >
-              <option value="">Yourself</option>
-              <option value="visitor">Visitor</option>
-              <option value="beta">Beta reader</option>
-              {tiers.map((tier) => (
-                <option key={tier.id} value={`tier:${tier.id}`}>
-                  Subscriber — {tier.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      )}
+      <ViewAsBar
+        projectId={project.id}
+        ownerId={project.ownerId}
+        userId={userId}
+        viewAs={viewAs}
+        basePath={`/read/${authorUsername}/${projectSlug}`}
+      />
 
       {/* Success banner */}
       {(justSubscribed || searchParams.get('subscribed') === 'true') && (
@@ -847,6 +811,7 @@ function ProjectReadingContent() {
           authorUsername={authorUsername}
           projectSlug={projectSlug}
           apiToken={apiToken}
+          viewAs={viewAs}
           initialPayload={entitiesPayload}
           focusedSection={focusedSection}
           onGoToSection={goToSection}

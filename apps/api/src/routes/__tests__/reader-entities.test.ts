@@ -96,6 +96,17 @@ async function seedActiveSubscription(subscriberId: string, authorId: string, ti
   return tier!
 }
 
+/** A published tier with nobody subscribed to it — the target of ?viewAs=tier:<id>. */
+async function seedTier(authorId: string, tierLevel: number) {
+  const [tier] = await db.insert(subscriptionTiers).values({
+    authorId,
+    name: `Tier ${tierLevel}`,
+    tierLevel,
+    earlyAccessDays: 0,
+  }).returning()
+  return tier!
+}
+
 describe('Public Reader — Entities', () => {
   let app: any
 
@@ -1041,6 +1052,189 @@ describe('Public Reader — Entities', () => {
       expect(res.statusCode).toBe(200)
       const names = JSON.parse(res.payload).entities.map((e: any) => e.name).sort()
       expect(names).toEqual(['Valkyr the Beast', 'Velka'])
+    })
+  })
+  // The owner's Infinity tier bypass has to fall away under ?viewAs=, or the
+  // audience preview shows the author their own full-access view and quietly
+  // lies about what a visitor or subscriber can reach.
+  describe('?viewAs= audience preview', () => {
+    async function seedPreviewProject() {
+      const author = await createTestUser()
+      await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, author.id))
+      const project = await createTestProject(author.id)
+      await installEntitiesBobbin(project.id)
+
+      await seedType(project.id, 'characters', { isPublished: true })
+      // A section gated above tier 1 entirely.
+      await seedType(project.id, 'spells', { isPublished: true, minimumTierLevel: 2 })
+
+      const free = await seedEntity(project.id, 'characters', 'Velka', { isPublished: true })
+      const tier1 = await seedEntity(project.id, 'characters', 'Premium', { isPublished: true, minimumTierLevel: 1 })
+      const draft = await seedEntity(project.id, 'characters', 'Draft Hero', { isPublished: false })
+
+      return { author, project, free, tier1, draft }
+    }
+
+    it('drops the owner to visitor access under viewAs=visitor', async () => {
+      const { author, project, free } = await seedPreviewProject()
+
+      const token = await createTestToken(author.id)
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/public/projects/${project.id}/entities?viewAs=visitor`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.payload)
+
+      // Owner sentinel is gone: they are being served as a tier-0 caller.
+      expect(body.callerTierLevel).toBe(0)
+      // The tier-2 section is hidden entirely, and counted.
+      expect(body.types.map((t: any) => t.typeId)).toEqual(['characters'])
+      expect(body.lockedPreviews.types).toBe(1)
+      // Only the free entity survives; the draft never counts as locked.
+      expect(body.types[0].entities.map((e: any) => e.id)).toEqual([free.id])
+      expect(body.lockedPreviews.entities).toBe(1)
+      expect(body.types[0].lockedByTier).toEqual({ 1: 1 })
+    })
+
+    it('serves the simulated tier level under viewAs=tier:<id>', async () => {
+      const { author, project, free, tier1 } = await seedPreviewProject()
+      const tier = await seedTier(author.id, 1)
+
+      const token = await createTestToken(author.id)
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/public/projects/${project.id}/entities?viewAs=tier:${tier.id}`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.payload)
+
+      expect(body.callerTierLevel).toBe(1)
+      // Tier 1 reaches the gated entity but still not the tier-2 section.
+      expect(body.types.map((t: any) => t.typeId)).toEqual(['characters'])
+      expect(body.types[0].entities.map((e: any) => e.id).sort()).toEqual([free.id, tier1.id].sort())
+    })
+
+    it('treats viewAs=beta as tier 0 for the codex', async () => {
+      const { author, project, free } = await seedPreviewProject()
+
+      const token = await createTestToken(author.id)
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/public/projects/${project.id}/entities?viewAs=beta`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.payload)
+      expect(body.callerTierLevel).toBe(0)
+      expect(body.types[0].entities.map((e: any) => e.id)).toEqual([free.id])
+    })
+
+    it('ignores viewAs from a non-owner — it can only ever downgrade', async () => {
+      const { author, project } = await seedPreviewProject()
+      const tier = await seedTier(author.id, 5)
+      const stranger = await createTestUser()
+
+      const token = await createTestToken(stranger.id)
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/public/projects/${project.id}/entities?viewAs=tier:${tier.id}`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.payload)
+      // Still a tier-0 stranger: no privilege escalation through the param.
+      expect(body.callerTierLevel).toBe(0)
+      expect(body.types[0].entities).toHaveLength(1)
+    })
+
+    it('paywalls a gated entity on the single-entity route under viewAs=visitor', async () => {
+      const { author, project, tier1, draft } = await seedPreviewProject()
+      const token = await createTestToken(author.id)
+
+      const gated = await app.inject({
+        method: 'GET',
+        url: `/api/public/projects/${project.id}/entities/${tier1.id}?viewAs=visitor`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(gated.statusCode).toBe(403)
+      expect(JSON.parse(gated.payload).minimumTierLevel).toBe(1)
+
+      // An unpublished entity is a 404 to a visitor, not a paywall.
+      const unpublished = await app.inject({
+        method: 'GET',
+        url: `/api/public/projects/${project.id}/entities/${draft.id}?viewAs=visitor`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(unpublished.statusCode).toBe(404)
+    })
+
+    it('hides a locked variant name from published-names under viewAs=visitor', async () => {
+      const author = await createTestUser()
+      await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, author.id))
+      const project = await createTestProject(author.id)
+      await installEntitiesBobbin(project.id)
+      // `name` must be versionable for a variant's name override to resolve.
+      await db.insert(entities).values({
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        scope: 'project',
+        bobbinId: 'entities',
+        collectionName: TYPE_COLLECTION,
+        entityData: {
+          type_id: 'characters',
+          label: 'Characters',
+          icon: '📋',
+          custom_fields: [],
+          versionable_base_fields: ['name'],
+          list_layout: { display: 'grid', showFields: ['name'] },
+          editor_layout: { template: 'compact-card', imagePosition: 'top-right', imageSize: 'medium', headerFields: ['name'], sections: [] },
+        },
+        isPublished: true,
+      })
+
+      await db.insert(entities).values({
+        id: crypto.randomUUID(),
+        projectId: project.id,
+        scope: 'project',
+        bobbinId: 'entities',
+        collectionName: 'characters',
+        entityData: {
+          name: 'Velka',
+          _variants: {
+            order: ['human', 'werewolf'],
+            items: {
+              human: { label: 'Human', overrides: { name: 'Velka' } },
+              werewolf: { label: 'Werewolf', overrides: { name: 'Valkyr the Beast' } },
+            },
+          },
+        },
+        isPublished: true,
+        publishBase: false,
+        publishedVariantIds: ['human', 'werewolf'],
+        variantAccessLevels: { werewolf: 2 },
+      })
+
+      const token = await createTestToken(author.id)
+
+      // As themselves the author sees the spoiler name...
+      const asSelf = await app.inject({
+        method: 'GET',
+        url: `/api/public/projects/${project.id}/entities/published-names`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(JSON.parse(asSelf.payload).entities.map((e: any) => e.name).sort())
+        .toEqual(['Valkyr the Beast', 'Velka'])
+
+      // ...but previewing as a visitor it must be gone.
+      const asVisitor = await app.inject({
+        method: 'GET',
+        url: `/api/public/projects/${project.id}/entities/published-names?viewAs=visitor`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+      expect(JSON.parse(asVisitor.payload).entities.map((e: any) => e.name)).toEqual(['Velka'])
     })
   })
 })
