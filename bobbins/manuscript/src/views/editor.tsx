@@ -252,7 +252,7 @@ function EditorToolbar({
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleStrike().run()}
         isActive={editor.isActive('strike')}
-        title="Strikethrough (Ctrl+Shift+X)"
+        title="Strikethrough (Ctrl+Shift+S)"
       >
         <s>S</s>
       </ToolbarButton>
