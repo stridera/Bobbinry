@@ -11,6 +11,8 @@ interface UseEntityHighlightsArgs {
   proseRef: RefObject<HTMLDivElement | null>
   projectId: string | null
   apiToken: string | undefined
+  /** Owner-only audience preview; the names list is gated by it. */
+  viewAs?: string | undefined
   style: EntityHighlightStyle
   /** Hover peeks: desktop only, and only while highlights are on. */
   enablePeek: boolean
@@ -32,6 +34,7 @@ export function useEntityHighlights({
   proseRef,
   projectId,
   apiToken,
+  viewAs,
   style,
   enablePeek,
   annotations,
@@ -46,11 +49,11 @@ export function useEntityHighlights({
   useEffect(() => {
     if (!projectId) return
     let cancelled = false
-    readerApi.fetchPublishedEntityNames(projectId, apiToken)
+    readerApi.fetchPublishedEntityNames(projectId, apiToken, viewAs)
       .then(names => { if (!cancelled && names) setPublishedEntityNames(names) })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [projectId, apiToken])
+  }, [projectId, apiToken, viewAs])
 
   // Build + apply entity highlight spans after the chapter renders. Runs
   // AFTER the annotation pass so we don't wrap annotation-marked text.

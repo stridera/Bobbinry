@@ -196,7 +196,10 @@ export async function resolveViewAs(
     const tierId = viewAsRaw.slice('tier:'.length)
     if (UUID_RE.test(tierId)) {
       const [tier] = await db
-        .select({ earlyAccessDays: subscriptionTiers.earlyAccessDays })
+        .select({
+          earlyAccessDays: subscriptionTiers.earlyAccessDays,
+          tierLevel: subscriptionTiers.tierLevel,
+        })
         .from(subscriptionTiers)
         .where(and(
           eq(subscriptionTiers.id, tierId),
@@ -204,7 +207,15 @@ export async function resolveViewAs(
         ))
         .limit(1)
       if (tier) {
-        return { userId, simulate: { kind: 'tier', earlyAccessDays: tier.earlyAccessDays ?? 0 } }
+        return {
+          userId,
+          simulate: {
+            kind: 'tier',
+            earlyAccessDays: tier.earlyAccessDays ?? 0,
+            // Chapter embargo reads earlyAccessDays; the codex gates on tier level.
+            tierLevel: tier.tierLevel ?? 0,
+          },
+        }
       }
     }
   }

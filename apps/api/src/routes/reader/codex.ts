@@ -8,7 +8,7 @@ import { eq, and, asc, sql, inArray } from 'drizzle-orm'
 import { optionalAuth } from '../../middleware/auth'
 import { getEffectiveBobbins, getCollectionIdsForProject, buildScopeCondition } from '../../lib/effective-bobbins'
 import { resolveSlug, getSlugsForEntities } from '../../lib/slugs'
-import { canViewProject } from './shared'
+import { canViewProject, resolveViewAs, type EffectiveViewer } from './shared'
 
 const codexRoutes: FastifyPluginAsync = async (fastify) => {
   // ============================================
@@ -31,6 +31,19 @@ const codexRoutes: FastifyPluginAsync = async (fastify) => {
 
     const sub = await findActiveSubscription(callerId, project.ownerId)
     return sub?.tierLevel ?? 0
+  }
+
+  /**
+   * Codex tier level for an effective viewer, honoring ?viewAs=.
+   *
+   * Under a simulation the owner must lose their Infinity bypass, or "view as
+   * visitor" would still hand them every tier-gated entity and every locked
+   * variant. Beta resolves to 0 because the codex has no beta concept — a real
+   * beta reader with no subscription sits at 0 too.
+   */
+  async function resolveViewerTierLevel(projectId: string, viewer: EffectiveViewer): Promise<number> {
+    if (viewer.simulate) return viewer.simulate.kind === 'tier' ? viewer.simulate.tierLevel : 0
+    return resolveCallerTierLevel(projectId, viewer.userId)
   }
 
   interface ReaderVariantItem {
@@ -190,6 +203,7 @@ const codexRoutes: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{
     Params: { projectId: string }
+    Querystring: { viewAs?: string }
   }>('/public/projects/:projectId/entities', {
     preHandler: optionalAuth
   }, async (request, reply) => {
@@ -207,7 +221,9 @@ const codexRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(404).send({ error: 'Project not found' })
       }
 
-      if (!(await canViewProject(projectId, request.user?.id))) {
+      const viewer = await resolveViewAs(projectId, request.user?.id, request.query.viewAs)
+
+      if (!(await canViewProject(projectId, viewer.userId, viewer.simulate))) {
         return reply.status(404).send({ error: 'Project not found' })
       }
 
@@ -217,7 +233,7 @@ const codexRoutes: FastifyPluginAsync = async (fastify) => {
         return { installed: false, callerTierLevel: 0, types: [], lockedPreviews: { types: 0, entities: 0, variants: 0 } }
       }
 
-      const callerTier = await resolveCallerTierLevel(projectId, request.user?.id)
+      const callerTier = await resolveViewerTierLevel(projectId, viewer)
       const isOwner = callerTier === Number.POSITIVE_INFINITY
 
       // Resolve entity-visibility scope for this project: project, any
@@ -390,6 +406,7 @@ const codexRoutes: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{
     Params: { projectId: string; entityId: string }
+    Querystring: { viewAs?: string }
   }>('/public/projects/:projectId/entities/:entityId', {
     preHandler: optionalAuth
   }, async (request, reply) => {
@@ -408,7 +425,9 @@ const codexRoutes: FastifyPluginAsync = async (fastify) => {
         .limit(1)
       if (!project) return reply.status(404).send({ error: 'Project not found' })
 
-      if (!(await canViewProject(projectId, request.user?.id))) {
+      const viewer = await resolveViewAs(projectId, request.user?.id, request.query.viewAs)
+
+      if (!(await canViewProject(projectId, viewer.userId, viewer.simulate))) {
         return reply.status(404).send({ error: 'Project not found' })
       }
 
@@ -416,7 +435,7 @@ const codexRoutes: FastifyPluginAsync = async (fastify) => {
       const installed = effective.find(b => b.bobbinId === 'entities' && b.enabled)
       if (!installed) return reply.status(404).send({ error: 'Entities not available' })
 
-      const callerTier = await resolveCallerTierLevel(projectId, request.user?.id)
+      const callerTier = await resolveViewerTierLevel(projectId, viewer)
       const isOwner = callerTier === Number.POSITIVE_INFINITY
 
       const collectionIds = await getCollectionIdsForProject(projectId)
@@ -535,6 +554,7 @@ const codexRoutes: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{
     Params: { projectId: string }
+    Querystring: { viewAs?: string }
   }>('/public/projects/:projectId/entities/published-names', {
     preHandler: optionalAuth
   }, async (request, reply) => {
@@ -548,7 +568,9 @@ const codexRoutes: FastifyPluginAsync = async (fastify) => {
         .limit(1)
       if (!project) return reply.status(404).send({ error: 'Project not found' })
 
-      if (!(await canViewProject(projectId, request.user?.id))) {
+      const viewer = await resolveViewAs(projectId, request.user?.id, request.query.viewAs)
+
+      if (!(await canViewProject(projectId, viewer.userId, viewer.simulate))) {
         return reply.status(404).send({ error: 'Project not found' })
       }
 
@@ -556,7 +578,7 @@ const codexRoutes: FastifyPluginAsync = async (fastify) => {
       const installed = effective.find(b => b.bobbinId === 'entities' && b.enabled)
       if (!installed) return { installed: false, entities: [] }
 
-      const callerTier = await resolveCallerTierLevel(projectId, request.user?.id)
+      const callerTier = await resolveViewerTierLevel(projectId, viewer)
       const isOwner = callerTier === Number.POSITIVE_INFINITY
 
       const collectionIds = await getCollectionIdsForProject(projectId)

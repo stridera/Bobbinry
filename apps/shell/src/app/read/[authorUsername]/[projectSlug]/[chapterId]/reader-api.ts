@@ -61,8 +61,8 @@ export const readerApi = {
   },
 
   /** Null when the entities bobbin is not installed or the request failed. Cached per project + viewer. */
-  fetchPublishedEntityNames(projectId: string, token?: string): Promise<PublishedEntityName[] | null> {
-    return fetchPublishedEntityNames(projectId, token)
+  fetchPublishedEntityNames(projectId: string, token?: string, viewAs?: string): Promise<PublishedEntityName[] | null> {
+    return fetchPublishedEntityNames(projectId, token, viewAs)
   },
 
   /** Fire-and-forget view / progress ping. */

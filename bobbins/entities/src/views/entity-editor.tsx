@@ -11,7 +11,7 @@
  * - Handle all field types (text, number, select, json, rich-text, etc.)
  */
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useId, useMemo, useRef } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
 import type { EntityTypeDefinition, EntityVariants, FieldDefinition, VariantItem } from '../types'
 import { normalizeTypeConfig, normalizeJsonSchema, createDefaultJsonValue } from '../types'
@@ -1343,9 +1343,13 @@ function VariantTierSelect({
   disabled?: boolean
   onChange: (level: number) => void
 }) {
+  const selectId = useId()
   if (tiers.length === 0) return null
   return (
-    <label
+    // Label is a sibling with htmlFor: a <select> nested inside its own <label>
+    // receives the label's forwarded activation on top of its own click, which
+    // shuts the popup the moment it opens.
+    <span
       className={`flex items-center gap-1 text-[11px] ${disabled ? 'opacity-50' : ''}`}
       title={
         disabled
@@ -1353,8 +1357,9 @@ function VariantTierSelect({
           : 'Minimum subscriber tier for this view (the whole-entity tier acts as a floor)'
       }
     >
-      <span className="text-gray-500 dark:text-gray-400">Tier</span>
+      <label htmlFor={selectId} className="text-gray-500 dark:text-gray-400">Tier</label>
       <select
+        id={selectId}
         value={level}
         disabled={disabled}
         onChange={e => onChange(Number(e.target.value))}
@@ -1367,6 +1372,6 @@ function VariantTierSelect({
           </option>
         ))}
       </select>
-    </label>
+    </span>
   )
 }

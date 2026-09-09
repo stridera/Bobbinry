@@ -61,6 +61,8 @@ const eslintConfig = [
     ignores: [
       "node_modules/**",
       ".next/**",
+      // Build output from the pre-commit production build; linting 100k+
+      // generated chunks otherwise fails the commit on machine-made code.
       ".next-precommit/**",
       "out/**",
       "build/**",

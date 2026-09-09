@@ -17,6 +17,7 @@ import EntityView from './EntityView'
 import EntityHeaderActions from './EntityHeaderActions'
 import EntityStackFallback from './EntityStackFallback'
 import type { EntityStackEntry } from './useEntityStack'
+import { withViewAs } from './view-as'
 
 interface EntityModalProps {
   entry: EntityStackEntry
@@ -25,6 +26,8 @@ interface EntityModalProps {
   onClose: () => void
   /** Base for relation-pill links and the "Open as page" link — `${base}/${slug ?? id}`. */
   entityHrefBase: string
+  /** Owner-only audience preview; kept on both requests and subpage links. */
+  viewAs?: string | undefined
   /** Navigate in place to another entity (pushes onto the caller's stack). */
   onNavigateEntity?: ((entityId: string) => void) | undefined
   /** Pop back to the previously viewed entity; undefined hides the back arrow. */
@@ -33,7 +36,7 @@ interface EntityModalProps {
   onSubscribeNudge?: ((tierLevel?: number) => void) | undefined
 }
 
-export default function EntityModal({ entry, projectId, apiToken, onClose, entityHrefBase, onNavigateEntity, onBack, onSubscribeNudge }: EntityModalProps) {
+export default function EntityModal({ entry, projectId, apiToken, viewAs, onClose, entityHrefBase, onNavigateEntity, onBack, onSubscribeNudge }: EntityModalProps) {
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose()
@@ -77,12 +80,13 @@ export default function EntityModal({ entry, projectId, apiToken, onClose, entit
             apiToken={apiToken}
             headerAction={
               <EntityHeaderActions
-                subpageHref={`${entityHrefBase}/${entry.entity.slug ?? entry.entity.id}`}
+                subpageHref={withViewAs(`${entityHrefBase}/${entry.entity.slug ?? entry.entity.id}`, viewAs)}
                 onClose={onClose}
                 onBack={onBack}
               />
             }
             entityHrefBase={entityHrefBase}
+            viewAs={viewAs}
             onNavigateEntity={onNavigateEntity}
           />
         ) : (

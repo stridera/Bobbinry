@@ -4,10 +4,13 @@
  * relation pills, and the hover card.
  *
  * The list is gated by viewer (tier, beta access), so the cache is keyed by
- * project + token. A short TTL keeps a sidebar open/close from refetching
- * while still picking up newly published entities on the next chapter.
+ * project + token + the audience being previewed — an owner who switches to
+ * "view as visitor" must not be served their own unrestricted list from cache.
+ * A short TTL keeps a sidebar open/close from refetching while still picking
+ * up newly published entities on the next chapter.
  */
 import { publicFetch } from './public-fetch'
+import { withViewAs } from './view-as'
 
 export interface PublishedEntityName {
   id: string
@@ -26,12 +29,16 @@ const cache = new Map<string, { at: number; promise: Promise<PublishedEntityName
  * not installed on the project or the request failed. Concurrent callers
  * share one in-flight request; failures are not cached.
  */
-export function fetchPublishedEntityNames(projectId: string, token?: string | null): Promise<PublishedEntityName[] | null> {
-  const key = `${projectId}|${token ?? ''}`
+export function fetchPublishedEntityNames(
+  projectId: string,
+  token?: string | null,
+  viewAs?: string | null,
+): Promise<PublishedEntityName[] | null> {
+  const key = `${projectId}|${token ?? ''}|${viewAs ?? ''}`
   const hit = cache.get(key)
   if (hit && Date.now() - hit.at < TTL_MS) return hit.promise
 
-  const promise = publicFetch(`/public/projects/${projectId}/entities/published-names`, token)
+  const promise = publicFetch(withViewAs(`/public/projects/${projectId}/entities/published-names`, viewAs), token)
     .then(async res => {
       if (!res.ok) return null
       const data = (await res.json()) as { installed?: boolean; entities?: PublishedEntityName[] }

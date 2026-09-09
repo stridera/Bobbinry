@@ -16,6 +16,7 @@ import { CroppedImage } from '@/components/CroppedImage'
 import { resolveCardDescription, resolveCardThumbnail, resolveCardView } from './entities-data'
 import type { EntitiesPayload, PublishedEntity, PublishedType } from './entities-data'
 import { useEntityStack } from './useEntityStack'
+import { withViewAs } from './view-as'
 
 const OVERVIEW_PREVIEW_LIMIT = 10
 
@@ -39,6 +40,8 @@ interface EntitiesTabProps {
   authorUsername: string
   projectSlug: string
   apiToken?: string | undefined
+  /** Owner-only audience preview; forwarded to every codex request. */
+  viewAs?: string | undefined
   initialPayload?: EntitiesPayload | null
   /** Type id when viewing a single section in focused mode; null = overview. */
   focusedSection: string | null
@@ -53,6 +56,7 @@ export default function EntitiesTab({
   authorUsername,
   projectSlug,
   apiToken,
+  viewAs,
   initialPayload,
   focusedSection,
   onGoToSection,
@@ -74,7 +78,7 @@ export default function EntitiesTab({
     return map
   }, [payload])
   const resolveLocal = useCallback((id: string) => entityById.get(id) ?? null, [entityById])
-  const stack = useEntityStack({ projectId, apiToken, resolveLocal })
+  const stack = useEntityStack({ projectId, apiToken, viewAs, resolveLocal })
 
   useEffect(() => {
     if (initialPayload) {
@@ -88,7 +92,7 @@ export default function EntitiesTab({
     setError(null)
     const headers: Record<string, string> = {}
     if (apiToken) headers['Authorization'] = `Bearer ${apiToken}`
-    fetch(`${config.apiUrl}/api/public/projects/${projectId}/entities`, { headers })
+    fetch(withViewAs(`${config.apiUrl}/api/public/projects/${projectId}/entities`, viewAs), { headers })
       .then(async r => {
         if (!r.ok) throw new Error(`Failed to load entities (${r.status})`)
         return r.json() as Promise<EntitiesPayload>
@@ -103,7 +107,7 @@ export default function EntitiesTab({
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [projectId, apiToken, initialPayload])
+  }, [projectId, apiToken, viewAs, initialPayload])
 
   const scrollToSection = useCallback((typeId: string) => {
     const el = sectionRefs.current[typeId]
@@ -220,6 +224,7 @@ export default function EntitiesTab({
           entry={stack.current}
           projectId={projectId}
           apiToken={apiToken}
+          viewAs={viewAs}
           entityHrefBase={`/read/${authorUsername}/${projectSlug}/entity`}
           onNavigateEntity={id => { void stack.navigate(id) }}
           onBack={stack.canGoBack ? stack.back : undefined}

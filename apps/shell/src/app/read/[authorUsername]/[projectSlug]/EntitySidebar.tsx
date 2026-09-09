@@ -12,6 +12,7 @@ import EntityView from './EntityView'
 import EntityHeaderActions from './EntityHeaderActions'
 import EntityStackFallback from './EntityStackFallback'
 import type { EntityStackEntry } from './useEntityStack'
+import { withViewAs } from './view-as'
 
 interface EntitySidebarProps {
   entry: EntityStackEntry
@@ -20,6 +21,8 @@ interface EntitySidebarProps {
   onClose: () => void
   /** Base for relation-pill links and the "Open as page" link — `${base}/${slug ?? id}`. */
   entityHrefBase: string
+  /** Owner-only audience preview; kept on both requests and subpage links. */
+  viewAs?: string | undefined
   /** Navigate in place to another entity (pushes onto the caller's stack). */
   onNavigateEntity?: ((entityId: string) => void) | undefined
   /** Pop back to the previously viewed entity; undefined hides the back arrow. */
@@ -28,7 +31,7 @@ interface EntitySidebarProps {
   onSubscribeNudge?: ((tierLevel?: number) => void) | undefined
 }
 
-export default function EntitySidebar({ entry, projectId, apiToken, onClose, entityHrefBase, onNavigateEntity, onBack, onSubscribeNudge }: EntitySidebarProps) {
+export default function EntitySidebar({ entry, projectId, apiToken, viewAs, onClose, entityHrefBase, onNavigateEntity, onBack, onSubscribeNudge }: EntitySidebarProps) {
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.defaultPrevented) return
@@ -57,7 +60,7 @@ export default function EntitySidebar({ entry, projectId, apiToken, onClose, ent
           apiToken={apiToken}
           headerAction={
             <EntityHeaderActions
-              subpageHref={`${entityHrefBase}/${entry.entity.slug ?? entry.entity.id}`}
+              subpageHref={withViewAs(`${entityHrefBase}/${entry.entity.slug ?? entry.entity.id}`, viewAs)}
               onClose={onClose}
               onBack={onBack}
             />

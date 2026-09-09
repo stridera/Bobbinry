@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { LayoutRenderer } from '@bobbinry/entities/components/LayoutRenderer'
 import { ResolvedEntityNamesProvider, ResolvedEntityDetailsProvider, EntityNavProvider, type ResolvedEntityDetails } from '@bobbinry/entities/components/UploadContext'
 import { config } from '@/lib/config'
+import { withViewAs } from './view-as'
 import type { PublishedType, PublishedEntity } from './entities-data'
 import { resolveEntityForVariant, variantConfigForType } from './entities-data'
 import { fetchPublishedEntityNames } from './published-names'
@@ -32,6 +33,8 @@ interface EntityViewProps {
   headerAction?: React.ReactNode
   /** Route base for linking to other entities from relation pills. E.g. `/read/elena/saga/entity` — id is appended. */
   entityHrefBase?: string | undefined
+  /** Owner-only audience preview; kept on codex requests and relation links. */
+  viewAs?: string | undefined
   /**
    * Client-side handler for plain relation-pill clicks. When set, pills keep
    * their href (middle/cmd-click still opens the full page) but a normal
@@ -42,7 +45,7 @@ interface EntityViewProps {
   stickyHeaderTopClass?: string | undefined
 }
 
-export default function EntityView({ type, entity, projectId, apiToken, bare = false, headerAction, entityHrefBase, onNavigateEntity, stickyHeaderTopClass }: EntityViewProps) {
+export default function EntityView({ type, entity, projectId, apiToken, viewAs, bare = false, headerAction, entityHrefBase, onNavigateEntity, stickyHeaderTopClass }: EntityViewProps) {
   const visibleVariantIds = useMemo(() => {
     const ids: Array<string | null> = []
     if (entity.publishBase) ids.push(null)
@@ -86,8 +89,9 @@ export default function EntityView({ type, entity, projectId, apiToken, bare = f
     if (!projectId) return
     let cancelled = false
     // Shared, cached with the chapter page's highlight pass — one request per
-    // project + viewer per minute instead of one per opened entity.
-    fetchPublishedEntityNames(projectId, apiToken)
+    // project + viewer per minute instead of one per opened entity. The cache
+    // key includes the previewed audience, so switching it refetches.
+    fetchPublishedEntityNames(projectId, apiToken, viewAs)
       .then(entries => {
         if (cancelled || !entries) return
         const map = new Map<string, string>()
@@ -98,7 +102,7 @@ export default function EntityView({ type, entity, projectId, apiToken, bare = f
       })
       .catch(() => { /* relation pills fall back to "Locked" — acceptable */ })
     return () => { cancelled = true }
-  }, [projectId, apiToken])
+  }, [projectId, apiToken, viewAs])
 
   // Relation fields with a rich display (e.g. grouped-by-level spell lists)
   // need more than names — fetch the full published-entities payload and
@@ -113,7 +117,7 @@ export default function EntityView({ type, entity, projectId, apiToken, bare = f
     let cancelled = false
     const headers: Record<string, string> = {}
     if (apiToken) headers['Authorization'] = `Bearer ${apiToken}`
-    fetch(`${config.apiUrl}/api/public/projects/${projectId}/entities`, { headers })
+    fetch(withViewAs(`${config.apiUrl}/api/public/projects/${projectId}/entities`, viewAs), { headers })
       .then(r => (r.ok ? r.json() : null))
       .then((data: { types?: Array<{ entities?: Array<{ id: string; name: string; description?: string; entityData?: Record<string, unknown> }> }> } | null) => {
         if (cancelled || !data?.types) return
@@ -132,7 +136,7 @@ export default function EntityView({ type, entity, projectId, apiToken, bare = f
       })
       .catch(() => { /* grouped displays fall back to plain pills — acceptable */ })
     return () => { cancelled = true }
-  }, [projectId, apiToken, needsDetails])
+  }, [projectId, apiToken, viewAs, needsDetails])
 
   const layout = type.editorLayout || type.listLayout
   const showVariantBar = visibleVariantIds.length > 1
@@ -201,7 +205,7 @@ export default function EntityView({ type, entity, projectId, apiToken, bare = f
             <EntityNavProvider
               getLinkProps={(_entityType, id) => {
                 if (!entityHrefBase) return null
-                const href = `${entityHrefBase}/${id}`
+                const href = withViewAs(`${entityHrefBase}/${id}`, viewAs)
                 if (!onNavigateEntity) return { href }
                 return {
                   href,

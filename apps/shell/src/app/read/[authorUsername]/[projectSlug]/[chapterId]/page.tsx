@@ -16,6 +16,7 @@ import { AnnotationForm } from '@/components/AnnotationForm'
 import EntityModal from '../EntityModal'
 import EntitySidebar from '../EntitySidebar'
 import { useEntityStack } from '../useEntityStack'
+import { withViewAs } from '../view-as'
 import { FONT_SIZES, READER_CONTENT_ID, WIDTHS } from './types'
 import { readerThemeClasses } from './reader-theme'
 import { useReaderPrefs } from './useReaderPrefs'
@@ -60,7 +61,6 @@ function ChapterReaderContent() {
   const viewAs = searchParams.get('viewAs') || ''
   const viewAsQuery = viewAs ? `viewAs=${encodeURIComponent(viewAs)}` : ''
   const basePath = `/read/${authorUsername}/${projectSlug}`
-  const withViewAs = (href: string) => `${href}${viewAsQuery ? `?${viewAsQuery}` : ''}`
 
   const { prefs, setPref } = useReaderPrefs()
   const theme = readerThemeClasses(prefs.readerTheme)
@@ -89,10 +89,10 @@ function ChapterReaderContent() {
 
   // Published-entity click-to-open state. The stack lets relation pills inside
   // the open entity navigate in place (no reload).
-  const entityStack = useEntityStack({ projectId: projectId ?? '', apiToken })
+  const entityStack = useEntityStack({ projectId: projectId ?? '', apiToken, viewAs })
   const { navigate: navigateEntity } = entityStack
   const { publishedEntityNames } = useEntityHighlights({
-    proseRef, projectId, apiToken, style: prefs.entityHighlightStyle, enablePeek: enableEntityPeek,
+    proseRef, projectId, apiToken, viewAs, style: prefs.entityHighlightStyle, enablePeek: enableEntityPeek,
     annotations, chapter, loading, entityStack,
   })
 
@@ -102,7 +102,13 @@ function ChapterReaderContent() {
 
   // Context handed to reader.* extension slots. Memoized so bobbin panels only
   // re-render when something they can see changes.
-  const nextChapterHref = nav.next ? withViewAs(`${basePath}/${nav.next.slug ?? nav.next.id}`) : null
+  // withViewAs keeps the owner's audience preview alive across navigation.
+  // Memoized because slotContext below depends on it, and bobbin panels should
+  // not re-render just because this string was rebuilt.
+  const nextChapterHref = useMemo(
+    () => (nav.next ? withViewAs(`${basePath}/${nav.next.slug ?? nav.next.id}`, viewAs) : null),
+    [nav.next, basePath, viewAs]
+  )
   const navigateTo = useCallback((href: string) => { router.push(href) }, [router])
   const slotContext = useMemo(() => ({
     chapterId,
@@ -215,12 +221,12 @@ function ChapterReaderContent() {
 
           <div className="mt-8 flex justify-between">
             {nav.previous ? (
-              <Link href={withViewAs(`${basePath}/${nav.previous.slug ?? nav.previous.id}`)} className={`text-sm ${theme.linkColor} hover:underline`}>
+              <Link href={withViewAs(`${basePath}/${nav.previous.slug ?? nav.previous.id}`, viewAs)} className={`text-sm ${theme.linkColor} hover:underline`}>
                 &larr; Previous Chapter
               </Link>
             ) : <div />}
             {nav.next ? (
-              <Link href={withViewAs(`${basePath}/${nav.next.slug ?? nav.next.id}`)} className={`text-sm ${theme.linkColor} hover:underline`}>
+              <Link href={withViewAs(`${basePath}/${nav.next.slug ?? nav.next.id}`, viewAs)} className={`text-sm ${theme.linkColor} hover:underline`}>
                 Next Chapter &rarr;
               </Link>
             ) : <div />}
@@ -239,6 +245,7 @@ function ChapterReaderContent() {
             entry={entityStack.current}
             projectId={projectId}
             apiToken={apiToken}
+            viewAs={viewAs}
             entityHrefBase={entityHrefBase}
             onNavigateEntity={id => { void navigateEntity(id) }}
             onBack={entityStack.canGoBack ? entityStack.back : undefined}
@@ -255,6 +262,7 @@ function ChapterReaderContent() {
           entry={entityStack.current}
           projectId={projectId}
           apiToken={apiToken}
+          viewAs={viewAs}
           entityHrefBase={entityHrefBase}
           onNavigateEntity={id => { void navigateEntity(id) }}
           onBack={entityStack.canGoBack ? entityStack.back : undefined}

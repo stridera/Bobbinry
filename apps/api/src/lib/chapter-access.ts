@@ -24,7 +24,8 @@ import { eq, and, or, isNull, inArray, sql, desc } from 'drizzle-orm'
  */
 export type ViewSimulation =
   | { kind: 'beta' }
-  | { kind: 'tier'; earlyAccessDays: number }
+  // Chapter embargo reads earlyAccessDays; the codex gates on tier level.
+  | { kind: 'tier'; earlyAccessDays: number; tierLevel: number }
 
 export interface AccessCheckResult {
   canAccess: boolean
