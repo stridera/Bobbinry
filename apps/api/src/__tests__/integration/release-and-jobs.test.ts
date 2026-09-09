@@ -194,6 +194,37 @@ describe('release-schedule + subscription-expiration + tier-dispatch', () => {
       expect(second!.getTime() - first!.getTime()).toBe(14 * DAY_MS)
     })
 
+    it('biweekly: every selected day of an "on" week fires, then a whole week is skipped', async () => {
+      // The week index used to be anchored to the Unix epoch, a Thursday, so
+      // the boundary cut the middle of the author's week: Mon and Fri landed
+      // in opposite parities and the schedule released once a week,
+      // alternating the day, instead of twice every other week.
+      await setPublishConfig({ releaseFrequency: 'biweekly', releaseDay: 'mon,fri', releaseTime: '09:00' })
+      // Sunday before an "on" week, so the first slot is that week's Monday
+      // rather than whichever day the search happens to land on mid-week.
+      const after = new Date('2026-01-11T00:00:00.000Z')
+
+      const slots: Date[] = []
+      let cursor = after
+      for (let i = 0; i < 4; i++) {
+        const slot = await getNextAvailableReleaseSlot(projectId, { after: cursor })
+        slots.push(slot!)
+        cursor = new Date(slot!.getTime() + 1)
+      }
+
+      // Two releases in one week (Mon then Fri, four days apart)...
+      expect(slots[0]!.getUTCDay()).toBe(1)
+      expect(slots[1]!.getUTCDay()).toBe(5)
+      expect(slots[1]!.getTime() - slots[0]!.getTime()).toBe(4 * DAY_MS)
+
+      // ...then the next pair is a fortnight on from the first, not a week.
+      expect(slots[2]!.getUTCDay()).toBe(1)
+      expect(slots[2]!.getTime() - slots[0]!.getTime()).toBe(14 * DAY_MS)
+      expect(slots[3]!.getTime() - slots[1]!.getTime()).toBe(14 * DAY_MS)
+    })
+
+    // The publisher UI labels this frequency "Monthly (1st)" and hides the
+    // day picker for it, so ignoring releaseDay here is the contract.
     it('monthly: next slot is the 1st of the following month, regardless of releaseDay', async () => {
       await setPublishConfig({ releaseFrequency: 'monthly', releaseDay: 'fri', releaseTime: '09:00' })
       const after = new Date('2026-01-15T00:00:00.000Z')

@@ -64,6 +64,9 @@ function normalizeReleaseDays(value?: string | null): number[] {
   return days.length > 0 ? [...new Set(days)].sort((a, b) => a - b) : [1]
 }
 
+/** The Unix epoch is a Thursday; the Monday before it is three days earlier. */
+const MONDAY_EPOCH_OFFSET_MS = 3 * DAY_MS
+
 function isMatchingCadence(date: Date, schedule: ProjectReleaseSchedule): boolean {
   switch (schedule.releaseFrequency) {
     case 'daily':
@@ -71,7 +74,11 @@ function isMatchingCadence(date: Date, schedule: ProjectReleaseSchedule): boolea
     case 'weekly':
       return schedule.releaseDays.includes(date.getUTCDay())
     case 'biweekly': {
-      const weekIndex = Math.floor(date.getTime() / (7 * DAY_MS))
+      // Week index anchored to Monday. The Unix epoch is a Thursday, so
+      // dividing the raw timestamp put the week boundary mid-week: a Mon+Fri
+      // schedule landed its two days in opposite parities and released once
+      // every week, alternating the day, instead of twice every other week.
+      const weekIndex = Math.floor((date.getTime() + MONDAY_EPOCH_OFFSET_MS) / (7 * DAY_MS))
       return schedule.releaseDays.includes(date.getUTCDay()) && weekIndex % 2 === 0
     }
     case 'monthly':

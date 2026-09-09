@@ -33,20 +33,12 @@ them are fixed in the same commit.
 
 ## Open questions from test writing
 
-These are behaviour choices the tests documented rather than changed, because
-changing them alters what published schedules do for existing authors.
-
-### Monthly release schedules ignore the configured day
-`isMatchingCadence` in `apps/api/src/lib/release-schedule.ts` hardcodes
-`date.getUTCDate() === 1` for monthly, so an author who sets a release day
-gets the 1st regardless. The stored `releaseDay` is a shared column that means
-day-of-week for weekly/biweekly, so honouring it for monthly needs a decision
-about what the field means there (and a migration path for anyone already on a
-monthly schedule).
-
-### Biweekly "on" weeks are anchored to the Unix epoch
-The same function decides biweekly parity with
-`Math.floor(date.getTime() / (7*DAY_MS)) % 2 === 0`. Spacing is a correct 14
-days, but which calendar weeks count as "on" is not tied to when the author
-configured the schedule, so it cannot be explained in the UI and would shift
-if the anchor ever changed.
+### Which fortnight is an "on" week is still arbitrary
+`isMatchingCadence` in `apps/api/src/lib/release-schedule.ts` now anchors
+biweekly parity to Monday, so every selected day of a week fires together.
+Which of the two weeks is the "on" one is still decided by the calendar
+rather than by the author's schedule, so enabling biweekly gives a first
+release either this week or next with nothing in the UI explaining which.
+Fixing that properly means storing a schedule anchor (when auto-release was
+switched on) and counting fortnights from it — a column plus a decision about
+what happens to schedules already running.
