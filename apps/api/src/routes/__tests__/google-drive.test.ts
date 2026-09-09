@@ -12,6 +12,10 @@ import {
 } from '../../__tests__/test-helpers'
 import { encryptDriveConfig } from '../google-drive'
 import { decryptSecret } from '../../lib/secret-storage'
+// The route builds redirects from env.WEB_ORIGIN, which falls back to a
+// default when the variable is unset. Asserting against raw process.env made
+// the expectation "undefined/..." on any machine without it set, such as CI.
+import { env } from '../../lib/env'
 
 /**
  * Google Drive backup routes: OAuth connect/callback, backup status,
@@ -229,7 +233,7 @@ describe('Google Drive backup routes', () => {
     it('redirects with drive=denied when Google reports an OAuth error', async () => {
       const res = await callback({ error: 'access_denied' })
       expect(res.statusCode).toBe(302)
-      expect(res.headers.location).toBe(`${process.env.WEB_ORIGIN}/backups?drive=denied`)
+      expect(res.headers.location).toBe(`${env.WEB_ORIGIN}/backups?drive=denied`)
     })
 
     it('returns 400 for a missing code or state parameter', async () => {
@@ -269,7 +273,7 @@ describe('Google Drive backup routes', () => {
 
       const res = await callback({ code: 'abc123', state })
       expect(res.statusCode).toBe(302)
-      expect(res.headers.location).toBe(`${process.env.WEB_ORIGIN}/backups?drive=error`)
+      expect(res.headers.location).toBe(`${env.WEB_ORIGIN}/backups?drive=error`)
     })
 
     it('completes a valid callback and stores the encrypted connection', async () => {
@@ -302,7 +306,7 @@ describe('Google Drive backup routes', () => {
 
       const res = await callback({ code: 'abc123', state })
       expect(res.statusCode).toBe(302)
-      expect(res.headers.location).toBe(`${process.env.WEB_ORIGIN}/backups?drive=connected`)
+      expect(res.headers.location).toBe(`${env.WEB_ORIGIN}/backups?drive=connected`)
 
       const [row] = await db
         .select()
