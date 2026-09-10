@@ -4,7 +4,7 @@ Known work that is understood but not yet done. Each item says what is wrong,
 why it matters, and what the fix looks like, so it can be picked up cold.
 Items leave this file when they land; history is in git.
 
-Last reviewed: 2026-09-07 (after the `fix/slop-review-security` cleanup and its follow-ups).
+Last reviewed: 2026-09-10 (added the Codex Sync design review findings).
 
 ## D. Verify / housekeeping
 
@@ -31,6 +31,66 @@ the character page shows nothing in return. A reverse-relation display (or a
 The author's sheet caps each rank at three Streams and three Sparks, with
 locked slots shown as padlocks. Nothing enforces a cap today; a per-list
 `maxItems` on the JSON schema (or per-era caps) would.
+
+## F. From the Codex Sync design review (2026-09-10)
+
+Found while designing Codex Sync; the full notes are in the Daily-Sync repo's
+`docs/bobbinry-issues-2026-09-10.md`. The API-key scope bypass, the `color`
+field type, the CLI's phantom `totalWords` and the stale scope docs from that
+list have landed.
+
+### F1. ai-tools writes skip optimistic locking, revisions and events
+`POST /ai-tools/synopsis/save` and the review auto-save to
+`entityData.lastReview` (`routes/ai-tools.ts`) update `entities` without
+bumping `version`, so they can clobber an open editor or be clobbered
+silently. They capture no revision and emit no `content:edited`, so Drive
+backup misses them, and neither checks that the target is a chapter. Route
+them through the same write path as `PUT /entities/:id`.
+
+### F2. `/entity-types` writes are missing from the change feed
+`routes/entity-types.ts` never calls `recordEntityChange`, so schema changes
+are invisible to feed consumers.
+
+### F3. Word totals count non-narrative content
+Reader TOC `totalWords` (`routes/reader/chapters.ts`), public profile
+`wordCount` (`routes/users/public-profile.ts`) and export word counts sum every
+content row. Filter with `countsTowardWordCount`; this rides with the
+folder-level content type work. Also decide whether publishing should refuse
+or warn on `outline` / `supporting_doc` rows.
+
+### F4. Content type and the feed disagree
+`PATCH /entities/:id/content-type` emits an event with no word delta, so
+clients summing deltas drift when a chapter moves in or out of the narrative.
+`PUT /entities` with `content_type` inside `data` updates only the JSON key,
+not the column. Emit a narrative-membership delta, and sync or reject the key.
+
+### F5. NULL `content_type` rows in production
+dr-c-hobbs (`8c7f1950-89b9-4997-be20-fafd95010497`) has 27 content rows with
+`contentType = NULL` despite migration 0032's backfill. Find the create path
+that bypasses `resolveContentTypeColumn`, fix it, then re-run the backfill.
+
+### F6. Change feed: per-page coalescing and the filtered cursor
+Coalescing happens per page, not per window as the route header says, so one
+entity can come back several times with its delta split. With `collection=`,
+the cursor jumps to the global high-water mark, so a client polling one
+collection loses the others' events unless it keeps a cursor per collection.
+Both sync bots work around both. Coalesce across the response or fix the
+comment; return a cursor that is safe per filter or document it loudly.
+
+### F7. Stale ai-tools pieces
+The model list is out of date (`claude-sonnet-4-20250514`, `gpt-4o` in
+`routes/ai-tools.ts` and `ai-panel.tsx`), and token usage is returned but never
+stored. (The `bobbins/ai-tools/dist/actions/*.js` leftovers are untracked
+build output in the primary checkout; delete them locally.)
+
+### F8. Codex Sync prerequisites
+`sanitizeEntityDataForReader` (`routes/reader/codex.ts`) strips only
+`_variants`, so a future `_codex` block would ship to readers: strip it and add
+a field-level `authorOnly`. `entity_changes.actor` and `entities.lastEditedBy`
+can't tell API-key or AI writes from the author (only
+`entity_revisions.actorKey` does), and `source` has no `api` / `ai`. Revisions
+cover only `RESTORABLE_FIELDS` (body, title, notes, synopsis), so entity-field
+edits can't be undone.
 
 ## Test coverage log
 
