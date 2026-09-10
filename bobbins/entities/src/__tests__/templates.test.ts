@@ -4,12 +4,13 @@
 
 import { describe, it, expect } from '@jest/globals'
 import { templates } from '../templates'
+import { listSchemaOf } from '../progression'
 import type { EntityTemplate, FieldType } from '../types'
 
 describe('Entity Templates', () => {
   describe('Template Structure', () => {
-    it('should have 7 templates', () => {
-      expect(templates).toHaveLength(7)
+    it('should have 8 templates', () => {
+      expect(templates).toHaveLength(8)
     })
 
     it('should have all required templates', () => {
@@ -21,6 +22,7 @@ describe('Entity Templates', () => {
       expect(templateIds).toContain('template-classes')
       expect(templateIds).toContain('template-factions')
       expect(templateIds).toContain('template-races')
+      expect(templateIds).toContain('template-progressions')
     })
 
     it.each(templates)('$label template should have valid structure', (template) => {
@@ -179,6 +181,26 @@ describe('Entity Templates', () => {
 
       expect(fieldNames).toContain('item_type')
       expect(fieldNames).toContain('rarity')
+    })
+
+    it('Power Progressions tracks versionable, forward-carried lists on an ordered axis', () => {
+      const progressions = templates.find(t => t.id === 'template-progressions')!
+      expect(progressions.variantAxis?.kind).toBe('ordered')
+      expect(progressions.variantAxis?.presets?.length).toBeGreaterThan(0)
+
+      const byName = new Map(progressions.customFields.map(f => [f.name, f]))
+      const listSections = progressions.editorLayout.sections.filter(
+        s => s.display === 'progression' || s.display === 'table'
+      )
+      expect(listSections.map(s => s.display)).toContain('progression')
+      for (const section of listSections) {
+        for (const name of section.fields) {
+          const field = byName.get(name)!
+          expect(listSchemaOf(field)).not.toBeNull()
+          expect(field.versionable).toBe(true)
+          expect(progressions.variantInheritance?.[name]).toBe('forward')
+        }
+      }
     })
   })
 })

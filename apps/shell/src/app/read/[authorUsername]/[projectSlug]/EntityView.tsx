@@ -13,7 +13,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { LayoutRenderer } from '@bobbinry/entities/components/LayoutRenderer'
-import { ResolvedEntityNamesProvider, ResolvedEntityDetailsProvider, EntityNavProvider, type ResolvedEntityDetails } from '@bobbinry/entities/components/UploadContext'
+import { ResolvedEntityNamesProvider, ResolvedEntityDetailsProvider, EntityNavProvider, ProgressionProvider, type ResolvedEntityDetails, type ProgressionContextValue } from '@bobbinry/entities/components/UploadContext'
 import { config } from '@/lib/config'
 import { withViewAs } from './view-as'
 import type { PublishedType, PublishedEntity } from './entities-data'
@@ -78,6 +78,21 @@ export default function EntityView({ type, entity, projectId, apiToken, viewAs, 
       eraIds: entity.publishedVariantIds,
     }),
     [entity.entityData, variantConfig, selectedVariant, entity.publishedVariantIds]
+  )
+
+  // Progression sections read every era at once. entityData is already
+  // sanitized to this reader's visible eras; eraIds keeps inheritance inside them.
+  const progression = useMemo<ProgressionContextValue>(
+    () => ({
+      data: entity.entityData,
+      config: variantConfig,
+      axisLabel: type.variantAxis?.label ?? 'View',
+      activeVariantId: selectedVariant,
+      onSelectVariant: setSelectedVariant,
+      includeBase: Boolean(entity.publishBase),
+      eraIds: entity.publishedVariantIds,
+    }),
+    [entity.entityData, entity.publishBase, entity.publishedVariantIds, variantConfig, type.variantAxis?.label, selectedVariant]
   )
 
   // Fetch a flat id → display-name table so relation fields (class, race, etc.)
@@ -218,13 +233,15 @@ export default function EntityView({ type, entity, projectId, apiToken, viewAs, 
                 }
               }}
             >
-              <LayoutRenderer
-                layout={layout as any}
-                fields={type.customFields as any}
-                entity={resolvedEntity}
-                onFieldChange={() => {}}
-                readonly
-              />
+              <ProgressionProvider value={progression}>
+                <LayoutRenderer
+                  layout={layout as any}
+                  fields={type.customFields as any}
+                  entity={resolvedEntity}
+                  onFieldChange={() => {}}
+                  readonly
+                />
+              </ProgressionProvider>
             </EntityNavProvider>
           </ResolvedEntityDetailsProvider>
         </ResolvedEntityNamesProvider>

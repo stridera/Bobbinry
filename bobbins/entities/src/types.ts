@@ -21,7 +21,9 @@ export type ImagePosition = 'top-right' | 'top-full-width' | 'left-sidebar' | 'n
 
 export type ImageSize = 'small' | 'medium' | 'large'
 
-export type SectionDisplay = 'inline' | 'stacked' | 'json-editor' | 'rich-text'
+/** `progression` lays list fields out across every era of an ordered axis;
+ * `table` edits list fields as inline rows instead of collapsible items. */
+export type SectionDisplay = 'inline' | 'stacked' | 'json-editor' | 'rich-text' | 'progression' | 'table'
 
 // JSON schema types for structured data fields
 export type JsonSchemaFieldType = 'text' | 'number' | 'boolean' | 'select'
@@ -33,6 +35,7 @@ export interface JsonSchemaField {
   options?: string[]       // For select type
   min?: number             // For number type
   max?: number             // For number type
+  multiline?: boolean      // For text type: edit in a textarea
 }
 
 export type JsonSchemaMode = 'object' | 'list' | 'keyed-list'
@@ -188,6 +191,9 @@ export interface VariantAxis {
   id: string      // stable identifier, e.g. 'book', 'level'
   label: string   // display label, e.g. 'Book', 'Level'
   kind: 'ordered' | 'unordered'
+  /** Variant labels the type suggests, in order (e.g. Marked, Threaded, Woven).
+   * An entity can add all missing ones in one step. */
+  presets?: string[]
 }
 
 /** A single named variant stored inside an entity's data. */

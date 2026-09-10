@@ -174,6 +174,8 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
     showFields: ['name', 'description']
   })
   const [variantAxis, setVariantAxis] = useState<VariantAxis | null>(null)
+  // Raw text while the presets input has focus; committed (split on commas) on blur.
+  const [presetsDraft, setPresetsDraft] = useState<string | null>(null)
   const [versionableBaseFields, setVersionableBaseFields] = useState<string[]>([])
   // Per-field `base` | `forward`, keyed by field name; the gallery triple shares
   // the canonical key `images`. Stored sparse on read, dense on save (see
@@ -270,6 +272,8 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
 
     let variantAxis: EntityTemplate['variantAxis']
     if (t.variant_axis && typeof t.variant_axis === 'object') variantAxis = t.variant_axis
+    let variantInheritance: EntityTemplate['variantInheritance']
+    if (t.variant_inheritance && typeof t.variant_inheritance === 'object') variantInheritance = t.variant_inheritance
 
     if (t.official) {
       const builtIn = templates.find(bt => bt.shareId === shareId)
@@ -280,6 +284,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
         subtitleFields = builtIn.subtitleFields
         versionableBaseFields = builtIn.versionableBaseFields ?? []
         variantAxis = builtIn.variantAxis
+        variantInheritance = builtIn.variantInheritance
       }
     }
 
@@ -299,6 +304,7 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
       subtitleFields,
     }
     if (variantAxis) result.variantAxis = variantAxis
+    if (variantInheritance) result.variantInheritance = variantInheritance
     return result
   }
 
@@ -1006,6 +1012,29 @@ export default function ConfigView({ projectId, sdk, metadata }: ConfigViewProps
                   <option value="ordered">Ordered (progression: Book 1 → 5)</option>
                 </select>
               </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Presets
+              </label>
+              <input
+                type="text"
+                value={presetsDraft ?? (variantAxis.presets ?? []).join(', ')}
+                onChange={(e) => setPresetsDraft(e.target.value)}
+                onBlur={() => {
+                  if (presetsDraft === null) return
+                  const presets = presetsDraft.split(',').map(s => s.trim()).filter(Boolean)
+                  const { presets: _dropped, ...rest } = variantAxis
+                  setVariantAxis(presets.length > 0 ? { ...rest, presets } : rest)
+                  setPresetsDraft(null)
+                }}
+                placeholder="e.g. Book 1, Book 2, Book 3"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+              />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Comma-separated, in order. Each entity can add the ones it&apos;s missing in one click.
+              </p>
             </div>
 
             <div>

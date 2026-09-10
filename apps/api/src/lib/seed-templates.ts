@@ -44,6 +44,7 @@ const OFFICIAL_TEMPLATES: Array<{
   { shareId: 'official-classes', version: 3, label: 'Classes', icon: '🎭', description: 'Character classes and professions', tags: ['rpg', 'classes', 'professions'] },
   { shareId: 'official-factions', version: 5, label: 'Factions', icon: '⚜️', description: 'Organizations, guilds, and political groups', tags: ['worldbuilding', 'factions', 'organizations'] },
   { shareId: 'official-races', version: 1, label: 'Races', icon: '🧝', description: 'Playable races, species, and ancestries', tags: ['rpg', 'worldbuilding', 'races'] },
+  { shareId: 'official-progressions', version: 2, label: 'Power Progressions', icon: '🌀', description: "How a character's abilities grow, rank by rank", tags: ['magic', 'progression', 'litrpg'] },
 ]
 
 export async function seedOfficialTemplates(): Promise<void> {

@@ -13,6 +13,25 @@ No v10 typings on DefinitelyTyped yet; compiles because the API is
 compatible. Check `npm view @types/html-to-text version` occasionally and
 bump `apps/api/package.json` when 10.x appears.
 
+### D3. Official template versions drift between seed and code
+`apps/api/src/lib/seed-templates.ts` registers Characters at v7 while
+`bobbins/entities/src/templates/characters.ts` is v8. The picker reads the
+version from the API row, so types created from it record v7 and may be
+offered a "sync" to v8 forever. Bump the seed entry (or derive the registry
+from the built-in templates) and check `typeNeedsTemplateSync` afterwards.
+
+## E. Power Progressions follow-ups
+
+### E1. Characters don't link back to their progression
+A progression points at its character through the `character` relation, but
+the character page shows nothing in return. A reverse-relation display (or a
+"Progressions" relation on Characters) would close the loop.
+
+### E2. Slot caps and locks
+The author's sheet caps each rank at three Streams and three Sparks, with
+locked slots shown as padlocks. Nothing enforces a cap today; a per-list
+`maxItems` on the JSON schema (or per-era caps) would.
+
 ## Test coverage log
 
 Routes and modules that gained tests, newest last. Bugs found while writing
@@ -31,6 +50,7 @@ them are fixed in the same commit.
 - 2026-09-08 `components/ShellLayout.tsx` (8 cases: panel geometry from stored preferences, collapse persistence, account sync started once with the token, revealOn dispatch and re-subscription, focus mode and its Esc exit and floating panel). No component changes needed.
 - 2026-09-08 `routes/ai-tools.ts` (65 cases: per-user encrypted key storage, every analysis route's auth/ownership/validation, model failures as 502 with no half-written rows, upstream 401/429 passthrough). No route changes needed; the routes have no quota or tier gate to test.
 - 2026-09-09 `routes/publishing.ts` release preview endpoint + the publisher's release-config screen now list the next four computed dates (2 cases: the biweekly fortnight invariant and count clamping, plus the ownership guard).
+- 2026-09-09 entities `progression.ts` + `appendPresetVariants` (13 cases: era columns and the Base column, unlock/change/same/rename states, tier-hidden eras never feeding visible ones, positional slots past a cleared row, preset ordering around existing variants) — official templates now keep their `variantInheritance` defaults when picked from the gallery.
 
 ## Open questions from test writing
 

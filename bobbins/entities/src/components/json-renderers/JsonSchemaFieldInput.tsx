@@ -10,14 +10,19 @@ interface JsonSchemaFieldInputProps {
   field: JsonSchemaField
   value: any
   onChange: (value: any) => void
+  /** Row layout (SlotTable): the label is read by screen readers and shown as the placeholder. */
+  compact?: boolean
 }
 
 function humanize(key: string): string {
   return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
-export function JsonSchemaFieldInput({ fieldKey, field, value, onChange }: JsonSchemaFieldInputProps) {
+export function JsonSchemaFieldInput({ fieldKey, field, value, onChange, compact = false }: JsonSchemaFieldInputProps) {
   const label = field.label || humanize(fieldKey)
+  const labelClass = compact
+    ? 'sr-only'
+    : 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1'
 
   // Defaults are shown as placeholders, never as real input values — otherwise
   // a hint-value is indistinguishable from a value the author actually chose.
@@ -29,13 +34,14 @@ export function JsonSchemaFieldInput({ fieldKey, field, value, onChange }: JsonS
     case 'number':
       return (
         <div>
-          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+          <label className={labelClass}>
             {label}
           </label>
           <input
             type="number"
             value={value ?? ''}
-            placeholder={defaultHint}
+            placeholder={defaultHint ?? (compact ? label : undefined)}
+            aria-label={compact ? label : undefined}
             onChange={(e) => onChange(e.target.value === '' ? undefined : Number(e.target.value))}
             min={field.min}
             max={field.max}
@@ -60,15 +66,16 @@ export function JsonSchemaFieldInput({ fieldKey, field, value, onChange }: JsonS
     case 'select':
       return (
         <div>
-          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+          <label className={labelClass}>
             {label}
           </label>
           <select
             value={value ?? ''}
             onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
+            aria-label={compact ? label : undefined}
             className="w-full px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm"
           >
-            <option value="">{defaultHint ? `${defaultHint} (default)` : 'Select…'}</option>
+            <option value="">{defaultHint ? `${defaultHint} (default)` : compact ? label : 'Select…'}</option>
             {(field.options || []).map(opt => (
               <option key={opt} value={opt}>{opt}</option>
             ))}
@@ -78,15 +85,33 @@ export function JsonSchemaFieldInput({ fieldKey, field, value, onChange }: JsonS
 
     case 'text':
     default:
+      if (field.multiline) {
+        return (
+          <div>
+            <label className={labelClass}>
+              {label}
+            </label>
+            <textarea
+              value={value ?? ''}
+              placeholder={defaultHint ?? (compact ? label : undefined)}
+              aria-label={compact ? label : undefined}
+              onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
+              rows={2}
+              className="w-full px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm leading-relaxed [field-sizing:content] min-h-[3.5rem] placeholder:italic placeholder:text-gray-400 dark:placeholder:text-gray-500"
+            />
+          </div>
+        )
+      }
       return (
         <div>
-          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+          <label className={labelClass}>
             {label}
           </label>
           <input
             type="text"
             value={value ?? ''}
-            placeholder={defaultHint}
+            placeholder={defaultHint ?? (compact ? label : undefined)}
+            aria-label={compact ? label : undefined}
             onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
             className="w-full px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm placeholder:italic placeholder:text-gray-400 dark:placeholder:text-gray-500"
           />

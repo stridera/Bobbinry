@@ -286,6 +286,22 @@ function SchemaFieldRow({
         />
       )}
 
+      {/* Multi-line editing for longer text */}
+      {field.type === 'text' && (
+        <label className="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400 cursor-pointer flex-shrink-0">
+          <input
+            type="checkbox"
+            checked={field.multiline || false}
+            onChange={(e) => {
+              const { multiline: _dropped, ...rest } = field
+              onUpdate(fieldKey, e.target.checked ? { ...rest, multiline: true } : rest)
+            }}
+            className="rounded border-gray-300 dark:border-gray-600"
+          />
+          Multiline
+        </label>
+      )}
+
       {/* Remove */}
       <button
         type="button"

@@ -10,6 +10,7 @@ import type { EditorLayout, FieldDefinition } from '../../types'
 import { renderField } from '../FieldRenderers'
 import { EntityImageGallery } from '../EntityImageGallery'
 import { getEntityImages } from '../../images'
+import { ExtendedSectionBody } from './ExtendedSectionBody'
 
 interface CompactCardLayoutProps {
   entity: Record<string, any>
@@ -200,6 +201,14 @@ export function CompactCardLayout({
                 })}
               </div>
             )}
+
+            <ExtendedSectionBody
+              section={section}
+              fields={allFields}
+              entity={entity}
+              onFieldChange={onFieldChange}
+              readonly={readonly}
+            />
 
             {/* Rich Text display */}
             {section.display === 'rich-text' && (

@@ -8,6 +8,7 @@
 
 import { createContext, useContext } from 'react'
 import type { BobbinrySDK } from '@bobbinry/sdk'
+import type { VariantResolutionConfig } from '@bobbinry/types'
 
 interface SdkContextValue {
   sdk: BobbinrySDK
@@ -160,4 +161,45 @@ export function EntityNavProvider({
 
 export function useEntityNavContext(): EntityLinkBuilder | null {
   return useContext(EntityNavContext)
+}
+
+/**
+ * The raw entity (with its `_variants` block) behind the view being rendered.
+ * Layouts only receive the entity resolved to one era; a `progression` section
+ * needs every era at once, plus a way to switch the host's era picker. Absent
+ * in surfaces without variants (previews), where progression sections fall
+ * back to showing the current view.
+ */
+export interface ProgressionContextValue {
+  data: Record<string, any>
+  config: VariantResolutionConfig | null
+  /** The axis label, e.g. "Rank" or "Book". */
+  axisLabel: string
+  /** The era currently shown (null = base). */
+  activeVariantId: string | null
+  onSelectVariant?: ((id: string | null) => void) | undefined
+  /** Whether the base view may appear as a column (readers can't see a hidden base). */
+  includeBase: boolean
+  /** Eras the viewer may see — the reader passes its tier-visible set. */
+  eraIds?: readonly string[] | undefined
+}
+
+const ProgressionContext = createContext<ProgressionContextValue | null>(null)
+
+export function ProgressionProvider({
+  value,
+  children,
+}: {
+  value: ProgressionContextValue
+  children: React.ReactNode
+}) {
+  return (
+    <ProgressionContext.Provider value={value}>
+      {children}
+    </ProgressionContext.Provider>
+  )
+}
+
+export function useProgressionContext(): ProgressionContextValue | null {
+  return useContext(ProgressionContext)
 }

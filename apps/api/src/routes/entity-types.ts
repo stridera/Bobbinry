@@ -44,12 +44,13 @@ const VariantAxisSchema = z.object({
   id: z.string().regex(FIELD_NAME_RE, 'Invalid axis id'),
   label: z.string().min(1).max(200),
   kind: z.enum(['ordered', 'unordered']),
+  presets: z.array(z.string().min(1).max(200)).max(50).optional(),
 }).passthrough()
 
 const LayoutSectionSchema = z.object({
   title: z.string(),
   fields: z.array(z.string()),
-  display: z.enum(['inline', 'stacked', 'json-editor', 'rich-text']),
+  display: z.enum(['inline', 'stacked', 'json-editor', 'rich-text', 'progression', 'table']),
 }).passthrough()
 
 const EditorLayoutSchema = z.object({

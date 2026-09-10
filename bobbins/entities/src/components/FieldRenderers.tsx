@@ -7,7 +7,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { getSanitizedHtmlProps, useClickOutside } from '@bobbinry/sdk'
 import { PALETTE_TOKENS, isPaletteToken, paletteClasses } from '@bobbinry/ui-components'
-import type { FieldDefinition, FieldType } from '../types'
+import type { FieldDefinition, FieldType, SectionDisplay } from '../types'
 import { normalizeJsonSchema } from '../types'
 import { useUpload, useEntityContext, useResolvedEntityNamesContext, useResolvedEntityDetailsContext, useEntityNavContext } from './UploadContext'
 import { ObjectFormRenderer, ListFormRenderer, KeyedListFormRenderer, FreeformKeyValueEditor } from './json-renderers'
@@ -19,7 +19,7 @@ interface FieldRendererProps {
   field: FieldDefinition
   value: any
   onChange: (value: any) => void
-  display?: 'inline' | 'stacked' | 'json-editor' | 'rich-text'
+  display?: SectionDisplay
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

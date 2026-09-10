@@ -14,11 +14,12 @@
  * helpers, which are editor-only, remain in this file.
  */
 
-import type { EntityVariants, VariantItem } from './types'
+import type { EntityVariants, VariantAxis, VariantItem } from './types'
 import {
   VARIANTS_KEY,
   getVariantsBlock,
   isEmptyGalleryOverride,
+  sortedVariantIds,
   versionableFieldNames,
   type VariantResolutionConfig,
 } from '@bobbinry/types'
@@ -105,6 +106,63 @@ export function setFieldOnEntity(
     [VARIANTS_KEY]: {
       ...variants,
       items: { ...variants.items, [variantId]: nextItem },
+    },
+  }
+}
+
+/**
+ * Add every preset label the entity doesn't have yet (matched case-insensitively),
+ * each slotted in beside its preset neighbours — so adding the missing ranks to
+ * an entity that already has "Woven" puts "Marked" and "Threaded" before it, not
+ * after. On an ordered axis, `axis_value` is renumbered 1..n to match, the way
+ * reordering does. Returns null when nothing is missing.
+ */
+export function appendPresetVariants(
+  current: EntityVariants | null,
+  presets: readonly string[],
+  axis: VariantAxis | null | undefined
+): { variants: EntityVariants; added: string[] } | null {
+  const base: EntityVariants = current ?? { axis_id: axis?.id ?? null, active: null, order: [], items: {} }
+  const items: Record<string, VariantItem> = { ...base.items }
+  const labelKey = (label: string) => label.trim().toLowerCase()
+  const idForLabel = (label: string) =>
+    seq.find(id => labelKey(items[id]?.label ?? '') === labelKey(label))
+
+  const seq = sortedVariantIds({ [VARIANTS_KEY]: base }, axis?.kind ?? null)
+  const wanted = presets.map(p => p.trim()).filter(Boolean)
+  const added: string[] = []
+
+  wanted.forEach((label, k) => {
+    if (idForLabel(label)) return
+    const id = ensureUniqueVariantId(slugifyVariantId(label), Object.keys(items))
+    items[id] = { label, overrides: {} }
+    // After the nearest earlier preset present, else before the nearest later one, else last.
+    let pos = -1
+    for (let j = k - 1; j >= 0 && pos === -1; j--) {
+      const hit = idForLabel(wanted[j]!)
+      if (hit) pos = seq.indexOf(hit) + 1
+    }
+    for (let j = k + 1; j < wanted.length && pos === -1; j++) {
+      const hit = idForLabel(wanted[j]!)
+      if (hit) pos = seq.indexOf(hit)
+    }
+    seq.splice(pos === -1 ? seq.length : pos, 0, id)
+    added.push(id)
+  })
+
+  if (added.length === 0) return null
+
+  if (axis?.kind === 'ordered') {
+    seq.forEach((id, i) => { items[id] = { ...items[id]!, axis_value: i + 1 } })
+  }
+
+  return {
+    added,
+    variants: {
+      axis_id: base.axis_id ?? axis?.id ?? null,
+      active: base.active ?? added[0] ?? null,
+      order: seq,
+      items,
     },
   }
 }

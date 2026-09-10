@@ -9,6 +9,7 @@ import type { EditorLayout, FieldDefinition } from '../../types'
 import { renderField } from '../FieldRenderers'
 import { EntityImageGallery } from '../EntityImageGallery'
 import { getEntityImages } from '../../images'
+import { ExtendedSectionBody } from './ExtendedSectionBody'
 
 interface HeroImageLayoutProps {
   entity: Record<string, any>
@@ -182,6 +183,14 @@ export function HeroImageLayout({
                   })}
                 </div>
               )}
+
+              <ExtendedSectionBody
+                section={section}
+                fields={allFields}
+                entity={entity}
+                onFieldChange={onFieldChange}
+                readonly={readonly}
+              />
 
               {/* Rich Text */}
               {section.display === 'rich-text' && (

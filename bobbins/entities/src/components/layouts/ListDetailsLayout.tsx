@@ -9,6 +9,7 @@ import type { EditorLayout, FieldDefinition } from '../../types'
 import { renderField } from '../FieldRenderers'
 import { EntityImageGallery } from '../EntityImageGallery'
 import { getEntityImages } from '../../images'
+import { ExtendedSectionBody } from './ExtendedSectionBody'
 
 interface ListDetailsLayoutProps {
   entity: Record<string, any>
@@ -165,6 +166,14 @@ export function ListDetailsLayout({
                     })}
                   </div>
                 )}
+
+                <ExtendedSectionBody
+                  section={section}
+                  fields={allFields}
+                  entity={entity}
+                  onFieldChange={onFieldChange}
+                  readonly={readonly}
+                />
 
                 {/* Rich Text - long-form content */}
                 {section.display === 'rich-text' && (

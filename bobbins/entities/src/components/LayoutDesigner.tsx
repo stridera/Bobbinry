@@ -37,7 +37,9 @@ const SECTION_DISPLAYS: { value: SectionDisplay; label: string }[] = [
   { value: 'inline', label: 'Inline (horizontal)' },
   { value: 'stacked', label: 'Stacked (vertical)' },
   { value: 'json-editor', label: 'Structured Data' },
-  { value: 'rich-text', label: 'Rich Text Editor' }
+  { value: 'rich-text', label: 'Rich Text Editor' },
+  { value: 'table', label: 'Table rows (lists)' },
+  { value: 'progression', label: 'Progression across variants (lists)' }
 ]
 
 export function LayoutDesigner({ fields, editorLayout, listLayout, onChange }: LayoutDesignerProps) {

@@ -12,6 +12,7 @@ import { itemsTemplate } from './items'
 import { classesTemplate } from './classes'
 import { factionsTemplate } from './factions'
 import { racesTemplate } from './races'
+import { progressionsTemplate } from './progressions'
 
 export const templates: EntityTemplate[] = [
   charactersTemplate,
@@ -20,7 +21,8 @@ export const templates: EntityTemplate[] = [
   itemsTemplate,
   classesTemplate,
   factionsTemplate,
-  racesTemplate
+  racesTemplate,
+  progressionsTemplate
 ]
 
 export {
@@ -30,5 +32,6 @@ export {
   itemsTemplate,
   classesTemplate,
   factionsTemplate,
-  racesTemplate
+  racesTemplate,
+  progressionsTemplate
 }

@@ -19,6 +19,7 @@ import {
   GALLERY_INHERIT_KEY,
   GALLERY_OVERRIDE_FIELDS,
   VARIANTS_KEY,
+  appendPresetVariants,
   ensureUniqueVariantId,
   getVariants,
   resolveEntityForVariant,
@@ -29,7 +30,13 @@ import {
   versionableFieldNames,
 } from '../variants'
 import { LayoutRenderer } from '../components/LayoutRenderer'
-import { SdkProvider, EntityNavProvider, SaveStatusProvider } from '../components/UploadContext'
+import {
+  SdkProvider,
+  EntityNavProvider,
+  SaveStatusProvider,
+  ProgressionProvider,
+  type ProgressionContextValue,
+} from '../components/UploadContext'
 import { checkTypeCompatibility } from '../components/FieldRenderers'
 import { PublishControl } from '../components/PublishControl'
 import {
@@ -390,6 +397,19 @@ export default function EntityEditorView({
     if (newId) setActiveVariantId(newId)
   }
 
+  /** Add every preset the type suggests that this entity doesn't have yet, in one save. */
+  async function addPresetVariants() {
+    const presets = typeConfig?.variantAxis?.presets ?? []
+    let firstAdded = null as string | null
+    await updateVariants(current => {
+      const result = appendPresetVariants(current, presets, typeConfig?.variantAxis)
+      if (!result) return null
+      firstAdded = result.added[0] ?? null
+      return result.variants
+    })
+    if (firstAdded && activeVariantId === null) setActiveVariantId(firstAdded)
+  }
+
   async function renameVariant(id: string, label: string) {
     const trimmed = label.trim()
     if (!trimmed) return
@@ -540,6 +560,27 @@ export default function EntityEditorView({
   const inheritedGalleryFrom = useMemo(
     () => inheritedFields.find(f => f.field === 'images')?.fromLabel ?? null,
     [inheritedFields]
+  )
+
+  // Type presets this entity doesn't have yet (matched by label, case-insensitively).
+  const missingPresets = useMemo(() => {
+    const have = new Set(
+      Object.values(variantsBlock?.items ?? {}).map(item => (item.label ?? '').trim().toLowerCase())
+    )
+    return (typeConfig?.variantAxis?.presets ?? []).filter(p => !have.has(p.trim().toLowerCase()))
+  }, [typeConfig?.variantAxis?.presets, variantsBlock])
+
+  // Progression sections need every era at once, not just the resolved view.
+  const progression = useMemo<ProgressionContextValue>(
+    () => ({
+      data: entity,
+      config: typeConfig,
+      axisLabel: typeConfig?.variantAxis?.label ?? 'Variant',
+      activeVariantId,
+      onSelectVariant: setActiveVariantId,
+      includeBase: true,
+    }),
+    [entity, typeConfig, activeVariantId]
   )
 
   if (loading) {
@@ -795,6 +836,15 @@ export default function EntityEditorView({
               </button>
             )
           })}
+          {variantIdsInOrder.length === 0 && missingPresets.length > 0 && !isNewEntity && (
+            <button
+              type="button"
+              onClick={addPresetVariants}
+              className="px-2.5 py-1 text-xs font-medium rounded cursor-pointer border border-dashed border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-blue-400 hover:text-blue-600 dark:hover:border-blue-500 dark:hover:text-blue-400"
+            >
+              Add {missingPresets.join(', ')}
+            </button>
+          )}
           {inheritedFields.length > 0 && (
             <span
               className="text-[11px] text-gray-500 dark:text-gray-400"
@@ -834,6 +884,8 @@ export default function EntityEditorView({
           tiers={tiers}
           isEntityPublished={Boolean(entity.isPublished) && !isNewEntity}
           onAdd={addVariant}
+          missingPresets={missingPresets}
+          onAddPresets={addPresetVariants}
           onRename={renameVariant}
           onDelete={deleteVariant}
           onSetDefault={setDefaultVariant}
@@ -919,14 +971,16 @@ export default function EntityEditorView({
                   setSaveError(false)
                 }}
               />
-              <LayoutRenderer
-                layout={typeConfig.editorLayout}
-                fields={typeConfig.customFields}
-                entity={displayEntity}
-                onFieldChange={handleFieldChange}
-                readonly={viewMode === 'view'}
-                inheritedGalleryFrom={inheritedGalleryFrom}
-              />
+              <ProgressionProvider value={progression}>
+                <LayoutRenderer
+                  layout={typeConfig.editorLayout}
+                  fields={typeConfig.customFields}
+                  entity={displayEntity}
+                  onFieldChange={handleFieldChange}
+                  readonly={viewMode === 'view'}
+                  inheritedGalleryFrom={inheritedGalleryFrom}
+                />
+              </ProgressionProvider>
             </EntityNavProvider>
           </SaveStatusProvider>
         </SdkProvider>
@@ -1040,6 +1094,9 @@ interface VariantManagerProps {
   /** Whether the publish checkboxes are meaningful. False for unsaved / unpublished entities. */
   isEntityPublished: boolean
   onAdd: (label: string) => void
+  /** Type presets this entity doesn't have yet. */
+  missingPresets: string[]
+  onAddPresets: () => void
   onRename: (id: string, label: string) => void
   onDelete: (id: string) => void
   onSetDefault: (id: string | null) => void
@@ -1060,6 +1117,8 @@ function VariantManager({
   tiers,
   isEntityPublished,
   onAdd,
+  missingPresets,
+  onAddPresets,
   onRename,
   onDelete,
   onSetDefault,
@@ -1131,6 +1190,16 @@ function VariantManager({
           Add variant
         </button>
       </div>
+
+      {missingPresets.length > 0 && (
+        <button
+          type="button"
+          onClick={onAddPresets}
+          className="w-full rounded border border-dashed border-gray-300 dark:border-gray-600 px-3 py-1.5 text-left text-xs text-gray-600 dark:text-gray-400 hover:border-blue-400 hover:text-blue-600 dark:hover:border-blue-500 dark:hover:text-blue-400 cursor-pointer"
+        >
+          Add the missing presets: {missingPresets.join(', ')}
+        </button>
+      )}
 
       {publishError && (
         <p className="text-xs text-red-600 dark:text-red-400">{publishError}</p>

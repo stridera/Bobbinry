@@ -1,4 +1,5 @@
 import {
+  appendPresetVariants,
   clearVariantOverride,
   ensureUniqueVariantId,
   getVariants,
@@ -377,5 +378,44 @@ describe('ensureUniqueVariantId', () => {
 
   it('keeps incrementing past existing numbered ids', () => {
     expect(ensureUniqueVariantId('book-1', ['book-1', 'book-1-2', 'book-1-3'])).toBe('book-1-4')
+  })
+})
+
+describe('appendPresetVariants', () => {
+  const rankAxis = { id: 'rank', label: 'Rank', kind: 'ordered' as const }
+  const ranks = ['Marked', 'Threaded', 'Woven', 'Loomed']
+
+  it('creates every preset in order on an entity with no variants', () => {
+    const result = appendPresetVariants(null, ranks, rankAxis)!
+    expect(result.added).toEqual(['marked', 'threaded', 'woven', 'loomed'])
+    expect(result.variants.order).toEqual(['marked', 'threaded', 'woven', 'loomed'])
+    expect(result.variants.items['woven']).toEqual({ label: 'Woven', overrides: {}, axis_value: 3 })
+    expect(result.variants.axis_id).toBe('rank')
+    expect(result.variants.active).toBe('marked')
+  })
+
+  it('slots missing presets around existing ones and renumbers the axis', () => {
+    const existing = {
+      axis_id: 'rank',
+      active: 'w',
+      order: ['w'],
+      items: { w: { label: 'woven', axis_value: 1, overrides: { power: 3 } } },
+    }
+    const result = appendPresetVariants(existing, ranks, rankAxis)!
+    expect(result.added).toEqual(['marked', 'threaded', 'loomed'])
+    expect(result.variants.order).toEqual(['marked', 'threaded', 'w', 'loomed'])
+    expect(result.variants.items['w']).toEqual({ label: 'woven', axis_value: 3, overrides: { power: 3 } })
+    expect(result.variants.active).toBe('w')
+  })
+
+  it('returns null when nothing is missing, ignoring case and blanks', () => {
+    const first = appendPresetVariants(null, ranks, rankAxis)!.variants
+    expect(appendPresetVariants(first, ['MARKED', ' ', 'woven'], rankAxis)).toBeNull()
+  })
+
+  it('leaves axis_value unset on an unordered axis', () => {
+    const result = appendPresetVariants(null, ['Cat', 'Wolf'], { id: 'form', label: 'Form', kind: 'unordered' })!
+    expect(result.variants.order).toEqual(['cat', 'wolf'])
+    expect(result.variants.items['cat']!.axis_value).toBeUndefined()
   })
 })
