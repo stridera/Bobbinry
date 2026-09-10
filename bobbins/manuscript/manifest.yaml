@@ -1,6 +1,6 @@
 id: manuscript
 name: Manuscript
-version: 1.0.12
+version: 1.0.13
 author: Bobbinry Team
 description: Complete manuscript management with books, chapters, and scenes
 tags:
@@ -14,7 +14,7 @@ core: true
 capabilities:
   publishable: true
   external: false
-  ai: true
+  ai: false
   customViews: false
 extensions:
   contributions:

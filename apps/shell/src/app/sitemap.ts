@@ -43,6 +43,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: BASE_URL, lastModified: new Date(), changeFrequency: 'daily', priority: 1 },
     { url: `${BASE_URL}/explore`, changeFrequency: 'daily', priority: 0.9 },
     { url: `${BASE_URL}/read`, changeFrequency: 'daily', priority: 0.8 },
+    { url: `${BASE_URL}/ai-policy`, changeFrequency: 'yearly', priority: 0.3 },
   ]
 
   // Fetch published projects

@@ -282,6 +282,7 @@ export function LandingPage() {
             <Link href="/explore" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Explore</Link>
             <Link href="/bobbins" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Bobbins</Link>
             <Link href="/docs" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Developers</Link>
+            <Link href="/ai-policy" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">AI Policy</Link>
             <Link href="/login" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Sign In</Link>
           </div>
         </div>
