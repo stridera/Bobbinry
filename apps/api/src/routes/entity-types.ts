@@ -22,7 +22,9 @@ const BOBBIN_ID = 'entities'
 const TYPE_ID_RE = /^[a-z][a-z0-9_]{0,63}$/
 const FIELD_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/
 
-const FIELD_TYPES = ['text', 'number', 'select', 'multi-select', 'boolean', 'date', 'json', 'rich-text', 'image', 'relation'] as const
+// Mirrors FieldType in bobbins/entities/src/types.ts; the official Characters
+// template uses 'color', so a gap here rejects it at install.
+const FIELD_TYPES = ['text', 'number', 'select', 'multi-select', 'boolean', 'date', 'json', 'rich-text', 'image', 'relation', 'color'] as const
 
 const FieldDefinitionSchema = z.object({
   name: z.string().regex(FIELD_NAME_RE, 'Invalid field name'),
