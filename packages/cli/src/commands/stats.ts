@@ -27,9 +27,6 @@ export function registerStatsCommand(program: Command): void {
         if (s.collections) console.log(`  Collections: ${s.collections.total}`)
         if (s.entities) console.log(`  Entities:    ${s.entities.total}`)
         if (s.trashed) console.log(`  Trashed:     ${s.trashed.total}`)
-        // Writing stats (if present from activity endpoints)
-        if (s.totalWords !== undefined) console.log(`  Total words: ${Number(s.totalWords).toLocaleString()}`)
-        if (s.wordsToday !== undefined) console.log(`  Words today: ${Number(s.wordsToday).toLocaleString()}`)
       } catch (err) {
         handleError(err, !!opts.json)
       }
