@@ -286,10 +286,14 @@ export default function NotesView({ sdk, projectId }: {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
             {[
-              { scope: 'projects:read', description: 'Read your projects and their settings' },
-              { scope: 'entities:read', description: 'Read entities across your collections' },
+              { scope: 'projects:read', description: 'Read your projects, installed bobbins and change feed' },
+              { scope: 'projects:write', description: 'Create projects' },
+              { scope: 'manuscript:read', description: 'Read chapters, and file and triage annotations' },
+              { scope: 'manuscript:write', description: 'Write chapters and accept suggestions' },
+              { scope: 'entities:read', description: 'Read characters, places and other entities' },
+              { scope: 'entities:write', description: 'Write entities and entity types' },
               { scope: 'stats:read', description: 'Read dashboard stats and recent activity' },
-              { scope: 'profile:read', description: 'Read your profile information' },
+              { scope: 'profile:read', description: 'Read your account, tier and badges' },
             ].map((s) => (
               <div
                 key={s.scope}
@@ -324,10 +328,11 @@ export default function NotesView({ sdk, projectId }: {
                 {[
                   ['GET /api/projects', 'projects:read', 'List your projects'],
                   ['GET /api/projects/:projectId', 'projects:read', 'Get a single project'],
-                  ['GET /api/collections/:collection/entities', 'entities:read', 'Query entities in a collection'],
-                  ['GET /api/entities/:entityId', 'entities:read', 'Get a single entity'],
+                  ['GET /api/collections/content/entities', 'manuscript:read', 'Query chapters and scenes'],
+                  ['GET /api/collections/:collection/entities', 'entities:read', 'Query entities in any other collection'],
+                  ['GET /api/entities/:entityId', 'manuscript:read / entities:read', 'Get a single entity (scope follows its collection)'],
                   ['GET /api/dashboard/stats', 'stats:read', 'Dashboard stats and recent activity'],
-                  ['GET /api/auth/session', 'profile:read', 'Your session and profile information'],
+                  ['GET /api/membership', 'profile:read', 'Your account, tier and badges'],
                 ].map(([endpoint, scope, desc]) => (
                   <tr key={endpoint}>
                     <td className="px-4 py-2.5 font-mono text-xs text-blue-600 dark:text-blue-400 whitespace-nowrap">{endpoint}</td>

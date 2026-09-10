@@ -10,7 +10,7 @@ import { db } from '../db/connection'
 import { entities, userProfiles } from '../db/schema'
 import { eq, and, sql, desc, or } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
-import { requireAuth, optionalAuth } from '../middleware/auth'
+import { requireAuth, optionalAuth, requireScope, denyProjectRestrictedKey } from '../middleware/auth'
 import { userBadges } from '../db/schema'
 import { notDeleted } from '../lib/entity-scope'
 
@@ -169,7 +169,7 @@ const templatesPlugin: FastifyPluginAsync = async (fastify) => {
       variant_axis?: { id: string; label: string; kind: 'ordered' | 'unordered' } | null
       variant_inheritance?: Record<string, 'base' | 'forward'>
     }
-  }>('/templates', { preHandler: requireAuth }, async (request, reply) => {
+  }>('/templates', { preHandler: [requireAuth, requireScope('entities:write'), denyProjectRestrictedKey] }, async (request, reply) => {
     try {
       const user = (request as any).user
       const body = request.body
@@ -239,7 +239,7 @@ const templatesPlugin: FastifyPluginAsync = async (fastify) => {
   // Template data persists so existing installs/syncs continue working.
   fastify.delete<{
     Params: { shareId: string }
-  }>('/templates/:shareId', { preHandler: requireAuth }, async (request, reply) => {
+  }>('/templates/:shareId', { preHandler: [requireAuth, requireScope('entities:write'), denyProjectRestrictedKey] }, async (request, reply) => {
     try {
       const user = (request as any).user
       const { shareId } = request.params

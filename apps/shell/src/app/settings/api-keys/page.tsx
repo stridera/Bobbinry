@@ -682,7 +682,7 @@ export default function ApiKeysPage() {
               <div>
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Endpoint reference</h3>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  Every endpoint reachable with an API key, grouped by required scope. Entity endpoints route by collection — manuscript content (collection <code className="text-[10px] bg-gray-100 dark:bg-gray-800 px-1 rounded">content</code>) needs <code className="text-[10px] bg-gray-100 dark:bg-gray-800 px-1 rounded">manuscript:*</code>; everything else needs <code className="text-[10px] bg-gray-100 dark:bg-gray-800 px-1 rounded">entities:*</code>.
+                  The main endpoints reachable with an API key; everything else needs a signed-in session. Entity endpoints route by collection — manuscript content (collection <code className="text-[10px] bg-gray-100 dark:bg-gray-800 px-1 rounded">content</code>) needs <code className="text-[10px] bg-gray-100 dark:bg-gray-800 px-1 rounded">manuscript:*</code>; everything else needs <code className="text-[10px] bg-gray-100 dark:bg-gray-800 px-1 rounded">entities:*</code>.
                 </p>
               </div>
               <svg
@@ -710,6 +710,8 @@ export default function ApiKeysPage() {
                       ['GET /api/projects', 'projects:read', 'List your projects'],
                       ['GET /api/projects/:projectId', 'projects:read', 'Get a single project'],
                       ['POST /api/projects', 'projects:write', 'Create a new project'],
+                      ['GET /api/projects/:projectId/bobbins', 'projects:read', 'List installed bobbins'],
+                      ['GET /api/projects/:projectId/changes', 'projects:read', 'Change feed: what changed since a cursor'],
                       ['GET /api/collections/content/entities', 'manuscript:read', 'Query manuscript chapters/scenes'],
                       ['GET /api/collections/:collection/entities', 'entities:read', 'Query entities in any other collection'],
                       ['GET /api/entities/:entityId  (content)', 'manuscript:read', 'Get a single manuscript chapter/scene'],
@@ -723,6 +725,11 @@ export default function ApiKeysPage() {
                       ['POST /api/entities/batch/atomic', 'manuscript:write + entities:write', 'Atomic batch — needs scopes for every collection it touches'],
                       ['POST /api/import/parse', 'manuscript:write', 'Parse an uploaded manuscript source file'],
                       ['POST /api/import/commit', 'manuscript:write', 'Commit imported manuscript chapters'],
+                      ['GET /api/projects/:projectId/export/:format', 'manuscript:read', 'Export the manuscript'],
+                      ['GET /api/projects/:projectId/annotations', 'manuscript:read', 'Reader feedback on your manuscript'],
+                      ['POST /api/public/chapters/:chapterId/annotations', 'manuscript:read', 'File an annotation on a chapter'],
+                      ['PUT /api/projects/:projectId/annotations/:annotationId/status', 'manuscript:read', 'Acknowledge, resolve or dismiss an annotation'],
+                      ['POST /api/projects/:projectId/annotations/:annotationId/accept', 'manuscript:write', 'Apply a suggestion to the chapter'],
                       ['GET /api/projects/:projectId/entity-types', 'entities:read', 'List entity type definitions'],
                       ['GET /api/projects/:projectId/entity-types/:typeId', 'entities:read', 'Get a single entity type definition'],
                       ['POST /api/projects/:projectId/entity-types', 'entities:write', 'Create an entity type definition'],
@@ -732,6 +739,7 @@ export default function ApiKeysPage() {
                       ['GET /api/users/me/projects', 'stats:read', 'Projects with collection info'],
                       ['GET /api/users/me/projects/grouped', 'stats:read', 'Projects grouped by collection'],
                       ['GET /api/users/me/recent-activity', 'stats:read', 'Recent entity edits across projects'],
+                      ['GET /api/membership', 'profile:read', 'Your account, tier and badges'],
                     ] as const
                   ).map(([endpoint, scope, desc]) => {
                     const isWrite = scope.includes(':write')

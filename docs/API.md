@@ -67,13 +67,15 @@ Shell issues JWTs via NextAuth. Pass as `Authorization: Bearer <token>`.
 
 ### API Keys
 
-Read-only keys for programmatic access. Created via `/api/api-keys` or the Settings UI.
+Scoped keys for programmatic access (the CLI, bots). Created via `/api/api-keys` or the Settings UI.
 
 ```bash
 curl -H "Authorization: Bearer bby_..." https://api.bobbinry.com/api/projects
 ```
 
-**Scopes**: `projects:read`, `entities:read`, `stats:read`, `profile:read`
+**Scopes**: `projects:read`, `projects:write`, `manuscript:read`, `manuscript:write`, `entities:read`, `entities:write`, `stats:read`, `profile:read`. Entity routes choose by collection: `content` needs `manuscript:*`, every other collection `entities:*`.
+
+**Default-deny**: a key reaches only routes that declare an API-key policy (`ApiKeyPolicy` in `middleware/auth.ts`); every other route answers `403 {"error": "Session auth required"}`. The complete list is `KEY_ROUTES` in `apps/api/src/routes/__tests__/api-key-policy.test.ts`. On public `optionalAuth` routes, a key the route doesn't admit is served as anonymous. A key restricted to one project can't create projects or publish templates.
 
 **Rate limits**: 100 req/min (free), 500 req/min (supporter). Keyed per API key (vs per-IP for browser sessions).
 
@@ -83,7 +85,7 @@ Server-to-server calls authenticated via `X-Bobbins-Secret` header.
 
 ## API Endpoints
 
-All routes are prefixed with `/api` unless noted. Authentication is JWT-based (session) or API key (`bby_` prefix, read-only).
+All routes are prefixed with `/api` unless noted. Authentication is JWT-based (session) or API key (`bby_` prefix, scoped and default-deny — see [API Keys](#api-keys)).
 
 ### Health & Internal
 
@@ -124,9 +126,9 @@ All routes are prefixed with `/api` unless noted. Authentication is JWT-based (s
 
 | Method | Path | Auth | Scope | Description |
 |--------|------|------|-------|-------------|
-| GET | `/api/collections/:collection/entities` | JWT/Key | `entities:read` | Query entities (requires `?projectId=`) |
-| GET | `/api/entities/:entityId` | JWT/Key | `entities:read` | Get entity (requires `?projectId=&collection=`) |
-| HEAD | `/api/entities/:entityId` | JWT/Key | `entities:read` | Version check (lightweight) |
+| GET | `/api/collections/:collection/entities` | JWT/Key | `manuscript:read` / `entities:read` | Query entities (requires `?projectId=`) |
+| GET | `/api/entities/:entityId` | JWT/Key | `manuscript:read` / `entities:read` | Get entity (requires `?projectId=&collection=`) |
+| HEAD | `/api/entities/:entityId` | JWT/Key | `manuscript:read` / `entities:read` | Version check (lightweight) |
 | POST | `/api/entities` | JWT | — | Create entity |
 | PUT | `/api/entities/:entityId` | JWT | — | Update entity (optimistic locking) |
 | DELETE | `/api/entities/:entityId` | JWT | — | Delete entity |
@@ -171,9 +173,9 @@ All routes are prefixed with `/api` unless noted. Authentication is JWT-based (s
 
 | Method | Path | Auth | Scope | Description |
 |--------|------|------|-------|-------------|
-| GET | `/projects/:projectId/trash` | Owner | `projects:read` | Trashed entities (metadata only) with `autoDeleteAt` |
-| POST | `/entities/bulk-untrash` | Owner | `projects:write` | Restore; expands to whole batches |
-| POST | `/entities/bulk-delete-permanent` | Owner | `projects:write` | Delete forever. Only touches already-trashed rows |
+| GET | `/projects/:projectId/trash` | Owner | session only | Trashed entities (metadata only) with `autoDeleteAt` |
+| POST | `/entities/bulk-untrash` | Owner | session only | Restore; expands to whole batches |
+| POST | `/entities/bulk-delete-permanent` | Owner | session only | Delete forever. Only touches already-trashed rows |
 
 ### Change Feed (`entity-changes.ts`)
 
@@ -659,15 +661,16 @@ Google Drive backup integration for syncing project content to Drive.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/api/ai-tools/providers` | JWT | List AI providers |
-| PUT | `/api/ai-tools/config` | JWT | Update AI config |
-| POST | `/api/ai-tools/test` | JWT | Test provider connection |
-| POST | `/api/ai-tools/summarize` | JWT | Generate entity summary |
-| POST | `/api/ai-tools/outline` | JWT | Generate chapter outline |
-| POST | `/api/ai-tools/brainstorm` | JWT | Brainstorm ideas |
-| GET | `/api/ai-tools/brainstorm` | JWT | Previous brainstorm results |
-| POST | `/api/ai-tools/character-profile` | JWT | Generate character profile |
-| POST | `/api/ai-tools/name-suggestions` | JWT | Generate name suggestions |
+| GET | `/api/ai-tools/config` | JWT | Config status (never the stored key) |
+| PUT | `/api/ai-tools/config` | JWT | Save provider, key and model |
+| POST | `/api/ai-tools/test` | JWT | Validate the key with a minimal LLM call |
+| POST | `/api/ai-tools/synopsis` | JWT | Generate a synopsis for an entity |
+| POST | `/api/ai-tools/synopsis/save` | JWT | Save a synopsis to the entity |
+| POST | `/api/ai-tools/review` | JWT | Structured chapter review, auto-saved to `entityData.lastReview` |
+| GET | `/api/ai-tools/review/existing` | JWT | The saved review |
+| POST | `/api/ai-tools/names` | JWT | Name suggestions for an entity |
+| POST | `/api/ai-tools/brainstorm` | JWT | Brainstorm ideas from a note |
+| POST | `/api/ai-tools/flesh-out` | JWT | Flesh out a timeline event |
 
 ### API Keys (`api-keys.ts`)
 
@@ -746,12 +749,13 @@ Responses include `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit
 }
 ```
 
-### Read-only API keys
+### API key refusals
 
-API keys only support GET/HEAD/OPTIONS. Write operations return:
+A route that doesn't admit API keys, or a key missing the route's scope, answers 403:
 
 ```json
-{"error": "Read-only access", "message": "API keys only support read operations"}
+{"error": "Session auth required", "message": "This endpoint requires session authentication and cannot be accessed with an API key"}
+{"error": "Insufficient scope", "message": "This API key does not have the 'manuscript:write' scope"}
 ```
 
 ## Database

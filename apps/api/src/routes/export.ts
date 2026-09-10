@@ -138,6 +138,7 @@ const exportPlugin: FastifyPluginAsync = async (fastify) => {
     Params: { projectId: string }
   }>('/projects/:projectId/export/snapshot', {
     preHandler: [requireAuth, ownsProject()],
+    config: { apiKey: 'in-handler' },
   }, async (request, reply) => {
     const { projectId } = request.params
 
@@ -152,8 +153,12 @@ const exportPlugin: FastifyPluginAsync = async (fastify) => {
     Querystring: { mode?: string }
   }>('/projects/:projectId/export/:format', {
     preHandler: [requireAuth, ownsProject()],
+    config: { apiKey: 'in-handler' },
   }, async (request, reply) => {
     const { projectId, format } = request.params
+
+    // Every format renders the manuscript — same gate as the snapshot.
+    if (!assertEntityScope(request, reply, 'content', 'read')) return
 
     if (!EXPORT_FORMATS.includes(format as ExportFormat)) {
       return reply.status(400).send({

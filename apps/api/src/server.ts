@@ -51,7 +51,7 @@ import entitySlugsPlugin from './routes/entity-slugs'
 import promoCodesPlugin from './routes/promo-codes'
 import searchReplacePlugin from './routes/search-replace'
 import dictionaryPlugin from './routes/dictionary'
-import { hashApiKey, getApiKeyTier } from './middleware/auth'
+import { hashApiKey, getApiKeyTier, declareApiKeyPolicy } from './middleware/auth'
 import sjson from 'secure-json-parse'
 
 export function build(opts = {}): FastifyInstance {
@@ -288,6 +288,10 @@ export function build(opts = {}): FastifyInstance {
 
     return reply.send(getMetricsSnapshot())
   })
+
+  // API keys are default-deny: each route's key policy is read off its
+  // preHandlers as it registers, so this must precede every route plugin.
+  server.addHook('onRoute', declareApiKeyPolicy)
 
   // Register route plugins
   server.register(projectsPlugin, { prefix: '/api' })

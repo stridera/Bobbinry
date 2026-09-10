@@ -309,7 +309,8 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       fields?: string
     }
   }>('/collections/:collection/entities', {
-    preHandler: [requireAuth, ownsProject('query')]
+    preHandler: [requireAuth, ownsProject('query')],
+    config: { apiKey: 'in-handler' }
   }, async (request, reply) => {
     try {
       // Validate input
@@ -428,7 +429,8 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       data: Record<string, any>
     }
   }>('/entities', {
-    preHandler: [requireAuth, ownsProject('body')]
+    preHandler: [requireAuth, ownsProject('body')],
+    config: { apiKey: 'in-handler' }
   }, async (request, reply) => {
     try {
       // Validate input
@@ -552,7 +554,8 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       expectedVersion?: number
     }
   }>('/entities/:entityId', {
-    preHandler: [requireAuth, ownsProject('body')]
+    preHandler: [requireAuth, ownsProject('body')],
+    config: { apiKey: 'in-handler' }
   }, async (request, reply) => {
     try {
       const { entityId } = request.params
@@ -910,7 +913,8 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       collection: string
     }
   }>('/entities/:entityId', {
-    preHandler: [requireAuth, ownsProject('query')]
+    preHandler: [requireAuth, ownsProject('query')],
+    config: { apiKey: 'in-handler' }
   }, async (request, reply) => {
     try {
       const { entityId } = request.params
@@ -987,7 +991,8 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       items: Array<Record<string, any>>
     }
   }>('/entities/batch', {
-    preHandler: [requireAuth, ownsProject('body')]
+    preHandler: [requireAuth, ownsProject('body')],
+    config: { apiKey: 'in-handler' }
   }, async (request, reply) => {
     try {
       const body = EntityBatchCreateSchema.parse(request.body)
@@ -1107,7 +1112,8 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.post<{
     Body: z.infer<typeof atomicBatchSchema>
   }>('/entities/batch/atomic', {
-    preHandler: [requireAuth, ownsProject('body')]
+    preHandler: [requireAuth, ownsProject('body')],
+    config: { apiKey: 'in-handler' }
   }, async (request, reply) => {
     try {
       const parsed = atomicBatchSchema.safeParse(request.body)
@@ -1351,7 +1357,8 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       collection: string
     }
   }>('/entities/:entityId', {
-    preHandler: [requireAuth, ownsProject('query')]
+    preHandler: [requireAuth, ownsProject('query')],
+    config: { apiKey: 'in-handler' }
   }, async (request, reply) => {
     try {
       const { entityId } = request.params
@@ -1396,7 +1403,8 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       variant?: string
     }
   }>('/entities/:entityId', {
-    preHandler: [requireAuth, ownsProject('query')]
+    preHandler: [requireAuth, ownsProject('query')],
+    config: { apiKey: 'in-handler' }
   }, async (request, reply) => {
     try {
       const { entityId } = request.params

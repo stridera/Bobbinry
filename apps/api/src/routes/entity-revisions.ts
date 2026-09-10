@@ -78,7 +78,7 @@ const entityRevisionsPlugin: FastifyPluginAsync = async (fastify) => {
    */
   fastify.get<{ Params: { entityId: string }; Querystring: { limit?: number; before?: string } }>(
     '/entities/:entityId/revisions',
-    { preHandler: [requireAuth, ownsEntity] },
+    { preHandler: [requireAuth, ownsEntity], config: { apiKey: 'in-handler' } },
     async (request, reply) => {
       try {
         const entity = ownedEntity(request)
@@ -139,7 +139,7 @@ const entityRevisionsPlugin: FastifyPluginAsync = async (fastify) => {
   /** One revision's restorable fields, for preview or diff. */
   fastify.get<{ Params: { entityId: string; revisionId: string } }>(
     '/entities/:entityId/revisions/:revisionId',
-    { preHandler: [requireAuth, ownsEntity] },
+    { preHandler: [requireAuth, ownsEntity], config: { apiKey: 'in-handler' } },
     async (request, reply) => {
       try {
         const entity = ownedEntity(request)
@@ -191,7 +191,7 @@ const entityRevisionsPlugin: FastifyPluginAsync = async (fastify) => {
     Querystring: { from: string; to?: string; maxHunks?: number }
   }>(
     '/entities/:entityId/diff',
-    { preHandler: [requireAuth, ownsEntity] },
+    { preHandler: [requireAuth, ownsEntity], config: { apiKey: 'in-handler' } },
     async (request, reply) => {
       try {
         const entity = ownedEntity(request)
@@ -258,7 +258,7 @@ const entityRevisionsPlugin: FastifyPluginAsync = async (fastify) => {
   /** Pin the current state as a named checkpoint. Never coalesced or thinned. */
   fastify.post<{ Params: { entityId: string }; Body: { note?: string } }>(
     '/entities/:entityId/revisions',
-    { preHandler: [requireAuth, ownsEntity] },
+    { preHandler: [requireAuth, ownsEntity], config: { apiKey: 'in-handler' } },
     async (request, reply) => {
       try {
         const entity = ownedEntity(request)
@@ -300,7 +300,7 @@ const entityRevisionsPlugin: FastifyPluginAsync = async (fastify) => {
     Body: { expectedVersion?: number }
   }>(
     '/entities/:entityId/revisions/:revisionId/restore',
-    { preHandler: [requireAuth, ownsEntity] },
+    { preHandler: [requireAuth, ownsEntity], config: { apiKey: 'in-handler' } },
     async (request, reply) => {
       try {
         const entity = ownedEntity(request)

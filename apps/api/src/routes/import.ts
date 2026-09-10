@@ -86,6 +86,7 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
     Body: { fileKey: string; projectId: string }
   }>('/import/parse', {
     preHandler: [requireAuth, ownsProject('body')],
+    config: { apiKey: 'in-handler' },
   }, async (request, reply) => {
     const startedAt = Date.now()
     let resolvedFormat: string | null = null
@@ -273,6 +274,7 @@ const importPlugin: FastifyPluginAsync = async (fastify) => {
     }
   }>('/import/commit', {
     preHandler: [requireAuth, ownsProject('body')],
+    config: { apiKey: 'in-handler' },
   }, async (request, reply) => {
     const startedAt = Date.now()
     let resolvedProjectId: string | null = null

@@ -6,7 +6,7 @@
  * Also supports API key authentication (bby_ prefix).
  */
 
-import { FastifyRequest, FastifyReply } from 'fastify'
+import { FastifyRequest, FastifyReply, RouteOptions } from 'fastify'
 import * as jose from 'jose'
 import { createHash } from 'crypto'
 import { db } from '../db/connection'
@@ -101,7 +101,25 @@ declare module 'fastify' {
     // Row loaded and authorised by an `ownsResolvedProject` preHandler.
     ownedRow?: unknown
   }
+
+  interface FastifyContextConfig {
+    // Set by hand only for 'in-handler' routes and optionalAuth routes; the
+    // guards in a preHandler list declare it otherwise (declareApiKeyPolicy).
+    apiKey?: ApiKeyPolicy
+  }
 }
+
+/**
+ * How a route treats `bby_` API keys. Keys are default-deny: a route that
+ * declares nothing is session-only, so a new route cannot quietly widen what
+ * an existing key can do.
+ * - `false`: session only (what `denyApiKeyAuth` declares).
+ * - `{ scope }`: keys holding that scope (what `requireScope` declares). On an
+ *   optionalAuth route, any other key is served as anonymous.
+ * - `'in-handler'`: any key; the handler calls `assertEntityScope` for the
+ *   collection it touches, which isn't known until the request is read.
+ */
+export type ApiKeyPolicy = false | 'in-handler' | { scope: string }
 
 /**
  * Get the JWT secret for token verification.
@@ -239,11 +257,18 @@ async function resolveApiKey(token: string): Promise<{ user: AuthenticatedUser; 
   return { user, keyId: key.id, scopes: key.scopes, projectId: key.projectId }
 }
 
+interface Authentication {
+  user: AuthenticatedUser
+  // Present when the bearer token was an API key rather than a session JWT.
+  apiKey?: { id: string; scopes: string[]; projectId: string | null }
+}
+
 /**
- * Shared logic for authenticating a request via JWT or API key.
- * Returns the user and whether auth succeeded, or null if no valid auth found.
+ * Resolve the request's bearer token (API key or JWT) to a user, or null if
+ * there is no valid one. Attaches nothing: the caller first decides whether
+ * the route admits an API key at all.
  */
-async function authenticateRequest(request: FastifyRequest): Promise<{ user: AuthenticatedUser } | null> {
+async function authenticateRequest(request: FastifyRequest): Promise<Authentication | null> {
   const token = extractBearerToken(request)
   if (!token) return null
 
@@ -251,11 +276,7 @@ async function authenticateRequest(request: FastifyRequest): Promise<{ user: Aut
   if (token.startsWith('bby_')) {
     const result = await resolveApiKey(token)
     if (!result) return null
-    request.apiKeyAuth = true
-    request.apiKeyId = result.keyId
-    request.apiKeyScopes = result.scopes
-    request.apiKeyProjectId = result.projectId
-    return { user: result.user }
+    return { user: result.user, apiKey: { id: result.keyId, scopes: result.scopes, projectId: result.projectId } }
   }
 
   // Fall back to JWT
@@ -264,10 +285,7 @@ async function authenticateRequest(request: FastifyRequest): Promise<{ user: Aut
 
   // Check cache first, then fall back to DB
   const cached = getCachedUser(tokenPayload.id)
-  if (cached) {
-    request.apiKeyAuth = false
-    return { user: cached }
-  }
+  if (cached) return { user: cached }
 
   const [user] = await db
     .select({
@@ -283,23 +301,50 @@ async function authenticateRequest(request: FastifyRequest): Promise<{ user: Aut
   if (!user) return null
 
   cacheUser(user)
-  request.apiKeyAuth = false
   return { user }
+}
+
+function attachAuthentication(request: FastifyRequest, { user, apiKey }: Authentication): void {
+  request.user = user
+  request.apiKeyAuth = apiKey !== undefined
+  if (apiKey) {
+    request.apiKeyId = apiKey.id
+    request.apiKeyScopes = apiKey.scopes
+    request.apiKeyProjectId = apiKey.projectId
+  }
+}
+
+const SESSION_ONLY = {
+  error: 'Session auth required',
+  message: 'This endpoint requires session authentication and cannot be accessed with an API key'
+}
+
+function insufficientScope(scope: string) {
+  return { error: 'Insufficient scope', message: `This API key does not have the '${scope}' scope` }
+}
+
+/** Why this route refuses an API key holding `scopes`, or null if it admits it. */
+function apiKeyRefusal(request: FastifyRequest, scopes: string[]): { error: string; message: string } | null {
+  const policy = request.routeOptions.config.apiKey
+  if (!policy) return SESSION_ONLY
+  if (policy === 'in-handler' || scopes.includes(policy.scope)) return null
+  return insufficientScope(policy.scope)
 }
 
 /**
  * Authentication middleware - requires valid JWT token or API key
  *
  * Extracts user from JWT/API key and attaches to request.user
- * Returns 401 if token is missing or invalid.
+ * Returns 401 if token is missing or invalid, and 403 for an API key the
+ * route does not admit (see ApiKeyPolicy).
  */
 export async function requireAuth(
   request: FastifyRequest,
   reply: FastifyReply
 ): Promise<void> {
-  const result = await authenticateRequest(request)
+  const auth = await authenticateRequest(request)
 
-  if (!result) {
+  if (!auth) {
     reply.status(401).send({
       error: 'Authentication required',
       message: 'Missing or invalid Authorization header'
@@ -307,7 +352,15 @@ export async function requireAuth(
     return
   }
 
-  request.user = result.user
+  if (auth.apiKey) {
+    const refusal = apiKeyRefusal(request, auth.apiKey.scopes)
+    if (refusal) {
+      reply.status(403).send(refusal)
+      return
+    }
+  }
+
+  attachAuthentication(request, auth)
 }
 
 /**
@@ -374,34 +427,40 @@ export async function optionalAuth(
   request: FastifyRequest,
   _reply: FastifyReply
 ): Promise<void> {
-  const result = await authenticateRequest(request)
-  if (result) {
-    request.user = result.user
-  }
+  const auth = await authenticateRequest(request)
+  // A key the route doesn't admit carries no identity here: the caller is
+  // served as anonymous, exactly as if the header were absent.
+  if (!auth || (auth.apiKey && apiKeyRefusal(request, auth.apiKey.scopes))) return
+  attachAuthentication(request, auth)
 }
+
+// Guards made by requireScope, by the scope each checks, so
+// declareApiKeyPolicy can read a route's scope off its preHandler list.
+const scopeGuards = new WeakMap<object, string>()
 
 /**
  * Scope enforcement middleware factory.
  * If the request is authenticated via API key, checks that the key has the required scope.
- * JWT requests pass through (all scopes implicit).
+ * JWT requests pass through (all scopes implicit). Also declares the route's
+ * ApiKeyPolicy, which is what lets a key reach the route at all.
  */
 export function requireScope(scope: string) {
-  return async function (request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const guard = async function (request: FastifyRequest, reply: FastifyReply): Promise<void> {
     if (request.apiKeyAuth && request.apiKeyScopes && !request.apiKeyScopes.includes(scope)) {
-      reply.status(403).send({
-        error: 'Insufficient scope',
-        message: `This API key does not have the '${scope}' scope`
-      })
+      reply.status(403).send(insufficientScope(scope))
       return
     }
   }
+  scopeGuards.set(guard, scope)
+  return guard
 }
 
 /**
  * Pick the right scope for an entity operation based on its collection.
  * Manuscript content (collection 'content') is gated by manuscript:*; everything
  * else (characters, places, lore, type definitions, custom types) is gated by
- * entities:*. JWT auth always passes through (all scopes implicit).
+ * entities:*. JWT auth always passes through (all scopes implicit). A route
+ * that relies on this declares `config: { apiKey: 'in-handler' }`.
  *
  * Returns true when the caller may proceed. On rejection, writes a 403 to
  * `reply` and returns false — caller should `return` immediately.
@@ -415,28 +474,61 @@ export function assertEntityScope(
   if (!request.apiKeyAuth) return true
   const required = collection === 'content' ? `manuscript:${action}` : `entities:${action}`
   if (request.apiKeyScopes && request.apiKeyScopes.includes(required)) return true
-  reply.status(403).send({
-    error: 'Insufficient scope',
-    message: `This API key does not have the '${required}' scope`
-  })
+  reply.status(403).send(insufficientScope(required))
   return false
 }
 
 /**
  * Deny API key authentication middleware.
- * Use on sensitive endpoints that require session (JWT) auth only.
+ * Use on sensitive endpoints that require session (JWT) auth only. Undeclared
+ * routes are already session-only; this keeps the intent explicit where it
+ * matters most.
  */
 export async function denyApiKeyAuth(
   request: FastifyRequest,
   reply: FastifyReply
 ): Promise<void> {
   if (request.apiKeyAuth) {
+    reply.status(403).send(SESSION_ONLY)
+    return
+  }
+}
+
+/**
+ * For key-admitting routes that act on the account rather than a project. The
+ * per-project key restriction lives in the project ownership checks, so
+ * without this a restricted key would reach past its project here.
+ */
+export async function denyProjectRestrictedKey(
+  request: FastifyRequest,
+  reply: FastifyReply
+): Promise<void> {
+  if (request.apiKeyAuth && request.apiKeyProjectId) {
     reply.status(403).send({
-      error: 'Session auth required',
-      message: 'This endpoint requires session authentication and cannot be accessed with an API key'
+      error: 'Forbidden',
+      message: 'This API key is restricted to a single project'
     })
     return
   }
+}
+
+/**
+ * `onRoute` hook (server.ts): derive each route's ApiKeyPolicy from the guards
+ * in its preHandler list, so `requireScope(...)` and `denyApiKeyAuth` are the
+ * declaration and a route can't carry one without the other. An explicit
+ * `config.apiKey` wins.
+ */
+export function declareApiKeyPolicy(route: RouteOptions): void {
+  if (route.config?.apiKey !== undefined) return
+  const guards: unknown[] = [route.preHandler ?? []].flat()
+  let apiKey: ApiKeyPolicy | undefined
+  if (guards.includes(denyApiKeyAuth)) {
+    apiKey = false
+  } else {
+    const scope = guards.map(guard => scopeGuards.get(guard as object)).find(s => s !== undefined)
+    if (scope) apiKey = { scope }
+  }
+  if (apiKey !== undefined) route.config = { ...route.config, apiKey }
 }
 
 

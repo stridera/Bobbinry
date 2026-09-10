@@ -3,7 +3,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { db } from '../../db/connection'
 import { entities, projects, userProfiles, users, chapterAnnotations } from '../../db/schema'
 import { eq, and, desc, sql, or, count, inArray } from 'drizzle-orm'
-import { requireAuth, ownsProject } from '../../middleware/auth'
+import { requireAuth, requireScope, ownsProject } from '../../middleware/auth'
 import { countWordsFromHtml } from '../../lib/text'
 import { liveProjectEntity, notDeleted } from '../../lib/entity-scope'
 import { changeEventFromRow, extractWordCount, recordEntityChangesSafe } from '../../lib/entity-changes'
@@ -20,7 +20,7 @@ const annotationsAuthorRoutes: FastifyPluginAsync = async (fastify) => {
     Params: { projectId: string }
     Querystring: { status?: string; annotationType?: string; chapterId?: string; limit?: number; offset?: number }
   }>('/projects/:projectId/annotations', {
-    preHandler: [requireAuth, ownsProject()]
+    preHandler: [requireAuth, requireScope('manuscript:read'), ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
@@ -161,7 +161,7 @@ const annotationsAuthorRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string }
   }>('/projects/:projectId/annotations/stats', {
-    preHandler: [requireAuth, ownsProject()]
+    preHandler: [requireAuth, requireScope('manuscript:read'), ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {
@@ -219,7 +219,9 @@ const annotationsAuthorRoutes: FastifyPluginAsync = async (fastify) => {
   }>({
     method: ['PUT', 'PATCH'],
     url: '/projects/:projectId/annotations/:annotationId/status',
-    preHandler: [requireAuth, ownsProject()],
+    // manuscript:read, not :write — triage never touches prose, and the sync
+    // bots close the loop on their own proofing notes with read-scoped keys.
+    preHandler: [requireAuth, requireScope('manuscript:read'), ownsProject()],
     handler: async (request, reply) => {
       const correlationId = request.id
       try {
@@ -282,7 +284,9 @@ const annotationsAuthorRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post<{
     Params: { projectId: string; annotationId: string }
   }>('/projects/:projectId/annotations/:annotationId/accept', {
-    preHandler: [requireAuth, ownsProject()]
+    // Rewrites the chapter body, so it takes the write scope even though the
+    // suggestion itself can be filed with manuscript:read.
+    preHandler: [requireAuth, requireScope('manuscript:write'), ownsProject()]
   }, async (request, reply) => {
     const correlationId = request.id
     try {

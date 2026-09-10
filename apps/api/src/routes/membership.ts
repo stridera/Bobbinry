@@ -14,7 +14,7 @@ import { FastifyPluginAsync } from 'fastify'
 import { db } from '../db/connection'
 import { siteMemberships, sitePromoCodes, sitePromoRedemptions, users } from '../db/schema'
 import { eq, and, sql } from 'drizzle-orm'
-import { requireAuth } from '../middleware/auth'
+import { requireAuth, requireScope } from '../middleware/auth'
 import { getUserMembershipTier, getUserBadges } from '../lib/membership'
 import { getStripe } from '../lib/stripe'
 import type { Checkout } from 'stripe/cjs/resources/Checkout/Sessions.js'
@@ -25,7 +25,8 @@ const membershipPlugin: FastifyPluginAsync = async (fastify) => {
 
   // GET /membership — current user's membership status + badges
   fastify.get('/membership', {
-    preHandler: requireAuth,
+    // The CLI's `whoami`.
+    preHandler: [requireAuth, requireScope('profile:read')],
   }, async (request, reply) => {
     try {
       const user = request.user!

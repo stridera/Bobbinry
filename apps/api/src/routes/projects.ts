@@ -4,7 +4,7 @@ import { db } from '../db/connection'
 import { projects, bobbinsInstalled, entities, projectManuscriptDisplaySettings } from '../db/schema'
 import { eq, and, count, inArray, isNull } from 'drizzle-orm'
 import { ManifestCompiler } from '@bobbinry/compiler'
-import { requireAuth, requireVerified, requireScope, ownsProject } from '../middleware/auth'
+import { requireAuth, requireVerified, requireScope, ownsProject, denyProjectRestrictedKey } from '../middleware/auth'
 import { getUserMembershipTier, getProjectLimit, getUserBadges } from '../lib/membership'
 import { checkAndUpgradeBobbin, type UpgradeResult } from '../lib/bobbin-upgrader'
 import { loadDiskManifests, loadManifestFromBobbinsPath } from '../lib/disk-manifests'
@@ -29,7 +29,7 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
       description?: string
     }
   }>('/projects', {
-    preHandler: [requireAuth, requireVerified, requireScope('projects:write')]
+    preHandler: [requireAuth, requireVerified, requireScope('projects:write'), denyProjectRestrictedKey]
   }, async (request, reply) => {
     try {
       const { name, description } = request.body
@@ -350,7 +350,7 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string }
   }>('/projects/:projectId/bobbins', {
-    preHandler: [requireAuth, ownsProject()]
+    preHandler: [requireAuth, requireScope('projects:read'), ownsProject()]
   }, async (request, reply) => {
     try {
       const { projectId } = request.params

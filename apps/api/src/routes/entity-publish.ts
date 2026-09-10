@@ -98,6 +98,7 @@ const entityPublishPlugin: FastifyPluginAsync = async (fastify) => {
     Body: z.infer<typeof EntityPublishPatch>
   }>('/entities/:entityId/publish', {
     preHandler: [requireAuth, ownsProject('body')],
+    config: { apiKey: 'in-handler' },
   }, async (request, reply) => {
     try {
       const { entityId } = request.params
@@ -276,6 +277,7 @@ const entityPublishPlugin: FastifyPluginAsync = async (fastify) => {
     Body: z.infer<typeof PublishPatchBody>
   }>('/projects/:projectId/entity-types/:typeId/publish', {
     preHandler: [requireAuth, ownsProject()],
+    config: { apiKey: 'in-handler' },
   }, async (request, reply) => {
     try {
       const projectId = z.string().uuid().parse(request.params.projectId)
@@ -346,6 +348,7 @@ const entityPublishPlugin: FastifyPluginAsync = async (fastify) => {
     Body: z.infer<typeof ReorderEntitiesBody>
   }>('/projects/:projectId/entities/reorder', {
     preHandler: [requireAuth, ownsProject()],
+    config: { apiKey: 'in-handler' },
   }, async (request, reply) => {
     try {
       const projectId = z.string().uuid().parse(request.params.projectId)
@@ -427,6 +430,7 @@ const entityPublishPlugin: FastifyPluginAsync = async (fastify) => {
     Body: z.infer<typeof ReorderTypesBody>
   }>('/projects/:projectId/entity-types/reorder', {
     preHandler: [requireAuth, ownsProject()],
+    config: { apiKey: 'in-handler' },
   }, async (request, reply) => {
     try {
       const projectId = z.string().uuid().parse(request.params.projectId)

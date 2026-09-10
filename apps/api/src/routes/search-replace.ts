@@ -56,6 +56,7 @@ const searchReplacePlugin: FastifyPluginAsync = async (fastify) => {
     Body: z.infer<typeof PreviewBodySchema>
   }>('/projects/:projectId/search-replace/preview', {
     preHandler: [requireAuth, ownsProject()],
+    config: { apiKey: 'in-handler' },
   }, async (request, reply) => {
     try {
       const { projectId } = PathParamsSchema.parse(request.params)
@@ -149,6 +150,7 @@ const searchReplacePlugin: FastifyPluginAsync = async (fastify) => {
     Body: z.infer<typeof ApplyBodySchema>
   }>('/projects/:projectId/search-replace/apply', {
     preHandler: [requireAuth, ownsProject()],
+    config: { apiKey: 'in-handler' },
   }, async (request, reply) => {
     try {
       const { projectId } = PathParamsSchema.parse(request.params)

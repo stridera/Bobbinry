@@ -7,6 +7,11 @@ import { optionalAuth } from '../../middleware/auth'
 import { liveProjectEntity } from '../../lib/entity-scope'
 import { canUserAnnotate } from './shared'
 
+// API keys with manuscript:read reach these routes: the sync bots file their
+// proofing notes here. Annotations never change prose; accepting a suggestion
+// into the chapter is manuscript:write (annotations-author.ts).
+const annotatorKeys = { apiKey: { scope: 'manuscript:read' } }
+
 const annotationsRoutes: FastifyPluginAsync = async (fastify) => {
   // ============================================
   // ANNOTATIONS (READER FEEDBACK)
@@ -18,7 +23,8 @@ const annotationsRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { projectId: string }
   }>('/public/projects/:projectId/can-annotate', {
-    preHandler: optionalAuth
+    preHandler: optionalAuth,
+    config: annotatorKeys
   }, async (request, reply) => {
     const correlationId = request.id
     try {
@@ -52,7 +58,8 @@ const annotationsRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get<{
     Params: { chapterId: string }
   }>('/public/chapters/:chapterId/annotations', {
-    preHandler: optionalAuth
+    preHandler: optionalAuth,
+    config: annotatorKeys
   }, async (request, reply) => {
     const correlationId = request.id
     try {
@@ -113,7 +120,8 @@ const annotationsRoutes: FastifyPluginAsync = async (fastify) => {
       chapterVersion: number
     }
   }>('/public/chapters/:chapterId/annotations', {
-    preHandler: optionalAuth
+    preHandler: optionalAuth,
+    config: annotatorKeys
   }, async (request, reply) => {
     const correlationId = request.id
     try {
@@ -208,7 +216,8 @@ const annotationsRoutes: FastifyPluginAsync = async (fastify) => {
       suggestedText?: string | null
     }
   }>('/public/chapters/:chapterId/annotations/:annotationId', {
-    preHandler: optionalAuth
+    preHandler: optionalAuth,
+    config: annotatorKeys
   }, async (request, reply) => {
     const correlationId = request.id
     try {
@@ -270,7 +279,8 @@ const annotationsRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.delete<{
     Params: { chapterId: string; annotationId: string }
   }>('/public/chapters/:chapterId/annotations/:annotationId', {
-    preHandler: optionalAuth
+    preHandler: optionalAuth,
+    config: annotatorKeys
   }, async (request, reply) => {
     const correlationId = request.id
     try {
