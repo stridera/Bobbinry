@@ -1,10 +1,10 @@
-import { describe, it, expect, jest, beforeEach, afterAll } from '@jest/globals'
+import { describe, it, expect, jest, beforeEach, afterEach, afterAll } from '@jest/globals'
 
 // The system under test imports the db for its cache helpers; those aren't
 // exercised here, so a stub keeps this a pure unit test with no connection.
 jest.mock('../../../db/connection', () => ({ db: {} }))
 
-import { lookupFromUpstream, normalizeWord } from '../../dictionary'
+import { lookupFromUpstream, normalizeWord, resetPrimaryHealth } from '../../dictionary'
 
 // ---------------------------------------------------------------------------
 // Upstream stubs. `fetch` is replaced per-test so the source chain can be
@@ -22,9 +22,13 @@ interface StubResponse {
 const GATEWAY_ERROR: StubResponse = { status: 502 }
 const NOT_FOUND: StubResponse = { status: 404 }
 
-function stubFetch(routes: { dictionaryapi: StubResponse; wiktionary: StubResponse }) {
+/** An upstream that accepts the connection and never answers. */
+const HANG = 'hang' as const
+
+function stubFetch(routes: { dictionaryapi: StubResponse | typeof HANG; wiktionary: StubResponse }) {
   globalThis.fetch = jest.fn((url: unknown) => {
     const target = String(url).includes('dictionaryapi.dev') ? routes.dictionaryapi : routes.wiktionary
+    if (target === HANG) return new Promise(() => {})
     return Promise.resolve({
       ok: target.status >= 200 && target.status < 300,
       status: target.status,
@@ -57,6 +61,11 @@ const WIKTIONARY_OK: StubResponse = {
 
 beforeEach(() => {
   jest.clearAllMocks()
+  resetPrimaryHealth()
+})
+
+afterEach(() => {
+  jest.useRealTimers()
 })
 
 afterAll(() => {
@@ -100,6 +109,35 @@ describe('lookupFromUpstream', () => {
     if (result.status !== 'ok') return
     expect(result.source).toBe('wiktionary')
     expect(result.entries[0].sourceUrls?.[0]).toBe('https://en.wiktionary.org/wiki/abate')
+  })
+
+  it('brings in Wiktionary when the primary is slow, instead of waiting out its timeout', async () => {
+    jest.useFakeTimers()
+    stubFetch({ dictionaryapi: HANG, wiktionary: WIKTIONARY_OK })
+    const pending = lookupFromUpstream('abate')
+
+    // Nothing but the primary until its head start runs out.
+    await jest.advanceTimersByTimeAsync(999)
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+    await jest.advanceTimersByTimeAsync(1)
+
+    const result = await pending
+    expect(result.status).toBe('ok')
+    if (result.status !== 'ok') return
+    expect(result.source).toBe('wiktionary')
+  })
+
+  it('gives a primary that just failed no head start', async () => {
+    stubFetch({ dictionaryapi: GATEWAY_ERROR, wiktionary: WIKTIONARY_OK })
+    await lookupFromUpstream('abate')
+
+    // Still hanging on the next word: without the cooldown this would wait out
+    // the head start again. No timers are advanced, so it must not.
+    stubFetch({ dictionaryapi: HANG, wiktionary: WIKTIONARY_OK })
+    const result = await lookupFromUpstream('ember')
+    expect(result.status).toBe('ok')
+    // The primary is still asked, so it's noticed as soon as it recovers.
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2)
   })
 
   it('reports unavailable — never not-found — when every source is down', async () => {

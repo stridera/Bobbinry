@@ -189,25 +189,70 @@ async function fetchWiktionary(word: string): Promise<LookupResult> {
   }
 }
 
-const SOURCES = [fetchFreeDictionary, fetchWiktionary]
+/**
+ * How long dictionaryapi.dev gets to answer on its own before Wiktionary is
+ * asked too. It's preferred when healthy -- it carries phonetics and audio,
+ * Wiktionary's endpoint doesn't -- but when it hangs, waiting out the full
+ * timeout made every uncached word take five seconds.
+ */
+const HEDGE_DELAY_MS = 1000
+
+/** After dictionaryapi.dev fails, skip its head start for this long; it's probably still down. */
+const PRIMARY_COOLDOWN_MS = 5 * 60 * 1000
+
+let primaryDownUntil = 0
+
+function recordPrimaryHealth(result: LookupResult): LookupResult {
+  primaryDownUntil = result.status === 'unavailable' ? Date.now() + PRIMARY_COOLDOWN_MS : 0
+  return result
+}
+
+/** A throw would otherwise leave firstOk waiting on a lookup that never settles. */
+function settled(lookup: Promise<LookupResult>): Promise<LookupResult> {
+  return lookup.catch((): LookupResult => ({ status: 'unavailable' }))
+}
+
+/** The first ok result; failing that, not-found if any source said so, else unavailable. */
+function firstOk(lookups: Promise<LookupResult>[]): Promise<LookupResult> {
+  return new Promise((resolve) => {
+    let remaining = lookups.length
+    let sawNotFound = false
+    for (const lookup of lookups) {
+      void lookup.then((result) => {
+        if (result.status === 'ok') return resolve(result)
+        if (result.status === 'not-found') sawNotFound = true
+        if (--remaining === 0) resolve(sawNotFound ? { status: 'not-found' } : { status: 'unavailable' })
+      })
+    }
+  })
+}
 
 /**
- * Tries each source in order. A source reporting not-found is not authoritative
- * on its own -- dictionaryapi.dev's scrape lags Wiktionary and misses words the
- * upstream has -- so the chain continues and only reports not-found when every
- * source agrees. That costs one extra request per unknown word, once, since the
- * negative is then cached.
+ * Asks dictionaryapi.dev first and brings in Wiktionary once it fails or has
+ * been slow for HEDGE_DELAY_MS, then takes whichever answers first. A source
+ * reporting not-found is not authoritative on its own -- dictionaryapi.dev's
+ * scrape lags Wiktionary and misses words the upstream has -- so a miss always
+ * consults the other source. That costs one extra request per unknown word,
+ * once, since the negative is then cached.
  */
 export async function lookupFromUpstream(word: string): Promise<LookupResult> {
-  let sawNotFound = false
+  const primary = settled(fetchFreeDictionary(word)).then(recordPrimaryHealth)
 
-  for (const source of SOURCES) {
-    const result = await source(word)
-    if (result.status === 'ok') return result
-    if (result.status === 'not-found') sawNotFound = true
+  if (Date.now() >= primaryDownUntil) {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const early = await Promise.race([
+      primary,
+      new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), HEDGE_DELAY_MS) }),
+    ])
+    clearTimeout(timer)
+    if (early?.status === 'ok') return early
   }
 
-  return sawNotFound ? { status: 'not-found' } : { status: 'unavailable' }
+  return firstOk([primary, settled(fetchWiktionary(word))])
+}
+
+export function resetPrimaryHealth(): void {
+  primaryDownUntil = 0
 }
 
 export interface CachedLookup {
