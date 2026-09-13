@@ -100,6 +100,7 @@ export default function DictionaryPanel({ context }: DictionaryPanelProps) {
   const [dictionaryData, setDictionaryData] = useState<DictionaryEntry[] | null>(null)
   const [thesaurusData, setThesaurusData] = useState<ThesaurusResult | null>(null)
   const [dictionaryUnavailable, setDictionaryUnavailable] = useState(false)
+  const [thesaurusUnavailable, setThesaurusUnavailable] = useState(false)
   const cacheRef = useRef<Record<string, CachedLookup>>({})
   const lastWordRef = useRef('')
 
@@ -113,6 +114,7 @@ export default function DictionaryPanel({ context }: DictionaryPanelProps) {
       setDictionaryData(cached.dictionary)
       setThesaurusData(cached.thesaurus)
       setDictionaryUnavailable(false)
+      setThesaurusUnavailable(false)
       setStatus(cached.status)
       return
     }
@@ -120,39 +122,38 @@ export default function DictionaryPanel({ context }: DictionaryPanelProps) {
     setLoading(true)
     setStatus('')
     setDictionaryUnavailable(false)
+    setThesaurusUnavailable(false)
     try {
       // allSettled, not all: the dictionary and thesaurus are unrelated services, so
       // one going down must not discard the other's results.
       //
-      // Definitions go through our API (cached, with a Wiktionary fallback) rather
-      // than straight to api.dictionaryapi.dev, whose Cloudflare error pages carry
-      // no CORS headers and so surfaced as unexplained failures. Datamuse is called
-      // directly -- it's healthy and its CORS is already scoped to us.
-      const [dictionaryResult, synonymResult, antonymResult] = await Promise.allSettled([
+      // Both go through our API rather than straight to the upstreams. Direct calls
+      // to api.dictionaryapi.dev surfaced its Cloudflare error pages as unexplained
+      // CORS failures, and direct calls to Datamuse were silently dropped by some
+      // authors' blockers and networks.
+      const [dictionaryResult, thesaurusResult] = await Promise.allSettled([
         sdk.api.fetch(`/dictionary/${encodeURIComponent(word)}`),
-        fetch(`https://api.datamuse.com/words?rel_syn=${encodeURIComponent(word)}&max=20`),
-        fetch(`https://api.datamuse.com/words?rel_ant=${encodeURIComponent(word)}&max=12`),
+        sdk.api.fetch(`/thesaurus/${encodeURIComponent(word)}`),
       ])
 
       const dictionaryOutcome = classifyOutcome(dictionaryResult)
       const dictionaryBody = await readJson<{ entries?: DictionaryEntry[] }>(dictionaryResult)
       const dictionary = dictionaryBody?.entries?.length ? dictionaryBody.entries : null
-      const synonyms = await readJson<Array<{ word: string }>>(synonymResult) || []
-      const antonyms = await readJson<Array<{ word: string }>>(antonymResult) || []
+      const thesaurusBody = await readJson<Partial<ThesaurusResult>>(thesaurusResult)
       const thesaurus = {
-        synonyms: synonyms.map((entry) => entry.word),
-        antonyms: antonyms.map((entry) => entry.word),
+        synonyms: thesaurusBody?.synonyms ?? [],
+        antonyms: thesaurusBody?.antonyms ?? [],
       }
 
       const dictionaryDown = dictionaryOutcome === 'unavailable'
-      const thesaurusDown =
-        classifyOutcome(synonymResult) === 'unavailable' &&
-        classifyOutcome(antonymResult) === 'unavailable'
+      // The thesaurus never 404s a word -- an unknown one just comes back empty --
+      // so any other answer means it couldn't be reached.
+      const thesaurusDown = classifyOutcome(thesaurusResult) !== 'ok'
 
       let nextStatus = ''
       if (dictionaryDown && thesaurusDown) {
         nextStatus = 'Lookup services are unreachable right now. Check your connection and try again.'
-      } else if (!dictionary?.length && !thesaurus.synonyms.length && !thesaurus.antonyms.length && !dictionaryDown) {
+      } else if (!dictionary?.length && !thesaurus.synonyms.length && !thesaurus.antonyms.length && !dictionaryDown && !thesaurusDown) {
         nextStatus = 'No definition, synonyms, or antonyms found for this word.'
       }
 
@@ -165,6 +166,7 @@ export default function DictionaryPanel({ context }: DictionaryPanelProps) {
       setDictionaryData(dictionary)
       setThesaurusData(thesaurus)
       setDictionaryUnavailable(dictionaryDown && !thesaurusDown)
+      setThesaurusUnavailable(thesaurusDown && !dictionaryDown)
       setStatus(nextStatus)
     } catch {
       setStatus('Lookup services are unreachable right now. Check your connection and try again.')
@@ -339,6 +341,20 @@ export default function DictionaryPanel({ context }: DictionaryPanelProps) {
           ) : (
             <div className="text-sm text-gray-500 dark:text-gray-400">No definition found for “{selectedWord}”.</div>
           )
+        ) : thesaurusUnavailable ? (
+          <div className="space-y-2">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Synonyms and antonyms are temporarily unavailable — the thesaurus service isn’t responding.
+              Definitions still work.
+            </p>
+            <button
+              type="button"
+              onClick={retryLookup}
+              className="rounded-md border border-gray-200 dark:border-gray-700 px-2.5 py-1 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-900"
+            >
+              Try again
+            </button>
+          </div>
         ) : (
           <div className="space-y-4">
             <div>

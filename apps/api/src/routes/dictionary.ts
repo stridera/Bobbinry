@@ -1,9 +1,10 @@
 /**
- * Dictionary proxy for the dictionary-panel bobbin.
+ * Dictionary and thesaurus proxy for the dictionary-panel bobbin.
  *
  * Auth-gated so it can't be scraped as a free public dictionary API; the
  * global per-IP rate limiter in server.ts covers abuse from signed-in users.
- * See lib/dictionary.ts for why the panel no longer calls upstream directly.
+ * See lib/dictionary.ts and lib/thesaurus.ts for why the panel no longer calls
+ * upstream directly.
  */
 
 import type { FastifyPluginAsync } from 'fastify'
@@ -14,6 +15,7 @@ import {
   readCache,
   writeCache,
 } from '../lib/dictionary'
+import { lookupThesaurus } from '../lib/thesaurus'
 
 const dictionaryPlugin: FastifyPluginAsync = async (fastify) => {
   /**
@@ -58,6 +60,28 @@ const dictionaryPlugin: FastifyPluginAsync = async (fastify) => {
       request.log.error({ err: error, word }, 'dictionary lookup failed')
       return reply.status(500).send({ error: 'Dictionary lookup failed' })
     }
+  })
+
+  /**
+   * Synonyms and antonyms for a single English word.
+   *
+   * 200 (possibly with empty lists) or 503 when Datamuse is down. There is no
+   * 404: Datamuse answers an unknown word with an empty list.
+   */
+  fastify.get<{ Params: { word: string } }>('/thesaurus/:word', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    const word = normalizeWord(request.params.word)
+    if (!word) {
+      return reply.status(400).send({ error: 'Invalid word' })
+    }
+
+    const lookup = await lookupThesaurus(word)
+    if (lookup.status === 'unavailable') {
+      request.log.warn({ word }, 'thesaurus lookup unavailable')
+      return reply.status(503).send({ error: 'Thesaurus source is unavailable', word })
+    }
+    return reply.send({ word, ...lookup.result })
   })
 }
 
