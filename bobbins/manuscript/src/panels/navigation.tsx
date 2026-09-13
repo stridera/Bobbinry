@@ -15,6 +15,7 @@ import {
   type CharactersById,
   type CharacterColorRef,
 } from '../lib/chapterColors'
+import { rangeBetween, reorderWithBlock, topLevelSelection, visibleIds } from '../lib/tree-selection'
 
 interface NavigationPanelProps {
   context?: {
@@ -47,6 +48,11 @@ interface DropTarget {
   position: 'before' | 'after' | 'inside'
 }
 
+interface DraggedItem {
+  id: string
+  nodeType: 'container' | 'content'
+}
+
 function findNodeInTree(nodes: TreeNode[], nodeId: string): TreeNode | null {
   for (const node of nodes) {
     if (node.id === nodeId) return node
@@ -77,6 +83,29 @@ function broadcastVersionChange(entityId: string, result: any) {
 }
 
 /**
+ * Replace the drag ghost with an "N items" badge; the browser's default shows
+ * only the grabbed row, which hides that the rest of the selection is coming.
+ */
+function setDragBadge(e: React.DragEvent, count: number) {
+  const badge = document.createElement('div')
+  badge.textContent = `${count} items`
+  Object.assign(badge.style, {
+    position: 'fixed',
+    top: '-1000px',
+    left: '-1000px',
+    padding: '4px 10px',
+    borderRadius: '9999px',
+    background: '#2563eb',
+    color: '#fff',
+    font: '600 12px system-ui, sans-serif',
+  })
+  document.body.appendChild(badge)
+  e.dataTransfer.setDragImage(badge, 12, 12)
+  // The browser snapshots the element synchronously, so it can go right away.
+  setTimeout(() => badge.remove(), 0)
+}
+
+/**
  * Navigation Panel for Manuscript bobbin
  * Displays hierarchical tree of containers and content with drag/drop reorder
  */
@@ -86,6 +115,9 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   const [charactersById, setCharactersById] = useState<CharactersById>(() => new Map())
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  // Rows picked with Ctrl/Cmd+click or Shift+click, for moving several at
+  // once. Empty means only the open item is selected.
+  const [multiSelectedIds, setMultiSelectedIds] = useState<Set<string>>(() => new Set())
   const [showDropdown, setShowDropdown] = useState(false)
   const [filterQuery, setFilterQuery] = useState('')
 
@@ -112,7 +144,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   const [contextMenuView, setContextMenuView] = useState<'main' | 'pov' | 'featured' | 'color'>('main')
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null)
   const [editingValue, setEditingValue] = useState('')
-  const [draggedNode, setDraggedNode] = useState<{ id: string; nodeType: 'container' | 'content' } | null>(null)
+  const [draggedNodes, setDraggedNodes] = useState<DraggedItem[] | null>(null)
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
   const [toast, setToast] = useState<{ message: string; variant: 'danger' } | null>(null)
   const dismissToast = useCallback(() => setToast(null), [])
@@ -121,6 +153,8 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   // Track auto-selection: only auto-navigate to first item once per mount
   const hasAutoSelectedRef = useRef(false)
   const selectedNodeIdRef = useRef<string | null>(null)
+  // Where a Shift+click range starts: the open item, or the last Ctrl+clicked row.
+  const selectionAnchorRef = useRef<string | null>(null)
 
   // Map nodeId → parentId for quick lookup during drag operations
   const nodeParentMap = useRef(new Map<string, string | null>())
@@ -263,6 +297,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   // and scroll the selected node into view.
   useEffect(() => {
     selectedNodeIdRef.current = selectedNodeId
+    selectionAnchorRef.current = selectedNodeId
     if (selectedNodeId && treeContainerRef.current) {
       requestAnimationFrame(() => {
         const el = treeContainerRef.current?.querySelector(
@@ -312,6 +347,8 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   useEffect(() => registerShortcuts('manuscript.navigation', [
     { keys: 'Alt+N', description: 'New chapter below the selected one', group: 'Manuscript' },
     { keys: 'Ctrl+Alt+N', description: 'New chapter at the bottom of the container', group: 'Manuscript' },
+    { keys: 'Mod+Click', description: 'Add or remove an item from the selection', group: 'Manuscript' },
+    { keys: 'Shift+Click', description: 'Select a range of items to drag together', group: 'Manuscript' },
   ]), [])
 
   // Global shortcuts: Alt+N creates content directly below the selection
@@ -604,6 +641,11 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
       }
       collectIds(treeData)
       setExpandedNodes(allNodeIds)
+      // Forget selected rows that no longer exist (deleted here or elsewhere).
+      setMultiSelectedIds(prev => {
+        const kept = new Set([...prev].filter(id => allNodeIds.has(id)))
+        return kept.size === prev.size ? prev : kept
+      })
     } catch (error) {
       console.error('[NavigationPanel] Failed to load tree:', error)
     } finally {
@@ -641,6 +683,41 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
         })
       )
     }
+  }
+
+  /**
+   * Plain click opens the item. Ctrl/Cmd+click toggles a row in the selection
+   * and Shift+click selects the visible range from the anchor, file-manager
+   * style; neither navigates, so the open chapter stays put while picking.
+   */
+  function handleRowClick(e: React.MouseEvent, node: TreeNode) {
+    if (e.shiftKey) {
+      const range = rangeBetween(visibleIds(tree, expandedNodes), selectionAnchorRef.current, node.id)
+      setMultiSelectedIds(new Set(range ?? [node.id]))
+      if (!range) selectionAnchorRef.current = node.id
+      return
+    }
+
+    if (e.metaKey || e.ctrlKey) {
+      const open = selectedNodeIdRef.current
+      setMultiSelectedIds(prev => {
+        // Seed with the open item so Ctrl+click adds to it rather than starting over.
+        const next = new Set(prev.size > 0 ? prev : open ? [open] : [])
+        if (next.has(node.id)) next.delete(node.id)
+        else next.add(node.id)
+        return next
+      })
+      selectionAnchorRef.current = node.id
+      return
+    }
+
+    clearMultiSelection()
+    selectionAnchorRef.current = node.id
+    handleNodeClick(node)
+  }
+
+  function clearMultiSelection() {
+    setMultiSelectedIds(prev => (prev.size === 0 ? prev : new Set()))
   }
 
   async function createContainer(parentId: string | null = null) {
@@ -798,18 +875,55 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   // DRAG AND DROP — supports both reorder & move
   // ============================================
 
-  function handleDragStart(e: React.DragEvent, nodeId: string, nodeType: 'container' | 'content') {
+  function handleDragStart(e: React.DragEvent, node: TreeNode) {
     e.stopPropagation()
-    setDraggedNode({ id: nodeId, nodeType })
+    // Grabbing a row inside a multi-selection carries the whole selection;
+    // grabbing any other row carries just that row.
+    const items: DraggedItem[] = multiSelectedIds.size > 1 && multiSelectedIds.has(node.id)
+      ? topLevelSelection(tree, multiSelectedIds).map(n => ({ id: n.id, nodeType: n.nodeType }))
+      : [{ id: node.id, nodeType: node.nodeType }]
+    setDraggedNodes(items)
     e.dataTransfer.effectAllowed = 'move'
-    e.dataTransfer.setData('text/plain', nodeId)
+    e.dataTransfer.setData('text/plain', node.id)
+    if (items.length > 1) setDragBadge(e, items.length)
+  }
+
+  function isDescendantOf(nodeId: string, ancestorId: string): boolean {
+    let current = nodeParentMap.current.get(nodeId) ?? null
+    while (current) {
+      if (current === ancestorId) return true
+      current = nodeParentMap.current.get(current) ?? null
+    }
+    return false
+  }
+
+  /** A row can't take a drop from itself, or from a container it sits inside. */
+  function canDropOn(nodeId: string): boolean {
+    if (!draggedNodes) return false
+    return !draggedNodes.some(item =>
+      item.id === nodeId || (item.nodeType === 'container' && isDescendantOf(nodeId, item.id))
+    )
+  }
+
+  /** Re-parent items, appending them to the end of `parentId` in their given order. */
+  function moveItemsTo(items: DraggedItem[], parentId: string | null) {
+    const base = Date.now()
+    return Promise.all(items.map((item, i) => {
+      const collection = item.nodeType === 'container' ? 'containers' : 'content'
+      const field = item.nodeType === 'container' ? 'parent_id' : 'container_id'
+      return sdk.entities.update(collection, item.id, {
+        [field]: parentId,
+        order: base + i, // place at end
+        updated_at: new Date().toISOString()
+      }).then(result => broadcastVersionChange(item.id, result))
+    }))
   }
 
   function handleDragOverNode(e: React.DragEvent, nodeId: string, isContainer: boolean) {
     e.preventDefault()
     e.stopPropagation()
 
-    if (!draggedNode || draggedNode.id === nodeId) {
+    if (!canDropOn(nodeId)) {
       setDropTarget(null)
       return
     }
@@ -873,14 +987,9 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     e.preventDefault()
     e.stopPropagation()
 
-    if (!draggedNode || !dropTarget) {
-      setDraggedNode(null)
-      setDropTarget(null)
-      return
-    }
-
-    if (draggedNode.id === targetId) {
-      setDraggedNode(null)
+    const items = draggedNodes
+    if (!items || !dropTarget || !canDropOn(targetId)) {
+      setDraggedNodes(null)
       setDropTarget(null)
       return
     }
@@ -889,73 +998,56 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
 
     try {
       if (position === 'inside' && targetIsContainer) {
-        // Move into container
-        const collection = draggedNode.nodeType === 'container' ? 'containers' : 'content'
-        const field = draggedNode.nodeType === 'container' ? 'parent_id' : 'container_id'
-
-        const moveResult = await sdk.entities.update(collection, draggedNode.id, {
-          [field]: targetId,
-          order: Date.now(), // place at end
-          updated_at: new Date().toISOString()
-        })
-        broadcastVersionChange(draggedNode.id, moveResult)
-
+        await moveItemsTo(items, targetId)
         await loadTree()
         setExpandedNodes(prev => new Set(prev).add(targetId))
       } else {
         // Reorder: insert before/after the target
-        await performReorder(draggedNode.id, draggedNode.nodeType, targetId, position as 'before' | 'after')
+        await performReorder(items, targetId, position as 'before' | 'after')
       }
     } catch (error) {
       console.error('Failed to drop:', error)
       setToast({ message: 'Failed to move item: ' + (error instanceof Error ? error.message : 'Unknown error'), variant: 'danger' })
+      // Part of a multi-item move may have landed; show what actually happened.
+      void loadTree()
     } finally {
-      setDraggedNode(null)
+      setDraggedNodes(null)
       setDropTarget(null)
     }
   }
 
   async function performReorder(
-    draggedId: string,
-    draggedType: 'container' | 'content',
+    items: DraggedItem[],
     targetId: string,
     position: 'before' | 'after'
   ) {
-    // Find target's parent
     const targetParentId = nodeParentMap.current.get(targetId) ?? null
-    const draggedParentId = nodeParentMap.current.get(draggedId) ?? null
-    const sameParent = targetParentId === draggedParentId
+    const siblingIds = findSiblings(targetParentId).map(s => s.id)
+    const movedIds = items.map(item => item.id)
+    const moved = new Set(movedIds)
+    const ordered = reorderWithBlock(siblingIds, movedIds, targetId, position)
 
-    // Get siblings at the target location
-    const siblings = findSiblings(targetParentId)
-    const siblingIds = siblings.map(s => s.id)
-
-    // Build new order: remove dragged, insert at position
-    const filtered = siblingIds.filter(id => id !== draggedId)
-    const targetIndex = filtered.indexOf(targetId)
-    const insertAt = position === 'before' ? targetIndex : targetIndex + 1
-    filtered.splice(insertAt, 0, draggedId)
-
-    // Persist: update parent and order for all items at the target level
-    // When moving across containers, merge parent + order into one update for the dragged entity
-    // to avoid two concurrent updates hitting the server's version check
+    // Persist: update parent and order for all items at the target level.
+    // An item arriving from another container gets its parent change and order
+    // in one update, to avoid two concurrent updates hitting the server's
+    // version check.
     const updates: Promise<any>[] = []
 
-    for (let i = 0; i < filtered.length; i++) {
-      const nodeId = filtered[i]!
+    for (let i = 0; i < ordered.length; i++) {
+      const nodeId = ordered[i]!
       const node = findNodeById(nodeId)
       if (!node) continue
       const collection = node.nodeType === 'container' ? 'containers' : 'content'
+      const changesParent = moved.has(nodeId) && (nodeParentMap.current.get(nodeId) ?? null) !== targetParentId
 
-      if (!sameParent && nodeId === draggedId) {
-        // Merge parent change + order into a single update
-        const field = draggedType === 'container' ? 'parent_id' : 'container_id'
+      if (changesParent) {
+        const field = node.nodeType === 'container' ? 'parent_id' : 'container_id'
         updates.push(
-          sdk.entities.update(collection, draggedId, {
+          sdk.entities.update(collection, nodeId, {
             [field]: targetParentId,
             order: (i + 1) * 100,
             updated_at: new Date().toISOString()
-          }).then(result => broadcastVersionChange(draggedId, result))
+          }).then(result => broadcastVersionChange(nodeId, result))
         )
       } else {
         updates.push(
@@ -993,29 +1085,22 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     e.preventDefault()
     e.stopPropagation()
 
-    if (!draggedNode) return
+    if (!draggedNodes) return
 
-    // Move any item to root level
-    const collection = draggedNode.nodeType === 'container' ? 'containers' : 'content'
-    const field = draggedNode.nodeType === 'container' ? 'parent_id' : 'container_id'
-    const draggedId = draggedNode.id
-    sdk.entities.update(collection, draggedId, {
-      [field]: null,
-      order: Date.now(),
-      updated_at: new Date().toISOString()
-    }).then(result => {
-      broadcastVersionChange(draggedId, result)
-      return loadTree()
-    }).catch(error => {
-      console.error('Failed to move to root:', error)
-    })
+    // Move the dragged items to root level
+    moveItemsTo(draggedNodes, null)
+      .then(() => loadTree())
+      .catch(error => {
+        console.error('Failed to move to root:', error)
+        void loadTree()
+      })
 
-    setDraggedNode(null)
+    setDraggedNodes(null)
     setDropTarget(null)
   }
 
   function handleDragEnd() {
-    setDraggedNode(null)
+    setDraggedNodes(null)
     setDropTarget(null)
   }
 
@@ -1085,13 +1170,20 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     const isExpanded = expandedNodes.has(node.id)
     const hasChildren = node.children && node.children.length > 0
     const isSelected = selectedNodeId === node.id
+    const isMultiSelected = multiSelectedIds.has(node.id)
     const isContainer = node.nodeType === 'container'
     const isEditing = editingNodeId === node.id
-    const isDragging = draggedNode?.id === node.id
+    const isDragging = draggedNodes?.some(item => item.id === node.id) ?? false
 
     const isDropBefore = dropTarget?.nodeId === node.id && dropTarget.position === 'before'
     const isDropAfter = dropTarget?.nodeId === node.id && dropTarget.position === 'after'
     const isDropInside = dropTarget?.nodeId === node.id && dropTarget.position === 'inside'
+
+    const rowBackground = isDropInside
+      ? 'bg-blue-600'
+      : isMultiSelected
+        ? 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-900/50'
+        : `hover:bg-gray-100 dark:hover:bg-gray-700 ${isSelected ? 'bg-gray-100 dark:bg-gray-700' : ''}`
 
     const icon = node.icon || (isContainer ? '📁' : '📝')
 
@@ -1113,12 +1205,15 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
         <div
           data-node-id={node.id}
           draggable={!isEditing}
-          onDragStart={(e) => handleDragStart(e, node.id, node.nodeType)}
+          onDragStart={(e) => handleDragStart(e, node)}
           onDragOver={(e) => handleDragOverNode(e, node.id, isContainer)}
           onDragLeave={handleDragLeaveNode}
           onDrop={(e) => handleDropOnNode(e, node.id, isContainer)}
           onDragEnd={handleDragEnd}
-          className={`relative pr-2 py-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 text-sm flex items-center gap-1.5 ${isSelected ? 'bg-gray-100 dark:bg-gray-700' : ''} ${isDropInside ? 'bg-blue-600' : ''} ${isDragging ? 'opacity-40' : ''}`}
+          onClick={(e) => {
+            if (!isEditing) handleRowClick(e, node)
+          }}
+          className={`relative pr-2 py-1 cursor-pointer text-sm flex items-center gap-1.5 ${isEditing ? '' : 'select-none'} ${rowBackground} ${isDragging ? 'opacity-40' : ''}`}
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
           onContextMenu={(e) => handleContextMenu(e, node.id, node.nodeType)}
         >
@@ -1143,13 +1238,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
           )}
           {!hasChildren && <span className="w-3 flex-shrink-0"></span>}
 
-          <span
-            className={`flex-shrink-0 ${colorClasses?.iconText ?? ''}`}
-            onClick={(e) => {
-              e.stopPropagation()
-              if (!isEditing) handleNodeClick(node)
-            }}
-          >
+          <span className={`flex-shrink-0 ${colorClasses?.iconText ?? ''}`}>
             {icon}
           </span>
 
@@ -1172,13 +1261,7 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            <span
-              className="flex-1 text-gray-800 dark:text-gray-200 truncate"
-              onClick={(e) => {
-                e.stopPropagation()
-                if (!isEditing) handleNodeClick(node)
-              }}
-            >
+            <span className="flex-1 text-gray-800 dark:text-gray-200 truncate">
               {node.title}
             </span>
           )}
@@ -1349,7 +1432,11 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
       ) : (
       <div
         ref={treeContainerRef}
-        className="flex-1 overflow-y-auto"
+        tabIndex={-1}
+        className="flex-1 overflow-y-auto outline-none"
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') clearMultiSelection()
+        }}
         onDragOver={(e) => {
           e.preventDefault()
           e.dataTransfer.dropEffect = 'move'
@@ -1378,6 +1465,18 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
           tree.map(node => renderNode(node))
         )}
       </div>
+      )}
+
+      {multiSelectedIds.size > 1 && !filterQuery.trim() && (
+        <div className="flex items-center justify-between gap-2 border-t border-gray-200 dark:border-gray-700 px-3 py-1.5 text-xs text-gray-600 dark:text-gray-300">
+          <span>{multiSelectedIds.size} selected · drag to move</span>
+          <button
+            onClick={clearMultiSelection}
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+          >
+            Clear
+          </button>
+        </div>
       )}
 
       {contextMenu && (() => {
