@@ -59,6 +59,27 @@ describe('shell-prefs store', () => {
     expect(bodies[0].prefs).toEqual({ panelWidth: { right: 400 }, leftRail: { active: 'a' } })
   })
 
+  it('keeps a write made while the initial fetch is in flight, even when the server has an older value', async () => {
+    // Cold load: the rail switches panels on the first navigation before the
+    // account prefs arrive. The server copy still names the old panel.
+    let resolveGet: (v: unknown) => void = () => {}
+    apiFetchMock.mockImplementation((path: string, _t: string, init?: RequestInit) =>
+      init?.method === 'PATCH'
+        ? ok({ prefs: {} })
+        : new Promise(resolve => { resolveGet = resolve }))
+
+    startShellPrefsSync('tok')
+    await flushPromises() // the GET is now in flight
+    setShellPref('leftRail', 'active', 'manuscript')
+    resolveGet({ ok: true, status: 200, json: async () => ({ prefs: { leftRail: { active: 'notes' } } }) })
+    await flushPromises()
+
+    expect(getShellPref('leftRail', 'active', null)).toBe('manuscript')
+    jest.advanceTimersByTime(1000)
+    await flushPromises()
+    expect(patchBodies()).toEqual([{ prefs: { leftRail: { active: 'manuscript' } } }])
+  })
+
   it('coalesces rapid writes into one debounced PATCH and mirrors immediately', async () => {
     apiFetchMock.mockImplementation(() => ok({ prefs: {} }))
     startShellPrefsSync('tok')
