@@ -70,6 +70,7 @@ export default function ReadyQueuePanel(props: ReadyQueuePanelProps) {
 
       let entities: ChapterEntity[] = []
       let publications: ChapterPublication[] = []
+      let readerOrder: string[] = []
 
       if (chapRes.ok) {
         const data = await chapRes.json()
@@ -78,7 +79,11 @@ export default function ReadyQueuePanel(props: ReadyQueuePanelProps) {
       if (pubRes.ok) {
         const data = await pubRes.json()
         publications = data.publications || []
+        readerOrder = data.readerOrder || []
       }
+      // Queue in the order readers see. A chapter's raw `order` only ranks it
+      // within its folder, so sorting by it interleaves folders.
+      const readerIndex = new Map(readerOrder.map((id, i) => [id, i]))
       if (configRes.ok) {
         const data = await configRes.json()
         setAutoReleaseEnabled(data.config?.autoReleaseEnabled ?? false)
@@ -95,7 +100,7 @@ export default function ReadyQueuePanel(props: ReadyQueuePanelProps) {
         .map((e, idx) => ({
           id: e.id,
           title: e.title || `Chapter ${idx + 1}`,
-          order: e.order ?? idx,
+          order: readerIndex.get(e.id) ?? Number.MAX_SAFE_INTEGER,
         }))
         .sort((a, b) => a.order - b.order)
 

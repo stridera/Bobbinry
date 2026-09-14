@@ -103,17 +103,23 @@ export default function PublishManagerPanel(props: PublishManagerPanelProps) {
       let chapters: ChapterEntity[] = []
       let publications: ChapterPublication[] = []
 
+      let readerOrder: string[] = []
       if (chapRes.ok) {
         const data = await chapRes.json()
-        chapters = (data.entities || []).sort(
-          (a: ChapterEntity, b: ChapterEntity) => (a.order ?? 0) - (b.order ?? 0)
-        )
+        chapters = data.entities || []
       }
 
       if (pubRes.ok) {
         const data = await pubRes.json()
         publications = data.publications || []
+        readerOrder = data.readerOrder || []
       }
+
+      // List in the order readers see. A chapter's raw `order` only ranks it
+      // within its folder, so sorting by it interleaves folders.
+      const readerIndex = new Map(readerOrder.map((id, i) => [id, i]))
+      const position = (c: ChapterEntity) => readerIndex.get(c.id) ?? Number.MAX_SAFE_INTEGER
+      chapters.sort((a, b) => position(a) - position(b))
 
       // Merge chapters with publication data
       const pubMap = new Map(publications.map(p => [p.chapterId, p]))

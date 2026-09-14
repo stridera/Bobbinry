@@ -70,14 +70,18 @@ const FILTER_TABS: { value: StatusFilter; label: string }[] = [
   { value: 'published', label: 'Published' },
 ]
 
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  })
+/** Date on one line, time beneath it — keeps the column narrow without wrapping mid-date. */
+function formatDate(dateStr: string): React.ReactNode {
+  const d = new Date(dateStr)
+  return (
+    <>
+      {d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+      <br />
+      <span className="text-gray-400 dark:text-gray-500">
+        {d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+      </span>
+    </>
+  )
 }
 
 /* ── Main component ── */
@@ -108,21 +112,24 @@ export function ChapterReleaseTable({
 
       let entities: ChapterEntity[] = []
       let publications: ChapterPublication[] = []
+      let readerOrder: string[] = []
 
       if (chapRes.ok) {
         const data = await chapRes.json()
-        // Sort by the field the reader uses: manuscript `order` by default, or
-        // the custom `publishOrder` when the author manages reader order.
-        entities = (data.entities || []).sort((a: ChapterEntity, b: ChapterEntity) =>
-          useManuscriptOrder
-            ? (a.order ?? 0) - (b.order ?? 0)
-            : (a.publishOrder ?? 0) - (b.publishOrder ?? 0) || (a.order ?? 0) - (b.order ?? 0)
-        )
+        entities = data.entities || []
       }
       if (pubRes.ok) {
         const data = await pubRes.json()
         publications = data.publications || []
+        readerOrder = data.readerOrder || []
       }
+
+      // Always the order readers see. The server resolves it (manuscript tree
+      // or custom publish order); an entity's raw `order` only ranks it within
+      // its folder, so sorting by it here interleaves folders.
+      const readerIndex = new Map(readerOrder.map((id, i) => [id, i]))
+      const position = (e: ChapterEntity) => readerIndex.get(e.id) ?? Number.MAX_SAFE_INTEGER
+      entities.sort((a, b) => position(a) - position(b))
 
       const pubMap = new Map(publications.map((p) => [p.chapterId, p]))
       const merged: ChapterRow[] = entities.map((e, idx) => {
@@ -146,7 +153,7 @@ export function ChapterReleaseTable({
     } finally {
       setLoading(false)
     }
-  }, [projectId, apiToken, useManuscriptOrder])
+  }, [projectId, apiToken])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
@@ -358,15 +365,18 @@ export function ChapterReleaseTable({
         </div>
       )}
 
-      <div className="overflow-x-auto px-1">
-        <table className="w-full text-sm">
+      {/* Title is the only column allowed to shrink (w-full + max-w-0 lets it
+          truncate); every other cell is nowrap so the table always fits the
+          card instead of scrolling the Actions column out of view. */}
+      <div className="px-1">
+        <table className="w-full table-auto text-sm">
           <thead>
             <tr className="border-b border-gray-200 dark:border-gray-700">
-              <th className="text-left py-2 pr-4 text-gray-500 dark:text-gray-400 font-medium pl-4">#</th>
-              <th className="text-left py-2 pr-4 text-gray-500 dark:text-gray-400 font-medium">Title</th>
-              <th className="text-left py-2 pr-4 text-gray-500 dark:text-gray-400 font-medium">Status</th>
-              <th className="text-left py-2 pr-4 text-gray-500 dark:text-gray-400 font-medium">Date</th>
-              <th className="text-right py-2 pr-4 text-gray-500 dark:text-gray-400 font-medium">Views</th>
+              <th className="text-left py-2 pr-3 text-gray-500 dark:text-gray-400 font-medium pl-4">#</th>
+              <th className="w-full text-left py-2 pr-3 text-gray-500 dark:text-gray-400 font-medium">Title</th>
+              <th className="text-left py-2 pr-3 text-gray-500 dark:text-gray-400 font-medium">Status</th>
+              <th className="text-left py-2 pr-3 text-gray-500 dark:text-gray-400 font-medium">Date</th>
+              <th className="text-right py-2 pr-3 text-gray-500 dark:text-gray-400 font-medium">Views</th>
               <th className="text-right py-2 pr-4 text-gray-500 dark:text-gray-400 font-medium">Actions</th>
             </tr>
           </thead>
@@ -376,7 +386,7 @@ export function ChapterReleaseTable({
               return (
                 <React.Fragment key={chapter.id}>
                   <tr className={`border-b border-gray-100 dark:border-gray-700/50 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${ROW_TINTS[chapter.status] || ''}`}>
-                    <td className="py-2.5 pr-4 text-gray-400 dark:text-gray-500 tabular-nums pl-4">
+                    <td className="py-2.5 pr-3 text-gray-400 dark:text-gray-500 tabular-nums pl-4 whitespace-nowrap">
                       {showReorder ? (
                         <div className="flex items-center gap-1.5">
                           <div className="flex flex-col -my-1">
@@ -407,9 +417,9 @@ export function ChapterReleaseTable({
                         idx + 1
                       )}
                     </td>
-                    <td className="py-2.5 pr-4 font-medium">
+                    <td className="w-full max-w-0 py-2.5 pr-3 font-medium">
                       <div className="flex items-center gap-2">
-                        <span className="text-gray-900 dark:text-gray-100 truncate">
+                        <span className="min-w-0 truncate text-gray-900 dark:text-gray-100" title={chapter.title}>
                           {chapter.title}
                         </span>
                         {chapter.status === 'published' && readerBaseUrl && (
@@ -427,20 +437,20 @@ export function ChapterReleaseTable({
                         )}
                       </div>
                     </td>
-                    <td className="py-2.5 pr-4">
+                    <td className="py-2.5 pr-3 whitespace-nowrap">
                       <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[chapter.status] || STATUS_COLORS.draft}`}>
                         {STATUS_LABELS[chapter.status] || chapter.status}
                       </span>
                     </td>
-                    <td className="py-2.5 pr-4 text-xs text-gray-500 dark:text-gray-400">
+                    <td className="py-2.5 pr-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap leading-snug">
                       {chapter.publishedAt ? formatDate(chapter.publishedAt) : ''}
                     </td>
-                    <td className="py-2.5 pr-4 text-right text-gray-600 dark:text-gray-400 tabular-nums text-xs">
+                    <td className="py-2.5 pr-3 text-right text-gray-600 dark:text-gray-400 tabular-nums text-xs whitespace-nowrap">
                       {chapter.status === 'published' && chapter.viewCount > 0
                         ? chapter.viewCount.toLocaleString()
                         : chapter.status === 'published' ? '-' : ''}
                     </td>
-                    <td className="py-2.5 pr-4 text-right">
+                    <td className="py-2.5 pr-4 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1">
                         {isLoading ? (
                           <span className="text-xs text-gray-400">...</span>
@@ -462,7 +472,7 @@ export function ChapterReleaseTable({
                   </tr>
                   {schedulingChapterId === chapter.id && (
                     <tr className="bg-gray-50/80 dark:bg-gray-800/30">
-                      <td colSpan={7} className="px-4 py-3">
+                      <td colSpan={6} className="px-4 py-3">
                         <div className="flex items-center gap-3 ml-8">
                           <input
                             type="datetime-local"

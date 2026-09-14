@@ -25,6 +25,7 @@ import {
 } from '../lib/release-schedule'
 import { liveProjectEntity, notDeleted } from '../lib/entity-scope'
 import { getManuscriptOrder, manuscriptPosition } from '../lib/manuscript-order'
+import { sortInReaderOrder } from './reader/shared'
 import { pickDefined } from '../lib/pick'
 import { actorKeyFor, captureRevisionSafe } from '../lib/entity-revisions'
 
@@ -464,11 +465,27 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
         ? and(eq(chapterPublications.projectId, projectId), eq(chapterPublications.publishStatus, status))
         : eq(chapterPublications.projectId, projectId)
 
-      const publications = await db
-        .select()
-        .from(chapterPublications)
-        .where(whereConditions)
-        .orderBy(desc(chapterPublications.lastPublishedAt))
+      const [publications, contentRows] = await Promise.all([
+        db
+          .select()
+          .from(chapterPublications)
+          .where(whereConditions)
+          .orderBy(desc(chapterPublications.lastPublishedAt)),
+        db
+          .select({ id: entities.id, publishOrder: entities.publishOrder })
+          .from(entities)
+          .where(and(
+            eq(entities.projectId, projectId),
+            eq(entities.collectionName, 'content'),
+            notDeleted()
+          )),
+      ])
+
+      // Every live content id in the order readers see chapters — the
+      // manuscript tree, or publish_order when the author manages reader
+      // order. Author-side publishing views list chapters in this order;
+      // a row's raw entity `order` only ranks it within its folder.
+      const readerOrder = (await sortInReaderOrder(projectId, contentRows)).map(r => r.id)
 
       // Reader-URL slugs so author dashboards can show/link the pretty URL.
       const slugMap = await getSlugsForEntities(projectId, publications.map(p => p.chapterId))
@@ -483,7 +500,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
         slug: slugMap.get(p.chapterId) ?? null,
       }))
 
-      return reply.send({ publications: withSlugs, count: withSlugs.length, correlationId })
+      return reply.send({ publications: withSlugs, count: withSlugs.length, readerOrder, correlationId })
     } catch (error) {
       fastify.log.error({ error, correlationId }, 'Failed to list publications')
       return reply.status(500).send({ error: 'Failed to list publications', correlationId })
