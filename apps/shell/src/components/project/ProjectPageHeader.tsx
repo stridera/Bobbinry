@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { OptimizedImage } from '@/components/OptimizedImage'
 import { ProjectTabs } from './ProjectTabs'
 import { StatusBadge } from './StatusBadge'
+import { ProjectSettingsLink } from './ProjectSettingsLink'
 import type { ProjectSummary } from './useProjectSummary'
 
 interface ProjectPageHeaderProps {
@@ -78,6 +79,7 @@ export function ProjectPageHeader({ projectId, summary, pageTitle, actions }: Pr
             </div>
             <div className="flex flex-wrap items-center gap-2 shrink-0">
               {actions}
+              <ProjectSettingsLink projectId={projectId} />
               <Link
                 href={`/publish/${projectId}`}
                 className="inline-flex items-center px-3 py-1.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg font-medium text-sm transition-colors"

@@ -7,6 +7,7 @@ import { apiFetch } from '@/lib/api'
 import { OptimizedImage } from '@/components/OptimizedImage'
 import { SearchReplaceLauncher } from '@/components/SearchReplaceLauncher'
 import { StatusBadge } from '@/components/project/StatusBadge'
+import { ProjectSettingsLink } from '@/components/project/ProjectSettingsLink'
 
 export interface MastheadStats {
   /** Sum of word_count across active narrative-type entities. */
@@ -330,6 +331,7 @@ export function ProjectMasthead({
 
                 <div className="flex flex-wrap items-center gap-2 shrink-0">
                   <SearchReplaceLauncher projectId={projectId} apiToken={apiToken} defaultScope="project" iconOnly />
+                  <ProjectSettingsLink projectId={projectId} />
                   {isLive && readerHref && (
                     <Link
                       href={readerHref}
