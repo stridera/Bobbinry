@@ -58,8 +58,7 @@ const chaptersRoutes: FastifyPluginAsync = async (fastify) => {
           publishedAt: chapterPublications.publishedAt,
           publicReleaseDate: chapterPublications.publicReleaseDate,
           viewCount: chapterPublications.viewCount,
-          wordCount: sql<number>`COALESCE((${entities.entityData}->>'word_count')::int, 0)`,
-          publishOrder: entities.publishOrder
+          wordCount: sql<number>`COALESCE((${entities.entityData}->>'word_count')::int, 0)`
         })
         .from(chapterPublications)
         .innerJoin(entities, eq(entities.id, chapterPublications.chapterId))
@@ -231,10 +230,7 @@ const chaptersRoutes: FastifyPluginAsync = async (fastify) => {
 
       // Get navigation (previous/next chapters) — must match TOC reader order.
       const navRows = await db
-        .select({
-          id: entities.id,
-          publishOrder: entities.publishOrder
-        })
+        .select({ id: entities.id })
         .from(entities)
         .innerJoin(chapterPublications, eq(chapterPublications.chapterId, entities.id))
         .where(and(

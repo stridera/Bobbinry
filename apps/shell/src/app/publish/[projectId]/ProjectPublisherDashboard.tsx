@@ -35,7 +35,6 @@ interface PublishConfig {
   enableReactions: boolean
   enableAnnotations: boolean
   annotationAccess: string
-  useManuscriptOrder: boolean
 }
 
 export function ProjectPublisherDashboard({
@@ -286,7 +285,6 @@ export function ProjectPublisherDashboard({
                   apiToken={apiToken}
                   readerBaseUrl={readerBaseUrl}
                   autoReleaseEnabled={publishConfig?.autoReleaseEnabled ?? false}
-                  useManuscriptOrder={publishConfig?.useManuscriptOrder ?? true}
                   refreshKey={refreshKey}
                   onRefresh={triggerRefresh}
                 />
@@ -335,22 +333,6 @@ export function ProjectPublisherDashboard({
                       <option value="public">Public</option>
                       <option value="subscribers_only">Subscribers Only</option>
                     </select>
-                  </div>
-                  <div>
-                    <label className="flex items-center justify-between cursor-pointer">
-                      <span className="text-sm text-gray-700 dark:text-gray-300">Use manuscript order</span>
-                      <input
-                        type="checkbox"
-                        checked={publishConfig?.useManuscriptOrder ?? true}
-                        onChange={(e) => void updateReaderExperience('useManuscriptOrder', e.target.checked)}
-                        className="rounded border-gray-300 dark:border-gray-600"
-                      />
-                    </label>
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      {publishConfig?.useManuscriptOrder ?? true
-                        ? 'Readers see chapters in the same order as your manuscript. New chapters append to the end.'
-                        : 'Set a custom reader order with the arrows in the chapter list below.'}
-                    </p>
                   </div>
                   <label className="flex items-center justify-between cursor-pointer">
                     <span className="text-sm text-gray-700 dark:text-gray-300">Comments</span>

@@ -271,7 +271,6 @@ const seoRoutes: FastifyPluginAsync = async (fastify) => {
       const chapterRows = await db
         .select({
           id: entities.id,
-          publishOrder: entities.publishOrder,
           publishedAt: chapterPublications.publishedAt,
           updatedAt: chapterPublications.updatedAt
         })

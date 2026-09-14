@@ -16,29 +16,16 @@ import { UUID_RE } from '../../lib/slugs'
 // ============================================
 
 /**
- * Sort a project's chapters into reader order.
- *
- * Reader order follows manuscript order — the writing tab's tree, see
- * lib/manuscript-order — by default. When an author turns off "Use manuscript
- * order" on the publishing page, the reader instead follows the independent
- * `publish_order`, with manuscript order as a stable tiebreak.
+ * Sort a project's chapters into reader order: manuscript order, the writing
+ * tab's tree (see lib/manuscript-order). There is deliberately no separate
+ * reader order — the tree is the one place an author arranges the book.
  */
-export async function sortInReaderOrder<T extends { id: string; publishOrder: number }>(
+export async function sortInReaderOrder<T extends { id: string }>(
   projectId: string,
   chapters: T[],
 ): Promise<T[]> {
-  const [[config], manuscriptOrder] = await Promise.all([
-    db
-      .select({ useManuscriptOrder: projectPublishConfig.useManuscriptOrder })
-      .from(projectPublishConfig)
-      .where(eq(projectPublishConfig.projectId, projectId))
-      .limit(1),
-    getManuscriptOrder(projectId),
-  ])
-  // Default to manuscript order when no config row exists yet.
-  const useManuscriptOrder = config?.useManuscriptOrder ?? true
+  const manuscriptOrder = await getManuscriptOrder(projectId)
   return [...chapters].sort((a, b) =>
-    (useManuscriptOrder ? 0 : a.publishOrder - b.publishOrder) ||
     manuscriptPosition(manuscriptOrder, a.id) - manuscriptPosition(manuscriptOrder, b.id))
 }
 

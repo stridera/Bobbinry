@@ -472,7 +472,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
           .where(whereConditions)
           .orderBy(desc(chapterPublications.lastPublishedAt)),
         db
-          .select({ id: entities.id, publishOrder: entities.publishOrder })
+          .select({ id: entities.id })
           .from(entities)
           .where(and(
             eq(entities.projectId, projectId),
@@ -481,10 +481,9 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
           )),
       ])
 
-      // Every live content id in the order readers see chapters — the
-      // manuscript tree, or publish_order when the author manages reader
-      // order. Author-side publishing views list chapters in this order;
-      // a row's raw entity `order` only ranks it within its folder.
+      // Every live content id in the order readers see chapters: the
+      // manuscript tree. Author-side publishing views list chapters in this
+      // order; a row's raw entity `order` only ranks it within its folder.
       const readerOrder = (await sortInReaderOrder(projectId, contentRows)).map(r => r.id)
 
       // Reader-URL slugs so author dashboards can show/link the pretty URL.
@@ -571,7 +570,6 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       enableAnnotations?: boolean
       annotationAccess?: string
       moderationMode?: string
-      useManuscriptOrder?: boolean
     }
   }>('/projects/:projectId/publish-config', {
     preHandler: [requireAuth, requireVerified, ownsProject()]
@@ -586,7 +584,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
         'autoReleaseEnabled', 'releaseFrequency', 'releaseDay', 'releaseTime',
         'slugPrefix', 'seoDescription', 'ogImageUrl',
         'enableComments', 'enableReactions', 'enableAnnotations', 'annotationAccess',
-        'moderationMode', 'useManuscriptOrder',
+        'moderationMode',
       ] as const)
 
       if (updates.projectVisibility !== undefined
@@ -618,33 +616,6 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
           .returning()
         config = created
         statusCode = 201
-      }
-
-      // When the author first turns OFF "use manuscript order", seed each
-      // chapter's publish_order from its current manuscript-order rank. Without
-      // this every row keeps the default 0, so the reorder UI would start from
-      // an all-tied state instead of the sequence the author already sees.
-      const turningOffManuscriptOrder =
-        updates.useManuscriptOrder === false &&
-        (existing?.useManuscriptOrder ?? true) === true
-      if (turningOffManuscriptOrder) {
-        try {
-          const ranked = [...(await getManuscriptOrder(projectId))]
-          if (ranked.length > 0) {
-            const values = sql.join(
-              ranked.map(([id, { position }]) => sql`(${id}::uuid, ${position}::int)`),
-              sql`, `,
-            )
-            await db.execute(sql`
-              UPDATE ${entities} AS e
-              SET publish_order = ranked.rank
-              FROM (VALUES ${values}) AS ranked(id, rank)
-              WHERE e.id = ranked.id
-            `)
-          }
-        } catch (seedError) {
-          fastify.log.warn({ err: seedError, projectId }, 'Failed to seed publish_order from manuscript order')
-        }
       }
 
       // When auto-release is enabled, schedule any complete chapters that aren't scheduled yet

@@ -8,8 +8,6 @@ interface ChapterReleaseTableProps {
   apiToken: string
   readerBaseUrl: string | null
   autoReleaseEnabled: boolean
-  /** When false, the reader uses a custom publish order and reorder arrows are shown. */
-  useManuscriptOrder: boolean
   refreshKey: number
   onRefresh: () => void
 }
@@ -18,7 +16,6 @@ interface ChapterEntity {
   id: string
   title?: string
   order?: number
-  publishOrder?: number
 }
 
 interface ChapterPublication {
@@ -36,7 +33,6 @@ interface ChapterRow {
   slug: string | null
   title: string
   order: number
-  publishOrder: number
   status: string
   publishedAt?: string | undefined
   viewCount: number
@@ -90,7 +86,6 @@ export function ChapterReleaseTable({
   apiToken,
   readerBaseUrl,
   autoReleaseEnabled,
-  useManuscriptOrder,
   refreshKey,
   onRefresh,
 }: ChapterReleaseTableProps) {
@@ -124,9 +119,9 @@ export function ChapterReleaseTable({
         readerOrder = data.readerOrder || []
       }
 
-      // Always the order readers see. The server resolves it (manuscript tree
-      // or custom publish order); an entity's raw `order` only ranks it within
-      // its folder, so sorting by it here interleaves folders.
+      // The order readers see: the manuscript tree, resolved by the server.
+      // An entity's raw `order` only ranks it within its folder, so sorting
+      // by it here interleaves folders.
       const readerIndex = new Map(readerOrder.map((id, i) => [id, i]))
       const position = (e: ChapterEntity) => readerIndex.get(e.id) ?? Number.MAX_SAFE_INTEGER
       entities.sort((a, b) => position(a) - position(b))
@@ -139,7 +134,6 @@ export function ChapterReleaseTable({
           slug: pub?.slug ?? null,
           title: e.title || `Chapter ${idx + 1}`,
           order: e.order ?? idx,
-          publishOrder: e.publishOrder ?? idx,
           status: pub?.publishStatus || 'draft',
           publishedAt: pub?.publishedAt,
           viewCount: Number(pub?.viewCount || 0),
@@ -213,43 +207,6 @@ export function ChapterReleaseTable({
     })
   }
 
-  /* ── Reorder (custom reader order) ── */
-
-  // Move a chapter one slot up/down and persist the whole sequence as the new
-  // publish order. The reorder endpoint sets publish_order = array index, so we
-  // send every chapter id in the desired order. Optimistically reorder locally
-  // so the arrows feel instant, then reconcile with the server response.
-  const moveChapter = async (id: string, direction: -1 | 1) => {
-    const index = chapters.findIndex((c) => c.id === id)
-    const target = index + direction
-    if (index < 0 || target < 0 || target >= chapters.length) return
-
-    const reordered = [...chapters]
-    const [moved] = reordered.splice(index, 1)
-    reordered.splice(target, 0, moved!)
-    setChapters(reordered)
-    setActionInProgress(id)
-    setError(null)
-    try {
-      const res = await apiFetch(`/api/projects/${projectId}/entities/reorder`, apiToken, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ collection: 'content', orderedIds: reordered.map((c) => c.id) }),
-      })
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}))
-        throw new Error(errData.error || 'Failed to reorder')
-      }
-      await loadData()
-      onRefresh()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reorder')
-      await loadData() // revert optimistic move
-    } finally {
-      setActionInProgress(null)
-    }
-  }
-
   const startScheduling = (id: string, existingDate?: string) => {
     setSchedulingChapterId(id)
     if (existingDate) {
@@ -274,10 +231,6 @@ export function ChapterReleaseTable({
     filter === 'all'
       ? chapters
       : chapters.filter((c) => c.status === filter)
-
-  // Reordering rewrites the full sequence, so it's only offered on the
-  // unfiltered list where row position maps 1:1 to the persisted order.
-  const showReorder = !useManuscriptOrder && filter === 'all'
 
   const statusCounts = chapters.reduce(
     (acc, c) => {
@@ -357,14 +310,6 @@ export function ChapterReleaseTable({
         </div>
       )}
 
-      {!useManuscriptOrder && (
-        <div className="mx-5 mt-4 rounded-lg border border-amber-100 bg-amber-50/50 p-3 text-xs text-amber-700 dark:border-amber-800/30 dark:bg-amber-900/10 dark:text-amber-300">
-          {filter === 'all'
-            ? 'Custom reader order is on. Use the arrows to set the order readers see — independent of your manuscript.'
-            : 'Custom reader order is on. Switch to the “All” tab to reorder chapters.'}
-        </div>
-      )}
-
       {/* Title is the only column allowed to shrink (w-full + max-w-0 lets it
           truncate); every other cell is nowrap so the table always fits the
           card instead of scrolling the Actions column out of view. */}
@@ -387,35 +332,7 @@ export function ChapterReleaseTable({
                 <React.Fragment key={chapter.id}>
                   <tr className={`border-b border-gray-100 dark:border-gray-700/50 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${ROW_TINTS[chapter.status] || ''}`}>
                     <td className="py-2.5 pr-3 text-gray-400 dark:text-gray-500 tabular-nums pl-4 whitespace-nowrap">
-                      {showReorder ? (
-                        <div className="flex items-center gap-1.5">
-                          <div className="flex flex-col -my-1">
-                            <button
-                              onClick={() => void moveChapter(chapter.id, -1)}
-                              disabled={idx === 0 || isLoading}
-                              title="Move up"
-                              className="text-gray-400 hover:text-gray-700 disabled:opacity-30 disabled:hover:text-gray-400 dark:text-gray-500 dark:hover:text-gray-200"
-                            >
-                              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7" />
-                              </svg>
-                            </button>
-                            <button
-                              onClick={() => void moveChapter(chapter.id, 1)}
-                              disabled={idx === filteredChapters.length - 1 || isLoading}
-                              title="Move down"
-                              className="text-gray-400 hover:text-gray-700 disabled:opacity-30 disabled:hover:text-gray-400 dark:text-gray-500 dark:hover:text-gray-200"
-                            >
-                              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-                              </svg>
-                            </button>
-                          </div>
-                          <span>{idx + 1}</span>
-                        </div>
-                      ) : (
-                        idx + 1
-                      )}
+                      {idx + 1}
                     </td>
                     <td className="w-full max-w-0 py-2.5 pr-3 font-medium">
                       <div className="flex items-center gap-2">
