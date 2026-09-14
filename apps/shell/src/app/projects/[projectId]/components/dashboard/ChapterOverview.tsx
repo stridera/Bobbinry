@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { apiFetch } from '@/lib/api'
@@ -33,7 +33,10 @@ interface Chapter {
   id: string
   slug?: string | null
   title: string
-  order: number
+  /** Place in the writing tab's tree across the whole project. */
+  manuscriptPosition: number
+  /** Enclosing folder titles, e.g. "Part 2"; null at the manuscript root. */
+  folderPath: string | null
   collectionName: string
   contentType: ContentType
   archivedAt: string | null
@@ -78,6 +81,9 @@ interface TrashedItem {
 
 type FilterKey = 'all' | 'manuscript' | 'outlines' | 'reference' | 'archived' | 'trash'
 
+type SortKey = 'position' | 'title' | 'type' | 'words' | 'status' | 'published' | 'reactions' | 'comments' | 'feedback'
+type SortDir = 'asc' | 'desc'
+
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
   complete: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
@@ -116,6 +122,69 @@ const WORDS_HINT =
   'Project word total counts narrative types only — Chapter, Scene, Prologue, ' +
   'Epilogue, Interlude. Outline and Supporting Doc are tracked but excluded.'
 
+/** Direction a column sorts in on first click: text and book order A→Z,
+ * counts and dates biggest/newest first. */
+const DEFAULT_SORT_DIR: Record<SortKey, SortDir> = {
+  position: 'asc',
+  title: 'asc',
+  type: 'asc',
+  status: 'asc',
+  words: 'desc',
+  published: 'desc',
+  reactions: 'desc',
+  comments: 'desc',
+  feedback: 'desc',
+}
+
+/** Columns the Archived view hides; sorting on one falls back to book order there. */
+const ENGAGEMENT_SORTS = new Set<SortKey>(['published', 'reactions', 'comments', 'feedback'])
+
+const STATUS_RANK: Record<string, number> = { draft: 0, complete: 1, scheduled: 2, published: 3, archived: 4 }
+
+// Natural order, so "Chapter 2" sorts before "Chapter 10".
+const titleCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
+
+function statusOf(c: Chapter): string {
+  return c.publication?.publishStatus || 'draft'
+}
+
+function publishedTime(c: Chapter): number | null {
+  const at = c.publication?.publishedAt
+  return at ? Date.parse(at) : null
+}
+
+const COMPARATORS: Record<Exclude<SortKey, 'published'>, (a: Chapter, b: Chapter) => number> = {
+  position: (a, b) => a.manuscriptPosition - b.manuscriptPosition,
+  title: (a, b) => titleCollator.compare(a.title, b.title),
+  type: (a, b) => CONTENT_TYPES.indexOf(a.contentType) - CONTENT_TYPES.indexOf(b.contentType),
+  words: (a, b) => a.wordCount - b.wordCount,
+  status: (a, b) => (STATUS_RANK[statusOf(a)] ?? 0) - (STATUS_RANK[statusOf(b)] ?? 0),
+  reactions: (a, b) => a.reactionCount - b.reactionCount,
+  comments: (a, b) => a.commentCount - b.commentCount,
+  feedback: (a, b) => a.annotationCount - b.annotationCount,
+}
+
+/** Display-only sort — the stored order is never touched. Ties keep book order. */
+function sortChapters(rows: Chapter[], key: SortKey, dir: SortDir): Chapter[] {
+  const sign = dir === 'asc' ? 1 : -1
+  return [...rows].sort((a, b) => {
+    if (key === 'published') {
+      const at = publishedTime(a)
+      const bt = publishedTime(b)
+      // Never-published rows stay at the bottom whichever way the column sorts.
+      if (at === null || bt === null) {
+        if (at !== bt) return at === null ? 1 : -1
+      } else if (at !== bt) {
+        return sign * (at - bt)
+      }
+    } else {
+      const diff = COMPARATORS[key](a, b)
+      if (diff !== 0) return sign * diff
+    }
+    return a.manuscriptPosition - b.manuscriptPosition
+  })
+}
+
 function matchesFilter(c: Chapter, filter: FilterKey): boolean {
   // Trash is fetched separately and never appears in `chapters`.
   if (filter === 'trash') return false
@@ -136,6 +205,7 @@ export function ChapterOverview({ chapters, trashedCount, projectId, readerBaseU
   const token = session?.apiToken
 
   const [filter, setFilter] = useState<FilterKey>('all')
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: 'position', dir: 'asc' })
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [actionInProgress, setActionInProgress] = useState<string | null>(null)
   const [bulkAction, setBulkAction] = useState<'archive' | 'restore' | 'delete' | 'untrash' | 'purge' | null>(null)
@@ -185,16 +255,49 @@ export function ChapterOverview({ chapters, trashedCount, projectId, readerBaseU
     return { all, manuscript, outlines, reference, archived }
   }, [localChapters])
 
-  const filtered = useMemo(
-    () => localChapters.filter(c => matchesFilter(c, filter)).sort((a, b) => a.order - b.order),
+  // The Archived view hides the engagement columns, so a sort on one of them
+  // falls back to book order there.
+  const activeSort: { key: SortKey; dir: SortDir } =
+    filter === 'archived' && ENGAGEMENT_SORTS.has(sort.key) ? { key: 'position', dir: 'asc' } : sort
+
+  const inBookOrder = useMemo(
+    () => localChapters
+      .filter(c => matchesFilter(c, filter))
+      .sort((a, b) => a.manuscriptPosition - b.manuscriptPosition),
     [localChapters, filter],
   )
 
-  // DnD is enabled only when the visible set is type-homogeneous (Outlines and
-  // Reference qualify naturally; Manuscript / All / Archived rarely will).
+  // `#` is a row's place in book order within the current filter, whatever the
+  // table is sorted by — under Manuscript that is its chapter number.
+  const bookNumbers = useMemo(() => new Map(inBookOrder.map((c, i) => [c.id, i + 1])), [inBookOrder])
+
+  const filtered = useMemo(
+    () => sortChapters(inBookOrder, activeSort.key, activeSort.dir),
+    [inBookOrder, activeSort.key, activeSort.dir],
+  )
+
+  // DnD is enabled only in book order — dragging a words-sorted list would
+  // silently rewrite the stored order — and when the visible set is
+  // type-homogeneous (Outlines and Reference qualify naturally; Manuscript /
+  // All / Archived rarely will).
+  const inBookSort = activeSort.key === 'position' && activeSort.dir === 'asc'
   const visibleTypes = useMemo(() => new Set(filtered.map(c => c.contentType)), [filtered])
-  const dndEnabled = filtered.length > 1 && visibleTypes.size === 1
+  const dndEnabled = inBookSort && filtered.length > 1 && visibleTypes.size === 1
   const homogeneousType: ContentType | null = dndEnabled ? filtered[0]!.contentType : null
+
+  const toggleSort = (key: SortKey) => setSort(prev =>
+    prev.key === key
+      ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+      : { key, dir: DEFAULT_SORT_DIR[key] })
+
+  const sortProps = (key: SortKey) => ({
+    active: activeSort.key === key,
+    dir: activeSort.dir,
+    onSort: () => toggleSort(key),
+  })
+
+  const ariaSort = (key: SortKey): 'ascending' | 'descending' | 'none' =>
+    activeSort.key !== key ? 'none' : activeSort.dir === 'asc' ? 'ascending' : 'descending'
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -323,12 +426,14 @@ export function ChapterOverview({ chapters, trashedCount, projectId, readerBaseU
     const newOrder = arrayMove(filtered, oldIndex, newIndex)
     const orderedIds = newOrder.map(c => c.id)
 
-    // Optimistic: rewrite local order so the row stays where dropped while the
-    // server call is in flight.
-    const orderMap = new Map(orderedIds.map((id, idx) => [id, idx]))
+    // Optimistic: hand the visible rows' book positions out in the dropped
+    // order so the row stays where it landed while the server call is in
+    // flight. `filtered` is in book order here, so its positions ascend.
+    const positions = filtered.map(c => c.manuscriptPosition)
+    const positionById = new Map(orderedIds.map((id, idx) => [id, positions[idx]!]))
     setLocalChapters(prev => prev.map(c => {
-      const idx = orderMap.get(c.id)
-      return idx === undefined ? c : { ...c, order: idx }
+      const position = positionById.get(c.id)
+      return position === undefined ? c : { ...c, manuscriptPosition: position }
     }))
 
     try {
@@ -419,14 +524,16 @@ export function ChapterOverview({ chapters, trashedCount, projectId, readerBaseU
 
       {!dndEnabled && filtered.length > 1 && !showingArchived && !showingTrash && (
         <p className="text-xs text-gray-400 dark:text-gray-500 mb-2 italic">
-          Filter to a single content type to drag-reorder.
+          {inBookSort
+            ? 'Filter to a single content type to drag-reorder.'
+            : 'Sorting only changes this view. Sort by # to drag-reorder.'}
         </p>
       )}
 
       {!showingTrash && filtered.length === 0 ? (
         <p className="text-sm text-gray-500 dark:text-gray-400 italic py-4">
           {trashedCount > 0
-            ? 'Nothing here \u2014 open Trash to restore deleted content.'
+            ? 'Nothing here — open Trash to restore deleted content.'
             : 'Nothing matches this filter.'}
         </p>
       ) : showingTrash ? (
@@ -513,31 +620,46 @@ export function ChapterOverview({ chapters, trashedCount, projectId, readerBaseU
                   </span>
                 </th>
                 <th className="py-2.5 pr-1.5 w-5 align-middle border-b border-gray-200 dark:border-gray-700" aria-hidden="true" />
-                <th className="py-2.5 pr-3 w-7 text-right align-middle border-b border-gray-200 dark:border-gray-700">#</th>
-                <th className="py-2.5 pr-4 text-left align-middle border-b border-gray-200 dark:border-gray-700">Title</th>
-                <th className="py-2.5 pr-4 text-left align-middle border-b border-gray-200 dark:border-gray-700">
-                  <HeaderLabel label="Type" hint={TYPE_HINT} />
+                <th className="py-2.5 pr-3 w-10 text-right align-middle border-b border-gray-200 dark:border-gray-700" aria-sort={ariaSort('position')}>
+                  <SortHeader label="#" title="Sort by writing-tab order" {...sortProps('position')} />
                 </th>
-                <th className="py-2.5 pr-4 text-right align-middle border-b border-gray-200 dark:border-gray-700">
-                  <HeaderLabel label="Words" hint={WORDS_HINT} align="right" />
+                <th className="py-2.5 pr-4 text-left align-middle border-b border-gray-200 dark:border-gray-700" aria-sort={ariaSort('title')}>
+                  <SortHeader label="Title" {...sortProps('title')} />
                 </th>
-                <th className="py-2.5 pr-4 text-left align-middle border-b border-gray-200 dark:border-gray-700">Status</th>
+                <th className="py-2.5 pr-4 text-left align-middle border-b border-gray-200 dark:border-gray-700" aria-sort={ariaSort('type')}>
+                  <SortHeader label="Type" hint={TYPE_HINT} {...sortProps('type')} />
+                </th>
+                <th className="py-2.5 pr-4 text-right align-middle border-b border-gray-200 dark:border-gray-700" aria-sort={ariaSort('words')}>
+                  <SortHeader label="Words" hint={WORDS_HINT} {...sortProps('words')} />
+                </th>
+                <th className="py-2.5 pr-4 text-left align-middle border-b border-gray-200 dark:border-gray-700" aria-sort={ariaSort('status')}>
+                  <SortHeader label="Status" {...sortProps('status')} />
+                </th>
                 {!showingArchived && (
                   <>
-                    <th className="py-2.5 pr-4 text-right align-middle border-b border-gray-200 dark:border-gray-700">Reactions</th>
-                    <th className="py-2.5 pr-4 text-right align-middle border-b border-gray-200 dark:border-gray-700">Comments</th>
-                    <th className="py-2.5 text-right align-middle border-b border-gray-200 dark:border-gray-700">Feedback</th>
+                    <th className="py-2.5 pr-4 text-left align-middle border-b border-gray-200 dark:border-gray-700" aria-sort={ariaSort('published')}>
+                      <SortHeader label="Published" {...sortProps('published')} />
+                    </th>
+                    <th className="py-2.5 pr-4 text-right align-middle border-b border-gray-200 dark:border-gray-700" aria-sort={ariaSort('reactions')}>
+                      <SortHeader label="Reactions" {...sortProps('reactions')} />
+                    </th>
+                    <th className="py-2.5 pr-4 text-right align-middle border-b border-gray-200 dark:border-gray-700" aria-sort={ariaSort('comments')}>
+                      <SortHeader label="Comments" {...sortProps('comments')} />
+                    </th>
+                    <th className="py-2.5 text-right align-middle border-b border-gray-200 dark:border-gray-700" aria-sort={ariaSort('feedback')}>
+                      <SortHeader label="Feedback" {...sortProps('feedback')} />
+                    </th>
                   </>
                 )}
               </tr>
             </thead>
             <tbody>
               <SortableContext items={filtered.map(c => c.id)} strategy={verticalListSortingStrategy}>
-                {filtered.map((chapter, i) => (
+                {filtered.map(chapter => (
                   <ChapterRow
                     key={chapter.id}
                     chapter={chapter}
-                    index={i}
+                    bookNumber={bookNumbers.get(chapter.id) ?? 0}
                     projectId={projectId}
                     readerBaseUrl={readerBaseUrl}
                     selected={selectedIds.has(chapter.id)}
@@ -645,7 +767,8 @@ export function ChapterOverview({ chapters, trashedCount, projectId, readerBaseU
 
 interface ChapterRowProps {
   chapter: Chapter
-  index: number
+  /** Place in book order within the current filter. */
+  bookNumber: number
   projectId: string
   readerBaseUrl: string | null
   selected: boolean
@@ -661,7 +784,7 @@ interface ChapterRowProps {
 }
 
 function ChapterRow({
-  chapter, index, projectId, readerBaseUrl, selected, onToggleSelect,
+  chapter, bookNumber, projectId, readerBaseUrl, selected, onToggleSelect,
   showingArchived, actionLoading, onToggleStatus, dndEnabled,
   typeMenuOpen, onOpenTypeMenu, onCloseTypeMenu, onChangeContentType,
 }: ChapterRowProps) {
@@ -674,7 +797,7 @@ function ChapterRow({
     opacity: isDragging ? 0.5 : 1,
   }
 
-  const status = chapter.publication?.publishStatus || 'draft'
+  const status = statusOf(chapter)
   const isPublished = status === 'published'
   const readerUrl = isPublished && readerBaseUrl ? `${readerBaseUrl}/${chapter.slug ?? chapter.id}` : null
   const canToggle = status === 'draft' || status === 'complete'
@@ -682,6 +805,7 @@ function ChapterRow({
     ? 'bg-blue-50/60 dark:bg-blue-950/30'
     : ROW_TINTS[status] || ''
   const countsForWords = countsTowardWordCount(chapter.contentType)
+  const publishedAt = chapter.publication?.publishedAt
 
   return (
     <tr
@@ -704,7 +828,7 @@ function ChapterRow({
           {...listeners}
           disabled={!dndEnabled}
           aria-label="Drag to reorder"
-          title={dndEnabled ? 'Drag to reorder' : 'Filter by a single content type to enable reordering'}
+          title={dndEnabled ? 'Drag to reorder' : 'Sort by # and filter to a single content type to enable reordering'}
           className={`flex items-center justify-center p-0.5 -m-0.5 rounded text-gray-300 dark:text-gray-600 transition-all ${dndEnabled ? 'cursor-grab opacity-50 group-hover:opacity-100 hover:text-gray-600 dark:hover:text-gray-300 active:cursor-grabbing' : 'opacity-20 cursor-not-allowed'}`}
         >
           <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -717,7 +841,7 @@ function ChapterRow({
           </svg>
         </button>
       </td>
-      <td className="py-2.5 pr-3 w-7 text-right text-gray-400 dark:text-gray-500 tabular-nums">{index + 1}</td>
+      <td className="py-2.5 pr-3 w-10 text-right text-gray-400 dark:text-gray-500 tabular-nums">{bookNumber}</td>
       <td className="py-2.5 pr-4 font-medium">
         <Link
           href={`/projects/${projectId}/manuscript/content/${chapter.id}`}
@@ -725,6 +849,9 @@ function ChapterRow({
         >
           {chapter.title}
         </Link>
+        {chapter.folderPath && (
+          <div className="text-[11px] font-normal text-gray-400 dark:text-gray-500">{chapter.folderPath}</div>
+        )}
       </td>
       <td className="py-2.5 pr-4 relative">
         <button
@@ -803,6 +930,9 @@ function ChapterRow({
       </td>
       {!showingArchived && (
         <>
+          <td className="py-2.5 pr-4 text-xs text-gray-500 dark:text-gray-400 tabular-nums whitespace-nowrap">
+            {publishedAt ? new Date(publishedAt).toLocaleDateString() : <span className="text-gray-300 dark:text-gray-600">·</span>}
+          </td>
           <td className="py-2.5 pr-4 text-right text-gray-600 dark:text-gray-400 tabular-nums">
             {chapter.reactionCount > 0 ? chapter.reactionCount.toLocaleString() : <span className="text-gray-300 dark:text-gray-600">·</span>}
           </td>
@@ -895,26 +1025,47 @@ function Checkbox({
   )
 }
 
-/** Table-head label with a small info dot that exposes the supplied hint via
- * the browser's native tooltip. The dot doubles as a visual cue that the
- * column has additional explanation, complementing the prose legend above the
- * table. */
-function HeaderLabel({
+/** Clickable column heading. The active column shows ▲/▼; the others show a
+ * faint arrow on hover. An optional hint renders as a small info dot beside
+ * the button (outside it, so reading the hint doesn't re-sort), complementing
+ * the prose legend above the table. */
+function SortHeader({
   label,
+  title,
   hint,
-  align = 'left',
+  active,
+  dir,
+  onSort,
 }: {
   label: string
-  hint: ReactNode
-  align?: 'left' | 'right'
+  title?: string
+  hint?: string
+  active: boolean
+  dir: SortDir
+  onSort: () => void
 }) {
-  const hintString = typeof hint === 'string' ? hint : String(hint ?? '')
-  return (
-    <span className={`inline-flex items-center gap-1 ${align === 'right' ? 'justify-end' : ''}`}>
+  const button = (
+    <button
+      type="button"
+      onClick={onSort}
+      title={title ?? `Sort by ${label.toLowerCase()}`}
+      className={`group/sort inline-flex items-center gap-1 uppercase tracking-wider font-medium transition-colors hover:text-gray-700 dark:hover:text-gray-200 ${
+        active ? 'text-gray-700 dark:text-gray-200' : ''
+      }`}
+    >
       <span>{label}</span>
+      <span aria-hidden="true" className={`text-[8px] ${active ? '' : 'opacity-0 group-hover/sort:opacity-50'}`}>
+        {active && dir === 'desc' ? '▼' : '▲'}
+      </span>
+    </button>
+  )
+  if (!hint) return button
+  return (
+    <span className="inline-flex items-center gap-1">
+      {button}
       <span
-        aria-label={hintString}
-        title={hintString}
+        aria-label={hint}
+        title={hint}
         className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-gray-300 dark:border-gray-600 text-[9px] font-semibold text-gray-400 dark:text-gray-500 hover:text-gray-700 hover:border-gray-500 dark:hover:text-gray-200 dark:hover:border-gray-400 cursor-help transition-colors"
       >
         i

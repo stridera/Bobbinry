@@ -21,6 +21,7 @@ import { getCollectionIdsForProject, buildScopeCondition } from '../lib/effectiv
 import { getSlugsForEntities } from '../lib/slugs'
 import { countsTowardWordCount, type ContentType } from '@bobbinry/types'
 import { notDeleted, TRASH_RETENTION_MS } from '../lib/entity-scope'
+import { getManuscriptOrder } from '../lib/manuscript-order'
 
 /** Matches the content_tags.tag_name column width. */
 const MAX_TAG_NAME_LENGTH = 100
@@ -417,8 +418,12 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
       const reactionCountMap = new Map(reactionCountsResult.map(r => [r.chapterId, r.count]))
       const annotationCountMap = new Map(annotationCountsResult.map(a => [a.chapterId, a.count]))
 
-      // Reader-URL slugs so the dashboard chapter list links the pretty URL.
-      const chapterSlugMap = await getSlugsForEntities(projectId, chaptersResult.map(ch => ch.id))
+      // Reader-URL slugs so the dashboard chapter list links the pretty URL,
+      // and each row's place in the writing tab's tree.
+      const [chapterSlugMap, manuscriptOrder] = await Promise.all([
+        getSlugsForEntities(projectId, chaptersResult.map(ch => ch.id)),
+        getManuscriptOrder(projectId),
+      ])
 
       // Format chapters. `contentType` defaults to 'chapter' for legacy rows
       // that haven't been backfilled (the migration handles this on deploy).
@@ -426,11 +431,15 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
         const data = ch.entityData as Record<string, any>
         const contentType = (ch.contentType ?? 'chapter') as ContentType
         const wordCount = typeof data?.word_count === 'number' ? data.word_count : 0
+        // Trashed rows are outside the tree, so they sort last.
+        const placement = manuscriptOrder.get(ch.id)
         return {
           id: ch.id,
           slug: chapterSlugMap.get(ch.id) ?? null,
           title: data?.title || 'Untitled',
           order: data?.order ?? data?.sortOrder ?? 0,
+          manuscriptPosition: placement?.position ?? Number.MAX_SAFE_INTEGER,
+          folderPath: placement?.folderPath ?? null,
           collectionName: ch.collectionName,
           contentType,
           archivedAt: ch.archivedAt ? ch.archivedAt.toISOString() : null,
@@ -455,7 +464,7 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
             avgReadTimeSeconds: Number(ch.avgReadTimeSeconds ?? 0)
           } : null
         }
-      }).sort((a, b) => a.order - b.order)
+      }).sort((a, b) => a.manuscriptPosition - b.manuscriptPosition)
 
       // Project-wide word count from narrative types only. Always excludes
       // archived rows so the total reflects active narrative content.

@@ -52,6 +52,10 @@ interface DashboardData {
     slug?: string | null
     title: string
     order: number
+    /** Place in the writing tab's tree across the whole project. */
+    manuscriptPosition: number
+    /** Enclosing folder titles, e.g. "Part 2" or "Book One › Act I". */
+    folderPath: string | null
     collectionName: string
     contentType: ContentType
     archivedAt: string | null
