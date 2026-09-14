@@ -39,17 +39,17 @@ export function ProjectTabs({ projectId, bobbins, bobbinStats, openFeedback }: P
   const pathname = usePathname()
   const base = `/projects/${projectId}`
 
-  const workspaces = bobbins.filter(b => b.manifest.hasLeftPanel)
-  // Manuscript always leads; it's the core workspace and has a dedicated route.
-  const manuscript = workspaces.find(b => b.bobbinId === 'manuscript')
-  const others = workspaces.filter(b => b.bobbinId !== 'manuscript')
+  // Manuscript always leads; it's the core workspace.
+  const workspaces = bobbins
+    .filter(b => b.manifest.hasLeftPanel)
+    .sort((a, b) => Number(b.bobbinId === 'manuscript') - Number(a.bobbinId === 'manuscript'))
 
   const tabs: Tab[] = [{ key: 'overview', label: 'Overview', href: base }]
-  if (manuscript) {
-    tabs.push({ key: 'manuscript', label: manuscript.manifest.name, href: `${base}/write` })
-  }
-  for (const b of others) {
-    const count = bobbinStats[b.bobbinId] ?? 0
+  for (const b of workspaces) {
+    // `/projects/{id}/{bobbinId}` opens the bobbin's manifest-declared home
+    // view. `/write` would instead restore whatever was open last, so a
+    // Manuscript tab pointing there lands on Entities after an Entities visit.
+    const count = b.bobbinId === 'manuscript' ? 0 : (bobbinStats[b.bobbinId] ?? 0)
     tabs.push({
       key: b.bobbinId,
       label: b.manifest.name,
