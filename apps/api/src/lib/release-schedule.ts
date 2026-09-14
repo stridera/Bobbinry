@@ -1,7 +1,8 @@
-import { and, eq, isNotNull, inArray, sql } from 'drizzle-orm'
+import { and, eq, isNotNull, inArray } from 'drizzle-orm'
 import { db } from '../db/connection'
 import { chapterPublications, entities, projectPublishConfig, projects, subscriptionTiers } from '../db/schema'
 import { liveEntity, notDeleted } from './entity-scope'
+import { getManuscriptOrder, manuscriptPosition } from './manuscript-order'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const DEFAULT_RELEASE_TIME = '12:00'
@@ -325,7 +326,6 @@ export async function reorderScheduleByEntityOrder(projectId: string): Promise<v
       pubId: chapterPublications.id,
       chapterId: chapterPublications.chapterId,
       publishedAt: chapterPublications.publishedAt,
-      entityOrder: sql<number>`COALESCE((${entities.entityData}->>'order')::bigint, 999999)`,
     })
     .from(chapterPublications)
     .innerJoin(entities, and(eq(entities.id, chapterPublications.chapterId), notDeleted()))
@@ -337,8 +337,10 @@ export async function reorderScheduleByEntityOrder(projectId: string): Promise<v
 
   if (rows.length < 2) return
 
-  // Sort by entity order to get desired sequence
-  const byEntityOrder = [...rows].sort((a, b) => Number(a.entityOrder) - Number(b.entityOrder))
+  // Sort by manuscript order to get desired sequence
+  const manuscriptOrder = await getManuscriptOrder(projectId)
+  const byEntityOrder = [...rows].sort((a, b) =>
+    manuscriptPosition(manuscriptOrder, a.chapterId) - manuscriptPosition(manuscriptOrder, b.chapterId))
 
   // Sort dates chronologically
   const datesSorted = rows
@@ -390,46 +392,46 @@ export async function shouldAutoPublishAsGapFill(
   projectId: string,
   chapterId: string
 ): Promise<boolean> {
-  // Get this chapter's entity order
   const [thisEntity] = await db
-    .select({
-      id: entities.id,
-      entityOrder: sql<number>`COALESCE((${entities.entityData}->>'order')::bigint, 999999)`,
-    })
+    .select({ id: entities.id })
     .from(entities)
     .where(liveEntity(chapterId))
     .limit(1)
 
   if (!thisEntity) return false
 
-  // Get all pipeline chapters (published/scheduled/complete) for the project, with entity order
+  // Get all pipeline chapters (published/scheduled/complete) for the project
   const pipelineStatuses = ['published', 'scheduled', 'complete']
-  const pipelineChapters = await db
-    .select({
-      chapterId: chapterPublications.chapterId,
-      publishStatus: chapterPublications.publishStatus,
-      entityOrder: sql<number>`COALESCE((${entities.entityData}->>'order')::bigint, 999999)`,
-    })
-    .from(chapterPublications)
-    .innerJoin(entities, and(eq(entities.id, chapterPublications.chapterId), notDeleted()))
-    .where(and(
-      eq(chapterPublications.projectId, projectId),
-      inArray(chapterPublications.publishStatus, pipelineStatuses)
-    ))
-    .orderBy(sql`COALESCE((${entities.entityData}->>'order')::bigint, 999999)`)
+  const [pipelineChapters, manuscriptOrder] = await Promise.all([
+    db
+      .select({
+        chapterId: chapterPublications.chapterId,
+        publishStatus: chapterPublications.publishStatus,
+      })
+      .from(chapterPublications)
+      .innerJoin(entities, and(eq(entities.id, chapterPublications.chapterId), notDeleted()))
+      .where(and(
+        eq(chapterPublications.projectId, projectId),
+        inArray(chapterPublications.publishStatus, pipelineStatuses)
+      )),
+    getManuscriptOrder(projectId),
+  ])
+  const positionOf = (id: string) => manuscriptPosition(manuscriptOrder, id)
 
-  // Find this chapter's position in the sorted pipeline
-  const thisOrder = Number(thisEntity.entityOrder)
-  const others = pipelineChapters.filter((c) => c.chapterId !== chapterId)
+  // Find this chapter's position in the manuscript-ordered pipeline
+  const thisOrder = positionOf(chapterId)
+  const others = pipelineChapters
+    .filter((c) => c.chapterId !== chapterId)
+    .sort((a, b) => positionOf(a.chapterId) - positionOf(b.chapterId))
 
   if (others.length === 0) return false
 
-  // Find immediate neighbors by entity order
+  // Find immediate neighbors by manuscript order
   let prev: typeof others[number] | null = null
   let next: typeof others[number] | null = null
 
   for (const ch of others) {
-    const order = Number(ch.entityOrder)
+    const order = positionOf(ch.chapterId)
     if (order < thisOrder) {
       prev = ch
     } else if (order > thisOrder && !next) {

@@ -4,9 +4,10 @@
  */
 
 import { db } from '../../db/connection'
-import { chapterPublications, entities, betaReaders, accessGrants, projects, projectPublishConfig, subscriptionTiers, userProfiles, users } from '../../db/schema'
-import { eq, and, asc, sql, isNull, or } from 'drizzle-orm'
+import { chapterPublications, betaReaders, accessGrants, projects, projectPublishConfig, subscriptionTiers, userProfiles, users } from '../../db/schema'
+import { eq, and, isNull, or } from 'drizzle-orm'
 import { env } from '../../lib/env'
+import { getManuscriptOrder, manuscriptPosition } from '../../lib/manuscript-order'
 import { checkChaptersAccess, findActiveSubscription, type ViewSimulation } from '../../lib/chapter-access'
 import { UUID_RE } from '../../lib/slugs'
 
@@ -14,27 +15,31 @@ import { UUID_RE } from '../../lib/slugs'
 // CHAPTER ORDERING
 // ============================================
 
-/** Manuscript order: the `order` field shared with the write-side editor. */
-export const manuscriptOrderSql = sql`COALESCE((${entities.entityData}->>'order')::bigint, 0)`
-
 /**
- * Build the ORDER BY clauses for published chapters for a given project.
+ * Sort a project's chapters into reader order.
  *
- * Reader order follows manuscript order by default. When an author turns off
- * "Use manuscript order" on the publishing page, the reader instead follows the
- * independent `publish_order`, with manuscript order as a stable tiebreak.
+ * Reader order follows manuscript order — the writing tab's tree, see
+ * lib/manuscript-order — by default. When an author turns off "Use manuscript
+ * order" on the publishing page, the reader instead follows the independent
+ * `publish_order`, with manuscript order as a stable tiebreak.
  */
-export async function getChapterOrderClauses(projectId: string) {
-  const [config] = await db
-    .select({ useManuscriptOrder: projectPublishConfig.useManuscriptOrder })
-    .from(projectPublishConfig)
-    .where(eq(projectPublishConfig.projectId, projectId))
-    .limit(1)
+export async function sortInReaderOrder<T extends { id: string; publishOrder: number }>(
+  projectId: string,
+  chapters: T[],
+): Promise<T[]> {
+  const [[config], manuscriptOrder] = await Promise.all([
+    db
+      .select({ useManuscriptOrder: projectPublishConfig.useManuscriptOrder })
+      .from(projectPublishConfig)
+      .where(eq(projectPublishConfig.projectId, projectId))
+      .limit(1),
+    getManuscriptOrder(projectId),
+  ])
   // Default to manuscript order when no config row exists yet.
   const useManuscriptOrder = config?.useManuscriptOrder ?? true
-  return useManuscriptOrder
-    ? [manuscriptOrderSql]
-    : [asc(entities.publishOrder), manuscriptOrderSql]
+  return [...chapters].sort((a, b) =>
+    (useManuscriptOrder ? 0 : a.publishOrder - b.publishOrder) ||
+    manuscriptPosition(manuscriptOrder, a.id) - manuscriptPosition(manuscriptOrder, b.id))
 }
 
 // ============================================

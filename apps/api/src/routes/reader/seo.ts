@@ -10,7 +10,7 @@ import { escapeXml, htmlToPlainText } from '../../lib/text'
 import { notDeleted } from '../../lib/entity-scope'
 import { checkChaptersAccess } from '../../lib/chapter-access'
 import { resolveSlug, getSlugsForEntities } from '../../lib/slugs'
-import { getChapterOrderClauses, canViewProject, getReaderProjectBase } from './shared'
+import { sortInReaderOrder, canViewProject, getReaderProjectBase } from './shared'
 
 const seoRoutes: FastifyPluginAsync = async (fastify) => {
   // ============================================
@@ -268,10 +268,10 @@ const seoRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       // Get all published chapters in reader order.
-      const sitemapOrderClauses = await getChapterOrderClauses(projectId)
-      const chapters = await db
+      const chapterRows = await db
         .select({
           id: entities.id,
+          publishOrder: entities.publishOrder,
           publishedAt: chapterPublications.publishedAt,
           updatedAt: chapterPublications.updatedAt
         })
@@ -282,7 +282,7 @@ const seoRoutes: FastifyPluginAsync = async (fastify) => {
           eq(chapterPublications.isPublished, true),
           notDeleted()
         ))
-        .orderBy(...sitemapOrderClauses)
+      const chapters = await sortInReaderOrder(projectId, chapterRows)
 
       const baseUrl = env.WEB_ORIGIN
       const readerBase = await getReaderProjectBase(projectId)

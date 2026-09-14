@@ -9,7 +9,7 @@ import { optionalAuth } from '../../middleware/auth'
 import { notDeleted } from '../../lib/entity-scope'
 import { checkChapterAccess, checkChaptersAccess } from '../../lib/chapter-access'
 import { resolveSlug, getSlugsForEntities } from '../../lib/slugs'
-import { getChapterOrderClauses, resolveViewAs, canViewProject, resolveReadableChapter } from './shared'
+import { sortInReaderOrder, resolveViewAs, canViewProject, resolveReadableChapter } from './shared'
 
 const chaptersRoutes: FastifyPluginAsync = async (fastify) => {
   // ============================================
@@ -50,16 +50,16 @@ const chaptersRoutes: FastifyPluginAsync = async (fastify) => {
       const defaultVisibility = publishConfig?.defaultVisibility || 'public'
 
       // Get all published chapters for this project, in reader order.
-      const orderClauses = await getChapterOrderClauses(projectId)
-      const publishedChapters = await db
+      const publishedRows = await db
         .select({
+          id: entities.id,
           chapterId: chapterPublications.chapterId,
           title: sql<string>`(${entities.entityData}->>'title')`,
           publishedAt: chapterPublications.publishedAt,
           publicReleaseDate: chapterPublications.publicReleaseDate,
           viewCount: chapterPublications.viewCount,
           wordCount: sql<number>`COALESCE((${entities.entityData}->>'word_count')::int, 0)`,
-          order: sql<number>`COALESCE((${entities.entityData}->>'order')::bigint, 0)`
+          publishOrder: entities.publishOrder
         })
         .from(chapterPublications)
         .innerJoin(entities, eq(entities.id, chapterPublications.chapterId))
@@ -68,7 +68,7 @@ const chaptersRoutes: FastifyPluginAsync = async (fastify) => {
           eq(chapterPublications.isPublished, true),
           notDeleted()
         ))
-        .orderBy(...orderClauses)
+      const publishedChapters = await sortInReaderOrder(projectId, publishedRows)
 
       // Total words across all published chapters — counted regardless of
       // whether the caller can read each chapter, so the project's overall
@@ -91,7 +91,9 @@ const chaptersRoutes: FastifyPluginAsync = async (fastify) => {
 
       const slugMap = await getSlugsForEntities(projectId, publishedChapters.map(ch => ch.chapterId))
 
-      const accessibleChapters = publishedChapters.map(chapter => {
+      // `order` is the chapter's place in reader order. The raw entity `order`
+      // only ranks siblings within one folder, so it means nothing to a client.
+      const accessibleChapters = publishedChapters.map((chapter, index) => {
         const access = accessMap.get(chapter.chapterId) ?? { canAccess: true }
         if (access.canAccess) {
           return {
@@ -100,7 +102,7 @@ const chaptersRoutes: FastifyPluginAsync = async (fastify) => {
             title: chapter.title,
             publishedAt: chapter.publishedAt,
             viewCount: chapter.viewCount,
-            order: chapter.order
+            order: index
           }
         } else {
           return {
@@ -108,7 +110,7 @@ const chaptersRoutes: FastifyPluginAsync = async (fastify) => {
             slug: slugMap.get(chapter.chapterId) ?? null,
             title: chapter.title,
             embargoUntil: access.embargoUntil,
-            order: chapter.order,
+            order: index,
             locked: true,
             lockReason: access.reason === 'Subscription required' ? 'subscription_required' : 'embargo'
           }
@@ -228,11 +230,10 @@ const chaptersRoutes: FastifyPluginAsync = async (fastify) => {
       const resolvedDisplay = resolveDisplaySettings(userDisplay, projectDisplay, contentDisplay)
 
       // Get navigation (previous/next chapters) — must match TOC reader order.
-      const navOrderClauses = await getChapterOrderClauses(projectId)
-      const allChapters = await db
+      const navRows = await db
         .select({
           id: entities.id,
-          order: sql<number>`COALESCE((${entities.entityData}->>'order')::bigint, 0)`
+          publishOrder: entities.publishOrder
         })
         .from(entities)
         .innerJoin(chapterPublications, eq(chapterPublications.chapterId, entities.id))
@@ -241,7 +242,7 @@ const chaptersRoutes: FastifyPluginAsync = async (fastify) => {
           eq(chapterPublications.isPublished, true),
           notDeleted()
         ))
-        .orderBy(...navOrderClauses)
+      const allChapters = await sortInReaderOrder(projectId, navRows)
 
       const currentIndex = allChapters.findIndex(c => c.id === chapterId)
       const previousChapter = currentIndex > 0 ? allChapters[currentIndex - 1] : null

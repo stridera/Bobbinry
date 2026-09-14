@@ -24,6 +24,7 @@ import {
   upsertScheduledChapterPublication
 } from '../lib/release-schedule'
 import { liveProjectEntity, notDeleted } from '../lib/entity-scope'
+import { getManuscriptOrder, manuscriptPosition } from '../lib/manuscript-order'
 import { pickDefined } from '../lib/pick'
 import { actorKeyFor, captureRevisionSafe } from '../lib/entity-revisions'
 
@@ -611,20 +612,19 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
         (existing?.useManuscriptOrder ?? true) === true
       if (turningOffManuscriptOrder) {
         try {
-          await db.execute(sql`
-            WITH ranked AS (
-              SELECT id, (ROW_NUMBER() OVER (
-                ORDER BY COALESCE((${entities.entityData}->>'order')::bigint, 0)
-              ) - 1) AS rank
-              FROM ${entities}
-              WHERE ${entities.projectId} = ${projectId}
-                AND ${entities.collectionName} = 'content'
+          const ranked = [...(await getManuscriptOrder(projectId))]
+          if (ranked.length > 0) {
+            const values = sql.join(
+              ranked.map(([id, { position }]) => sql`(${id}::uuid, ${position}::int)`),
+              sql`, `,
             )
-            UPDATE ${entities} AS e
-            SET publish_order = ranked.rank
-            FROM ranked
-            WHERE e.id = ranked.id
-          `)
+            await db.execute(sql`
+              UPDATE ${entities} AS e
+              SET publish_order = ranked.rank
+              FROM (VALUES ${values}) AS ranked(id, rank)
+              WHERE e.id = ranked.id
+            `)
+          }
         } catch (seedError) {
           fastify.log.warn({ err: seedError, projectId }, 'Failed to seed publish_order from manuscript order')
         }
@@ -1165,31 +1165,37 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
 
       // The stored counters of these names are unmaintained; see
       // lib/chapter-view-stats.ts. Derive from chapter_views instead.
-      const rows = await db
-        .select({
-          chapterId: chapterPublications.chapterId,
-          title: sql<string>`${entities.entityData}->>'title'`,
-          order: sql<number>`(${entities.entityData}->>'order')::int`,
-          viewCount: chapterPublications.viewCount,
-          uniqueViewCount: sql<number>`COALESCE(${sql.raw('view_stats.unique_viewers')}, 0)`,
-          completionCount: sql<number>`COALESCE(${sql.raw('view_stats.completions')}, 0)`,
-          avgReadTimeSeconds: sql<number>`COALESCE(${sql.raw('view_stats.avg_read_seconds')}, 0)`,
-        })
-        .from(chapterPublications)
-        .innerJoin(entities, and(eq(entities.id, chapterPublications.chapterId), notDeleted()))
-        .leftJoin(chapterViewStats, sql`${sql.raw('view_stats.chapter_id')} = ${chapterPublications.chapterId}`)
-        .where(eq(chapterPublications.projectId, projectId))
-        .orderBy(sql`(${entities.entityData}->>'order')::int`)
+      const [rows, manuscriptOrder] = await Promise.all([
+        db
+          .select({
+            chapterId: chapterPublications.chapterId,
+            title: sql<string>`${entities.entityData}->>'title'`,
+            viewCount: chapterPublications.viewCount,
+            uniqueViewCount: sql<number>`COALESCE(${sql.raw('view_stats.unique_viewers')}, 0)`,
+            completionCount: sql<number>`COALESCE(${sql.raw('view_stats.completions')}, 0)`,
+            avgReadTimeSeconds: sql<number>`COALESCE(${sql.raw('view_stats.avg_read_seconds')}, 0)`,
+          })
+          .from(chapterPublications)
+          .innerJoin(entities, and(eq(entities.id, chapterPublications.chapterId), notDeleted()))
+          .leftJoin(chapterViewStats, sql`${sql.raw('view_stats.chapter_id')} = ${chapterPublications.chapterId}`)
+          .where(eq(chapterPublications.projectId, projectId)),
+        getManuscriptOrder(projectId),
+      ])
 
-      const chapters = rows.map(r => ({
-        chapterId: r.chapterId,
-        title: r.title || 'Untitled',
-        order: r.order ?? 0,
-        viewCount: Number(r.viewCount || 0),
-        uniqueViewCount: Number(r.uniqueViewCount || 0),
-        completionCount: Number(r.completionCount || 0),
-        avgReadTimeSeconds: Number(r.avgReadTimeSeconds || 0),
-      }))
+      // `order` is the chapter's place in the manuscript. The raw entity
+      // `order` only ranks siblings within one folder, and casting it to int
+      // overflowed on the Date.now() values a folder move writes.
+      const chapters = rows
+        .map(r => ({
+          chapterId: r.chapterId,
+          title: r.title || 'Untitled',
+          order: manuscriptPosition(manuscriptOrder, r.chapterId),
+          viewCount: Number(r.viewCount || 0),
+          uniqueViewCount: Number(r.uniqueViewCount || 0),
+          completionCount: Number(r.completionCount || 0),
+          avgReadTimeSeconds: Number(r.avgReadTimeSeconds || 0),
+        }))
+        .sort((a, b) => a.order - b.order)
 
       return reply.send({ chapters, correlationId })
     } catch (error) {

@@ -17,6 +17,7 @@ import {
   createTurndown,
 } from '../lib/export-converters'
 import { notDeleted } from '../lib/entity-scope'
+import { getManuscriptOrder, manuscriptPosition } from '../lib/manuscript-order'
 
 const DOCX_MIME =
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -52,7 +53,7 @@ async function getProjectMeta(projectId: string): Promise<{ name: string; descri
  * download formats below derive their Chapter[] from it too.
  */
 async function getSnapshot(projectId: string): Promise<ExportSnapshot> {
-  const [meta, containers, content] = await Promise.all([
+  const [meta, containers, content, manuscriptOrder] = await Promise.all([
     getProjectMeta(projectId),
     db
       .select({
@@ -93,6 +94,7 @@ async function getSnapshot(projectId: string): Promise<ExportSnapshot> {
         )
       )
       .orderBy(sql`COALESCE((${entities.entityData}->>'order')::bigint, 0) ASC`),
+    getManuscriptOrder(projectId),
   ])
 
   return {
@@ -101,7 +103,11 @@ async function getSnapshot(projectId: string): Promise<ExportSnapshot> {
     // pg returns ::bigint casts as strings — coerce so the JSON matches the
     // ExportSnapshot contract (order: number).
     containers: containers.map((c) => ({ ...c, order: Number(c.order) })),
-    content: content.map((item) => ({ ...item, order: Number(item.order) })),
+    // Reading order: the writing tab's tree walked depth-first. Each row keeps
+    // its raw `order`, which only ranks it among its folder's siblings.
+    content: content
+      .map((item) => ({ ...item, order: Number(item.order) }))
+      .sort((a, b) => manuscriptPosition(manuscriptOrder, a.id) - manuscriptPosition(manuscriptOrder, b.id)),
   }
 }
 

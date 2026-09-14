@@ -100,6 +100,9 @@ export interface ExportSnapshot {
   generatedAt: string
   /** Ordered by `order` ascending. */
   containers: ExportSnapshotContainer[]
-  /** Ordered by `order` ascending. */
+  /**
+   * In reading order: the manuscript tree walked depth-first. A row's `order`
+   * only ranks it among its folder's siblings, so don't re-sort by it.
+   */
   content: ExportSnapshotContent[]
 }
