@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
 import { OptimizedImage } from '@/components/OptimizedImage'
 import { SearchReplaceLauncher } from '@/components/SearchReplaceLauncher'
+import { StatusBadge } from '@/components/project/StatusBadge'
 
 export interface MastheadStats {
   /** Sum of word_count across active narrative-type entities. */
@@ -310,7 +311,7 @@ export function ProjectMasthead({
                 <div className="min-w-0 sm:flex-1">
                   <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
                     <h1
-                      className="font-display text-2xl sm:text-[28px] leading-tight font-bold text-gray-900 dark:text-gray-100 cursor-text hover:underline decoration-gray-300 dark:decoration-gray-600 underline-offset-4 truncate"
+                      className="font-display text-2xl sm:text-[28px] leading-tight font-bold text-gray-900 dark:text-gray-100 cursor-text hover:underline decoration-gray-300 dark:decoration-gray-600 underline-offset-4 break-words"
                       onClick={startEditing}
                       title="Click to edit"
                     >
@@ -402,33 +403,5 @@ export function ProjectMasthead({
       </div>
     )}
     </>
-  )
-}
-
-function StatusBadge({ isLive, visibility }: { isLive: boolean; visibility?: string | undefined }) {
-  if (!isLive) {
-    return (
-      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-        Draft
-      </span>
-    )
-  }
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
-        <span className="w-1.5 h-1.5 rounded-full bg-green-500" aria-hidden="true" />
-        Live
-      </span>
-      {visibility === 'private' && (
-        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-          Private
-        </span>
-      )}
-      {visibility === 'unlisted' && (
-        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-          Unlisted
-        </span>
-      )}
-    </span>
   )
 }

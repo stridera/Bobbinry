@@ -2,26 +2,30 @@ import type { FastifyPluginAsync } from 'fastify'
 import { db } from '../db/connection'
 import {
   contentTags,
-  projects,
   chapterPublications,
   embargoSchedules,
   entities,
-  projectPublishConfig,
-  bobbinsInstalled,
-  userProfiles,
   comments,
   reactions,
-  chapterAnnotations
+  chapterAnnotations,
+  users
 } from '../db/schema'
-import { eq, and, sql, isNotNull } from 'drizzle-orm'
+import { eq, and, sql, isNotNull, desc } from 'drizzle-orm'
 import { chapterViewStats, getChapterViewStats } from '../lib/chapter-view-stats'
 import { requireAuth, ownsProject } from '../middleware/auth'
-import { loadDiskManifests } from '../lib/disk-manifests'
-import { getCollectionIdsForProject, buildScopeCondition } from '../lib/effective-bobbins'
+import { loadProjectSummary } from '../lib/project-summary'
 import { getSlugsForEntities } from '../lib/slugs'
 import { countsTowardWordCount, type ContentType } from '@bobbinry/types'
 import { notDeleted, TRASH_RETENTION_MS } from '../lib/entity-scope'
 import { getManuscriptOrder } from '../lib/manuscript-order'
+
+/** Rows per feed list on the dashboard. */
+const ACTIVITY_FEED_LIMIT = 10
+
+function snippet(text: string, max = 240): string {
+  const flat = text.replace(/\s+/g, ' ').trim()
+  return flat.length > max ? `${flat.slice(0, max - 1).trimEnd()}…` : flat
+}
 
 /** Matches the content_tags.tag_name column width. */
 const MAX_TAG_NAME_LENGTH = 100
@@ -185,14 +189,6 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
         : includeDeleted === 'all' ? undefined
         : notDeleted()
 
-      // Entity visibility scope for the bobbin tile counts: project-scoped
-      // rows, plus collection-scoped rows from collections this project
-      // belongs to, plus the owner's global entities — the same scope the
-      // entity views use, so the counts match what clicking a tile shows.
-      const scopeUserId = request.user!.id
-      const scopeCollectionIds = await getCollectionIdsForProject(projectId)
-      const entityScopeFilter = buildScopeCondition(projectId, scopeCollectionIds, scopeUserId)
-
       // We always fetch every *live* chapter (active + archived) and partition
       // in JS before returning. Project chapter counts are small enough that
       // this is simpler than two queries and lets us return an accurate
@@ -203,27 +199,21 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
       // and the default dashboard load must not ship deleted bodies.
 
       const [
-        projectResult,
+        summary,
         tagsResult,
         publicationsResult,
         chaptersResult,
         trashCountResult,
         scheduledResult,
-        configResult,
-        bobbinsResult,
-        authorProfileResult,
         commentCountsResult,
         reactionCountsResult,
-        annotationStatsResult,
         annotationCountsResult,
-        bobbinStatsResult
+        recentCommentsResult,
+        openAnnotationsResult
       ] = await Promise.all([
-        // 1. Project details
-        db
-          .select()
-          .from(projects)
-          .where(eq(projects.id, projectId))
-          .limit(1),
+        // 1. Project identity, publish config, bobbins projection, per-bobbin
+        // counts, and annotation totals — shared with the summary route.
+        loadProjectSummary(projectId, request.user!.id),
 
         // 2. Content tags
         db
@@ -309,33 +299,7 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
             eq(chapterPublications.publishStatus, 'scheduled')
           )),
 
-        // 6. Publish config
-        db
-          .select()
-          .from(projectPublishConfig)
-          .where(eq(projectPublishConfig.projectId, projectId))
-          .limit(1),
-
-        // 7. Installed bobbins
-        db
-          .select({
-            id: bobbinsInstalled.id,
-            bobbinId: bobbinsInstalled.bobbinId,
-            version: bobbinsInstalled.version,
-          })
-          .from(bobbinsInstalled)
-          .where(eq(bobbinsInstalled.projectId, projectId)),
-
-        // 8. Author profile (for reader URL)
-        db
-          .select({
-            username: userProfiles.username
-          })
-          .from(userProfiles)
-          .where(eq(userProfiles.userId, request.user!.id))
-          .limit(1),
-
-        // 9. Comment counts per chapter
+        // 6. Comment counts per chapter
         db
           .select({
             chapterId: comments.chapterId,
@@ -349,7 +313,7 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
           ))
           .groupBy(comments.chapterId),
 
-        // 10. Reaction counts per chapter
+        // 7. Reaction counts per chapter
         db
           .select({
             chapterId: reactions.chapterId,
@@ -360,17 +324,7 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
           .where(eq(entities.projectId, projectId))
           .groupBy(reactions.chapterId),
 
-        // 11. Annotation stats (open/total)
-        db
-          .select({
-            status: chapterAnnotations.status,
-            count: sql<number>`count(*)::int`.as('count')
-          })
-          .from(chapterAnnotations)
-          .where(eq(chapterAnnotations.projectId, projectId))
-          .groupBy(chapterAnnotations.status),
-
-        // 12. Annotation counts per chapter (open + acknowledged only)
+        // 8. Annotation counts per chapter (open + acknowledged only)
         db
           .select({
             chapterId: chapterAnnotations.chapterId,
@@ -383,27 +337,55 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
           ))
           .groupBy(chapterAnnotations.chapterId),
 
-        // 13. Per-bobbin item counts. Drives the dashboard Bobbins tile counts.
-        // Excludes entity_type_definitions and shared_templates so schema and
-        // template rows don't get counted as content (matches the precedent
-        // in dashboard.ts).
+        // 9. Latest approved comments, for the dashboard's activity feed.
+        // Replies included: a reader answering another reader is activity too.
         db
           .select({
-            bobbinId: entities.bobbinId,
-            count: sql<number>`count(*)::int`.as('count')
+            id: comments.id,
+            chapterId: comments.chapterId,
+            parentId: comments.parentId,
+            authorName: users.name,
+            content: comments.content,
+            createdAt: comments.createdAt
           })
-          .from(entities)
+          .from(comments)
+          .innerJoin(entities, and(eq(entities.id, comments.chapterId), notDeleted()))
+          .leftJoin(users, eq(users.id, comments.authorId))
           .where(and(
-            entityScopeFilter,
-            sql`${entities.collectionName} NOT IN ('entity_type_definitions', 'shared_templates')`
+            eq(entities.projectId, projectId),
+            eq(comments.moderationStatus, 'approved')
           ))
-          .groupBy(entities.bobbinId)
+          .orderBy(desc(comments.createdAt))
+          .limit(ACTIVITY_FEED_LIMIT),
+
+        // 10. Annotations still waiting on the author, newest first.
+        db
+          .select({
+            id: chapterAnnotations.id,
+            chapterId: chapterAnnotations.chapterId,
+            authorName: users.name,
+            annotationType: chapterAnnotations.annotationType,
+            errorCategory: chapterAnnotations.errorCategory,
+            anchorQuote: chapterAnnotations.anchorQuote,
+            content: chapterAnnotations.content,
+            status: chapterAnnotations.status,
+            createdAt: chapterAnnotations.createdAt
+          })
+          .from(chapterAnnotations)
+          .innerJoin(entities, and(eq(entities.id, chapterAnnotations.chapterId), notDeleted()))
+          .leftJoin(users, eq(users.id, chapterAnnotations.authorId))
+          .where(and(
+            eq(chapterAnnotations.projectId, projectId),
+            sql`${chapterAnnotations.status} IN ('open', 'acknowledged')`
+          ))
+          .orderBy(desc(chapterAnnotations.createdAt))
+          .limit(ACTIVITY_FEED_LIMIT)
       ])
 
-      const project = projectResult[0]
-      if (!project) {
+      if (!summary) {
         return reply.status(404).send({ error: 'Project not found', correlationId })
       }
+      const { project, config, bobbins, bobbinStats, annotationStats, authorUsername } = summary
 
       // Compute analytics from publications
       const totalViews = publicationsResult.reduce((sum, p) => sum + (p.viewCount ?? 0), 0)
@@ -499,66 +481,27 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
         publishStatus: s.publishStatus
       }))
 
-      // Format publish config with defaults
-      const config = configResult[0] || {
-        projectId,
-        publishingMode: 'draft',
-        defaultVisibility: 'public',
-        autoReleaseEnabled: false,
-        releaseFrequency: 'manual',
-        enableComments: true,
-        enableReactions: true,
-        moderationMode: 'open'
-      }
-
-      // Format bobbins using disk manifests as source of truth. The
-      // hasLeftPanel flag tells the dashboard Bobbins UI which bobbins are
-      // project-wide workspaces (owning a `shell.leftPanel` contribution) and
-      // therefore deserve a launcher tile.
-      const diskManifests = await loadDiskManifests(bobbinsResult.map(b => b.bobbinId))
-      const bobbins = bobbinsResult.map(b => {
-        const manifest = diskManifests.get(b.bobbinId) as Record<string, any> | undefined
-        const rawContributions = manifest?.extensions?.contributions
-        const contributions = Array.isArray(rawContributions)
-          ? rawContributions as Array<{ slot?: string }>
-          : []
-        const hasLeftPanel = contributions.some(c => c?.slot === 'shell.leftPanel')
-        return {
-          id: b.id,
-          bobbinId: b.bobbinId,
-          version: b.version,
-          manifest: {
-            name: manifest?.name || b.bobbinId,
-            description: manifest?.description || '',
-            icon: typeof manifest?.icon === 'string' ? manifest.icon : undefined,
-            hasLeftPanel,
-            core: manifest?.core === true,
-            annotationInbox: manifest?.capabilities?.annotationInbox === true
-          }
-        }
-      })
-
-      // bobbinId → entity count, used by the dashboard Bobbins tiles.
-      const bobbinStats: Record<string, number> = {}
-      for (const row of bobbinStatsResult) {
-        bobbinStats[row.bobbinId] = row.count
-      }
-
-      const authorUsername = authorProfileResult[0]?.username || null
-
-      // Build annotation stats
-      const annotationStats = {
-        open: 0,
-        acknowledged: 0,
-        resolved: 0,
-        dismissed: 0,
-        total: 0
-      }
-      for (const row of annotationStatsResult) {
-        const key = row.status as keyof typeof annotationStats
-        if (key in annotationStats) annotationStats[key] = row.count
-        annotationStats.total += row.count
-      }
+      // Feed rows carry a snippet, not the whole body: the dashboard shows one
+      // line per item and links through to the full text.
+      const recentComments = recentCommentsResult.map(c => ({
+        id: c.id,
+        chapterId: c.chapterId,
+        parentId: c.parentId,
+        authorName: c.authorName,
+        content: snippet(c.content),
+        createdAt: c.createdAt
+      }))
+      const openAnnotations = openAnnotationsResult.map(a => ({
+        id: a.id,
+        chapterId: a.chapterId,
+        authorName: a.authorName,
+        annotationType: a.annotationType,
+        errorCategory: a.errorCategory,
+        anchorQuote: snippet(a.anchorQuote, 80),
+        content: snippet(a.content),
+        status: a.status,
+        createdAt: a.createdAt
+      }))
 
       return reply.send({
         project: {
@@ -589,11 +532,59 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
         bobbins,
         bobbinStats,
         annotationStats,
+        recentComments,
+        openAnnotations,
         correlationId
       })
     } catch (error) {
       fastify.log.error({ error, correlationId }, 'Failed to load dashboard')
       return reply.status(500).send({ error: 'Failed to load dashboard', correlationId })
+    }
+  })
+
+  /**
+   * GET /projects/:projectId/summary
+   *
+   * What a project page's header needs and nothing else: identity, publish
+   * state, the installed-bobbin projection with counts, and annotation
+   * totals. The dashboard aggregate carries every chapter body alongside the
+   * same data; the feedback, settings, and bobbins pages only need this.
+   */
+  fastify.get<{
+    Params: { projectId: string }
+  }>('/projects/:projectId/summary', {
+    preHandler: [requireAuth, ownsProject()]
+  }, async (request, reply) => {
+    const correlationId = request.id
+    try {
+      const { projectId } = request.params
+      const summary = await loadProjectSummary(projectId, request.user!.id)
+      if (!summary) {
+        return reply.status(404).send({ error: 'Project not found', correlationId })
+      }
+      const { project, config, bobbins, bobbinStats, annotationStats, authorUsername } = summary
+      return reply.send({
+        project: {
+          id: project.id,
+          name: project.name,
+          coverImage: project.coverImage,
+          shortUrl: project.shortUrl,
+          isArchived: project.isArchived
+        },
+        authorUsername,
+        publishConfig: {
+          publishingMode: config.publishingMode,
+          projectVisibility: config.projectVisibility,
+          enableAnnotations: config.enableAnnotations ?? false
+        },
+        bobbins,
+        bobbinStats,
+        annotationStats,
+        correlationId
+      })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to load project summary')
+      return reply.status(500).send({ error: 'Failed to load project summary', correlationId })
     }
   })
 }

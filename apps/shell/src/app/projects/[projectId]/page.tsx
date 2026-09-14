@@ -6,10 +6,10 @@ import { useSession } from 'next-auth/react'
 import { SiteNav } from '@/components/SiteNav'
 import { apiFetch } from '@/lib/api'
 import { ProjectMasthead } from './components/dashboard/ProjectMasthead'
-import { ProjectTabs } from './components/dashboard/ProjectTabs'
+import { ProjectTabs } from '@/components/project/ProjectTabs'
 import { DashboardRail } from './components/dashboard/DashboardRail'
 import { ChapterOverview } from './components/dashboard/ChapterOverview'
-import { ReaderActivity } from './components/dashboard/ReaderActivity'
+import { ReaderActivity, type RecentComment, type OpenAnnotation } from './components/dashboard/ReaderActivity'
 import { countsTowardWordCount, type ContentType } from '@bobbinry/types'
 
 interface Tag {
@@ -112,6 +112,8 @@ interface DashboardData {
     }
   }>
   bobbinStats: Record<string, number>
+  recentComments: RecentComment[]
+  openAnnotations: OpenAnnotation[]
 }
 
 export default function ProjectDashboardPage() {
@@ -262,6 +264,8 @@ export default function ProjectDashboardPage() {
           <ReaderActivity
             projectId={projectId}
             chapters={data.chapters}
+            recentComments={data.recentComments}
+            openAnnotations={data.openAnnotations}
             isLive={isLive}
             enableAnnotations={data.publishConfig.enableAnnotations}
             hasAnnotationInbox={hasAnnotationInbox}

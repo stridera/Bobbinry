@@ -5,6 +5,8 @@ import { useParams, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { SiteNav } from '@/components/SiteNav'
+import { ProjectPageHeader } from '@/components/project/ProjectPageHeader'
+import { useProjectSummary } from '@/components/project/useProjectSummary'
 import { apiFetch } from '@/lib/api'
 
 interface Annotation {
@@ -86,6 +88,8 @@ function FeedbackDashboardContent() {
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [typeFilter, setTypeFilter] = useState<string>('')
   const [chapterFilter, setChapterFilter] = useState<string>(searchParams.get('chapterId') || '')
+  const focusAnnotationId = searchParams.get('annotationId')
+  const { summary } = useProjectSummary(projectId)
   const [respondingTo, setRespondingTo] = useState<string | null>(null)
   const [responseText, setResponseText] = useState('')
   const [confirmingAccept, setConfirmingAccept] = useState<string | null>(null)
@@ -130,6 +134,18 @@ function FeedbackDashboardContent() {
     if (session?.apiToken) loadData()
   }, [session?.apiToken, loadData])
 
+  // ?annotationId= from the dashboard feed: scroll the card into view and
+  // flash it once the list has rendered.
+  useEffect(() => {
+    if (!focusAnnotationId || loading) return
+    const el = document.getElementById(`annotation-${focusAnnotationId}`)
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.classList.add('ring-2', 'ring-blue-400/60')
+    const timer = setTimeout(() => el.classList.remove('ring-2', 'ring-blue-400/60'), 2500)
+    return () => clearTimeout(timer)
+  }, [focusAnnotationId, loading])
+
   const updateStatus = async (annotationId: string, newStatus: string, response?: string) => {
     const token = session?.apiToken
     if (!token) return
@@ -173,16 +189,10 @@ function FeedbackDashboardContent() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       <SiteNav />
+      <ProjectPageHeader projectId={projectId} summary={summary} pageTitle="Feedback" />
       <div className="max-w-5xl mx-auto px-4 py-8">
-        {/* Header */}
         <div className="mb-6">
-          <Link href={`/projects/${projectId}`} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors mb-2 inline-flex items-center gap-1">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            Dashboard
-          </Link>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Reader Feedback</h1>
+          <h1 className="font-display text-2xl font-bold text-gray-900 dark:text-gray-100">Reader feedback</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Annotations, suggestions, and error reports from your readers
           </p>
@@ -328,7 +338,8 @@ function FeedbackDashboardContent() {
               return (
                 <div
                   key={ann.id}
-                  className={`rounded-lg border bg-white dark:bg-gray-900 overflow-hidden transition-colors ${
+                  id={`annotation-${ann.id}`}
+                  className={`rounded-lg border bg-white dark:bg-gray-900 overflow-hidden transition-colors scroll-mt-24 ${
                     ann.status === 'resolved' || ann.status === 'dismissed'
                       ? 'border-gray-100 dark:border-gray-800/50 opacity-75'
                       : 'border-gray-200 dark:border-gray-800'

@@ -92,25 +92,6 @@ can't tell API-key or AI writes from the author (only
 cover only `RESTORABLE_FIELDS` (body, title, notes, synopsis), so entity-field
 edits can't be undone.
 
-## G. Project dashboard follow-ups (2026-09-14)
-
-The dashboard was rebuilt as masthead + project tabs + main column + rail.
-Two pieces were scoped out of that pass.
-
-### G1. Reader activity feed
-`ReaderActivity` ranks chapters by lifetime comment/annotation counts because
-that is all `GET /projects/:id/dashboard` carries. The useful version is a
-recent-activity list: the latest comments and open annotations with chapter,
-snippet, and time, each linking to the item. Needs the dashboard route to
-return `recentComments` and `openAnnotations` (say ten each), then swap the
-"Most discussed" table for the feed.
-
-### G2. Project tabs on every project page
-`ProjectTabs` only renders on the dashboard. The write, bobbin, feedback, and
-settings pages each carry their own header. Hoisting the masthead + tab row
-into a shared project layout would make Entities one click from anywhere in
-the project, which was the point of the tabs.
-
 ## Test coverage log
 
 Routes and modules that gained tests, newest last. Bugs found while writing

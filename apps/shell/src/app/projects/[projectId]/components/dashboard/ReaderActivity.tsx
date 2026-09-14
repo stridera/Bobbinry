@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { relativeTime } from '@/lib/relative-time'
 
 interface ActivityChapter {
   id: string
@@ -8,17 +9,34 @@ interface ActivityChapter {
   title: string
   archivedAt: string | null
   commentCount: number
-  reactionCount: number
-  annotationCount: number
-  publication: {
-    publishStatus: string
-    viewCount: number
-  } | null
+}
+
+export interface RecentComment {
+  id: string
+  chapterId: string
+  parentId: string | null
+  authorName: string | null
+  content: string
+  createdAt: string
+}
+
+export interface OpenAnnotation {
+  id: string
+  chapterId: string
+  authorName: string | null
+  annotationType: string
+  errorCategory: string | null
+  anchorQuote: string
+  content: string
+  status: string
+  createdAt: string
 }
 
 interface ReaderActivityProps {
   projectId: string
   chapters: ActivityChapter[]
+  recentComments: RecentComment[]
+  openAnnotations: OpenAnnotation[]
   isLive: boolean
   enableAnnotations: boolean
   hasAnnotationInbox: boolean
@@ -32,16 +50,22 @@ interface ReaderActivityProps {
   readerBaseUrl: string | null
 }
 
-const MAX_ROWS = 5
+const MAX_ROWS = 8
+
+type FeedItem =
+  | { kind: 'comment'; at: number; comment: RecentComment }
+  | { kind: 'annotation'; at: number; annotation: OpenAnnotation }
 
 /**
- * What readers are doing with the manuscript. Phase 1 works from the counts
- * the dashboard already carries per chapter; a recent-activity feed (latest
- * comments and annotations) is the planned follow-up once the API serves it.
+ * What readers are doing with the manuscript, newest first: the latest
+ * comments and every annotation still waiting on the author, each linking to
+ * the thing itself.
  */
 export function ReaderActivity({
   projectId,
   chapters,
+  recentComments,
+  openAnnotations,
   isLive,
   enableAnnotations,
   hasAnnotationInbox,
@@ -53,17 +77,21 @@ export function ReaderActivity({
   const commentedChapters = active.filter(c => c.commentCount > 0).length
   const openFeedback = (annotationStats?.open ?? 0) + (annotationStats?.acknowledged ?? 0)
   const resolvedFeedback = annotationStats?.resolved ?? 0
+  const chapterById = new Map(chapters.map(c => [c.id, c]))
 
-  const discussed = active
-    .filter(c => c.commentCount + c.reactionCount + c.annotationCount > 0)
-    .sort((a, b) =>
-      (b.commentCount + b.annotationCount) - (a.commentCount + a.annotationCount)
-      || b.reactionCount - a.reactionCount
-    )
-    .slice(0, MAX_ROWS)
+  const feed: FeedItem[] = [
+    ...recentComments.map(comment => ({ kind: 'comment' as const, at: Date.parse(comment.createdAt), comment })),
+    ...openAnnotations.map(annotation => ({ kind: 'annotation' as const, at: Date.parse(annotation.createdAt), annotation })),
+  ].sort((a, b) => b.at - a.at).slice(0, MAX_ROWS)
 
   const inboxHref = `/projects/${projectId}/feedback`
   const showInboxLink = enableAnnotations && hasAnnotationInbox
+
+  const chapterHref = (chapterId: string): string | null => {
+    const chapter = chapterById.get(chapterId)
+    if (!chapter || !readerBaseUrl) return null
+    return `${readerBaseUrl}/${chapter.slug ?? chapter.id}`
+  }
 
   return (
     <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 animate-fade-in">
@@ -89,7 +117,7 @@ export function ReaderActivity({
           Publish this project to start hearing from readers.{' '}
           <Link href={`/publish/${projectId}`} className="text-blue-600 dark:text-blue-400 hover:underline">Open Publisher &rarr;</Link>
         </EmptyLine>
-      ) : discussed.length === 0 ? (
+      ) : feed.length === 0 ? (
         <EmptyLine>
           No comments or feedback yet.{' '}
           {!enableAnnotations && (
@@ -107,41 +135,62 @@ export function ReaderActivity({
         </EmptyLine>
       ) : (
         <>
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">Most discussed</p>
-          <table className="w-full text-sm">
-            <thead className="sr-only">
-              <tr>
-                <th>Chapter</th>
-                <th>Reads</th>
-                <th>Comments</th>
-                <th>Reactions</th>
-                <th>Feedback</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
-              {discussed.map(c => {
-                const isPublished = c.publication?.publishStatus === 'published'
-                const href = isPublished && readerBaseUrl ? `${readerBaseUrl}/${c.slug ?? c.id}` : null
+          <ol className="-mx-2 divide-y divide-gray-100 dark:divide-gray-700/60">
+            {feed.map(item => {
+              if (item.kind === 'comment') {
+                const { comment } = item
+                const chapter = chapterById.get(comment.chapterId)
+                const base = chapterHref(comment.chapterId)
                 return (
-                  <tr key={c.id} className="group">
-                    <td className="py-2 pr-3 min-w-0">
-                      {href ? (
-                        <Link href={href} className="block truncate text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                          {c.title}
-                        </Link>
-                      ) : (
-                        <span className="block truncate text-gray-900 dark:text-gray-100">{c.title}</span>
-                      )}
-                    </td>
-                    <Stat value={c.publication?.viewCount ?? 0} label="reads" />
-                    <Stat value={c.commentCount} label="comments" />
-                    <Stat value={c.reactionCount} label="reactions" />
-                    <Stat value={c.annotationCount} label="feedback" />
-                  </tr>
+                  <FeedRow
+                    key={`c-${comment.id}`}
+                    href={base ? `${base}#comment-${comment.id}` : null}
+                    icon={<CommentIcon />}
+                    tone="text-gray-400 dark:text-gray-500"
+                    lead={
+                      <>
+                        <Name>{comment.authorName}</Name>
+                        {comment.parentId ? ' replied on ' : ' commented on '}
+                        <ChapterName>{chapter?.title}</ChapterName>
+                      </>
+                    }
+                    snippet={comment.content}
+                    at={comment.createdAt}
+                  />
                 )
-              })}
-            </tbody>
-          </table>
+              }
+              const { annotation } = item
+              const chapter = chapterById.get(annotation.chapterId)
+              const href = showInboxLink
+                ? `${inboxHref}?annotationId=${annotation.id}`
+                : chapterHref(annotation.chapterId)
+              const tone = annotation.annotationType === 'error'
+                ? 'text-red-500 dark:text-red-400'
+                : annotation.annotationType === 'suggestion'
+                  ? 'text-blue-500 dark:text-blue-400'
+                  : 'text-amber-500 dark:text-amber-400'
+              return (
+                <FeedRow
+                  key={`a-${annotation.id}`}
+                  href={href}
+                  icon={<AnnotationIcon type={annotation.annotationType} />}
+                  tone={tone}
+                  lead={
+                    <>
+                      <Name>{annotation.authorName}</Name>
+                      {' '}{annotationVerb(annotation)}{' '}
+                      <ChapterName>{chapter?.title}</ChapterName>
+                      {annotation.status === 'acknowledged' && (
+                        <span className="ml-1.5 text-[11px] text-gray-400 dark:text-gray-500">acknowledged</span>
+                      )}
+                    </>
+                  }
+                  snippet={annotation.content || `“${annotation.anchorQuote}”`}
+                  at={annotation.createdAt}
+                />
+              )
+            })}
+          </ol>
 
           <p className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400">
             {totalComments.toLocaleString()} {totalComments === 1 ? 'comment' : 'comments'} across {commentedChapters} {commentedChapters === 1 ? 'chapter' : 'chapters'}
@@ -157,17 +206,96 @@ export function ReaderActivity({
   )
 }
 
-function Stat({ value, label }: { value: number; label: string }) {
-  return (
-    <td className="py-2 pl-3 text-right whitespace-nowrap">
-      <span className={`tabular-nums ${value > 0 ? 'text-gray-900 dark:text-gray-100' : 'text-gray-300 dark:text-gray-600'}`}>
-        {value.toLocaleString()}
+function annotationVerb(a: OpenAnnotation): string {
+  switch (a.annotationType) {
+    case 'error':
+      return a.errorCategory ? `reported a ${a.errorCategory.replace(/_/g, ' ')} in` : 'reported an error in'
+    case 'suggestion':
+      return 'suggested a change to'
+    default:
+      return 'left feedback on'
+  }
+}
+
+function FeedRow({
+  href, icon, tone, lead, snippet, at,
+}: {
+  href: string | null
+  icon: React.ReactNode
+  tone: string
+  lead: React.ReactNode
+  snippet: string
+  at: string
+}) {
+  const body = (
+    <>
+      <span className={`mt-0.5 shrink-0 ${tone}`} aria-hidden="true">{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm text-gray-600 dark:text-gray-400 truncate">{lead}</span>
+        <span className="block text-sm text-gray-900 dark:text-gray-100 line-clamp-2">{snippet}</span>
       </span>
-      <span className="ml-1 text-xs text-gray-400 dark:text-gray-500 hidden sm:inline">{label}</span>
-    </td>
+      <time
+        dateTime={at}
+        title={new Date(at).toLocaleString()}
+        className="shrink-0 text-xs text-gray-400 dark:text-gray-500 tabular-nums whitespace-nowrap"
+      >
+        {relativeTime(at)}
+      </time>
+    </>
   )
+  const className = 'flex items-start gap-3 px-2 py-2.5 rounded-md'
+  return (
+    <li>
+      {href ? (
+        <Link href={href} className={`${className} hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors`}>
+          {body}
+        </Link>
+      ) : (
+        <div className={className}>{body}</div>
+      )}
+    </li>
+  )
+}
+
+function Name({ children }: { children: string | null }) {
+  return <span className="font-medium text-gray-900 dark:text-gray-100">{children || 'A reader'}</span>
+}
+
+function ChapterName({ children }: { children: string | undefined }) {
+  return <span className="text-gray-900 dark:text-gray-100">{children || 'a chapter'}</span>
 }
 
 function EmptyLine({ children }: { children: React.ReactNode }) {
   return <p className="text-sm text-gray-500 dark:text-gray-400">{children}</p>
+}
+
+function CommentIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+      <path d="M21 12a8 8 0 01-8 8H8l-5 3 1.6-4.4A8 8 0 1121 12z" />
+    </svg>
+  )
+}
+
+function AnnotationIcon({ type }: { type: string }) {
+  if (type === 'error') {
+    return (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+        <path d="M12 9v4m0 4h.01M10.3 3.9L2.5 17.5A2 2 0 004.2 20.5h15.6a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" />
+      </svg>
+    )
+  }
+  if (type === 'suggestion') {
+    return (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+        <path d="M9 18h6m-5 3h4M12 3a6 6 0 00-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0012 3z" />
+      </svg>
+    )
+  }
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+      <path d="M4 5h16v11H8l-4 4V5z" />
+      <path d="M8 9h8M8 12h5" />
+    </svg>
+  )
 }
