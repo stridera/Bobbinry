@@ -274,7 +274,7 @@ export function ProjectMasthead({
           {/* Identity + actions */}
           <div className="min-w-0 flex-1">
             {editing ? (
-              <div className="space-y-3 max-w-2xl">
+              <div className="space-y-3">
                 <input
                   type="text"
                   value={editName}
@@ -308,25 +308,20 @@ export function ProjectMasthead({
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-x-6">
-                <div className="min-w-0 sm:flex-1">
-                  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-                    <h1
-                      className="font-display text-2xl sm:text-[28px] leading-tight font-bold text-gray-900 dark:text-gray-100 cursor-text hover:underline decoration-gray-300 dark:decoration-gray-600 underline-offset-4 break-words"
-                      onClick={startEditing}
-                      title="Click to edit"
-                    >
-                      {name}
-                    </h1>
-                    <StatusBadge isLive={isLive} visibility={projectVisibility} />
-                  </div>
-                  <p
-                    className={`mt-1 text-sm cursor-text max-w-2xl ${description ? 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200' : 'text-gray-400 dark:text-gray-500 italic hover:text-gray-600 dark:hover:text-gray-300'} transition-colors`}
+              <>
+              {/* Title row: name + status on the left, actions on the right.
+                  The description sits below the row so it can use the full
+                  column width instead of wrapping beside the buttons. */}
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-x-6">
+                <div className="min-w-0 sm:flex-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                  <h1
+                    className="font-display text-2xl sm:text-[28px] leading-tight font-bold text-gray-900 dark:text-gray-100 cursor-text hover:underline decoration-gray-300 dark:decoration-gray-600 underline-offset-4 break-words"
                     onClick={startEditing}
                     title="Click to edit"
                   >
-                    {description || 'Add a description…'}
-                  </p>
+                    {name}
+                  </h1>
+                  <StatusBadge isLive={isLive} visibility={projectVisibility} />
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -360,6 +355,14 @@ export function ProjectMasthead({
                   </Link>
                 </div>
               </div>
+              <p
+                className={`mt-2 text-sm leading-relaxed cursor-text ${description ? 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200' : 'text-gray-400 dark:text-gray-500 italic hover:text-gray-600 dark:hover:text-gray-300'} transition-colors`}
+                onClick={startEditing}
+                title="Click to edit"
+              >
+                {description || 'Add a description…'}
+              </p>
+              </>
             )}
 
             {!editing && (
