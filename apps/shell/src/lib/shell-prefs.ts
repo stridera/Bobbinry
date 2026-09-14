@@ -242,11 +242,19 @@ export function startShellPrefsSync(token: string): () => void {
         const merged: ShellPrefs = {}
         const namespaces = new Set([...Object.keys(local), ...Object.keys(server)]) as Set<ShellPrefNamespace>
         for (const ns of namespaces) {
-          merged[ns] = { ...(local[ns] ?? {}), ...(server[ns] ?? {}) }
+          const bucket: Record<string, unknown> = { ...(local[ns] ?? {}), ...(server[ns] ?? {}) }
           // Keys only this browser knows about go up so the next device sees them.
           for (const [key, value] of Object.entries(local[ns] ?? {})) {
             if (server[ns]?.[key] === undefined) (pending[ns] ??= {})[key] = value
           }
+          // Writes made while this fetch was in flight are newer than anything
+          // the server returned; keep them or a cold load's first interaction
+          // (e.g. a dashboard tab switching the rail) snaps back on arrival.
+          for (const [key, value] of Object.entries(pending[ns] ?? {})) {
+            if (value === null) delete bucket[key]
+            else bucket[key] = value
+          }
+          merged[ns] = bucket
         }
         prefs = merged
         // The server copy may predate sanitizing; clean it here too and queue

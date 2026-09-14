@@ -60,6 +60,11 @@ interface ChapterOverviewProps {
   trashedCount: number
   projectId: string
   readerBaseUrl: string | null
+  /**
+   * Show the Published / Reactions / Comments / Feedback columns. Off for
+   * projects that aren't live, where every cell would be a placeholder dot.
+   */
+  showEngagement: boolean
   onStatusChange?: () => void
 }
 
@@ -200,7 +205,7 @@ function daysUntil(iso: string | null): number {
   return Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000))
 }
 
-export function ChapterOverview({ chapters, trashedCount, projectId, readerBaseUrl, onStatusChange }: ChapterOverviewProps) {
+export function ChapterOverview({ chapters, trashedCount, projectId, readerBaseUrl, showEngagement, onStatusChange }: ChapterOverviewProps) {
   const { data: session } = useSession()
   const token = session?.apiToken
 
@@ -255,10 +260,11 @@ export function ChapterOverview({ chapters, trashedCount, projectId, readerBaseU
     return { all, manuscript, outlines, reference, archived }
   }, [localChapters])
 
-  // The Archived view hides the engagement columns, so a sort on one of them
-  // falls back to book order there.
+  // The Archived view and draft projects hide the engagement columns, so a
+  // sort on one of them falls back to book order there.
+  const engagementVisible = showEngagement && filter !== 'archived'
   const activeSort: { key: SortKey; dir: SortDir } =
-    filter === 'archived' && ENGAGEMENT_SORTS.has(sort.key) ? { key: 'position', dir: 'asc' } : sort
+    !engagementVisible && ENGAGEMENT_SORTS.has(sort.key) ? { key: 'position', dir: 'asc' } : sort
 
   const inBookOrder = useMemo(
     () => localChapters
@@ -635,7 +641,7 @@ export function ChapterOverview({ chapters, trashedCount, projectId, readerBaseU
                 <th className="py-2.5 pr-4 text-left align-middle border-b border-gray-200 dark:border-gray-700" aria-sort={ariaSort('status')}>
                   <SortHeader label="Status" {...sortProps('status')} />
                 </th>
-                {!showingArchived && (
+                {engagementVisible && (
                   <>
                     <th className="py-2.5 pr-4 text-left align-middle border-b border-gray-200 dark:border-gray-700" aria-sort={ariaSort('published')}>
                       <SortHeader label="Published" {...sortProps('published')} />
@@ -665,6 +671,7 @@ export function ChapterOverview({ chapters, trashedCount, projectId, readerBaseU
                     selected={selectedIds.has(chapter.id)}
                     onToggleSelect={() => toggleOne(chapter.id)}
                     showingArchived={showingArchived}
+                    showEngagement={engagementVisible}
                     actionLoading={actionInProgress === chapter.id}
                     onToggleStatus={toggleStatus}
                     dndEnabled={dndEnabled}
@@ -774,6 +781,7 @@ interface ChapterRowProps {
   selected: boolean
   onToggleSelect: () => void
   showingArchived: boolean
+  showEngagement: boolean
   actionLoading: boolean
   onToggleStatus: (id: string, currentStatus: string) => void
   dndEnabled: boolean
@@ -785,7 +793,7 @@ interface ChapterRowProps {
 
 function ChapterRow({
   chapter, bookNumber, projectId, readerBaseUrl, selected, onToggleSelect,
-  showingArchived, actionLoading, onToggleStatus, dndEnabled,
+  showingArchived, showEngagement, actionLoading, onToggleStatus, dndEnabled,
   typeMenuOpen, onOpenTypeMenu, onCloseTypeMenu, onChangeContentType,
 }: ChapterRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
@@ -928,7 +936,7 @@ function ChapterRow({
           )}
         </div>
       </td>
-      {!showingArchived && (
+      {showEngagement && (
         <>
           <td className="py-2.5 pr-4 text-xs text-gray-500 dark:text-gray-400 tabular-nums whitespace-nowrap">
             {publishedAt ? new Date(publishedAt).toLocaleDateString() : <span className="text-gray-300 dark:text-gray-600">·</span>}

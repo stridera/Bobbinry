@@ -1,61 +1,23 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useSession } from 'next-auth/react'
+import { useState, useCallback } from 'react'
 import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
 import { CollapsibleCard } from './CollapsibleCard'
+import { useBackupStatus, type BackupStatus } from './useBackupStatus'
 
 interface ProjectBackupProps {
   projectId: string
-}
-
-interface BackupStatus {
-  connection: {
-    connected: boolean
-    driveEmail?: string | null
-    rootFolderName?: string | null
-    rootFolderId?: string | null
-  }
-  projects: Array<{
-    id: string
-    isBackedUp: boolean
-    lastSyncedAt: string | null
-    lastSyncStatus: string | null
-    lastSyncError: string | null
-    driveFolderId?: string | null
-  }>
 }
 
 const driveFolderUrl = (folderId?: string | null) =>
   folderId ? `https://drive.google.com/drive/folders/${folderId}` : null
 
 export function ProjectBackup({ projectId }: ProjectBackupProps) {
-  const { data: session } = useSession()
-  const apiToken = session?.apiToken as string | undefined
-
-  const [status, setStatus] = useState<BackupStatus | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { status, setStatus, loading, reload: loadStatus, apiToken } = useBackupStatus()
   const [syncing, setSyncing] = useState(false)
   const [toggling, setToggling] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
-
-  const loadStatus = useCallback(async () => {
-    if (!apiToken) return
-    try {
-      const res = await apiFetch('/api/backups/status', apiToken)
-      if (res.ok) setStatus(await res.json())
-    } catch (err) {
-      console.error('Failed to load backup status:', err)
-    } finally {
-      setLoading(false)
-    }
-  }, [apiToken])
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch
-    if (apiToken) loadStatus()
-  }, [apiToken, loadStatus])
 
   const connection = status?.connection
   const project = status?.projects?.find(p => p.id === projectId)
@@ -96,7 +58,7 @@ export function ProjectBackup({ projectId }: ProjectBackupProps) {
       if (s === 'success' || s === 'partial' || s === 'failed') return s
     }
     return 'timeout'
-  }, [apiToken, projectId])
+  }, [apiToken, projectId, setStatus])
 
   const handleSyncNow = async () => {
     if (!apiToken || syncing) return
@@ -147,6 +109,8 @@ export function ProjectBackup({ projectId }: ProjectBackupProps) {
   return (
     <CollapsibleCard
       title="Backup"
+      id="backup"
+      collapsible={false}
       headerAccessory={
         connection?.connected ? (
           <span

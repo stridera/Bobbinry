@@ -2,36 +2,27 @@
 
 import { useState } from 'react'
 import { useSession } from 'next-auth/react'
+import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
 import { ConfirmModal } from '@bobbinry/sdk'
 import { CollapsibleCard } from './CollapsibleCard'
 
-interface Bobbin {
-  id: string
-  bobbinId: string
-  version: string
-  manifest: {
-    name: string
-    description: string
-    core?: boolean
-  }
-}
-
 interface ProjectManagementProps {
   projectId: string
   isArchived: boolean
-  bobbins: Bobbin[]
   onArchiveChange: (isArchived: boolean) => void
-  onBobbinUninstall: (bobbinId: string) => void
   onDelete?: () => void
 }
 
 type ConfirmAction =
   | { type: 'archive' }
   | { type: 'delete' }
-  | { type: 'uninstall'; bobbinId: string; bobbinName: string }
 
-export function ProjectManagement({ projectId, isArchived, bobbins, onArchiveChange, onBobbinUninstall, onDelete }: ProjectManagementProps) {
+/**
+ * Archive and trash. Installed-bobbin management lives on the project's
+ * Bobbins page, which already handles install and uninstall.
+ */
+export function ProjectManagement({ projectId, isArchived, onArchiveChange, onDelete }: ProjectManagementProps) {
   const { data: session } = useSession()
   const [success, setSuccess] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -75,22 +66,11 @@ export function ProjectManagement({ projectId, isArchived, bobbins, onArchiveCha
           }
           break
         }
-        case 'uninstall': {
-          const response = await apiFetch(`/api/projects/${projectId}/bobbins/${confirmAction.bobbinId}`, session.apiToken, { method: 'DELETE' })
-          if (response.ok) {
-            onBobbinUninstall(confirmAction.bobbinId)
-            showMessage('Bobbin uninstalled successfully', 'success')
-          } else {
-            throw new Error()
-          }
-          break
-        }
       }
     } catch {
       const messages = {
         archive: 'Failed to archive/unarchive project',
         delete: 'Failed to delete project',
-        uninstall: 'Failed to uninstall bobbin',
       }
       showMessage(messages[confirmAction.type], 'error')
     } finally {
@@ -118,19 +98,12 @@ export function ProjectManagement({ projectId, isArchived, bobbins, onArchiveCha
           confirmLabel: isArchived ? 'Unarchive' : 'Archive',
           variant: 'warning' as const,
         }
-      case 'uninstall':
-        return {
-          title: 'Uninstall Bobbin',
-          description: `Remove "${confirmAction.bobbinName}" from this project? Associated data will be preserved but views will be removed.`,
-          confirmLabel: 'Uninstall',
-          variant: 'danger' as const,
-        }
     }
   })()
 
   return (
     <>
-      <CollapsibleCard title="Project Management">
+      <CollapsibleCard title="Project" id="project" collapsible={false}>
         <div className="space-y-6">
             {/* Messages */}
             {success && (
@@ -144,56 +117,13 @@ export function ProjectManagement({ projectId, isArchived, bobbins, onArchiveCha
               </div>
             )}
 
-            {/* Installed Bobbins */}
+            {/* Bobbins */}
             <div>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Installed Bobbins</h3>
-                <a
-                  href={`/projects/${projectId}/bobbins`}
-                  className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
-                >
-                  Browse Bobbins
-                </a>
-              </div>
-              {bobbins.length === 0 ? (
-                <p className="text-sm text-gray-500 dark:text-gray-400 italic">No bobbins installed yet.</p>
-              ) : (
-                <div className="space-y-2">
-                  {bobbins.map((bobbin) => (
-                    <div key={bobbin.id} className="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-medium text-sm text-gray-900 dark:text-gray-100">{bobbin.manifest.name}</h4>
-                          {bobbin.manifest.core && (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-                              Core
-                            </span>
-                          )}
-                        </div>
-                        {bobbin.manifest.description && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">{bobbin.manifest.description}</p>
-                        )}
-                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">v{bobbin.version}</p>
-                      </div>
-                      {bobbin.manifest.core ? (
-                        <span
-                          className="ml-3 px-3 py-1.5 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded-lg text-xs select-none"
-                          title="Core bobbins are built in and cannot be uninstalled"
-                        >
-                          Built in
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => setConfirmAction({ type: 'uninstall', bobbinId: bobbin.id, bobbinName: bobbin.manifest.name })}
-                          className="ml-3 px-3 py-1.5 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 border border-red-200 dark:border-red-800 rounded-lg hover:border-red-300 dark:hover:border-red-700 transition-colors text-xs cursor-pointer"
-                        >
-                          Uninstall
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Bobbins</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Install, update, and uninstall this project&rsquo;s bobbins on the{' '}
+                <Link href={`/projects/${projectId}/bobbins`} className="text-blue-600 dark:text-blue-400 hover:underline">Bobbins page</Link>.
+              </p>
             </div>
 
             {/* Archive */}

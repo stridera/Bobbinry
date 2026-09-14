@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import type { ReaderThemeClasses } from './reader-theme'
 import { MAX_REPLY_DEPTH, type Comment } from './types'
@@ -17,6 +17,19 @@ export function CommentsSection({ theme, comments, signedIn, onPost }: CommentsS
   const [newComment, setNewComment] = useState('')
   const [replyingTo, setReplyingTo] = useState<string | null>(null)
   const [replyContent, setReplyContent] = useState('')
+
+  // Deep links from the author's dashboard arrive as #comment-<id>. Comments
+  // load after the page, so the browser's own hash scroll fires too early.
+  useEffect(() => {
+    const hash = typeof window !== 'undefined' ? window.location.hash : ''
+    if (!hash.startsWith('#comment-') || comments.length === 0) return
+    const el = document.getElementById(hash.slice(1))
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.classList.add('ring-2', 'ring-blue-400/60', 'rounded-md')
+    const timer = setTimeout(() => el.classList.remove('ring-2', 'ring-blue-400/60', 'rounded-md'), 2500)
+    return () => clearTimeout(timer)
+  }, [comments])
 
   const post = async (parentId?: string) => {
     const content = (parentId ? replyContent : newComment).trim()
@@ -108,7 +121,7 @@ export function CommentThread({
 
   return (
     <div className={depth > 0 ? `ml-6 pl-4 border-l-2 ${borderColor}` : ''}>
-      <div className="text-sm">
+      <div id={`comment-${comment.id}`} className="text-sm scroll-mt-24 transition-shadow">
         <div className="flex items-center gap-2 mb-1">
           <span className="font-medium">{comment.authorName || 'Anonymous'}</span>
           <span className={`${mutedText} text-xs`}>

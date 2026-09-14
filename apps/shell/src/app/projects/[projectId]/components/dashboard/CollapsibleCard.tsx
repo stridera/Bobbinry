@@ -5,6 +5,8 @@ import { useState, useEffect, useRef, type ReactNode } from 'react'
 interface CollapsibleCardProps {
   title: string
   defaultExpanded?: boolean
+  /** When false, renders a plain always-open card with the same chrome. */
+  collapsible?: boolean
   /** Non-interactive content (e.g. a status badge) shown beside the title in the header. */
   headerAccessory?: ReactNode
   /** Anchor id: navigating to #<id> expands the card and scrolls it into view. */
@@ -12,8 +14,8 @@ interface CollapsibleCardProps {
   children: ReactNode
 }
 
-export function CollapsibleCard({ title, defaultExpanded = false, headerAccessory, id, children }: CollapsibleCardProps) {
-  const [expanded, setExpanded] = useState(defaultExpanded)
+export function CollapsibleCard({ title, defaultExpanded = false, collapsible = true, headerAccessory, id, children }: CollapsibleCardProps) {
+  const [expanded, setExpanded] = useState(defaultExpanded || !collapsible)
   const cardRef = useRef<HTMLDivElement>(null)
 
   // Deep-link support: #<id> in the URL (on load or via in-page navigation)
@@ -47,27 +49,35 @@ export function CollapsibleCard({ title, defaultExpanded = false, headerAccessor
     }
   }, [id])
 
+  const heading = (
+    <span className="flex items-center gap-2">
+      <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
+      {headerAccessory}
+    </span>
+  )
+
   return (
-    <div ref={cardRef} id={id} className="scroll-mt-6 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 animate-fade-in">
-      <button
-        onClick={() => setExpanded(v => !v)}
-        aria-expanded={expanded}
-        className="w-full flex items-center justify-between p-6 cursor-pointer"
-      >
-        <span className="flex items-center gap-2">
-          <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
-          {headerAccessory}
-        </span>
-        <svg
-          className={`w-5 h-5 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
-          fill="none" stroke="currentColor" viewBox="0 0 24 24"
+    <div ref={cardRef} id={id} className="scroll-mt-20 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 animate-fade-in">
+      {collapsible ? (
+        <button
+          onClick={() => setExpanded(v => !v)}
+          aria-expanded={expanded}
+          className="w-full flex items-center justify-between p-6 cursor-pointer"
         >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
+          {heading}
+          <svg
+            className={`w-5 h-5 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
+            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      ) : (
+        <div className="flex items-center justify-between p-6 pb-4">{heading}</div>
+      )}
 
       {expanded && (
-        <div className="px-6 pb-6 border-t border-gray-100 dark:border-gray-700 pt-4">
+        <div className={`px-6 pb-6 ${collapsible ? 'border-t border-gray-100 dark:border-gray-700 pt-4' : ''}`}>
           {children}
         </div>
       )}

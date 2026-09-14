@@ -157,7 +157,7 @@ export function ExportProject({ projectId, projectName, totalChapters }: ExportP
   const hasContent = totalChapters > 0
 
   return (
-    <CollapsibleCard title="Export">
+    <CollapsibleCard title="Export" id="export" collapsible={false}>
       <p className="text-sm text-gray-500 dark:text-gray-400">
         {hasContent
           ? `Download your manuscript in multiple formats (${totalChapters} chapter${totalChapters === 1 ? '' : 's'})`

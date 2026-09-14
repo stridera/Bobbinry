@@ -26,9 +26,14 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 const CATEGORIES = ['genre', 'theme', 'trope', 'setting', 'custom'] as const
 
+/**
+ * Rail section for discovery tags. Read mode is a flat chip cloud; a single
+ * "Edit" toggle reveals the remove buttons and the add form. Tags are a
+ * set-once thing, so the editing affordances stay out of the way.
+ */
 export function TagsEditor({ projectId, tags, onTagsChange }: TagsEditorProps) {
   const { data: session } = useSession()
-  const [showAdd, setShowAdd] = useState(false)
+  const [editing, setEditing] = useState(false)
   const [newCategory, setNewCategory] = useState<string>('genre')
   const [newName, setNewName] = useState('')
   const [adding, setAdding] = useState(false)
@@ -68,7 +73,6 @@ export function TagsEditor({ projectId, tags, onTagsChange }: TagsEditorProps) {
       // Replace temp with real tag
       onTagsChange(tags.filter(t => t.id !== tempId).concat(data.tag))
       setNewName('')
-      setShowAdd(false)
     } catch {
       onTagsChange(tags)
       setError('Failed to add tag')
@@ -96,93 +100,82 @@ export function TagsEditor({ projectId, tags, onTagsChange }: TagsEditorProps) {
     }
   }
 
-  // Group by category
-  const grouped = CATEGORIES.reduce((acc, cat) => {
-    const catTags = tags.filter(t => t.tagCategory === cat)
-    if (catTags.length > 0) acc.push({ category: cat, tags: catTags })
-    return acc
-  }, [] as Array<{ category: string; tags: Tag[] }>)
+  // Keep category order stable so the cloud doesn't reshuffle on every add.
+  const ordered = CATEGORIES.flatMap(cat => tags.filter(t => t.tagCategory === cat))
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 animate-fade-in">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100">Tags</h2>
+    <section>
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Tags</h2>
         <button
-          onClick={() => setShowAdd(!showAdd)}
-          className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors cursor-pointer"
+          onClick={() => { setEditing(v => !v); setError(null) }}
+          className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors cursor-pointer"
         >
-          {showAdd ? 'Cancel' : '+ Add Tag'}
+          {editing ? 'Done' : 'Edit'}
         </button>
       </div>
 
-      {showAdd && (
-        <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
-          <div className="flex gap-2 items-end">
-            <div className="flex-shrink-0">
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Category</label>
-              <select
-                value={newCategory}
-                onChange={(e) => setNewCategory(e.target.value)}
-                className="px-3 py-2 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/40 outline-none"
-              >
-                {CATEGORIES.map(cat => (
-                  <option key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
-                ))}
-              </select>
-            </div>
-            <div className="flex-1">
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Tag Name</label>
-              <input
-                type="text"
-                value={newName}
-                onChange={(e) => { setNewName(e.target.value); setError(null) }}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleAdd() }}
-                placeholder="e.g. Fantasy, Romance..."
-                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/40 outline-none"
-              />
-            </div>
-            <button
-              onClick={handleAdd}
-              disabled={adding || !newName.trim()}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 transition-colors cursor-pointer"
-            >
-              {adding ? 'Adding...' : 'Add'}
-            </button>
-          </div>
-          {error && <p className="text-xs text-red-600 dark:text-red-400 mt-2">{error}</p>}
-        </div>
-      )}
-
-      {tags.length === 0 ? (
-        <p className="text-sm text-gray-500 dark:text-gray-400 italic">No tags yet. Add tags to help readers discover your project.</p>
+      {ordered.length === 0 && !editing ? (
+        <p className="text-sm text-gray-400 dark:text-gray-500">
+          No tags yet. Tags help readers find your project.
+        </p>
       ) : (
-        <div className="space-y-3">
-          {grouped.map(({ category, tags: catTags }) => (
-            <div key={category}>
-              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">
-                {category}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {catTags.map(tag => (
-                  <span
-                    key={tag.id}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${CATEGORY_COLORS[tag.tagCategory] || CATEGORY_COLORS.custom}`}
-                  >
-                    {tag.tagName}
-                    <button
-                      onClick={() => handleRemove(tag.id)}
-                      className="ml-0.5 hover:opacity-70 transition-opacity cursor-pointer"
-                      title="Remove tag"
-                    >
-                      &times;
-                    </button>
-                  </span>
-                ))}
-              </div>
-            </div>
+        <div className="flex flex-wrap gap-1.5">
+          {ordered.map(tag => (
+            <span
+              key={tag.id}
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${CATEGORY_COLORS[tag.tagCategory] || CATEGORY_COLORS.custom}`}
+              title={tag.tagCategory}
+            >
+              {tag.tagName}
+              {editing && (
+                <button
+                  onClick={() => handleRemove(tag.id)}
+                  className="ml-0.5 -mr-0.5 hover:opacity-70 transition-opacity cursor-pointer"
+                  title="Remove tag"
+                  aria-label={`Remove ${tag.tagName}`}
+                >
+                  &times;
+                </button>
+              )}
+            </span>
           ))}
         </div>
       )}
-    </div>
+
+      {editing && (
+        <div className="mt-3 space-y-2">
+          <div className="flex gap-1.5">
+            <select
+              value={newCategory}
+              onChange={(e) => setNewCategory(e.target.value)}
+              className="shrink-0 px-2 py-1.5 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-md text-xs focus:ring-2 focus:ring-blue-500/40 outline-none"
+              aria-label="Tag category"
+            >
+              {CATEGORIES.map(cat => (
+                <option key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => { setNewName(e.target.value); setError(null) }}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleAdd() }}
+              placeholder="Add a tag…"
+              aria-label="Tag name"
+              className="min-w-0 flex-1 px-2 py-1.5 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-md text-xs focus:ring-2 focus:ring-blue-500/40 outline-none"
+            />
+            <button
+              onClick={handleAdd}
+              disabled={adding || !newName.trim()}
+              className="shrink-0 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white rounded-md text-xs font-medium disabled:opacity-50 transition-colors cursor-pointer"
+            >
+              Add
+            </button>
+          </div>
+          {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+        </div>
+      )}
+    </section>
   )
 }

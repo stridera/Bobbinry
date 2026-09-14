@@ -86,6 +86,7 @@ describe('Project Tags & Dashboard API', () => {
       expect((await inject('POST', `/api/projects/${project.id}/tags`, undefined, { tagCategory: 'genre', tagName: 'Fantasy' })).statusCode).toBe(401)
       expect((await inject('DELETE', `/api/projects/${project.id}/tags/00000000-0000-0000-0000-000000000000`)).statusCode).toBe(401)
       expect((await inject('GET', `/api/projects/${project.id}/dashboard`)).statusCode).toBe(401)
+      expect((await inject('GET', `/api/projects/${project.id}/summary`)).statusCode).toBe(401)
     })
 
     it('returns the exact 403 refusal for a non-owner on every route', async () => {
@@ -113,6 +114,10 @@ describe('Project Tags & Dashboard API', () => {
       const dash = await inject('GET', `/api/projects/${project.id}/dashboard`, strangerToken)
       expect(dash.statusCode).toBe(403)
       expect(JSON.parse(dash.payload)).toEqual(expected403)
+
+      const summary = await inject('GET', `/api/projects/${project.id}/summary`, strangerToken)
+      expect(summary.statusCode).toBe(403)
+      expect(JSON.parse(summary.payload)).toEqual(expected403)
     })
 
     it('returns 400 for a malformed projectId and 404 for a well-formed unknown one', async () => {
@@ -471,6 +476,108 @@ describe('Project Tags & Dashboard API', () => {
       expect(ch.annotationCount).toBe(1)
 
       expect(body.annotationStats).toEqual({ open: 1, acknowledged: 0, resolved: 1, dismissed: 0, total: 2 })
+    })
+  })
+
+  // ============================================
+  // DASHBOARD: activity feed (recent comments, open annotations)
+  // ============================================
+
+  describe('dashboard activity feed', () => {
+    it('lists approved comments and unresolved annotations newest first, with author names and snippets', async () => {
+      const { token, user } = await verifiedUser()
+      const project = await createTestProject(user.id)
+      const reader = await createTestUser({ name: 'Rae Reader' })
+
+      const chapter = await createEntity(project.id, { entityData: { title: 'Ch 1', order: 1 } })
+      const trashed = await createEntity(project.id, { entityData: { title: 'Gone' }, deletedAt: new Date() })
+
+      const t = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000)
+      await db.insert(comments).values([
+        { chapterId: chapter.id, authorId: reader.id, content: 'Older', moderationStatus: 'approved', createdAt: t(30) },
+        { chapterId: chapter.id, authorId: reader.id, content: 'x'.repeat(300), moderationStatus: 'approved', createdAt: t(5) },
+        { chapterId: chapter.id, authorId: reader.id, content: 'Hidden', moderationStatus: 'pending', createdAt: t(1) },
+        { chapterId: trashed.id, authorId: reader.id, content: 'On a trashed chapter', moderationStatus: 'approved', createdAt: t(0) }
+      ])
+      await db.insert(chapterAnnotations).values([
+        {
+          chapterId: chapter.id, projectId: project.id, authorId: reader.id,
+          anchorQuote: 'quote', annotationType: 'error', errorCategory: 'typo', status: 'open', chapterVersion: 1,
+          content: 'Typo here', createdAt: t(20)
+        },
+        {
+          chapterId: chapter.id, projectId: project.id, authorId: reader.id,
+          anchorQuote: 'quote', annotationType: 'suggestion', status: 'acknowledged', chapterVersion: 1,
+          content: 'Try this', createdAt: t(10)
+        },
+        {
+          chapterId: chapter.id, projectId: project.id, authorId: reader.id,
+          anchorQuote: 'quote', annotationType: 'feedback', status: 'resolved', chapterVersion: 1,
+          content: 'Done already', createdAt: t(2)
+        }
+      ])
+
+      const res = await inject('GET', `/api/projects/${project.id}/dashboard`, token)
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.payload)
+
+      // Pending comments and comments on trashed chapters are not activity.
+      expect(body.recentComments.map((c: any) => c.content.length > 20 ? 'long' : c.content)).toEqual(['long', 'Older'])
+      expect(body.recentComments[0]).toMatchObject({ chapterId: chapter.id, authorName: 'Rae Reader', parentId: null })
+      // Snippets end in an ellipsis and stay under the cap.
+      expect(body.recentComments[0].content.endsWith('…')).toBe(true)
+      expect(body.recentComments[0].content.length).toBeLessThanOrEqual(240)
+
+      // Only open and acknowledged annotations, newest first.
+      expect(body.openAnnotations.map((a: any) => a.content)).toEqual(['Try this', 'Typo here'])
+      expect(body.openAnnotations[1]).toMatchObject({
+        chapterId: chapter.id, authorName: 'Rae Reader', annotationType: 'error', errorCategory: 'typo', status: 'open'
+      })
+    })
+  })
+
+  // ============================================
+  // SUMMARY: the header slice of the dashboard
+  // ============================================
+
+  describe('project summary', () => {
+    it('returns the header fields and agrees with the dashboard on bobbins, counts, and annotation totals', async () => {
+      const { token, user } = await verifiedUser()
+      const project = await createTestProject(user.id, { name: 'Summary Project' })
+      const reader = await createTestUser()
+      await installBobbin(project.id, 'entities')
+      await createEntity(project.id, { bobbinId: 'entities', collectionName: 'characters', contentType: null, entityData: { name: 'Ann' } })
+      const chapter = await createEntity(project.id, { entityData: { title: 'Ch 1' } })
+      await db.insert(chapterAnnotations).values([{
+        chapterId: chapter.id, projectId: project.id, authorId: reader.id,
+        anchorQuote: 'q', annotationType: 'feedback', status: 'open', chapterVersion: 1, content: 'n'
+      }])
+
+      const [summaryRes, dashRes] = await Promise.all([
+        inject('GET', `/api/projects/${project.id}/summary`, token),
+        inject('GET', `/api/projects/${project.id}/dashboard`, token)
+      ])
+      expect(summaryRes.statusCode).toBe(200)
+      const summary = JSON.parse(summaryRes.payload)
+      const dash = JSON.parse(dashRes.payload)
+
+      expect(summary.project).toEqual({
+        id: project.id, name: 'Summary Project', coverImage: null, shortUrl: null, isArchived: false
+      })
+      expect(summary.publishConfig).toEqual({ publishingMode: 'draft', projectVisibility: undefined, enableAnnotations: false })
+      expect(summary.bobbins).toEqual(dash.bobbins)
+      expect(summary.bobbinStats).toEqual(dash.bobbinStats)
+      expect(summary.bobbinStats.entities).toBe(1)
+      expect(summary.annotationStats).toEqual(dash.annotationStats)
+      expect(summary.annotationStats.open).toBe(1)
+      // No chapter bodies ride along.
+      expect(summary.chapters).toBeUndefined()
+    })
+
+    it('returns 404 for a well-formed unknown project', async () => {
+      const { token } = await verifiedUser()
+      const res = await inject('GET', '/api/projects/00000000-0000-0000-0000-000000000000/summary', token)
+      expect(res.statusCode).toBe(404)
     })
   })
 
