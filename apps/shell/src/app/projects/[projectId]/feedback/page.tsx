@@ -508,9 +508,9 @@ function FeedbackDashboardContent() {
                       {/* Links — pushed to the right */}
                       <div className="flex items-center gap-1 ml-auto">
                         <Link
-                          href={`/projects/${projectId}/write`}
+                          href={`/projects/${projectId}/manuscript/content/${ann.chapterId}`}
                           className="text-xs px-2 py-1 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex items-center gap-1"
-                          title="Open in manuscript editor"
+                          title="Open this chapter in the manuscript editor"
                         >
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
