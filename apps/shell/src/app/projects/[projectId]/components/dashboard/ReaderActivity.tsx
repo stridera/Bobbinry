@@ -206,10 +206,18 @@ export function ReaderActivity({
   )
 }
 
+const ERROR_CATEGORY_PHRASES: Record<string, string> = {
+  typo: 'reported a typo in',
+  grammar: 'reported a grammar issue in',
+  formatting: 'reported a formatting issue in',
+  continuity: 'reported a continuity issue in',
+  other: 'reported an error in',
+}
+
 function annotationVerb(a: OpenAnnotation): string {
   switch (a.annotationType) {
     case 'error':
-      return a.errorCategory ? `reported a ${a.errorCategory.replace(/_/g, ' ')} in` : 'reported an error in'
+      return (a.errorCategory && ERROR_CATEGORY_PHRASES[a.errorCategory]) || 'reported an error in'
     case 'suggestion':
       return 'suggested a change to'
     default:
