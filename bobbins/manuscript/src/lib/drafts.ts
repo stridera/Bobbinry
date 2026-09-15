@@ -17,6 +17,7 @@ export interface DraftEntry {
   timestamp: number
   version: number | null
   containerId: string | null
+  contentType?: string
 }
 
 export function getDraftKey(entityId: string): string {
@@ -26,6 +27,7 @@ export function getDraftKey(entityId: string): string {
 export function saveDraft(entityId: string, draft: Partial<DraftEntry> & { html: string }) {
   try {
     const existing = loadDraft(entityId)
+    const contentType = draft.contentType ?? existing?.contentType
     const entry: DraftEntry = {
       html: draft.html,
       title: draft.title ?? existing?.title ?? '',
@@ -34,6 +36,26 @@ export function saveDraft(entityId: string, draft: Partial<DraftEntry> & { html:
       timestamp: Date.now(),
       version: draft.version !== undefined ? draft.version : (existing?.version ?? null),
       containerId: draft.containerId !== undefined ? draft.containerId : (existing?.containerId ?? null),
+      ...(contentType !== undefined ? { contentType } : {}),
+    }
+    localStorage.setItem(getDraftKey(entityId), JSON.stringify(entry))
+  } catch {
+    // localStorage full or unavailable — degrade gracefully
+  }
+}
+
+/**
+ * Patch fields onto an already-existing draft without touching `html`. No-op
+ * if there is no draft for this entity yet (there's nothing to patch onto).
+ */
+export function patchDraft(entityId: string, patch: Partial<Omit<DraftEntry, 'html'>>) {
+  try {
+    const existing = loadDraft(entityId)
+    if (!existing) return
+    const entry: DraftEntry = {
+      ...existing,
+      ...patch,
+      timestamp: Date.now(),
     }
     localStorage.setItem(getDraftKey(entityId), JSON.stringify(entry))
   } catch {

@@ -244,7 +244,7 @@ export function build(opts = {}): FastifyInstance {
     // Optimistic-locking version headers from the HEAD /entities/:id route.
     // Without this the browser hides them from cross-origin JS and the SDK's
     // getVersion() can't read the real version.
-    exposedHeaders: ['X-Entity-Version', 'X-Entity-Updated-At']
+    exposedHeaders: ['X-Entity-Version', 'X-Entity-Updated-At', 'X-Entity-Content-Type']
   })
 
   // Health check endpoint with database connectivity

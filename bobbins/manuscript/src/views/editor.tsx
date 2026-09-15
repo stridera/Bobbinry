@@ -21,7 +21,7 @@ import { EntityHighlight } from '../extensions/entity-highlight'
 import { SearchHighlight } from '../extensions/search-highlight'
 import { SmartTypography } from '../extensions/smart-typography'
 import { useDisplaySettings } from './display-settings'
-import { loadDraft, saveDraft } from '../lib/drafts'
+import { loadDraft, patchDraft, saveDraft } from '../lib/drafts'
 import { getParentOrigin } from '../lib/editor-types'
 import { EditorToolbar } from '../components/EditorToolbar'
 import { SaveIndicator } from '../components/SaveIndicator'
@@ -284,7 +284,9 @@ export default function EditorView({ sdk, projectId, entityType, entityId, metad
     setContentTypeMenuOpen(false)
     try {
       const result = await sdk.entities.setContentType(entityId, next)
+      const stored = isContentType(result.contentType) ? result.contentType : next
       if (isContentType(result.contentType)) setContentType(result.contentType)
+      patchDraft(entityId, { contentType: stored })
     } catch (err) {
       console.error('[EditorView] Failed to change content type:', err)
       setContentType(previous)

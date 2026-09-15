@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type MutableRefObject } from 'react'
 import type { Editor } from '@tiptap/react'
 import { AuthError, ConflictError, type BobbinrySDK } from '@bobbinry/sdk'
 import { isContentType, sanitizeDisplaySettings, type ContentType, type PartialManuscriptDisplaySettings } from '@bobbinry/types'
-import { getDraftKey, loadDraft, removeDraft, saveDraft, versionDebug, type DraftEntry } from '../lib/drafts'
+import { getDraftKey, loadDraft, patchDraft, removeDraft, saveDraft, versionDebug, type DraftEntry } from '../lib/drafts'
 import { AUTH_TOKEN_RENEWED_EVENT, type ConflictInfo, type SaveStatus } from '../lib/editor-types'
 import { clearPendingHighlight, getPendingSearchHighlight } from '../lib/search-highlight-bridge'
 
@@ -338,6 +338,7 @@ export function useChapterPersistence({
       savedToServer: true,
       version: newVersion,
       containerId: serverContent?.container_id ?? fallbackContainerId,
+      ...(isContentType(serverContent?.contentType) ? { contentType: serverContent.contentType } : {}),
     })
   }
 
@@ -353,6 +354,10 @@ export function useChapterPersistence({
     // --- Fast path: if we have a local draft, show it instantly ---
     if (draft && draft.html && draft.html !== '<p></p>') {
       applyContent(draft.html, draft.title, draft.wordCount)
+      // A cached draft doesn't necessarily belong to the same content type as
+      // whatever entity was loaded before it — reset state explicitly so a
+      // stale badge can never leak across entities.
+      onContentType(isContentType(draft.contentType) ? draft.contentType : 'chapter')
       versionRef.current = draft.version ?? null
       setSaveStatus(draft.savedToServer ? 'clean' : 'dirty')
       setLoading(false)
@@ -365,6 +370,16 @@ export function useChapterPersistence({
       // Lightweight version check via HEAD — avoids downloading full content
       sdk.entities.getVersion('content', targetEntityId).then((versionInfo) => {
         if (isStale() || !versionInfo) return
+
+        // The HEAD response carries the authoritative content type. Changing
+        // the type doesn't bump `version`, so this is the only signal that
+        // can catch a type change independent of a body/title edit — apply
+        // it (and re-stamp the draft) regardless of whether a save is mid-flight.
+        if (isContentType(versionInfo.contentType)) {
+          onContentType(versionInfo.contentType)
+          patchDraft(targetEntityId, { contentType: versionInfo.contentType })
+        }
+
         const serverVersion = versionInfo.version
 
         // Don't judge against a mid-flight save — its completion re-stamps
@@ -466,6 +481,7 @@ export function useChapterPersistence({
         savedToServer: true,
         version,
         containerId,
+        ...(isContentType(serverContent.contentType) ? { contentType: serverContent.contentType } : {}),
       })
 
       setLoading(false)

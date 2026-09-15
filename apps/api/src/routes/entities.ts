@@ -1371,7 +1371,7 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       const scopeFilter = buildScopeCondition(projectId, collectionIds, userId)
 
       const result = await db
-        .select({ version: entities.version, updatedAt: entities.updatedAt })
+        .select({ version: entities.version, updatedAt: entities.updatedAt, contentType: entities.contentType })
         .from(entities)
         .where(and(
           eq(entities.id, entityId),
@@ -1387,6 +1387,9 @@ const entitiesPlugin: FastifyPluginAsync = async (fastify) => {
       const row = result[0]!
       reply.header('X-Entity-Version', String(row.version))
       reply.header('X-Entity-Updated-At', row.updatedAt.toISOString())
+      if (row.contentType != null) {
+        reply.header('X-Entity-Content-Type', row.contentType)
+      }
       return reply.status(200).send()
     } catch (error) {
       fastify.log.error(error)

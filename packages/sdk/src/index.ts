@@ -458,7 +458,7 @@ export class EntityAPI {
     }
   }
 
-  async getVersion(collection: string, id: string): Promise<{ version: number; updatedAt: string } | null> {
+  async getVersion(collection: string, id: string): Promise<{ version: number; updatedAt: string; contentType?: string } | null> {
     const params = new URLSearchParams({ projectId: this.projectId, collection })
     const response = await this.api.fetch(`/entities/${id}?${params}`, { method: 'HEAD' })
 
@@ -470,6 +470,7 @@ export class EntityAPI {
 
     const version = response.headers.get('X-Entity-Version')
     const updatedAt = response.headers.get('X-Entity-Updated-At')
+    const contentType = response.headers.get('X-Entity-Content-Type')
 
     // A missing header means we can't read the version (e.g. it wasn't
     // CORS-exposed), NOT that the version is 0. Fabricating 0 here made every
@@ -481,7 +482,8 @@ export class EntityAPI {
 
     return {
       version: parseInt(version, 10),
-      updatedAt: updatedAt || new Date().toISOString()
+      updatedAt: updatedAt || new Date().toISOString(),
+      ...(contentType ? { contentType } : {}),
     }
   }
 
