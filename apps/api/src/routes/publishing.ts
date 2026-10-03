@@ -9,12 +9,13 @@ import {
   projectDestinations,
   contentWarnings,
   publishSnapshots,
-  entities
+  entities,
+  projects
 } from '../db/schema'
 import { eq, and, desc, sql } from 'drizzle-orm'
 import { chapterViewStats, getChapterViewStats, EMPTY_CHAPTER_VIEW_STAT } from '../lib/chapter-view-stats'
 import { serverEventBus, contentPublished, contentStatusChange } from '../lib/event-bus'
-import { ensureCurrentSlug, getSlugsForEntities } from '../lib/slugs'
+import { ensureCurrentSlug, getSlugsForEntities, UUID_RE } from '../lib/slugs'
 import {
   getNextAvailableReleaseSlot,
   getProjectReleaseSchedule,
@@ -26,8 +27,13 @@ import {
 import { liveProjectEntity, notDeleted } from '../lib/entity-scope'
 import { getManuscriptOrder, manuscriptPosition } from '../lib/manuscript-order'
 import { sortInReaderOrder } from './reader/shared'
+import { projectHasBetaAudience } from '../lib/chapter-access'
+import { setBetaShared, listShareableChapterIds } from '../lib/beta-share'
 import { pickDefined } from '../lib/pick'
 import { actorKeyFor, captureRevisionSafe } from '../lib/entity-revisions'
+
+/** Upper bound on one bulk beta-share request. */
+const BETA_SHARE_MAX_IDS = 1000
 
 // ============================================
 // PLUGIN
@@ -102,6 +108,8 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
           .set({
             publishStatus,
             isPublished: publishStatus === 'published' || publishStatus === 'scheduled',
+            // Going public ends beta-only sharing, so a later unpublish can't re-expose it.
+            betaShared: false,
             publishedVersion: version,
             publishedAt: baseReleaseDate,
             publicReleaseDate,
@@ -296,6 +304,7 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
             .set({
               publishStatus: 'published',
               isPublished: true,
+              betaShared: false,
               publishedAt: now2,
               publicReleaseDate: now2,
               lastPublishedAt: now2,
@@ -361,6 +370,85 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
     } catch (error) {
       fastify.log.error({ error, correlationId }, 'Failed to revert chapter to draft')
       return reply.status(500).send({ error: 'Failed to revert chapter to draft', correlationId })
+    }
+  })
+
+  // Share an unpublished chapter with beta readers (or stop sharing). Touches
+  // only the flag: publish state, dates and events are left alone.
+  fastify.put<{
+    Params: { projectId: string; chapterId: string }
+    Body: { shared: boolean }
+  }>('/projects/:projectId/chapters/:chapterId/beta-share', {
+    preHandler: [requireAuth, requireVerified, ownsProject()]
+  }, async (request, reply) => {
+    const correlationId = request.id
+    try {
+      const { projectId, chapterId } = request.params
+      const shared = request.body?.shared
+
+      if (typeof shared !== 'boolean') {
+        return reply.status(400).send({ error: 'shared must be a boolean', correlationId })
+      }
+
+      const result = await setBetaShared(projectId, [chapterId], shared)
+      if (result.missingIds.length > 0) {
+        return reply.status(404).send({ error: 'Chapter not found', correlationId })
+      }
+      // Published and scheduled chapters already reach beta readers.
+      if (result.releasedIds.length > 0) {
+        return reply.status(409).send({ error: 'Chapter is already published or scheduled', correlationId })
+      }
+
+      const [publication] = await db
+        .select()
+        .from(chapterPublications)
+        .where(and(eq(chapterPublications.chapterId, chapterId), eq(chapterPublications.projectId, projectId)))
+        .limit(1)
+
+      return reply.send({ publication, correlationId })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to update beta sharing')
+      return reply.status(500).send({ error: 'Failed to update beta sharing', correlationId })
+    }
+  })
+
+  // Share many unpublished chapters at once. Without `chapterIds` it covers
+  // every manuscript chapter in the project. Published and scheduled chapters,
+  // and ids that are not live content of this project, are skipped.
+  fastify.put<{
+    Params: { projectId: string }
+    Body: { shared: boolean; chapterIds?: string[] }
+  }>('/projects/:projectId/chapters/beta-share', {
+    preHandler: [requireAuth, requireVerified, ownsProject()]
+  }, async (request, reply) => {
+    const correlationId = request.id
+    try {
+      const { projectId } = request.params
+      const { shared, chapterIds } = request.body ?? {}
+
+      if (typeof shared !== 'boolean') {
+        return reply.status(400).send({ error: 'shared must be a boolean', correlationId })
+      }
+      if (chapterIds !== undefined) {
+        if (!Array.isArray(chapterIds) || chapterIds.some(id => typeof id !== 'string' || !UUID_RE.test(id))) {
+          return reply.status(400).send({ error: 'chapterIds must be an array of chapter ids', correlationId })
+        }
+        if (chapterIds.length > BETA_SHARE_MAX_IDS) {
+          return reply.status(400).send({ error: `chapterIds is limited to ${BETA_SHARE_MAX_IDS} ids`, correlationId })
+        }
+      }
+
+      const ids = chapterIds ?? await listShareableChapterIds(projectId)
+      const result = await setBetaShared(projectId, ids, shared)
+
+      return reply.send({
+        updated: result.updatedIds.length,
+        skipped: result.releasedIds.length + result.missingIds.length,
+        correlationId,
+      })
+    } catch (error) {
+      fastify.log.error({ error, correlationId }, 'Failed to bulk update beta sharing')
+      return reply.status(500).send({ error: 'Failed to update beta sharing', correlationId })
     }
   })
 
@@ -526,6 +614,15 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
         .where(eq(projectPublishConfig.projectId, projectId))
         .limit(1)
 
+      // Whether chapters can be shared with beta readers to any effect: lets the
+      // chapter panel hide the control for authors who have no beta readers.
+      const [project] = await db
+        .select({ ownerId: projects.ownerId })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1)
+      const hasBetaAudience = project ? await projectHasBetaAudience(projectId, project.ownerId) : false
+
       if (!config) {
         // Return defaults
         return reply.send({
@@ -540,11 +637,12 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
             enableReactions: true,
             moderationMode: 'open'
           },
+          hasBetaAudience,
           correlationId
         })
       }
 
-      return reply.send({ config, correlationId })
+      return reply.send({ config, hasBetaAudience, correlationId })
     } catch (error) {
       fastify.log.error({ error, correlationId }, 'Failed to get publish config')
       return reply.status(500).send({ error: 'Failed to get publish config', correlationId })

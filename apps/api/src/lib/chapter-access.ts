@@ -12,6 +12,7 @@ import {
   chapterPublications,
   betaReaders,
   accessGrants,
+  betaReaderInvites,
   projects,
   subscriptions,
   subscriptionTiers,
@@ -78,6 +79,99 @@ function tierAccess(publishedAt: Date | null, earlyAccessDays: number | null, no
 }
 
 /**
+ * The one beta-reader lookup: an active `beta_readers` row from the project's
+ * own author, scoped to this project or author-wide (NULL project). The author
+ * match matters — a NULL-project row only covers its author's projects, never
+ * another author's. Access decisions must go through here, not re-query.
+ */
+export async function isActiveBetaReader(projectId: string, userId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: betaReaders.id })
+    .from(betaReaders)
+    .innerJoin(projects, and(eq(projects.id, projectId), eq(projects.ownerId, betaReaders.authorId)))
+    .where(and(
+      or(eq(betaReaders.projectId, projectId), isNull(betaReaders.projectId)),
+      eq(betaReaders.readerId, userId),
+      eq(betaReaders.isActive, true),
+    ))
+    .limit(1)
+  return !!row
+}
+
+/**
+ * Whether the viewer belongs to the project's beta audience: the owner, an
+ * active beta reader (this project or author-wide), or the owner previewing as
+ * a beta reader. Resolve once per request and pass the result around — it is
+ * the only gate on author-shared unpublished chapters (`betaShared`).
+ */
+export async function isBetaAudience(
+  projectId: string,
+  userId: string | undefined,
+  simulate?: ViewSimulation,
+): Promise<boolean> {
+  // Owner preview only ever downgrades: a tier simulation is not the audience.
+  if (simulate) return simulate.kind === 'beta'
+  if (!userId) return false
+
+  const [project] = await db
+    .select({ ownerId: projects.ownerId })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1)
+  if (!project) return false
+  if (project.ownerId === userId) return true
+
+  return isActiveBetaReader(projectId, userId)
+}
+
+/**
+ * Whether an unpublished chapter is readable: only when the author shared it
+ * with beta readers and the viewer is in that audience. Published chapters do
+ * not go through here — they follow the normal access rules.
+ */
+export async function canReadUnpublishedChapter(
+  pub: { isPublished: boolean; betaShared: boolean },
+  projectId: string,
+  userId: string | undefined,
+  simulate?: ViewSimulation,
+  betaAudience?: boolean,
+): Promise<boolean> {
+  if (pub.isPublished || !pub.betaShared) return false
+  return betaAudience ?? await isBetaAudience(projectId, userId, simulate)
+}
+
+/**
+ * Whether the project has anyone the author could be sharing with: an active
+ * beta reader (this project or author-wide) or an invite link that can still
+ * be redeemed. Drives whether the chapter "Share with beta readers" control
+ * is worth showing.
+ */
+export async function projectHasBetaAudience(projectId: string, ownerId: string): Promise<boolean> {
+  const [reader] = await db
+    .select({ id: betaReaders.id })
+    .from(betaReaders)
+    .where(and(
+      eq(betaReaders.authorId, ownerId),
+      or(eq(betaReaders.projectId, projectId), isNull(betaReaders.projectId)),
+      eq(betaReaders.isActive, true),
+    ))
+    .limit(1)
+  if (reader) return true
+
+  const [invite] = await db
+    .select({ id: betaReaderInvites.id })
+    .from(betaReaderInvites)
+    .where(and(
+      eq(betaReaderInvites.authorId, ownerId),
+      or(eq(betaReaderInvites.projectId, projectId), isNull(betaReaderInvites.projectId)),
+      eq(betaReaderInvites.isActive, true),
+      or(isNull(betaReaderInvites.maxUses), sql`${betaReaderInvites.useCount} < ${betaReaderInvites.maxUses}`),
+    ))
+    .limit(1)
+  return !!invite
+}
+
+/**
  * Resolve access for a set of *published* chapters in one project. Callers are
  * expected to have filtered to `isPublished` rows already (the batch endpoints
  * select from `chapter_publications`); use `checkChapterAccess` when you only
@@ -115,16 +209,7 @@ export async function checkChaptersAccess(
     if (project?.ownerId === userId) return allowAll()
 
     // Beta reader for this project, or author-wide (NULL project).
-    const [betaReader] = await db
-      .select({ readerId: betaReaders.readerId })
-      .from(betaReaders)
-      .where(and(
-        or(eq(betaReaders.projectId, projectId), isNull(betaReaders.projectId)),
-        eq(betaReaders.readerId, userId),
-        eq(betaReaders.isActive, true),
-      ))
-      .limit(1)
-    if (betaReader) return allowAll()
+    if (await isActiveBetaReader(projectId, userId)) return allowAll()
 
     // Access grants: project-wide (NULL chapter) or per chapter; unexpired only.
     const grants = await db
@@ -163,17 +248,22 @@ export async function checkChaptersAccess(
   return results
 }
 
-/** Access for a single chapter id within a project. */
+/**
+ * Access for a single chapter id within a project. `betaAudience`, when the
+ * caller already resolved it via `isBetaAudience`, saves a repeat lookup.
+ */
 export async function checkChapterAccess(
   chapterId: string,
   projectId: string,
   userId: string | undefined,
   defaultVisibility: string | undefined,
   simulate?: ViewSimulation,
+  betaAudience?: boolean,
 ): Promise<AccessCheckResult> {
   const [pub] = await db
     .select({
       isPublished: chapterPublications.isPublished,
+      betaShared: chapterPublications.betaShared,
       publishedAt: chapterPublications.publishedAt,
       publicReleaseDate: chapterPublications.publicReleaseDate,
     })
@@ -181,7 +271,12 @@ export async function checkChapterAccess(
     .where(and(eq(chapterPublications.chapterId, chapterId), eq(chapterPublications.projectId, projectId)))
     .limit(1)
 
-  if (!pub?.isPublished) return { canAccess: false, reason: 'Chapter not published' }
+  if (!pub) return { canAccess: false, reason: 'Chapter not published' }
+  if (!pub.isPublished) {
+    return await canReadUnpublishedChapter(pub, projectId, userId, simulate, betaAudience)
+      ? { canAccess: true }
+      : { canAccess: false, reason: 'Chapter not published' }
+  }
 
   const results = await checkChaptersAccess(
     [{ chapterId, publishedAt: pub.publishedAt, publicReleaseDate: pub.publicReleaseDate }],

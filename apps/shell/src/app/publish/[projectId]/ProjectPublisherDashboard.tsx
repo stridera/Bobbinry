@@ -50,6 +50,7 @@ export function ProjectPublisherDashboard({
   const [username, setUsername] = useState('')
   const [profileLoaded, setProfileLoaded] = useState(false)
   const [publishConfig, setPublishConfig] = useState<PublishConfig | null>(null)
+  const [hasBetaAudience, setHasBetaAudience] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -93,6 +94,7 @@ export function ProjectPublisherDashboard({
       if (configRes.ok) {
         const configData = await configRes.json()
         setPublishConfig(configData.config || null)
+        setHasBetaAudience(!!configData.hasBetaAudience)
       }
     } catch (err) {
       console.error('Failed to load publisher data:', err)
@@ -285,6 +287,7 @@ export function ProjectPublisherDashboard({
                   apiToken={apiToken}
                   readerBaseUrl={readerBaseUrl}
                   autoReleaseEnabled={publishConfig?.autoReleaseEnabled ?? false}
+                  hasBetaAudience={hasBetaAudience}
                   refreshKey={refreshKey}
                   onRefresh={triggerRefresh}
                 />

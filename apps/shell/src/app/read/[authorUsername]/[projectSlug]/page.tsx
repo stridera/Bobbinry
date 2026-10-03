@@ -39,6 +39,8 @@ interface TocChapter {
   publishedAt?: string
   viewCount?: number
   order: number
+  // Unpublished, shared by the author with beta readers; only they receive these rows
+  betaOnly?: boolean
   locked?: boolean
   embargoUntil?: string
   lockReason?: string
@@ -889,7 +891,14 @@ function ProjectReadingContent() {
                       {chapter.title || 'Untitled'}
                     </span>
                   </div>
-                  {chapter.publishedAt && (
+                  {chapter.betaOnly ? (
+                    <span
+                      className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400"
+                      title="Not published yet — shared with beta readers"
+                    >
+                      Beta
+                    </span>
+                  ) : chapter.publishedAt && (
                     <span className="text-xs text-gray-400 dark:text-gray-500">
                       {new Date(chapter.publishedAt).toLocaleDateString()}
                     </span>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { apiFetch } from '@/lib/api'
@@ -8,6 +8,7 @@ import {
   CONTENT_TYPES,
   CONTENT_TYPE_GROUPS,
   CONTENT_TYPE_LABELS,
+  NARRATIVE_TYPES,
   countsTowardWordCount,
   type ContentType,
 } from '@bobbinry/types'
@@ -47,6 +48,8 @@ interface Chapter {
   publication: {
     publishStatus: string
     publishedAt: string | null
+    /** Unpublished chapter shared with beta readers. */
+    betaShared?: boolean
     viewCount: number
     uniqueViewCount: number
     completionCount: number
@@ -65,6 +68,8 @@ interface ChapterOverviewProps {
    * projects that aren't live, where every cell would be a placeholder dot.
    */
   showEngagement: boolean
+  /** The project has a beta reader or usable invite, so sharing a chapter reaches someone. */
+  hasBetaAudience: boolean
   onStatusChange?: () => void
 }
 
@@ -127,6 +132,64 @@ const WORDS_HINT =
   'Project word total counts narrative types only — Chapter, Scene, Prologue, ' +
   'Epilogue, Interlude. Outline and Supporting Doc are tracked but excluded.'
 
+// Header cell: vertical rhythm and the rule under the head. Horizontal padding
+// is set per column.
+const TH = 'py-3 align-middle border-b border-gray-200 dark:border-gray-700'
+
+// Row buttons sit quiet until the row is hovered or the button is focused, so a
+// long list doesn't read as a wall of outlined pairs. Hover on the button itself
+// adds the fill. They stay visible at rest for touch screens.
+const ROW_BUTTON_BASE =
+  'whitespace-nowrap text-xs px-2 py-0.5 rounded-md border transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50'
+
+const ROW_BUTTON_VIOLET =
+  'border-violet-200 text-violet-500 dark:border-violet-400/30 dark:text-violet-400/80 ' +
+  'group-hover:border-violet-300 group-hover:text-violet-600 focus-visible:border-violet-300 focus-visible:text-violet-600 ' +
+  'dark:group-hover:border-violet-600 dark:group-hover:text-violet-400 dark:focus-visible:border-violet-600 dark:focus-visible:text-violet-400 ' +
+  'hover:bg-violet-100 hover:border-violet-400 dark:hover:bg-violet-900/50 dark:hover:border-violet-600 dark:hover:text-violet-200'
+
+const ROW_BUTTON_BLUE =
+  'border-blue-200 text-blue-500 dark:border-blue-400/30 dark:text-blue-400/80 ' +
+  'group-hover:border-blue-300 group-hover:text-blue-600 focus-visible:border-blue-300 focus-visible:text-blue-600 ' +
+  'dark:group-hover:border-blue-600 dark:group-hover:text-blue-400 dark:focus-visible:border-blue-600 dark:focus-visible:text-blue-400 ' +
+  'hover:bg-blue-100 hover:border-blue-400 dark:hover:bg-blue-900/50 dark:hover:border-blue-600 dark:hover:text-blue-200'
+
+const ROW_BUTTON_GRAY =
+  'border-gray-200 text-gray-500 dark:border-gray-500/40 dark:text-gray-400/80 ' +
+  'group-hover:border-gray-300 group-hover:text-gray-600 focus-visible:border-gray-300 focus-visible:text-gray-600 ' +
+  'dark:group-hover:border-gray-600 dark:group-hover:text-gray-400 dark:focus-visible:border-gray-600 dark:focus-visible:text-gray-400 ' +
+  'hover:bg-gray-100 hover:border-gray-400 dark:hover:bg-gray-700 dark:hover:border-gray-600 dark:hover:text-gray-200'
+
+const ICON_PROPS = {
+  className: 'w-3.5 h-3.5',
+  viewBox: '0 0 16 16',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.5,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
+  'aria-hidden': true,
+} as const
+
+const REACTIONS_ICON = (
+  <svg {...ICON_PROPS}>
+    <path d="M8 13.5S2 10 2 6a3 3 0 015.2-2 .1.1 0 00.6 0A3 3 0 0114 6c0 4-6 7.5-6 7.5z" />
+  </svg>
+)
+
+const COMMENTS_ICON = (
+  <svg {...ICON_PROPS}>
+    <path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z" />
+  </svg>
+)
+
+const FEEDBACK_ICON = (
+  <svg {...ICON_PROPS}>
+    <path d="M3 13l.7-3L11 2.7a1.4 1.4 0 012 2L5.7 12.3z" />
+    <path d="M9.8 3.9l2.3 2.3" />
+  </svg>
+)
+
 /** Direction a column sorts in on first click: text and book order A→Z,
  * counts and dates biggest/newest first. */
 const DEFAULT_SORT_DIR: Record<SortKey, SortDir> = {
@@ -151,6 +214,23 @@ const titleCollator = new Intl.Collator(undefined, { numeric: true, sensitivity:
 
 function statusOf(c: Chapter): string {
   return c.publication?.publishStatus || 'draft'
+}
+
+/** Draft and Ready are the only states a row can be toggled or beta-shared from. */
+function isToggleable(c: Chapter): boolean {
+  const status = statusOf(c)
+  return status === 'draft' || status === 'complete'
+}
+
+/**
+ * Whether a row has anything for the engagement columns to show. Released
+ * chapters do; so does an unpublished one that still carries a publish date or
+ * counts (a reverted chapter, or a beta-shared one with reader feedback).
+ */
+function hasEngagement(c: Chapter): boolean {
+  const status = statusOf(c)
+  return status === 'published' || status === 'scheduled' || !!c.publication?.publishedAt ||
+    c.reactionCount > 0 || c.commentCount > 0 || c.annotationCount > 0
 }
 
 function publishedTime(c: Chapter): number | null {
@@ -205,7 +285,7 @@ function daysUntil(iso: string | null): number {
   return Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000))
 }
 
-export function ChapterOverview({ chapters, trashedCount, projectId, readerBaseUrl, showEngagement, onStatusChange }: ChapterOverviewProps) {
+export function ChapterOverview({ chapters, trashedCount, projectId, readerBaseUrl, showEngagement, hasBetaAudience, onStatusChange }: ChapterOverviewProps) {
   const { data: session } = useSession()
   const token = session?.apiToken
 
@@ -219,6 +299,9 @@ export function ChapterOverview({ chapters, trashedCount, projectId, readerBaseU
   const [trashItems, setTrashItems] = useState<TrashedItem[] | null>(null)
   const [trashLoading, setTrashLoading] = useState(false)
   const [openTypeMenu, setOpenTypeMenu] = useState<string | null>(null)
+  const [betaError, setBetaError] = useState<string | null>(null)
+  const [betaResult, setBetaResult] = useState<string | null>(null)
+  const [bulkBeta, setBulkBeta] = useState<'share' | 'unshare' | null>(null)
 
   // Local copy so DnD reorder is optimistic — parent re-fetches asynchronously
   // via onStatusChange after each operation.
@@ -260,18 +343,22 @@ export function ChapterOverview({ chapters, trashedCount, projectId, readerBaseU
     return { all, manuscript, outlines, reference, archived }
   }, [localChapters])
 
-  // The Archived view and draft projects hide the engagement columns, so a
-  // sort on one of them falls back to book order there.
-  const engagementVisible = showEngagement && filter !== 'archived'
-  const activeSort: { key: SortKey; dir: SortDir } =
-    !engagementVisible && ENGAGEMENT_SORTS.has(sort.key) ? { key: 'position', dir: 'asc' } : sort
-
   const inBookOrder = useMemo(
     () => localChapters
       .filter(c => matchesFilter(c, filter))
       .sort((a, b) => a.manuscriptPosition - b.manuscriptPosition),
     [localChapters, filter],
   )
+
+  // The Archived view, draft projects and views with nothing released hide the
+  // engagement columns, so a sort on one of them falls back to book order there.
+  const engagementVisible = showEngagement && filter !== 'archived' && inBookOrder.some(hasEngagement)
+  const activeSort: { key: SortKey; dir: SortDir } =
+    !engagementVisible && ENGAGEMENT_SORTS.has(sort.key) ? { key: 'position', dir: 'asc' } : sort
+
+  // Row actions only exist for unpublished rows outside the Archived view; with
+  // none in view the trailing column would be an empty strip.
+  const showActions = filter !== 'archived' && inBookOrder.some(isToggleable)
 
   // `#` is a row's place in book order within the current filter, whatever the
   // table is sorted by — under Manuscript that is its chapter number.
@@ -357,6 +444,64 @@ export function ChapterOverview({ chapters, trashedCount, projectId, readerBaseU
       console.error('Failed to update chapter status:', err)
     } finally {
       setActionInProgress(null)
+    }
+  }
+
+  const toggleBetaShare = async (chapterId: string, shared: boolean) => {
+    if (!token) return
+    setActionInProgress(chapterId)
+    setBetaError(null)
+    setBetaResult(null)
+    try {
+      const res = await apiFetch(`/api/projects/${projectId}/chapters/${chapterId}/beta-share`, token, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shared }),
+      })
+      if (!res.ok) throw new Error('Failed to update beta sharing')
+      onStatusChange?.()
+    } catch (err) {
+      console.error('Failed to update beta sharing:', err)
+      setBetaError('Failed to update beta sharing. Try again.')
+    } finally {
+      setActionInProgress(null)
+    }
+  }
+
+  // "Share all" covers every unreleased manuscript chapter, matching what the
+  // API sweeps when no ids are sent.
+  const shareableUnreleased = localChapters.filter(c => {
+    const status = statusOf(c)
+    return !c.archivedAt && NARRATIVE_TYPES.has(c.contentType) && (status === 'draft' || status === 'complete')
+  })
+  const allShared = shareableUnreleased.length > 0 && shareableUnreleased.every(c => c.publication?.betaShared)
+
+  // Published or scheduled chapters are skipped server-side. `all` ignores the
+  // selection and lets the API pick every unreleased manuscript chapter.
+  const runBulkBeta = async (shared: boolean, all = false) => {
+    if (!token || (!all && selectedIds.size === 0)) return
+    setBulkBeta(shared ? 'share' : 'unshare')
+    setBetaError(null)
+    setBetaResult(null)
+    try {
+      const res = await apiFetch(`/api/projects/${projectId}/chapters/beta-share`, token, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(all ? { shared } : { shared, chapterIds: Array.from(selectedIds) }),
+      })
+      if (!res.ok) throw new Error('Failed to update beta sharing')
+      const { updated, skipped } = await res.json() as { updated: number; skipped: number }
+      const noun = `${updated} ${updated === 1 ? 'chapter' : 'chapters'}`
+      setBetaResult(
+        `${shared ? `Shared ${noun} with beta readers` : `Stopped sharing ${noun} with beta readers`}` +
+        (skipped > 0 ? ` (${skipped} already published)` : ''),
+      )
+      onStatusChange?.()
+    } catch (err) {
+      console.error('Failed to update beta sharing:', err)
+      setBetaError('Failed to update beta sharing. Try again.')
+    } finally {
+      setBulkBeta(null)
     }
   }
 
@@ -516,7 +661,8 @@ export function ChapterOverview({ chapters, trashedCount, projectId, readerBaseU
 
       {/* Always-visible legend. Anchors the column hints in plain prose so the
           info icons in the table head are reinforcement, not the only signal. */}
-      <p className="text-[12px] leading-relaxed text-gray-500 dark:text-gray-400 mb-3 -mt-1">
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 mb-3 -mt-1">
+      <p className="text-[12px] leading-relaxed text-gray-500 dark:text-gray-400">
         <span className="text-gray-700 dark:text-gray-300 font-medium">Manuscript</span>
         <span className="text-gray-400 dark:text-gray-500"> (counts toward word total)</span>
         <span className="mx-1.5 text-gray-300 dark:text-gray-600">·</span>
@@ -527,6 +673,21 @@ export function ChapterOverview({ chapters, trashedCount, projectId, readerBaseU
         <span className="inline-flex items-center gap-0.5 px-1.5 py-px rounded-full text-[10px] ring-1 ring-inset bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:ring-blue-800">Chapter</span>
         <span className="text-gray-400 dark:text-gray-500"> badge.</span>
       </p>
+      {hasBetaAudience && !showingArchived && shareableUnreleased.length > 0 && (
+        <button
+          onClick={() => runBulkBeta(!allShared, true)}
+          disabled={bulkAction !== null || bulkBeta !== null}
+          title={allShared
+            ? 'Stop sharing unpublished chapters with beta readers.'
+            : "Share every unpublished chapter with your beta readers. Everyone else still can't see them."}
+          className="whitespace-nowrap text-xs px-2 py-0.5 rounded-md border transition-colors cursor-pointer disabled:cursor-default disabled:opacity-50 border-violet-300 text-violet-600 hover:bg-violet-100 hover:border-violet-400 dark:border-violet-600 dark:text-violet-400 dark:hover:bg-violet-900/50 dark:hover:text-violet-200"
+        >
+          {bulkBeta !== null
+            ? (bulkBeta === 'share' ? 'Sharing…' : 'Stopping…')
+            : allShared ? 'Stop sharing all' : 'Share all with beta'}
+        </button>
+      )}
+      </div>
 
       {!dndEnabled && filtered.length > 1 && !showingArchived && !showingTrash && (
         <p className="text-xs text-gray-400 dark:text-gray-500 mb-2 italic">
@@ -534,6 +695,13 @@ export function ChapterOverview({ chapters, trashedCount, projectId, readerBaseU
             ? 'Filter to a single content type to drag-reorder.'
             : 'Sorting only changes this view. Sort by # to drag-reorder.'}
         </p>
+      )}
+
+      {betaError && (
+        <p className="text-xs text-red-600 dark:text-red-400 mb-2">{betaError}</p>
+      )}
+      {betaResult && (
+        <p className="text-xs text-violet-700 dark:text-violet-300 mb-2">{betaResult}</p>
       )}
 
       {!showingTrash && filtered.length === 0 ? (
@@ -611,11 +779,13 @@ export function ChapterOverview({ chapters, trashedCount, projectId, readerBaseU
         </div>
       ) : (
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        {/* Status and Actions always fit; only the engagement columns, which come
+            last, scroll off to the right when the card is narrow. */}
         <div className="overflow-x-auto -mx-6 px-6">
           <table className="w-full text-sm border-separate border-spacing-0">
             <thead>
-              <tr className="border-b border-gray-200 dark:border-gray-700 text-[11px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-medium">
-                <th className="py-2.5 pl-1 pr-1 w-9 align-middle border-b border-gray-200 dark:border-gray-700">
+              <tr className="text-[11px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-medium">
+                <th className={`${TH} w-px pl-1 pr-0.5`}>
                   <span className="flex items-center justify-center">
                     <Checkbox
                       checked={allFilteredSelected}
@@ -625,35 +795,40 @@ export function ChapterOverview({ chapters, trashedCount, projectId, readerBaseU
                     />
                   </span>
                 </th>
-                <th className="py-2.5 pr-1.5 w-5 align-middle border-b border-gray-200 dark:border-gray-700" aria-hidden="true" />
-                <th className="py-2.5 pr-3 w-10 text-right align-middle border-b border-gray-200 dark:border-gray-700" aria-sort={ariaSort('position')}>
-                  <SortHeader label="#" title="Sort by writing-tab order" {...sortProps('position')} />
+                <th className={`${TH} w-px px-1`} aria-hidden="true" />
+                <th className={`${TH} w-px px-2 text-right`} aria-sort={ariaSort('position')}>
+                  <SortHeader label="#" title="Sort by writing-tab order" alignRight {...sortProps('position')} />
                 </th>
-                <th className="py-2.5 pr-4 text-left align-middle border-b border-gray-200 dark:border-gray-700" aria-sort={ariaSort('title')}>
+                <th className={`${TH} w-full min-w-[180px] max-w-0 px-2 text-left`} aria-sort={ariaSort('title')}>
                   <SortHeader label="Title" {...sortProps('title')} />
                 </th>
-                <th className="py-2.5 pr-4 text-left align-middle border-b border-gray-200 dark:border-gray-700" aria-sort={ariaSort('type')}>
+                <th className={`${TH} w-px whitespace-nowrap px-2 text-left`} aria-sort={ariaSort('type')}>
                   <SortHeader label="Type" hint={TYPE_HINT} {...sortProps('type')} />
                 </th>
-                <th className="py-2.5 pr-4 text-right align-middle border-b border-gray-200 dark:border-gray-700" aria-sort={ariaSort('words')}>
-                  <SortHeader label="Words" hint={WORDS_HINT} {...sortProps('words')} />
+                <th className={`${TH} w-px whitespace-nowrap px-2 text-right`} aria-sort={ariaSort('words')}>
+                  <SortHeader label="Words" hint={WORDS_HINT} alignRight {...sortProps('words')} />
                 </th>
-                <th className="py-2.5 pr-4 text-left align-middle border-b border-gray-200 dark:border-gray-700" aria-sort={ariaSort('status')}>
+                <th className={`${TH} w-px whitespace-nowrap pl-4 pr-1 text-left`} aria-sort={ariaSort('status')}>
                   <SortHeader label="Status" {...sortProps('status')} />
                 </th>
+                {showActions && (
+                  <th className={`${TH} w-px pl-1 pr-2`}>
+                    <span className="sr-only">Actions</span>
+                  </th>
+                )}
                 {engagementVisible && (
                   <>
-                    <th className="py-2.5 pr-4 text-left align-middle border-b border-gray-200 dark:border-gray-700" aria-sort={ariaSort('published')}>
+                    <th className={`${TH} w-px whitespace-nowrap px-2 text-left`} aria-sort={ariaSort('published')}>
                       <SortHeader label="Published" {...sortProps('published')} />
                     </th>
-                    <th className="py-2.5 pr-4 text-right align-middle border-b border-gray-200 dark:border-gray-700" aria-sort={ariaSort('reactions')}>
-                      <SortHeader label="Reactions" {...sortProps('reactions')} />
+                    <th className={`${TH} w-px whitespace-nowrap px-2 text-right`} aria-sort={ariaSort('reactions')}>
+                      <SortHeader label="Reactions" icon={REACTIONS_ICON} alignRight {...sortProps('reactions')} />
                     </th>
-                    <th className="py-2.5 pr-4 text-right align-middle border-b border-gray-200 dark:border-gray-700" aria-sort={ariaSort('comments')}>
-                      <SortHeader label="Comments" {...sortProps('comments')} />
+                    <th className={`${TH} w-px whitespace-nowrap px-2 text-right`} aria-sort={ariaSort('comments')}>
+                      <SortHeader label="Comments" icon={COMMENTS_ICON} alignRight {...sortProps('comments')} />
                     </th>
-                    <th className="py-2.5 text-right align-middle border-b border-gray-200 dark:border-gray-700" aria-sort={ariaSort('feedback')}>
-                      <SortHeader label="Feedback" {...sortProps('feedback')} />
+                    <th className={`${TH} w-px whitespace-nowrap px-2 text-right`} aria-sort={ariaSort('feedback')}>
+                      <SortHeader label="Feedback" icon={FEEDBACK_ICON} alignRight {...sortProps('feedback')} />
                     </th>
                   </>
                 )}
@@ -672,8 +847,11 @@ export function ChapterOverview({ chapters, trashedCount, projectId, readerBaseU
                     onToggleSelect={() => toggleOne(chapter.id)}
                     showingArchived={showingArchived}
                     showEngagement={engagementVisible}
+                    showActions={showActions}
                     actionLoading={actionInProgress === chapter.id}
                     onToggleStatus={toggleStatus}
+                    canShareBeta={hasBetaAudience}
+                    onToggleBeta={toggleBetaShare}
                     dndEnabled={dndEnabled}
                     typeMenuOpen={openTypeMenu === chapter.id}
                     onOpenTypeMenu={() => setOpenTypeMenu(prev => prev === chapter.id ? null : chapter.id)}
@@ -689,9 +867,9 @@ export function ChapterOverview({ chapters, trashedCount, projectId, readerBaseU
       )}
 
       {selectedIds.size > 0 && (
-        <div className="sticky bottom-4 mt-4 mx-auto max-w-2xl bg-gray-900 dark:bg-gray-700 text-white rounded-lg shadow-lg px-4 py-2.5 flex items-center justify-between gap-3">
+        <div className="sticky bottom-4 mt-4 mx-auto max-w-2xl bg-gray-900 dark:bg-gray-700 text-white rounded-lg shadow-lg px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
           <span className="text-sm font-medium tabular-nums">{selectedIds.size} selected</span>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               onClick={() => { setSelectedIds(new Set()); setConfirmDelete(false); setConfirmPurge(false) }}
               className="text-xs text-gray-300 hover:text-white px-2 py-1 rounded"
@@ -729,6 +907,25 @@ export function ChapterOverview({ chapters, trashedCount, projectId, readerBaseU
               </>
             ) : (
               <>
+                {hasBetaAudience && !showingArchived && (
+                  <>
+                    <button
+                      onClick={() => runBulkBeta(true)}
+                      disabled={bulkAction !== null || bulkBeta !== null}
+                      title="Beta readers can read these chapters before they're published. Everyone else can't see them."
+                      className="cursor-pointer disabled:cursor-default text-xs bg-violet-600 hover:bg-violet-500 disabled:opacity-50 px-3 py-1 rounded-md font-medium"
+                    >
+                      {bulkBeta === 'share' ? 'Sharing…' : 'Share with beta'}
+                    </button>
+                    <button
+                      onClick={() => runBulkBeta(false)}
+                      disabled={bulkAction !== null || bulkBeta !== null}
+                      className="cursor-pointer disabled:cursor-default text-xs bg-violet-700/70 hover:bg-violet-600 disabled:opacity-50 px-3 py-1 rounded-md font-medium"
+                    >
+                      {bulkBeta === 'unshare' ? 'Stopping…' : 'Stop beta sharing'}
+                    </button>
+                  </>
+                )}
                 {showingArchived ? (
                   <button
                     onClick={() => runBulk('restore')}
@@ -782,8 +979,12 @@ interface ChapterRowProps {
   onToggleSelect: () => void
   showingArchived: boolean
   showEngagement: boolean
+  /** Render the trailing Actions cell. */
+  showActions: boolean
   actionLoading: boolean
   onToggleStatus: (id: string, currentStatus: string) => void
+  canShareBeta: boolean
+  onToggleBeta: (id: string, shared: boolean) => void
   dndEnabled: boolean
   typeMenuOpen: boolean
   onOpenTypeMenu: () => void
@@ -793,7 +994,7 @@ interface ChapterRowProps {
 
 function ChapterRow({
   chapter, bookNumber, projectId, readerBaseUrl, selected, onToggleSelect,
-  showingArchived, showEngagement, actionLoading, onToggleStatus, dndEnabled,
+  showingArchived, showEngagement, showActions, actionLoading, onToggleStatus, canShareBeta, onToggleBeta, dndEnabled,
   typeMenuOpen, onOpenTypeMenu, onCloseTypeMenu, onChangeContentType,
 }: ChapterRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
@@ -809,6 +1010,8 @@ function ChapterRow({
   const isPublished = status === 'published'
   const readerUrl = isPublished && readerBaseUrl ? `${readerBaseUrl}/${chapter.slug ?? chapter.id}` : null
   const canToggle = status === 'draft' || status === 'complete'
+  // Draft/Ready are the unpublished states; a shared one is readable by beta readers only.
+  const betaShared = canToggle && !!chapter.publication?.betaShared
   const rowTint = selected
     ? 'bg-blue-50/60 dark:bg-blue-950/30'
     : ROW_TINTS[status] || ''
@@ -821,7 +1024,7 @@ function ChapterRow({
       style={style}
       className={`group border-b border-gray-100 dark:border-gray-700/50 last:border-0 hover:bg-gray-50/70 dark:hover:bg-gray-800/50 transition-colors ${rowTint}`}
     >
-      <td className="py-2.5 pl-1 pr-1 align-middle w-9">
+      <td className="py-3 pl-1 pr-0.5 align-middle w-px">
         <span className="flex items-center justify-center">
           <Checkbox
             checked={selected}
@@ -830,7 +1033,7 @@ function ChapterRow({
           />
         </span>
       </td>
-      <td className="py-2.5 pr-1.5 align-middle w-5">
+      <td className="py-3 px-1 align-middle w-px">
         <button
           {...attributes}
           {...listeners}
@@ -849,19 +1052,20 @@ function ChapterRow({
           </svg>
         </button>
       </td>
-      <td className="py-2.5 pr-3 w-10 text-right text-gray-400 dark:text-gray-500 tabular-nums">{bookNumber}</td>
-      <td className="py-2.5 pr-4 font-medium">
+      <td className="py-3 px-2 align-middle w-px text-right text-gray-400 dark:text-gray-500 tabular-nums">{bookNumber}</td>
+      <td className="py-3 px-2 align-middle w-full min-w-[180px] max-w-0 font-medium">
         <Link
           href={`/projects/${projectId}/manuscript/content/${chapter.id}`}
-          className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline transition-colors"
+          title={chapter.title}
+          className="block truncate text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline transition-colors"
         >
           {chapter.title}
         </Link>
         {chapter.folderPath && (
-          <div className="text-[11px] font-normal text-gray-400 dark:text-gray-500">{chapter.folderPath}</div>
+          <div className="truncate text-[11px] font-normal text-gray-400 dark:text-gray-500" title={chapter.folderPath}>{chapter.folderPath}</div>
         )}
       </td>
-      <td className="py-2.5 pr-4 relative">
+      <td className="py-3 px-2 align-middle w-px whitespace-nowrap relative">
         <button
           onClick={onOpenTypeMenu}
           disabled={actionLoading}
@@ -892,7 +1096,7 @@ function ChapterRow({
           </>
         )}
       </td>
-      <td className="py-2.5 pr-4 text-right tabular-nums">
+      <td className="py-3 px-2 align-middle w-px whitespace-nowrap text-right tabular-nums">
         {chapter.wordCount > 0 ? (
           <span
             className={countsForWords ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-500 italic'}
@@ -904,8 +1108,8 @@ function ChapterRow({
           <span className="text-gray-300 dark:text-gray-600">·</span>
         )}
       </td>
-      <td className="py-2.5 pr-4">
-        <div className="flex items-center gap-2">
+      <td className="py-3 pl-4 pr-1 align-middle w-px whitespace-nowrap">
+        <div className="flex items-center gap-1.5">
           {readerUrl ? (
             <a
               href={readerUrl}
@@ -921,30 +1125,52 @@ function ChapterRow({
               {STATUS_LABELS[status] || status}
             </span>
           )}
-          {!showingArchived && canToggle && (
-            <button
-              onClick={() => onToggleStatus(chapter.id, status)}
-              disabled={actionLoading}
-              className={`text-xs px-2 py-0.5 rounded-md border transition-colors disabled:opacity-50 ${
-                status === 'draft'
-                  ? 'border-blue-300 text-blue-600 hover:bg-blue-50 dark:border-blue-600 dark:text-blue-400 dark:hover:bg-blue-900/20'
-                  : 'border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800'
-              }`}
+          {betaShared && (
+            <span
+              className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300"
+              title="Shared with beta readers"
             >
-              {actionLoading ? '...' : status === 'draft' ? 'Mark Ready' : 'Revert to Draft'}
-            </button>
+              Beta
+            </span>
           )}
         </div>
       </td>
+      {showActions && (
+        <td className="py-3 pl-1 pr-2 align-middle w-px whitespace-nowrap">
+          <div className="flex items-center gap-1.5">
+            {!showingArchived && canToggle && canShareBeta && (
+              <button
+                onClick={() => onToggleBeta(chapter.id, !betaShared)}
+                disabled={actionLoading}
+                title={betaShared
+                  ? 'Stop sharing this chapter with beta readers.'
+                  : "Beta readers can read this chapter before it's published. Everyone else can't see it."}
+                className={`${ROW_BUTTON_BASE} ${ROW_BUTTON_VIOLET}`}
+              >
+                {betaShared ? 'Unshare' : 'Share with beta'}
+              </button>
+            )}
+            {!showingArchived && canToggle && (
+              <button
+                onClick={() => onToggleStatus(chapter.id, status)}
+                disabled={actionLoading}
+                className={`${ROW_BUTTON_BASE} ${status === 'draft' ? ROW_BUTTON_BLUE : ROW_BUTTON_GRAY}`}
+              >
+                {actionLoading ? '...' : status === 'draft' ? 'Mark Ready' : 'Revert to Draft'}
+              </button>
+            )}
+          </div>
+        </td>
+      )}
       {showEngagement && (
         <>
-          <td className="py-2.5 pr-4 text-xs text-gray-500 dark:text-gray-400 tabular-nums whitespace-nowrap">
+          <td className="py-3 px-2 align-middle w-px text-xs text-gray-500 dark:text-gray-400 tabular-nums whitespace-nowrap">
             {publishedAt ? new Date(publishedAt).toLocaleDateString() : <span className="text-gray-300 dark:text-gray-600">·</span>}
           </td>
-          <td className="py-2.5 pr-4 text-right text-gray-600 dark:text-gray-400 tabular-nums">
+          <td className="py-3 px-2 align-middle w-px text-right text-gray-600 dark:text-gray-400 tabular-nums">
             {chapter.reactionCount > 0 ? chapter.reactionCount.toLocaleString() : <span className="text-gray-300 dark:text-gray-600">·</span>}
           </td>
-          <td className="py-2.5 pr-4 text-right tabular-nums">
+          <td className="py-3 px-2 align-middle w-px text-right tabular-nums">
             {chapter.commentCount > 0 && readerUrl ? (
               <a href={`${readerUrl}#comments`} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">
                 {chapter.commentCount.toLocaleString()}
@@ -955,7 +1181,7 @@ function ChapterRow({
               <span className="text-gray-300 dark:text-gray-600">·</span>
             )}
           </td>
-          <td className="py-2.5 text-right tabular-nums">
+          <td className="py-3 px-2 align-middle w-px text-right tabular-nums">
             {chapter.annotationCount > 0 ? (
               <Link href={`/projects/${projectId}/feedback?chapterId=${chapter.id}`} className="text-blue-600 dark:text-blue-400 hover:underline">
                 {chapter.annotationCount.toLocaleString()}
@@ -1036,11 +1262,16 @@ function Checkbox({
 /** Clickable column heading. The active column shows ▲/▼; the others show a
  * faint arrow on hover. An optional hint renders as a small info dot beside
  * the button (outside it, so reading the hint doesn't re-sort), complementing
- * the prose legend above the table. */
+ * the prose legend above the table. An `icon` stands in for the label, which
+ * stays as the tooltip and screen-reader text. `alignRight` hangs the arrow and
+ * hint outside the label, in the cell padding, so a right-aligned column is only
+ * as wide as its label and the label lines up with the numbers beneath it. */
 function SortHeader({
   label,
   title,
   hint,
+  icon,
+  alignRight,
   active,
   dir,
   onSort,
@@ -1048,6 +1279,8 @@ function SortHeader({
   label: string
   title?: string
   hint?: string
+  icon?: ReactNode
+  alignRight?: boolean
   active: boolean
   dir: SortDir
   onSort: () => void
@@ -1057,24 +1290,28 @@ function SortHeader({
       type="button"
       onClick={onSort}
       title={title ?? `Sort by ${label.toLowerCase()}`}
-      className={`group/sort inline-flex items-center gap-1 uppercase tracking-wider font-medium transition-colors hover:text-gray-700 dark:hover:text-gray-200 ${
+      className={`group/sort relative inline-flex items-center gap-1 uppercase tracking-wider font-medium transition-colors hover:text-gray-700 dark:hover:text-gray-200 ${
         active ? 'text-gray-700 dark:text-gray-200' : ''
       }`}
     >
-      <span>{label}</span>
-      <span aria-hidden="true" className={`text-[8px] ${active ? '' : 'opacity-0 group-hover/sort:opacity-50'}`}>
+      {icon ?? <span>{label}</span>}
+      {icon && <span className="sr-only">{label}</span>}
+      <span
+        aria-hidden="true"
+        className={`text-[8px] ${alignRight ? 'absolute right-full mr-0.5' : ''} ${active ? '' : 'opacity-0 group-hover/sort:opacity-50'}`}
+      >
         {active && dir === 'desc' ? '▼' : '▲'}
       </span>
     </button>
   )
   if (!hint) return button
   return (
-    <span className="inline-flex items-center gap-1">
+    <span className="relative inline-flex items-center gap-1">
       {button}
       <span
         aria-label={hint}
         title={hint}
-        className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-gray-300 dark:border-gray-600 text-[9px] font-semibold text-gray-400 dark:text-gray-500 hover:text-gray-700 hover:border-gray-500 dark:hover:text-gray-200 dark:hover:border-gray-400 cursor-help transition-colors"
+        className={`inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-gray-300 dark:border-gray-600 text-[9px] font-semibold text-gray-400 dark:text-gray-500 hover:text-gray-700 hover:border-gray-500 dark:hover:text-gray-200 dark:hover:border-gray-400 cursor-help transition-colors ${alignRight ? 'absolute left-full ml-0.5' : ''}`}
       >
         i
       </span>

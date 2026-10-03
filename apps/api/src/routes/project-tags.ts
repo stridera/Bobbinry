@@ -14,6 +14,7 @@ import { eq, and, sql, isNotNull, desc } from 'drizzle-orm'
 import { chapterViewStats, getChapterViewStats } from '../lib/chapter-view-stats'
 import { requireAuth, ownsProject } from '../middleware/auth'
 import { loadProjectSummary } from '../lib/project-summary'
+import { projectHasBetaAudience } from '../lib/chapter-access'
 import { getSlugsForEntities } from '../lib/slugs'
 import { countsTowardWordCount, type ContentType } from '@bobbinry/types'
 import { notDeleted, TRASH_RETENTION_MS } from '../lib/entity-scope'
@@ -244,6 +245,7 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
             pubId: chapterPublications.id,
             publishStatus: chapterPublications.publishStatus,
             publishedAt: chapterPublications.publishedAt,
+            betaShared: chapterPublications.betaShared,
             viewCount: chapterPublications.viewCount,
             // Derived from chapter_views rather than the stored counters of the
             // same name: unique_view_count and avg_read_time_seconds are never
@@ -386,6 +388,8 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.status(404).send({ error: 'Project not found', correlationId })
       }
       const { project, config, bobbins, bobbinStats, annotationStats, authorUsername } = summary
+      // Whether the "share with beta readers" row action has anyone to reach.
+      const hasBetaAudience = await projectHasBetaAudience(projectId, project.ownerId)
 
       // Compute analytics from publications
       const totalViews = publicationsResult.reduce((sum, p) => sum + (p.viewCount ?? 0), 0)
@@ -438,6 +442,7 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
           publication: ch.pubId ? {
             publishStatus: ch.publishStatus,
             publishedAt: ch.publishedAt,
+            betaShared: ch.betaShared ?? false,
             viewCount: ch.viewCount,
             // Coerced because the derived aggregates come back from postgres as
             // strings, and consumers type these as numbers.
@@ -529,6 +534,7 @@ const projectTagsPlugin: FastifyPluginAsync = async (fastify) => {
         chapters,
         scheduledReleases,
         publishConfig: config,
+        hasBetaAudience,
         bobbins,
         bobbinStats,
         annotationStats,

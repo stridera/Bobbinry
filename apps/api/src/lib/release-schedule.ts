@@ -243,6 +243,8 @@ export async function upsertScheduledChapterPublication(
       .set({
         publishStatus: 'scheduled',
         isPublished: true,
+        // Going public ends beta-only sharing, so a later unpublish can't re-expose it.
+        betaShared: false,
         publishedVersion,
         publishedAt: scheduledAt,
         publicReleaseDate,

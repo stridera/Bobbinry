@@ -3,11 +3,11 @@ import type { FastifyPluginAsync } from 'fastify'
 import { db } from '../../db/connection'
 import { chapterPublications, chapterViews, entities, projects, projectPublishConfig, projectManuscriptDisplaySettings, userManuscriptDisplaySettings } from '../../db/schema'
 import { resolveDisplaySettings, sanitizeDisplaySettings, type PartialManuscriptDisplaySettings } from '@bobbinry/types'
-import { eq, and, sql, isNull } from 'drizzle-orm'
+import { eq, and, or, sql, isNull } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { optionalAuth } from '../../middleware/auth'
 import { notDeleted } from '../../lib/entity-scope'
-import { checkChapterAccess, checkChaptersAccess } from '../../lib/chapter-access'
+import { checkChapterAccess, checkChaptersAccess, isBetaAudience } from '../../lib/chapter-access'
 import { resolveSlug, getSlugsForEntities } from '../../lib/slugs'
 import { sortInReaderOrder, resolveViewAs, canViewProject, resolveReadableChapter } from './shared'
 
@@ -49,11 +49,16 @@ const chaptersRoutes: FastifyPluginAsync = async (fastify) => {
         .limit(1)
       const defaultVisibility = publishConfig?.defaultVisibility || 'public'
 
+      // Beta audience also sees unpublished chapters the author shared with
+      // them. Resolved once; everyone else gets exactly the published set.
+      const betaAudience = await isBetaAudience(projectId, userId, viewer.simulate)
+
       // Get all published chapters for this project, in reader order.
       const publishedRows = await db
         .select({
           id: entities.id,
           chapterId: chapterPublications.chapterId,
+          isPublished: chapterPublications.isPublished,
           title: sql<string>`(${entities.entityData}->>'title')`,
           publishedAt: chapterPublications.publishedAt,
           publicReleaseDate: chapterPublications.publicReleaseDate,
@@ -64,7 +69,9 @@ const chaptersRoutes: FastifyPluginAsync = async (fastify) => {
         .innerJoin(entities, eq(entities.id, chapterPublications.chapterId))
         .where(and(
           eq(chapterPublications.projectId, projectId),
-          eq(chapterPublications.isPublished, true),
+          betaAudience
+            ? or(eq(chapterPublications.isPublished, true), eq(chapterPublications.betaShared, true))
+            : eq(chapterPublications.isPublished, true),
           notDeleted()
         ))
       const publishedChapters = await sortInReaderOrder(projectId, publishedRows)
@@ -101,7 +108,9 @@ const chaptersRoutes: FastifyPluginAsync = async (fastify) => {
             title: chapter.title,
             publishedAt: chapter.publishedAt,
             viewCount: chapter.viewCount,
-            order: index
+            order: index,
+            // Unpublished but shared by the author; only the beta audience gets these rows.
+            ...(chapter.isPublished ? {} : { betaOnly: true })
           }
         } else {
           return {
@@ -130,8 +139,8 @@ const chaptersRoutes: FastifyPluginAsync = async (fastify) => {
   })
 
   /**
-   * Get a published chapter for reading
-   * Respects access control and embargo schedules
+   * Get a published chapter for reading (or an unpublished one shared with
+   * the beta audience). Respects access control and embargo schedules
    */
   fastify.get<{
     Params: { projectId: string; chapterId: string }
@@ -165,8 +174,14 @@ const chaptersRoutes: FastifyPluginAsync = async (fastify) => {
         .where(eq(projectPublishConfig.projectId, projectId))
         .limit(1)
 
+      // Beta audience also reads unpublished chapters the author shared with them.
+      const betaAudience = await isBetaAudience(projectId, userId, viewer.simulate)
+      const chapterVisible = betaAudience
+        ? or(eq(chapterPublications.isPublished, true), eq(chapterPublications.betaShared, true))
+        : eq(chapterPublications.isPublished, true)
+
       // Check access
-      const access = await checkChapterAccess(chapterId, projectId, userId, chapterPublishConfig?.defaultVisibility || 'public', viewer.simulate)
+      const access = await checkChapterAccess(chapterId, projectId, userId, chapterPublishConfig?.defaultVisibility || 'public', viewer.simulate, betaAudience)
       if (!access.canAccess) {
         return reply.status(403).send({
           error: access.reason || 'Access denied',
@@ -190,7 +205,7 @@ const chaptersRoutes: FastifyPluginAsync = async (fastify) => {
         .from(entities)
         .innerJoin(chapterPublications, and(
           eq(chapterPublications.chapterId, entities.id),
-          eq(chapterPublications.isPublished, true)
+          chapterVisible
         ))
         .innerJoin(projects, eq(projects.id, entities.projectId))
         .where(and(
@@ -235,7 +250,7 @@ const chaptersRoutes: FastifyPluginAsync = async (fastify) => {
         .innerJoin(chapterPublications, eq(chapterPublications.chapterId, entities.id))
         .where(and(
           eq(entities.projectId, projectId),
-          eq(chapterPublications.isPublished, true),
+          chapterVisible,
           notDeleted()
         ))
       const allChapters = await sortInReaderOrder(projectId, navRows)

@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'
+import { NARRATIVE_TYPES, type ContentType } from '@bobbinry/types'
 import { apiFetch } from '@/lib/api'
 
 interface ChapterReleaseTableProps {
@@ -8,6 +9,8 @@ interface ChapterReleaseTableProps {
   apiToken: string
   readerBaseUrl: string | null
   autoReleaseEnabled: boolean
+  // Whether any beta reader or usable invite exists; gates the share action
+  hasBetaAudience: boolean
   refreshKey: number
   onRefresh: () => void
 }
@@ -16,11 +19,15 @@ interface ChapterEntity {
   id: string
   title?: string
   order?: number
+  contentType?: ContentType | null
+  archivedAt?: string | null
 }
 
 interface ChapterPublication {
   chapterId: string
   publishStatus: string
+  isPublished?: boolean
+  betaShared?: boolean
   publishedAt?: string
   viewCount?: number
   uniqueViewCount?: number
@@ -34,6 +41,10 @@ interface ChapterRow {
   title: string
   order: number
   status: string
+  // Shared with beta readers while still unpublished
+  betaOnly: boolean
+  // Covered by "share all": live manuscript content, not an outline/doc or archived
+  shareable: boolean
   publishedAt?: string | undefined
   viewCount: number
 }
@@ -86,6 +97,7 @@ export function ChapterReleaseTable({
   apiToken,
   readerBaseUrl,
   autoReleaseEnabled,
+  hasBetaAudience,
   refreshKey,
   onRefresh,
 }: ChapterReleaseTableProps) {
@@ -96,6 +108,8 @@ export function ChapterReleaseTable({
   const [schedulingChapterId, setSchedulingChapterId] = useState<string | null>(null)
   const [scheduledDate, setScheduledDate] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [betaResult, setBetaResult] = useState<string | null>(null)
+  const [betaBulkBusy, setBetaBulkBusy] = useState(false)
 
   const loadData = useCallback(async () => {
     try {
@@ -135,6 +149,8 @@ export function ChapterReleaseTable({
           title: e.title || `Chapter ${idx + 1}`,
           order: e.order ?? idx,
           status: pub?.publishStatus || 'draft',
+          betaOnly: !!pub?.betaShared && !pub.isPublished,
+          shareable: !e.archivedAt && NARRATIVE_TYPES.has(e.contentType ?? 'chapter'),
           publishedAt: pub?.publishedAt,
           viewCount: Number(pub?.viewCount || 0),
         }
@@ -156,12 +172,12 @@ export function ChapterReleaseTable({
 
   /* ── Actions ── */
 
-  const doAction = async (chapterId: string, endpoint: string, body?: object) => {
+  const doAction = async (chapterId: string, endpoint: string, body?: object, method: 'POST' | 'PUT' = 'POST') => {
     setActionInProgress(chapterId)
     setError(null)
     try {
       const res = await apiFetch(endpoint, apiToken, {
-        method: 'POST',
+        method,
         ...(body
           ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
           : {}),
@@ -179,6 +195,41 @@ export function ChapterReleaseTable({
     }
   }
 
+  // Bulk beta sharing covers every unreleased manuscript chapter; released ones are skipped server-side.
+  const shareableUnreleased = chapters.filter(
+    (c) => c.shareable && (c.status === 'draft' || c.status === 'complete'),
+  )
+  const allShared = shareableUnreleased.length > 0 && shareableUnreleased.every((c) => c.betaOnly)
+
+  const shareAllWithBeta = async (shared: boolean) => {
+    setBetaBulkBusy(true)
+    setError(null)
+    setBetaResult(null)
+    try {
+      const res = await apiFetch(`/api/projects/${projectId}/chapters/beta-share`, apiToken, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shared }),
+      })
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || 'Failed to update beta sharing')
+      }
+      const { updated, skipped } = (await res.json()) as { updated: number; skipped: number }
+      const noun = `${updated} ${updated === 1 ? 'chapter' : 'chapters'}`
+      setBetaResult(
+        (shared ? `Shared ${noun} with beta readers` : `Stopped sharing ${noun} with beta readers`) +
+          (skipped > 0 ? ` (${skipped} already published)` : ''),
+      )
+      await loadData()
+      onRefresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update beta sharing')
+    } finally {
+      setBetaBulkBusy(false)
+    }
+  }
+
   const markReady = (id: string) =>
     doAction(id, `/api/projects/${projectId}/chapters/${id}/complete`)
 
@@ -193,6 +244,9 @@ export function ChapterReleaseTable({
       publishStatus: 'published',
       publishEarly: true,
     })
+
+  const setBetaShared = (id: string, shared: boolean) =>
+    doAction(id, `/api/projects/${projectId}/chapters/${id}/beta-share`, { shared }, 'PUT')
 
   const unpublish = (id: string) =>
     doAction(id, `/api/projects/${projectId}/chapters/${id}/unpublish`)
@@ -273,6 +327,17 @@ export function ChapterReleaseTable({
           <h3 className="font-display text-base font-semibold text-gray-900 dark:text-gray-100">
             Chapters
           </h3>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+          {hasBetaAudience && shareableUnreleased.length > 0 && (
+            <button
+              onClick={() => shareAllWithBeta(!allShared)}
+              disabled={betaBulkBusy}
+              title="Beta readers can read these chapters before they're published. Everyone else can't see them."
+              className="whitespace-nowrap rounded-md border border-violet-300 px-2.5 py-1 text-xs font-medium text-violet-600 transition-colors cursor-pointer hover:bg-violet-100 hover:border-violet-400 disabled:cursor-default disabled:opacity-50 dark:border-violet-600 dark:text-violet-400 dark:hover:bg-violet-900/50 dark:hover:text-violet-200"
+            >
+              {betaBulkBusy ? 'Updating…' : allShared ? 'Stop sharing all' : 'Share all with beta'}
+            </button>
+          )}
           <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 p-0.5 dark:border-gray-700 dark:bg-gray-800">
             {FILTER_TABS.map((tab) => {
               const count = tab.value === 'all' ? chapters.length : (statusCounts[tab.value] || 0)
@@ -295,7 +360,11 @@ export function ChapterReleaseTable({
               )
             })}
           </div>
+          </div>
         </div>
+        {betaResult && (
+          <p className="mt-2 text-xs text-violet-700 dark:text-violet-300">{betaResult}</p>
+        )}
       </div>
 
       {error && (
@@ -358,6 +427,14 @@ export function ChapterReleaseTable({
                       <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[chapter.status] || STATUS_COLORS.draft}`}>
                         {STATUS_LABELS[chapter.status] || chapter.status}
                       </span>
+                      {chapter.betaOnly && (
+                        <span
+                          className="ml-1.5 inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300"
+                          title="Shared with beta readers"
+                        >
+                          Beta
+                        </span>
+                      )}
                     </td>
                     <td className="py-2.5 pr-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap leading-snug">
                       {chapter.publishedAt ? formatDate(chapter.publishedAt) : ''}
@@ -374,6 +451,8 @@ export function ChapterReleaseTable({
                         ) : (
                           <ChapterActions
                             chapter={chapter}
+                            canShareBeta={hasBetaAudience}
+                            onToggleBeta={() => setBetaShared(chapter.id, !chapter.betaOnly)}
                             onMarkReady={() => markReady(chapter.id)}
                             onRevertToDraft={() => revertToDraft(chapter.id)}
                             onPublishNow={() => publishNow(chapter.id)}
@@ -436,6 +515,8 @@ export function ChapterReleaseTable({
 
 function ChapterActions({
   chapter,
+  canShareBeta,
+  onToggleBeta,
   onMarkReady,
   onRevertToDraft,
   onPublishNow,
@@ -446,6 +527,8 @@ function ChapterActions({
   onUnpublish,
 }: {
   chapter: ChapterRow
+  canShareBeta: boolean
+  onToggleBeta: () => void
   onMarkReady: () => void
   onRevertToDraft: () => void
   onPublishNow: () => void
@@ -456,18 +539,33 @@ function ChapterActions({
   onUnpublish: () => void
 }) {
   const btnClass = (color: string) =>
-    `rounded px-2 py-0.5 text-[11px] font-medium transition-colors ${color}`
+    `cursor-pointer rounded px-2 py-0.5 text-[11px] font-medium transition-colors disabled:cursor-default ${color}`
+
+  // Draft and Ready chapters can be shared with beta readers ahead of release
+  const betaButton = canShareBeta ? (
+    <button
+      onClick={onToggleBeta}
+      title="Beta readers can read this chapter before it's published. Everyone else can't see it."
+      className={btnClass('text-violet-600 hover:bg-violet-50 dark:text-violet-400 dark:hover:bg-violet-900/20')}
+    >
+      {chapter.betaOnly ? 'Stop beta sharing' : 'Share with beta'}
+    </button>
+  ) : null
 
   switch (chapter.status) {
     case 'draft':
       return (
-        <button onClick={onMarkReady} className={btnClass('text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20')}>
-          Mark Ready
-        </button>
+        <>
+          {betaButton}
+          <button onClick={onMarkReady} className={btnClass('text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20')}>
+            Mark Ready
+          </button>
+        </>
       )
     case 'complete':
       return (
         <>
+          {betaButton}
           <button onClick={onSchedule} className={btnClass('text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20')}>
             Schedule
           </button>

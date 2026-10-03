@@ -60,6 +60,7 @@ interface DashboardData {
     publication: {
       publishStatus: string
       publishedAt: string | null
+      betaShared?: boolean
       viewCount: number
       uniqueViewCount: number
       completionCount: number
@@ -72,6 +73,7 @@ interface DashboardData {
     scheduledDate: string | null
     publishStatus: string
   }>
+  hasBetaAudience?: boolean
   publishConfig: {
     projectId: string
     publishingMode: string
@@ -258,6 +260,7 @@ export default function ProjectDashboardPage() {
             projectId={projectId}
             readerBaseUrl={readerHref}
             showEngagement={isLive}
+            hasBetaAudience={data.hasBetaAudience ?? false}
             onStatusChange={() => loadDashboard()}
           />
 

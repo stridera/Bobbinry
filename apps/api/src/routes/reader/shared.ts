@@ -4,11 +4,11 @@
  */
 
 import { db } from '../../db/connection'
-import { chapterPublications, betaReaders, accessGrants, projects, projectPublishConfig, subscriptionTiers, userProfiles, users } from '../../db/schema'
+import { chapterPublications, accessGrants, projects, projectPublishConfig, subscriptionTiers, userProfiles, users } from '../../db/schema'
 import { eq, and, isNull, or } from 'drizzle-orm'
 import { env } from '../../lib/env'
 import { getManuscriptOrder, manuscriptPosition } from '../../lib/manuscript-order'
-import { checkChaptersAccess, findActiveSubscription, type ViewSimulation } from '../../lib/chapter-access'
+import { checkChaptersAccess, canReadUnpublishedChapter, isActiveBetaReader, findActiveSubscription, type ViewSimulation } from '../../lib/chapter-access'
 import { UUID_RE } from '../../lib/slugs'
 
 // ============================================
@@ -122,17 +122,7 @@ export async function canUserAnnotate(
   if (access === 'all_authenticated') return true
 
   // Check beta reader status
-  const [betaReader] = await db
-    .select({ id: betaReaders.id })
-    .from(betaReaders)
-    .where(and(
-      or(eq(betaReaders.projectId, projectId), isNull(betaReaders.projectId)),
-      eq(betaReaders.readerId, userId),
-      eq(betaReaders.isActive, true)
-    ))
-    .limit(1)
-
-  if (betaReader) return true
+  if (await isActiveBetaReader(projectId, userId)) return true
 
   if (access === 'subscribers') {
     // Check active subscription to the project owner
@@ -243,16 +233,7 @@ export async function canViewProject(
     .limit(1)
   if (project?.ownerId === userId) return true
 
-  const [betaReader] = await db
-    .select({ id: betaReaders.id })
-    .from(betaReaders)
-    .where(and(
-      or(eq(betaReaders.projectId, projectId), isNull(betaReaders.projectId)),
-      eq(betaReaders.readerId, userId),
-      eq(betaReaders.isActive, true)
-    ))
-    .limit(1)
-  if (betaReader) return true
+  if (await isActiveBetaReader(projectId, userId)) return true
 
   const [grant] = await db
     .select({ id: accessGrants.id })
@@ -276,8 +257,8 @@ export interface ReadableChapter {
  * Whether the caller may read a public chapter at all: the project must be
  * visible to them and the chapter must pass the full access rules in
  * lib/chapter-access (published, not embargoed, subscribers-only, tier early
- * access). Comment and reaction reads, interaction writes and view tracking
- * all gate on this, so nothing leaks from — or can be pushed onto — a chapter
+ * access) — or unpublished but shared with beta readers, for that audience.
+ * Comment and reaction reads, interaction writes and view tracking all gate on this, so nothing leaks from — or can be pushed onto — a chapter
  * the reader could not open. `projectId`, when given, must match the row.
  */
 export async function resolveReadableChapter(
@@ -289,6 +270,7 @@ export async function resolveReadableChapter(
     .select({
       projectId: chapterPublications.projectId,
       isPublished: chapterPublications.isPublished,
+      betaShared: chapterPublications.betaShared,
       publishedAt: chapterPublications.publishedAt,
       publicReleaseDate: chapterPublications.publicReleaseDate,
       defaultVisibility: projectPublishConfig.defaultVisibility,
@@ -302,7 +284,9 @@ export async function resolveReadableChapter(
       : eq(chapterPublications.chapterId, chapterId))
     .limit(1)
 
-  if (!row?.isPublished) return null
+  if (!row) return null
+  // Unpublished chapters are readable only when shared with the beta audience.
+  if (!row.isPublished && !(await canReadUnpublishedChapter(row, row.projectId, userId))) return null
   if (!(await canViewProject(row.projectId, userId))) return null
 
   const access = await checkChaptersAccess(

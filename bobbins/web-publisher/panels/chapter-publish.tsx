@@ -43,6 +43,7 @@ interface ChapterPublication {
   publishStatus: string
   publishedAt?: string
   publicReleaseDate?: string | null
+  betaShared?: boolean
   viewCount?: number
 }
 
@@ -69,6 +70,38 @@ interface SlugInfo {
   isPinned: boolean
 }
 
+function Toggle({
+  on,
+  onClick,
+  disabled,
+  label,
+}: {
+  on: boolean
+  onClick: () => void
+  disabled?: boolean
+  label: string
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      onClick={onClick}
+      disabled={disabled}
+      className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 disabled:opacity-60 ${
+        on ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'
+      }`}
+    >
+      <span
+        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+          on ? 'translate-x-[18px]' : 'translate-x-0.5'
+        }`}
+      />
+    </button>
+  )
+}
+
 export default function ChapterPublishPanel(props: ChapterPublishProps) {
   const projectId = props.projectId || props.context?.projectId
   const apiToken = props.apiToken || props.context?.apiToken
@@ -87,6 +120,11 @@ export default function ChapterPublishPanel(props: ChapterPublishProps) {
   const [error, setError] = useState<string | null>(null)
   const [showScheduleEditor, setShowScheduleEditor] = useState(false)
   const [scheduledFor, setScheduledFor] = useState('')
+
+  // Beta sharing: only offered when the author has someone to share with
+  const [hasBetaAudience, setHasBetaAudience] = useState(false)
+  const [betaSaving, setBetaSaving] = useState(false)
+  const [betaError, setBetaError] = useState<string | null>(null)
 
   // Reader-URL slug for the selected chapter
   const [slugInfo, setSlugInfo] = useState<SlugInfo | null>(null)
@@ -132,8 +170,10 @@ export default function ChapterPublishPanel(props: ChapterPublishProps) {
       if (publishConfigRes.ok) {
         const publishConfigData = await publishConfigRes.json()
         setPublishConfig(publishConfigData.config || null)
+        setHasBetaAudience(!!publishConfigData.hasBetaAudience)
       } else {
         setPublishConfig(null)
+        setHasBetaAudience(false)
       }
 
       if (entityId && entityType === 'content') {
@@ -223,7 +263,39 @@ export default function ChapterPublishPanel(props: ChapterPublishProps) {
   useEffect(() => {
     setSlugEditing(false)
     setSlugError(null)
+    setBetaError(null)
   }, [entityId])
+
+  const toggleBetaShare = async () => {
+    if (!projectId || !apiToken || !entityId || betaSaving) return
+    const previous = publication
+    const next = !previous?.betaShared
+    setBetaSaving(true)
+    setBetaError(null)
+    // Optimistic: flip now, put the old state back if the save fails.
+    setPublication({ chapterId: entityId, publishStatus: 'draft', ...previous, betaShared: next })
+    try {
+      const response = await apiFetchLocal(
+        `/api/projects/${projectId}/chapters/${entityId}/beta-share`,
+        apiToken,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ shared: next }),
+        }
+      )
+      if (!response.ok) {
+        throw new Error('Failed to update beta sharing')
+      }
+      onChanged?.()
+    } catch (err) {
+      console.error('Failed to update beta sharing', err)
+      setPublication(previous)
+      setBetaError('Failed to update beta sharing')
+    } finally {
+      setBetaSaving(false)
+    }
+  }
 
   const saveSlug = async () => {
     if (!projectId || !apiToken || !entityId) return
@@ -381,6 +453,10 @@ export default function ChapterPublishPanel(props: ChapterPublishProps) {
   const isScheduled = publication?.publishStatus === 'scheduled'
   const isComplete = publication?.publishStatus === 'complete'
   const autoReleaseEnabled = !!publishConfig?.autoReleaseEnabled
+  // Beta readers already see published and scheduled chapters, so the control
+  // only applies while a chapter is still a draft or marked complete.
+  const showBetaShare = hasBetaAudience && !isPublished && !isScheduled
+  const betaShared = !!publication?.betaShared
   const isFutureScheduled = isScheduled && !!publication?.publishedAt && new Date(publication.publishedAt).getTime() > Date.now()
   const chapterReadUrl = isPublished && projectInfo?.ownerUsername && projectInfo.shortUrl && entityId
     ? `/read/${projectInfo.ownerUsername}/${projectInfo.shortUrl}/${slugInfo?.slug ?? entityId}`
@@ -533,6 +609,31 @@ export default function ChapterPublishPanel(props: ChapterPublishProps) {
                     <p className="text-xs text-gray-500 dark:text-gray-400">
                       Published {formatDate(publication.publishedAt, 'local')}
                     </p>
+                  ) : null}
+
+                  {showBetaShare ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-xs font-medium text-gray-700 dark:text-gray-300">Beta readers</div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-700 dark:text-gray-300">Share with beta readers</span>
+                          <Toggle
+                            on={betaShared}
+                            onClick={toggleBetaShare}
+                            disabled={betaSaving}
+                            label="Share with beta readers"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                        {betaShared
+                          ? 'Beta readers can read this now. It stays hidden from everyone else until you publish.'
+                          : "Beta readers can't see this chapter until it's published."}
+                      </p>
+                      {betaError ? (
+                        <p className="text-xs text-red-600 dark:text-red-400">{betaError}</p>
+                      ) : null}
+                    </div>
                   ) : null}
 
                   {!isPublished ? (

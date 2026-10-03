@@ -381,6 +381,8 @@ export const chapterPublications = pgTable('chapter_publications', {
   publishedVersion: varchar('published_version', { length: 20 }),
   publishedAt: timestamp('published_at'),
   publicReleaseDate: timestamp('public_release_date'),
+  // Author-controlled: unpublished chapter readable by the beta audience only
+  betaShared: boolean('beta_shared').default(false).notNull(),
   firstPublishedAt: timestamp('first_published_at'),
   lastPublishedAt: timestamp('last_published_at'),
   viewCount: bigint('view_count', { mode: 'number' }).default(0).notNull(),
