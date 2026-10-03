@@ -9,7 +9,7 @@ import {
   PanelMessage,
   PanelSectionTitle,
 } from '@bobbinry/sdk'
-import { apiFetchLocal } from '../lib/api'
+import { apiFetchLocal, fetchAllContentEntities } from '../lib/api'
 
 interface ReadyQueuePanelProps {
   projectId: string
@@ -62,20 +62,15 @@ export default function ReadyQueuePanel(props: ReadyQueuePanelProps) {
     try {
       setError(null)
 
-      const [chapRes, pubRes, configRes] = await Promise.all([
-        apiFetchLocal(`/api/collections/content/entities?projectId=${projectId}&limit=500`, apiToken),
+      const [entities, pubRes, configRes] = await Promise.all([
+        fetchAllContentEntities<ChapterEntity>(projectId, apiToken),
         apiFetchLocal(`/api/projects/${projectId}/publications?status=all`, apiToken),
         apiFetchLocal(`/api/projects/${projectId}/publish-config`, apiToken),
       ])
 
-      let entities: ChapterEntity[] = []
       let publications: ChapterPublication[] = []
       let readerOrder: string[] = []
 
-      if (chapRes.ok) {
-        const data = await chapRes.json()
-        entities = data.entities || []
-      }
       if (pubRes.ok) {
         const data = await pubRes.json()
         publications = data.publications || []

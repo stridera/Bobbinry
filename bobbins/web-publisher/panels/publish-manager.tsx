@@ -17,7 +17,7 @@ import {
   PanelPill,
   PanelSectionTitle,
 } from '@bobbinry/sdk'
-import { apiFetchLocal } from '../lib/api'
+import { apiFetchLocal, fetchAllContentEntities } from '../lib/api'
 import { formatReadTime, formatCompactNumber } from '../lib/format'
 import { formatRelativeTime } from '../lib/time'
 import AnalyticsDetailPanel from './analytics-detail'
@@ -95,20 +95,15 @@ export default function PublishManagerPanel(props: PublishManagerPanelProps) {
 
     try {
       setError(null)
-      const [chapRes, pubRes] = await Promise.all([
-        apiFetchLocal(`/api/collections/content/entities?projectId=${projectId}`, apiToken),
+      const [chapEntities, pubRes] = await Promise.all([
+        fetchAllContentEntities<ChapterEntity>(projectId, apiToken),
         apiFetchLocal(`/api/projects/${projectId}/publications?status=all`, apiToken),
       ])
 
-      let chapters: ChapterEntity[] = []
+      const chapters: ChapterEntity[] = chapEntities
       let publications: ChapterPublication[] = []
 
       let readerOrder: string[] = []
-      if (chapRes.ok) {
-        const data = await chapRes.json()
-        chapters = data.entities || []
-      }
-
       if (pubRes.ok) {
         const data = await pubRes.json()
         publications = data.publications || []

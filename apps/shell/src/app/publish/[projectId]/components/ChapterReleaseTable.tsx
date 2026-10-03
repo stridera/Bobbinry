@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { apiFetch } from '@/lib/api'
+import { fetchAllContentEntities } from '@/lib/content-entities'
 
 interface ChapterReleaseTableProps {
   projectId: string
@@ -100,19 +101,14 @@ export function ChapterReleaseTable({
   const loadData = useCallback(async () => {
     try {
       setError(null)
-      const [chapRes, pubRes] = await Promise.all([
-        apiFetch(`/api/collections/content/entities?projectId=${projectId}&limit=500`, apiToken),
+      const [entities, pubRes] = await Promise.all([
+        fetchAllContentEntities<ChapterEntity>(projectId, apiToken),
         apiFetch(`/api/projects/${projectId}/publications?status=all`, apiToken),
       ])
 
-      let entities: ChapterEntity[] = []
       let publications: ChapterPublication[] = []
       let readerOrder: string[] = []
 
-      if (chapRes.ok) {
-        const data = await chapRes.json()
-        entities = data.entities || []
-      }
       if (pubRes.ok) {
         const data = await pubRes.json()
         publications = data.publications || []

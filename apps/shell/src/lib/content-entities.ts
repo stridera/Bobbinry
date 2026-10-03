@@ -1,18 +1,4 @@
-import { BobbinryAPI } from '@bobbinry/sdk'
-
-// One client for the bobbin: the SDK owns the API origin, so this file no
-// longer reads NEXT_PUBLIC_API_URL itself (two copies of that had drifted to
-// different default ports).
-const api = new BobbinryAPI()
-
-/**
- * Authenticated fetch for panels that receive a bare `apiToken` prop.
- * `path` may carry the legacy `/api` prefix; the SDK base already includes it.
- */
-export async function apiFetchLocal(path: string, token: string, init?: RequestInit) {
-  api.setAuthToken(token)
-  return api.fetch(path.replace(/^\/api(?=\/)/, ''), init)
-}
+import { apiFetch } from '@/lib/api'
 
 const ENTITY_PAGE_SIZE = 500
 
@@ -22,12 +8,12 @@ const ENTITY_PAGE_SIZE = 500
  * A failed first page reads as an empty project; a failure part-way through
  * throws, since a partial list would be the same silent truncation.
  */
-export async function fetchAllContentEntities<T = any>(projectId: string, token: string): Promise<T[]> {
+export async function fetchAllContentEntities<T = any>(projectId: string, apiToken: string): Promise<T[]> {
   const all: T[] = []
   for (;;) {
-    const res = await apiFetchLocal(
+    const res = await apiFetch(
       `/api/collections/content/entities?projectId=${projectId}&limit=${ENTITY_PAGE_SIZE}&offset=${all.length}`,
-      token,
+      apiToken,
     )
     if (!res.ok) {
       if (all.length === 0) break

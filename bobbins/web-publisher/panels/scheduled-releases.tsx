@@ -9,7 +9,7 @@ import {
   PanelPill,
   PanelSectionTitle,
 } from '@bobbinry/sdk'
-import { apiFetchLocal } from '../lib/api'
+import { apiFetchLocal, fetchAllContentEntities } from '../lib/api'
 import { formatDateTime } from '../lib/time'
 
 interface ScheduledReleasesPanelProps {
@@ -56,12 +56,11 @@ export default function ScheduledReleasesPanel(props: ScheduledReleasesPanelProp
     try {
       setError(null)
 
-      const [publicationsRes, chaptersRes] = await Promise.all([
+      const [publicationsRes, chapterEntities] = await Promise.all([
         apiFetchLocal(`/api/projects/${projectId}/publications?status=all`, apiToken),
-        apiFetchLocal(`/api/collections/content/entities?projectId=${projectId}&limit=500`, apiToken),
+        fetchAllContentEntities<ChapterEntity>(projectId, apiToken),
       ])
 
-      const chapterEntities: ChapterEntity[] = chaptersRes.ok ? ((await chaptersRes.json()).entities || []) : []
       const chapterPublications: ChapterPublication[] = publicationsRes.ok ? ((await publicationsRes.json()).publications || []) : []
       const chapterTitles = new Map(chapterEntities.map((chapter) => [chapter.id, chapter.title || 'Untitled chapter']))
 
