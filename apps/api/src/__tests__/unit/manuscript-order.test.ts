@@ -1,5 +1,10 @@
 import { describe, it, expect } from '@jest/globals'
-import { computeManuscriptOrder, type ManuscriptOrder } from '../../lib/manuscript-order'
+import {
+  computeManuscriptOrder,
+  displayChapterTitle,
+  numberChapters,
+  type ManuscriptOrder,
+} from '../../lib/manuscript-order'
 
 /** Content ids in manuscript order. */
 function sequence(order: ManuscriptOrder): string[] {
@@ -26,7 +31,7 @@ describe('computeManuscriptOrder', () => {
       ],
     )
     expect(sequence(order)).toEqual(['ch1', 'ch2', 'ch14', 'ch15'])
-    expect(order.get('ch14')).toEqual({ position: 2, folderPath: 'Part 2' })
+    expect(order.get('ch14')).toEqual({ position: 2, folderPath: 'Part 2', bookId: 'part2' })
   })
 
   it('interleaves root content with root folders by order', () => {
@@ -90,5 +95,84 @@ describe('computeManuscriptOrder', () => {
       { id: 'missing', containerId: null, order: null },
     ])
     expect(sequence(order)).toEqual(['junk', 'missing', 'second'])
+  })
+})
+
+describe('numberChapters', () => {
+  const order = computeManuscriptOrder(
+    [
+      { id: 'book1', parentId: null, order: 100, title: 'Book One' },
+      { id: 'act1', parentId: 'book1', order: 100, title: 'Act I' },
+      { id: 'book2', parentId: null, order: 200, title: 'Book Two' },
+    ],
+    [
+      { id: 'prologue', containerId: null, order: 50 },
+      { id: 'b1c1', containerId: 'act1', order: 100 },
+      { id: 'b1c2', containerId: 'act1', order: 200 },
+      { id: 'b1c3', containerId: 'book1', order: 300 },
+      { id: 'b2c1', containerId: 'book2', order: 100 },
+      { id: 'b2c2', containerId: 'book2', order: 200 },
+    ],
+  )
+  const all = ['b2c2', 'b1c3', 'prologue', 'b1c1', 'b2c1', 'b1c2']
+
+  it('records the outermost folder as the book, however deep the chapter sits', () => {
+    expect(order.get('b1c1')?.bookId).toBe('book1')
+    expect(order.get('b1c3')?.bookId).toBe('book1')
+    expect(order.get('b2c1')?.bookId).toBe('book2')
+    expect(order.get('prologue')?.bookId).toBeNull()
+  })
+
+  it('numbers continuously in manuscript order regardless of input order', () => {
+    const numbers = numberChapters(order, all, 'continuous')
+    expect(sequence(order).map(id => numbers.get(id))).toEqual([1, 2, 3, 4, 5, 6])
+    expect(numbers.get('prologue')).toBe(1)
+    expect(numbers.get('b2c2')).toBe(6)
+  })
+
+  it('restarts in each top-level folder when per-book', () => {
+    const numbers = numberChapters(order, all, 'per-book')
+    expect(Object.fromEntries(numbers)).toEqual({
+      prologue: 1, b1c1: 1, b1c2: 2, b1c3: 3, b2c1: 1, b2c2: 2,
+    })
+  })
+
+  it('numbers only the chapters it is given, with no gaps', () => {
+    // A reader who cannot see b1c2 gets 1, 2, 3 — not 1, 3, 4.
+    const numbers = numberChapters(order, ['prologue', 'b1c1', 'b1c3'], 'continuous')
+    expect(Object.fromEntries(numbers)).toEqual({ prologue: 1, b1c1: 2, b1c3: 3 })
+  })
+
+  it('does nothing when off', () => {
+    expect(numberChapters(order, all, 'off').size).toBe(0)
+  })
+
+  it('renumbers when a chapter moves, with no other input', () => {
+    const moved = computeManuscriptOrder(
+      [{ id: 'book1', parentId: null, order: 100, title: 'Book One' }],
+      [
+        { id: 'x', containerId: 'book1', order: 100 },
+        { id: 'y', containerId: 'book1', order: 200 },
+      ],
+    )
+    expect(numberChapters(moved, ['x', 'y'], 'continuous').get('y')).toBe(2)
+    const swapped = computeManuscriptOrder(
+      [{ id: 'book1', parentId: null, order: 100, title: 'Book One' }],
+      [
+        { id: 'x', containerId: 'book1', order: 300 },
+        { id: 'y', containerId: 'book1', order: 200 },
+      ],
+    )
+    expect(numberChapters(swapped, ['x', 'y'], 'continuous').get('y')).toBe(1)
+  })
+})
+
+describe('displayChapterTitle', () => {
+  it('formats numbered chapters and leaves others untouched', () => {
+    const numbers = new Map([['a', 3]])
+    expect(displayChapterTitle(numbers, 'a', 'Chapter 9 - Storm')).toBe('Chapter 3: Storm')
+    expect(displayChapterTitle(numbers, 'a', '')).toBe('Chapter 3')
+    expect(displayChapterTitle(numbers, 'b', 'Storm')).toBe('Storm')
+    expect(displayChapterTitle(numbers, 'b', null)).toBe('')
   })
 })

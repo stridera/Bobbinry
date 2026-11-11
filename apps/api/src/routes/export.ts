@@ -18,6 +18,7 @@ import {
 } from '../lib/export-converters'
 import { notDeleted } from '../lib/entity-scope'
 import { getManuscriptOrder, manuscriptPosition } from '../lib/manuscript-order'
+import { buildChapterTitler } from '../lib/chapter-numbering'
 
 const DOCX_MIME =
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -111,15 +112,25 @@ async function getSnapshot(projectId: string): Promise<ExportSnapshot> {
   }
 }
 
-async function getManuscriptData(projectId: string): Promise<Chapter[]> {
+async function getManuscriptData(
+  projectId: string,
+  opts: { numbered?: boolean } = {},
+): Promise<Chapter[]> {
   // Each content item is a chapter — matches what the dashboard UI shows.
   // Containers are structural wrappers, not user-visible chapters.
   const snapshot = await getSnapshot(projectId)
 
+  // Automatic chapter numbering applies to the heading the export prints.
+  // Exports include the whole manuscript, so numbers count every chapter.
+  // (The outline already numbers its own lines, so it opts out.)
+  const titler = opts.numbered === false
+    ? null
+    : await buildChapterTitler(projectId, snapshot.content.map((item) => item.id))
+
   return snapshot.content.map((item) => ({
     container: {
       id: item.id,
-      title: item.title || 'Untitled',
+      title: titler ? titler.titleOf(item.id, item.title || '') || 'Untitled' : item.title || 'Untitled',
       type: 'chapter',
       order: item.order,
       parentId: null,
@@ -190,7 +201,7 @@ const exportPlugin: FastifyPluginAsync = async (fastify) => {
     try {
       const [{ name: projectName }, chapters] = await Promise.all([
         getProjectMeta(projectId),
-        getManuscriptData(projectId),
+        getManuscriptData(projectId, { numbered: mode !== 'outline' }),
       ])
 
       if (chapters.length === 0) {

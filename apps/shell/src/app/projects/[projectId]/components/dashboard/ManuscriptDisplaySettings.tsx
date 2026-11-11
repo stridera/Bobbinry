@@ -12,6 +12,7 @@ import {
   PARAGRAPH_SPACING_LABELS,
   PARAGRAPH_INDENT_LABELS,
   SCENE_BREAK_LABELS,
+  CHAPTER_NUMBERING_LABELS,
   resolveDisplaySettings,
   sanitizeDisplaySettings,
   summarizeDisplaySettings,
@@ -20,6 +21,7 @@ import {
   type ParagraphSpacing,
   type ParagraphIndent,
   type SceneBreakStyle,
+  type ChapterNumbering,
 } from '@bobbinry/types'
 
 const HINTS = {
@@ -33,6 +35,8 @@ const HINTS = {
     'How horizontal rules (---) display between scenes. Asterism (* * *) is the publishing standard.',
   dropCaps:
     'Large ornamental first letter on the first paragraph after each heading. Editorial flourish — best used sparingly.',
+  chapterNumbering:
+    'Shows chapters as "Chapter N: Title", counted from their order in the manuscript, so moving or inserting a chapter renumbers everything. Titles are never edited — readers, exports and the editor tree just display the number. Restart in each book counts again from 1 inside every top-level folder.',
 }
 
 interface ProjectSettings {
@@ -41,6 +45,7 @@ interface ProjectSettings {
   codeBlockWrap: boolean | null
   sceneBreakStyle: SceneBreakStyle | null
   dropCaps: boolean | null
+  chapterNumbering: ChapterNumbering | null
 }
 
 const empty: ProjectSettings = {
@@ -49,6 +54,7 @@ const empty: ProjectSettings = {
   codeBlockWrap: null,
   sceneBreakStyle: null,
   dropCaps: null,
+  chapterNumbering: null,
 }
 
 /** The subset of cascade fields this card edits (smart dashes/ellipsis live in the editor). */
@@ -108,6 +114,7 @@ export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) 
           codeBlockWrap: data.settings?.codeBlockWrap ?? null,
           sceneBreakStyle: data.settings?.sceneBreakStyle ?? null,
           dropCaps: data.settings?.dropCaps ?? null,
+          chapterNumbering: sanitizeDisplaySettings(data.settings).chapterNumbering ?? null,
         })
         // smartDashes/smartEllipsis are edited from the editor, not this card,
         // but still shape what readers get — keep them for the summary line.
@@ -310,6 +317,26 @@ export function ManuscriptDisplaySettings({ projectId }: { projectId: string }) 
               { value: '', label: 'Inherit' },
               { value: 'off', label: 'Off' },
               { value: 'on', label: 'On' },
+            ]}
+          />
+        </Field>
+
+        <Field
+          label="Chapter numbering"
+          hint={HINTS.chapterNumbering}
+          inheritNote={settings.chapterNumbering === null
+            ? inheritNote(userDefaults ? CHAPTER_NUMBERING_LABELS[userDefaults.chapterNumbering] : undefined)
+            : undefined}
+        >
+          <Segmented
+            ariaLabel="Chapter numbering"
+            value={settings.chapterNumbering ?? ''}
+            onChange={v => save({ chapterNumbering: (v || null) as ChapterNumbering | null })}
+            options={[
+              { value: '', label: 'Inherit' },
+              { value: 'off', label: 'Off' },
+              { value: 'continuous', label: 'Continuous' },
+              { value: 'per-book', label: 'Per book' },
             ]}
           />
         </Field>

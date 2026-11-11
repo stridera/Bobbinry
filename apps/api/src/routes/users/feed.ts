@@ -5,6 +5,7 @@ import { userProfiles, userFollowers, projectFollows, projects, chapterViews, ch
 import { eq, and, or, desc, isNull, sql, isNotNull } from 'drizzle-orm'
 import { requireAuth, requireSelf } from '../../middleware/auth'
 import { liveEntity, notDeleted } from '../../lib/entity-scope'
+import { publishedTitlerCache } from '../../lib/chapter-numbering'
 
 const feedRoutes: FastifyPluginAsync = async (fastify) => {
   // ============================================================================
@@ -81,6 +82,9 @@ const feedRoutes: FastifyPluginAsync = async (fastify) => {
         .limit(limit)
         .offset(offset)
 
+      // Automatic chapter numbering, as the public TOC shows it.
+      const titlerFor = publishedTitlerCache()
+
       // Resolve chapter titles from entities
       const feedWithTitles = await Promise.all(
         feedItems.map(async (item) => {
@@ -94,6 +98,7 @@ const feedRoutes: FastifyPluginAsync = async (fastify) => {
             if (entity) {
               chapterTitle = (entity.entityData as any)?.title || 'Untitled'
             }
+            chapterTitle = (await titlerFor(item.projectId)).titleOf(item.chapterId, chapterTitle)
           } catch {}
 
           // Get author profile
@@ -190,13 +195,20 @@ const feedRoutes: FastifyPluginAsync = async (fastify) => {
         }
       }
 
-      const enriched = deduplicated.map(item => ({
+      const titlerFor = publishedTitlerCache()
+      const numberedTitles = await Promise.all(
+        deduplicated.map(async item => item.projectId
+          ? (await titlerFor(item.projectId)).titleOf(item.chapterId, item.chapterTitle)
+          : item.chapterTitle)
+      )
+
+      const enriched = deduplicated.map((item, i) => ({
         viewId: item.viewId,
         chapterId: item.chapterId,
         lastPositionPercent: item.lastPositionPercent,
         readTimeSeconds: item.readTimeSeconds,
         startedAt: item.startedAt,
-        chapterTitle: item.chapterTitle,
+        chapterTitle: numberedTitles[i]!,
         projectId: item.projectId,
         projectName: item.projectName,
         projectShortUrl: item.projectShortUrl,

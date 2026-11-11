@@ -15,6 +15,14 @@ import {
   type CharactersById,
   type CharacterColorRef,
 } from '../lib/chapterColors'
+import {
+  computeChapterNumbers,
+  resolveDisplaySettings,
+  stripManualChapterNumber,
+  sanitizeDisplaySettings,
+  type ChapterNumbering,
+  type NumberableChapter,
+} from '@bobbinry/types'
 import { rangeBetween, reorderWithBlock, topLevelSelection, visibleIds } from '../lib/tree-selection'
 
 interface NavigationPanelProps {
@@ -51,6 +59,23 @@ interface DropTarget {
 interface DraggedItem {
   id: string
   nodeType: 'container' | 'content'
+}
+
+/**
+ * Every content node in tree order (depth-first, the order the rows render in),
+ * tagged with its top-level folder. Same counting rule as the API: all content
+ * counts, so editor numbers match what exports print.
+ */
+function flattenContent(nodes: TreeNode[]): NumberableChapter[] {
+  const out: NumberableChapter[] = []
+  const walk = (list: TreeNode[], bookId: string | null) => {
+    for (const node of list) {
+      if (node.nodeType === 'content') out.push({ id: node.id, bookId })
+      else if (node.children) walk(node.children, bookId ?? node.id)
+    }
+  }
+  walk(nodes, null)
+  return out
 }
 
 function findNodeInTree(nodes: TreeNode[], nodeId: string): TreeNode | null {
@@ -113,6 +138,14 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
   const [tree, setTree] = useState<TreeNode[]>([])
   const [loading, setLoading] = useState(true)
   const [charactersById, setCharactersById] = useState<CharactersById>(() => new Map())
+  // Automatic chapter numbering (user default → project override). Display
+  // only: numbers are derived from tree order below and never stored.
+  const [chapterNumbering, setChapterNumbering] = useState<ChapterNumbering>('off')
+  const numberingFetchedAt = useRef(0)
+  const chapterNumbers = useMemo(
+    () => computeChapterNumbers(flattenContent(tree), chapterNumbering),
+    [tree, chapterNumbering],
+  )
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   // Rows picked with Ctrl/Cmd+click or Shift+click, for moving several at
@@ -421,11 +454,34 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     return () => window.removeEventListener('bobbinry:entities-changed', handleEntitiesChanged)
   }, [sdk])
 
+  async function loadChapterNumbering() {
+    // loadTree runs after every drag; the setting rarely changes, so don't
+    // refetch it on each one.
+    if (Date.now() - numberingFetchedAt.current < 30_000) return
+    numberingFetchedAt.current = Date.now()
+    try {
+      const [userRes, projectRes] = await Promise.all([
+        sdk.api.fetch('/users/me/manuscript-display-settings').then(r => (r.ok ? r.json() : null)),
+        sdk.api.fetch(`/projects/${projectId}/manuscript-display-settings`).then(r => (r.ok ? r.json() : null)),
+      ])
+      setChapterNumbering(
+        resolveDisplaySettings(
+          sanitizeDisplaySettings(userRes?.settings),
+          sanitizeDisplaySettings(projectRes?.settings),
+        ).chapterNumbering,
+      )
+    } catch {
+      // Numbering is cosmetic; keep whatever we last had.
+    }
+  }
+
   async function loadTree() {
     if (!sdk) return
 
     try {
       setLoading(true)
+
+      void loadChapterNumbering()
 
       const [allContainers, allContent, allCharacters] = await Promise.all([
         sdk.entities.query({ collection: 'containers', limit: 1000 }),
@@ -1262,7 +1318,15 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
             />
           ) : (
             <span className="flex-1 text-gray-800 dark:text-gray-200 truncate">
-              {node.title}
+              {chapterNumbers.has(node.id) && (
+                <span
+                  className="mr-1 tabular-nums text-gray-400 dark:text-gray-500"
+                  title="Automatic chapter number (Project settings → Manuscript Display)"
+                >
+                  {chapterNumbers.get(node.id)}.
+                </span>
+              )}
+              {chapterNumbers.has(node.id) ? stripManualChapterNumber(node.title) : node.title}
             </span>
           )}
 
@@ -1420,7 +1484,12 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
               >
                 <span className="shrink-0 text-sm leading-none">{node.nodeType === 'container' ? '📁' : '📝'}</span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm text-gray-800 dark:text-gray-100">{node.title}</span>
+                  <span className="block truncate text-sm text-gray-800 dark:text-gray-100">
+                    {chapterNumbers.has(node.id) && (
+                      <span className="mr-1 tabular-nums text-gray-400 dark:text-gray-500">{chapterNumbers.get(node.id)}.</span>
+                    )}
+                    {chapterNumbers.has(node.id) ? stripManualChapterNumber(node.title) : node.title}
+                  </span>
                   {path && (
                     <span className="block truncate text-[11px] text-gray-400 dark:text-gray-500">{path}</span>
                   )}

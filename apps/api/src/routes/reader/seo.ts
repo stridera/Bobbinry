@@ -10,6 +10,7 @@ import { escapeXml, htmlToPlainText } from '../../lib/text'
 import { notDeleted } from '../../lib/entity-scope'
 import { checkChaptersAccess } from '../../lib/chapter-access'
 import { resolveSlug, getSlugsForEntities } from '../../lib/slugs'
+import { buildPublishedChapterTitler } from '../../lib/chapter-numbering'
 import { sortInReaderOrder, canViewProject, getReaderProjectBase } from './shared'
 
 const seoRoutes: FastifyPluginAsync = async (fastify) => {
@@ -202,15 +203,18 @@ const seoRoutes: FastifyPluginAsync = async (fastify) => {
       // Excerpt from the prose, not the stored HTML.
       const excerpt = htmlToPlainText(chapter.content).replace(/\s+/g, ' ').trim().substring(0, 200) + '...'
 
+      // Same numbering the public TOC shows (see buildPublishedChapterTitler).
+      const chapterTitle = (await buildPublishedChapterTitler(projectId)).titleOf(chapter.id, chapter.title)
+
       const metadata = {
-        title: `${chapter.title} - ${projectData?.title || 'Untitled Project'}`,
+        title: `${chapterTitle} - ${projectData?.title || 'Untitled Project'}`,
         description: excerpt,
         slug: resolved.currentSlug,
         isCurrentSlug: resolved.requestedIsCurrent,
 
         openGraph: {
           type: 'article',
-          title: chapter.title,
+          title: chapterTitle,
           description: excerpt,
           url: readerUrl,
           image: projectData?.coverImage || `${baseUrl}/default-cover.jpg`,
@@ -221,7 +225,7 @@ const seoRoutes: FastifyPluginAsync = async (fastify) => {
 
         twitter: {
           card: 'summary',
-          title: chapter.title,
+          title: chapterTitle,
           description: excerpt,
           image: projectData?.coverImage || `${baseUrl}/default-cover.jpg`
         },
@@ -229,7 +233,7 @@ const seoRoutes: FastifyPluginAsync = async (fastify) => {
         structuredData: {
           '@context': 'https://schema.org',
           '@type': 'Article',
-          headline: chapter.title,
+          headline: chapterTitle,
           description: excerpt,
           author: {
             '@type': 'Person',
@@ -440,6 +444,9 @@ const seoRoutes: FastifyPluginAsync = async (fastify) => {
         : new Map<string, string>()
       const projectLink = readerBase ?? `${baseUrl}/projects/${projectId}`
 
+      // Numbered among all published chapters, not just this page of the feed.
+      const titler = await buildPublishedChapterTitler(projectId)
+
       // Build RSS feed items
       const items = chapters.map(chapter => {
         const excerpt = htmlToPlainText(chapter.content).replace(/\s+/g, ' ').trim().substring(0, 500)
@@ -454,7 +461,7 @@ const seoRoutes: FastifyPluginAsync = async (fastify) => {
 
         return `
     <item>
-      <title>${escapeXml(chapter.title || 'Untitled')}</title>
+      <title>${escapeXml(titler.titleOf(chapter.id, chapter.title) || 'Untitled')}</title>
       <link>${escapeXml(link)}</link>
       <guid isPermaLink="true">${escapeXml(guid)}</guid>
       <pubDate>${pubDate}</pubDate>

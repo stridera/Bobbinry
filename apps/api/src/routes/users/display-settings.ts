@@ -4,6 +4,7 @@ import { db } from '../../db/connection'
 import { userManuscriptDisplaySettings } from '../../db/schema'
 import { eq } from 'drizzle-orm'
 import { requireAuth } from '../../middleware/auth'
+import { isChapterNumbering, type ChapterNumbering } from '@bobbinry/types'
 
 const displaySettingsRoutes: FastifyPluginAsync = async (fastify) => {
   // ============================================================================
@@ -33,6 +34,7 @@ const displaySettingsRoutes: FastifyPluginAsync = async (fastify) => {
             dropCaps: false,
             smartDashes: false,
             smartEllipsis: false,
+            chapterNumbering: 'off',
             showFormattingMarks: false
           }
         })
@@ -53,6 +55,7 @@ const displaySettingsRoutes: FastifyPluginAsync = async (fastify) => {
       dropCaps?: boolean
       smartDashes?: boolean
       smartEllipsis?: boolean
+      chapterNumbering?: ChapterNumbering
       showFormattingMarks?: boolean
     }
   }>('/users/me/manuscript-display-settings', {
@@ -61,6 +64,10 @@ const displaySettingsRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const userId = request.user!.id
       const body = request.body ?? {}
+
+      if (body.chapterNumbering !== undefined && !isChapterNumbering(body.chapterNumbering)) {
+        return reply.status(400).send({ error: 'chapterNumbering must be one of: off, continuous, per-book' })
+      }
 
       // Allow-list updatable fields — prevents the body from including a
       // `userId` key that would rewrite this row's PK.
@@ -72,6 +79,7 @@ const displaySettingsRoutes: FastifyPluginAsync = async (fastify) => {
       if (body.dropCaps !== undefined) safe.dropCaps = body.dropCaps
       if (body.smartDashes !== undefined) safe.smartDashes = body.smartDashes
       if (body.smartEllipsis !== undefined) safe.smartEllipsis = body.smartEllipsis
+      if (body.chapterNumbering !== undefined) safe.chapterNumbering = body.chapterNumbering
       if (body.showFormattingMarks !== undefined) safe.showFormattingMarks = body.showFormattingMarks
 
       const existing = await db

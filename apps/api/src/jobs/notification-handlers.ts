@@ -23,6 +23,7 @@ import {
   subscriptions,
 } from '../db/schema'
 import { liveEntity } from '../lib/entity-scope'
+import { buildPublishedChapterTitler } from '../lib/chapter-numbering'
 import { eq, and } from 'drizzle-orm'
 import { serverEventBus, DomainEvent } from '../lib/event-bus'
 import { sendNewChapterEmail } from '../lib/email'
@@ -82,7 +83,9 @@ async function handleContentPublished(event: DomainEvent): Promise<void> {
 
   const authorName = author.name || 'An author'
   const chapterData = chapter.entityData as Record<string, unknown>
-  const chapterTitle = (chapterData?.title as string) || 'Untitled Chapter'
+  const rawChapterTitle = (chapterData?.title as string) || 'Untitled Chapter'
+  // Announce the chapter by the same name readers will see (automatic numbering included).
+  const chapterTitle = (await buildPublishedChapterTitler(projectId)).titleOf(chapterId, rawChapterTitle)
   const projectTitle = project.name || 'Untitled Project'
   const chapterUrl = `/read/${author.username}/${project.shortUrl || projectId}/${chapterId}`
 
@@ -230,7 +233,9 @@ async function handleContentAvailable(event: DomainEvent): Promise<void> {
 
   const authorName = author.name || 'An author'
   const chapterData = chapter.entityData as Record<string, unknown>
-  const chapterTitle = (chapterData?.title as string) || 'Untitled Chapter'
+  const rawChapterTitle = (chapterData?.title as string) || 'Untitled Chapter'
+  // Announce the chapter by the same name readers will see (automatic numbering included).
+  const chapterTitle = (await buildPublishedChapterTitler(projectId)).titleOf(chapterId, rawChapterTitle)
   const projectTitle = project.name || 'Untitled Project'
   const chapterUrl = `/read/${author.username}/${project.shortUrl || projectId}/${chapterId}`
 

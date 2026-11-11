@@ -212,6 +212,8 @@ export const userManuscriptDisplaySettings = pgTable('user_manuscript_display_se
   dropCaps: boolean('drop_caps').default(false).notNull(),
   smartDashes: boolean('smart_dashes').default(false).notNull(),
   smartEllipsis: boolean('smart_ellipsis').default(false).notNull(),
+  // Display-only "Chapter N: Title" numbering derived from manuscript order; never written into titles.
+  chapterNumbering: varchar('chapter_numbering', { length: 20 }).default('off').notNull(), // off, continuous, per-book
   // Editor-only personal pref (not cascaded). Lives here so a single GET hydrates the editor UI.
   showFormattingMarks: boolean('show_formatting_marks').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -228,6 +230,7 @@ export const projectManuscriptDisplaySettings = pgTable('project_manuscript_disp
   dropCaps: boolean('drop_caps'),
   smartDashes: boolean('smart_dashes'),
   smartEllipsis: boolean('smart_ellipsis'),
+  chapterNumbering: varchar('chapter_numbering', { length: 20 }), // off, continuous, per-book
   updatedAt: timestamp('updated_at').defaultNow().notNull()
 })
 

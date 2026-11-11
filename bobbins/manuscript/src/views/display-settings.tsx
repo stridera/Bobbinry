@@ -224,6 +224,9 @@ const HINTS: Record<keyof ManuscriptDisplaySettings, string> = {
     'Auto-converts two hyphens (--) into an em dash (—) while you type. Skipped inside code blocks and inline code. Ctrl+Z reverts to the hyphens.',
   smartEllipsis:
     'Auto-converts three dots (...) into an ellipsis character (…). Skipped inside code blocks and inline code. Ctrl+Z reverts to the dots.',
+  // Set per project (project settings) or as an author default; chapters never override it.
+  chapterNumbering:
+    'Shows chapters as "Chapter N: Title", counted from manuscript order. Titles are never edited. Set it in project settings.',
 }
 
 /**

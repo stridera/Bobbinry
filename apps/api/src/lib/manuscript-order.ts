@@ -17,6 +17,11 @@ import { and, eq, sql } from 'drizzle-orm'
 import { db } from '../db/connection'
 import { entities } from '../db/schema'
 import { notDeleted } from './entity-scope'
+import {
+  computeChapterNumbers,
+  formatChapterTitle,
+  type ChapterNumbering,
+} from '@bobbinry/types'
 
 export interface ManuscriptOrderContainer {
   id: string
@@ -36,6 +41,8 @@ export interface ManuscriptPlacement {
   position: number
   /** Enclosing folder titles, outermost first; null at the manuscript root. */
   folderPath: string | null
+  /** Id of the outermost enclosing folder (the "book"); null at the manuscript root. */
+  bookId: string | null
 }
 
 export type ManuscriptOrder = Map<string, ManuscriptPlacement>
@@ -69,7 +76,7 @@ export function computeManuscriptOrder(
   for (const node of content) add(node.containerId, { kind: 'content', node })
 
   const result: ManuscriptOrder = new Map()
-  const walk = (parentKey: string, path: string[]) => {
+  const walk = (parentKey: string, path: string[], bookId: string | null) => {
     const siblings = [...(childrenOf.get(parentKey) ?? [])]
       .sort((a, b) => sortKey(a.node.order) - sortKey(b.node.order))
     for (const item of siblings) {
@@ -77,20 +84,21 @@ export function computeManuscriptOrder(
         result.set(item.node.id, {
           position: result.size,
           folderPath: path.length > 0 ? path.join(FOLDER_SEPARATOR) : null,
+          bookId,
         })
       } else {
-        walk(item.node.id, [...path, item.node.title || 'Untitled'])
+        walk(item.node.id, [...path, item.node.title || 'Untitled'], bookId ?? item.node.id)
       }
     }
   }
-  walk('', [])
+  walk('', [], null)
 
   // Content whose folder no longer exists is missing from the tree but may
   // still be published, so it goes after everything else, by its own `order`.
   const unreached = content
     .filter(c => !result.has(c.id))
     .sort((a, b) => sortKey(a.order) - sortKey(b.order))
-  for (const c of unreached) result.set(c.id, { position: result.size, folderPath: null })
+  for (const c of unreached) result.set(c.id, { position: result.size, folderPath: null, bookId: null })
 
   return result
 }
@@ -132,4 +140,39 @@ export async function getManuscriptOrder(projectId: string): Promise<ManuscriptO
 /** `id`'s place in manuscript order; ids outside the manuscript sort last. */
 export function manuscriptPosition(order: ManuscriptOrder, id: string): number {
   return order.get(id)?.position ?? Number.MAX_SAFE_INTEGER
+}
+
+/**
+ * Automatic chapter numbers for `ids` under `mode`, keyed by id (empty for
+ * `off`). The numbering is derived at read time from the order, so moving or
+ * inserting a chapter renumbers everything with no writes.
+ *
+ * Which chapters are counted is the caller's choice, and it is deliberate:
+ *  - Reader surfaces (TOC, chapter page, SEO, RSS) pass only the chapters that
+ *    reader can see, so a reader never meets "Chapter 1, Chapter 3" with a gap
+ *    where an unpublished or draft chapter sits. Numbers can therefore shift
+ *    for readers as the author publishes earlier chapters.
+ *  - Editor and export contexts pass every chapter in the manuscript.
+ * Ids outside the manuscript tree sort last, as in `manuscriptPosition`.
+ */
+export function numberChapters(
+  order: ManuscriptOrder,
+  ids: readonly string[],
+  mode: ChapterNumbering,
+): Map<string, number> {
+  if (mode === 'off') return new Map()
+  const ordered = [...ids]
+    .sort((a, b) => manuscriptPosition(order, a) - manuscriptPosition(order, b))
+    .map(id => ({ id, bookId: order.get(id)?.bookId ?? null }))
+  return computeChapterNumbers(ordered, mode)
+}
+
+/** `title` as shown to people: "Chapter N: Title" when `id` has a number, otherwise untouched. */
+export function displayChapterTitle(
+  numbers: ReadonlyMap<string, number>,
+  id: string,
+  title: string | null | undefined,
+): string {
+  const n = numbers.get(id)
+  return n === undefined ? (title ?? '') : formatChapterTitle(title, n)
 }

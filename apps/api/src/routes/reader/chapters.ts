@@ -9,6 +9,7 @@ import { optionalAuth } from '../../middleware/auth'
 import { notDeleted } from '../../lib/entity-scope'
 import { checkChapterAccess, checkChaptersAccess, isBetaAudience } from '../../lib/chapter-access'
 import { resolveSlug, getSlugsForEntities } from '../../lib/slugs'
+import { buildChapterTitler } from '../../lib/chapter-numbering'
 import { sortInReaderOrder, resolveViewAs, canViewProject, resolveReadableChapter } from './shared'
 
 const chaptersRoutes: FastifyPluginAsync = async (fastify) => {
@@ -97,6 +98,12 @@ const chaptersRoutes: FastifyPluginAsync = async (fastify) => {
 
       const slugMap = await getSlugsForEntities(projectId, publishedChapters.map(ch => ch.chapterId))
 
+      // Automatic chapter numbering: numbered among the chapters this reader
+      // can see (published, plus beta-shared for the beta audience), so
+      // readers never see a gap where a hidden draft sits. `title` is the
+      // display title; `rawTitle` is what the author typed.
+      const titler = await buildChapterTitler(projectId, publishedChapters.map(ch => ch.chapterId))
+
       // `order` is the chapter's place in reader order. The raw entity `order`
       // only ranks siblings within one folder, so it means nothing to a client.
       const accessibleChapters = publishedChapters.map((chapter, index) => {
@@ -105,7 +112,8 @@ const chaptersRoutes: FastifyPluginAsync = async (fastify) => {
           return {
             id: chapter.chapterId,
             slug: slugMap.get(chapter.chapterId) ?? null,
-            title: chapter.title,
+            title: titler.titleOf(chapter.chapterId, chapter.title),
+            rawTitle: chapter.title,
             publishedAt: chapter.publishedAt,
             viewCount: chapter.viewCount,
             order: index,
@@ -116,7 +124,8 @@ const chaptersRoutes: FastifyPluginAsync = async (fastify) => {
           return {
             id: chapter.chapterId,
             slug: slugMap.get(chapter.chapterId) ?? null,
-            title: chapter.title,
+            title: titler.titleOf(chapter.chapterId, chapter.title),
+            rawTitle: chapter.title,
             embargoUntil: access.embargoUntil,
             order: index,
             locked: true,
@@ -255,6 +264,13 @@ const chaptersRoutes: FastifyPluginAsync = async (fastify) => {
         ))
       const allChapters = await sortInReaderOrder(projectId, navRows)
 
+      // Same visible set as the TOC, so the number here matches the TOC's.
+      const titler = await buildChapterTitler(
+        projectId,
+        allChapters.map(c => c.id),
+        { mode: resolvedDisplay.chapterNumbering },
+      )
+
       const currentIndex = allChapters.findIndex(c => c.id === chapterId)
       const previousChapter = currentIndex > 0 ? allChapters[currentIndex - 1] : null
       const nextChapter = currentIndex < allChapters.length - 1 ? allChapters[currentIndex + 1] : null
@@ -268,7 +284,8 @@ const chaptersRoutes: FastifyPluginAsync = async (fastify) => {
         chapter: {
           id: chapter.id,
           slug: resolved.currentSlug,
-          title: chapter.title,
+          title: titler.titleOf(chapter.id, chapter.title),
+          rawTitle: chapter.title,
           content: chapter.content,
           publishedAt: chapter.publishedAt,
           viewCount: chapter.viewCount

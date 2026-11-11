@@ -1,3 +1,5 @@
+import { type ChapterNumbering, CHAPTER_NUMBERING_LABELS, isChapterNumbering } from './chapterNumbering'
+
 export type ParagraphSpacing = 'standard' | 'manuscript'
 export type ParagraphIndent = 'none' | 'first-line' | 'every'
 export type SceneBreakStyle = 'asterism' | 'rule' | 'blank-line'
@@ -10,6 +12,8 @@ export interface ManuscriptDisplaySettings {
   dropCaps: boolean
   smartDashes: boolean
   smartEllipsis: boolean
+  /** Project/user level only — a chapter's own display settings never override it. */
+  chapterNumbering: ChapterNumbering
 }
 
 export type PartialManuscriptDisplaySettings = {
@@ -24,6 +28,7 @@ export const MANUSCRIPT_DISPLAY_DEFAULTS: ManuscriptDisplaySettings = {
   dropCaps: false,
   smartDashes: false,
   smartEllipsis: false,
+  chapterNumbering: 'off',
 }
 
 export interface DisplayPreset {
@@ -99,6 +104,7 @@ export const DISPLAY_PRESETS: readonly DisplayPreset[] = [
       dropCaps: null,
       smartDashes: null,
       smartEllipsis: null,
+      chapterNumbering: null,
     },
   },
 ] as const
@@ -136,6 +142,7 @@ export const DISPLAY_FIELD_LABELS: Record<keyof ManuscriptDisplaySettings, strin
   dropCaps: 'Drop caps',
   smartDashes: 'Smart dashes',
   smartEllipsis: 'Smart ellipsis',
+  chapterNumbering: 'Chapter numbering',
 }
 
 /** Human label for a single resolved display-settings value. */
@@ -150,6 +157,8 @@ export function displayValueLabel<K extends keyof ManuscriptDisplaySettings>(
       return PARAGRAPH_INDENT_LABELS[value as ParagraphIndent]
     case 'sceneBreakStyle':
       return SCENE_BREAK_LABELS[value as SceneBreakStyle]
+    case 'chapterNumbering':
+      return CHAPTER_NUMBERING_LABELS[value as ChapterNumbering]
     default:
       return value ? 'On' : 'Off'
   }
@@ -166,6 +175,8 @@ export function summarizeDisplaySettings(s: ManuscriptDisplaySettings): string {
   if (s.smartDashes) parts.push('smart dashes')
   if (s.smartEllipsis) parts.push('smart ellipsis')
   if (s.sceneBreakStyle !== MANUSCRIPT_DISPLAY_DEFAULTS.sceneBreakStyle) parts.push(`${s.sceneBreakStyle} breaks`)
+  if (s.chapterNumbering === 'continuous') parts.push('numbered chapters')
+  else if (s.chapterNumbering === 'per-book') parts.push('numbered chapters (per book)')
   return parts.join(', ')
 }
 
@@ -203,6 +214,10 @@ export function resolveDisplaySettings(
     smartEllipsis:
       pick(content?.smartEllipsis, project?.smartEllipsis, user?.smartEllipsis) ??
       MANUSCRIPT_DISPLAY_DEFAULTS.smartEllipsis,
+    // Deliberately skips `content`: numbering is a whole-manuscript property.
+    chapterNumbering:
+      pick(project?.chapterNumbering, user?.chapterNumbering) ??
+      MANUSCRIPT_DISPLAY_DEFAULTS.chapterNumbering,
   }
 }
 
@@ -233,5 +248,6 @@ export function sanitizeDisplaySettings(input: unknown): PartialManuscriptDispla
   if (typeof obj.dropCaps === 'boolean') out.dropCaps = obj.dropCaps
   if (typeof obj.smartDashes === 'boolean') out.smartDashes = obj.smartDashes
   if (typeof obj.smartEllipsis === 'boolean') out.smartEllipsis = obj.smartEllipsis
+  if (isChapterNumbering(obj.chapterNumbering)) out.chapterNumbering = obj.chapterNumbering
   return out
 }

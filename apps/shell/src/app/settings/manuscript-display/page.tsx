@@ -20,6 +20,8 @@ const HINTS = {
     'How horizontal rules (---) display between scenes. Asterism (* * *) is the publishing standard.',
   dropCaps:
     'Large ornamental first letter on the first paragraph after each heading. Editorial flourish — best used sparingly.',
+  chapterNumbering:
+    'Shows chapters as "Chapter N: Title", counted from their order in the manuscript, so moving or inserting a chapter renumbers everything. Titles are never edited. Restart in each book counts again from 1 inside every top-level folder. Each project can override this.',
   showFormattingMarks:
     'Adds pilcrows (¶) and break markers in the editor only. Helps spot extra blank lines or stray paragraph breaks while writing.',
 }
@@ -28,9 +30,11 @@ import {
   PARAGRAPH_SPACING_VALUES,
   PARAGRAPH_INDENT_VALUES,
   SCENE_BREAK_VALUES,
+  CHAPTER_NUMBERING_VALUES,
   type ParagraphSpacing,
   type ParagraphIndent,
   type SceneBreakStyle,
+  type ChapterNumbering,
 } from '@bobbinry/types'
 
 interface UserDisplaySettings {
@@ -39,6 +43,7 @@ interface UserDisplaySettings {
   codeBlockWrap: boolean
   sceneBreakStyle: SceneBreakStyle
   dropCaps: boolean
+  chapterNumbering: ChapterNumbering
   showFormattingMarks: boolean
 }
 
@@ -48,6 +53,7 @@ const defaults: UserDisplaySettings = {
   codeBlockWrap: false,
   sceneBreakStyle: 'asterism',
   dropCaps: false,
+  chapterNumbering: 'off',
   showFormattingMarks: false,
 }
 
@@ -64,6 +70,12 @@ const SCENE_BREAK_LABEL: Record<SceneBreakStyle, string> = {
   asterism: 'Asterism — * * *',
   rule: 'Horizontal rule',
   'blank-line': 'Blank line',
+}
+
+const CHAPTER_NUMBERING_LABEL: Record<ChapterNumbering, string> = {
+  off: 'Off — show chapter titles as written',
+  continuous: 'Continuous — Chapter 1, 2, 3… across the whole project',
+  'per-book': 'Restart in each book — numbering restarts inside every top-level folder',
 }
 
 function Toggle({
@@ -256,6 +268,23 @@ export default function ManuscriptDisplaySettingsPage() {
             >
               {SCENE_BREAK_VALUES.map(v => (
                 <option key={v} value={v}>{SCENE_BREAK_LABEL[v]}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="inline-flex items-center text-sm font-medium text-gray-900 dark:text-gray-100 mb-1">
+              Chapter numbering
+              <HintTip>{HINTS.chapterNumbering}</HintTip>
+            </label>
+            <select
+              className="w-full bg-transparent border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 text-sm"
+              value={settings.chapterNumbering}
+              onChange={e => save({ chapterNumbering: e.target.value as ChapterNumbering })}
+              disabled={saving}
+            >
+              {CHAPTER_NUMBERING_VALUES.map(v => (
+                <option key={v} value={v}>{CHAPTER_NUMBERING_LABEL[v]}</option>
               ))}
             </select>
           </div>

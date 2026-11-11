@@ -10,6 +10,7 @@ import { checkAndUpgradeBobbin, type UpgradeResult } from '../lib/bobbin-upgrade
 import { loadDiskManifests, loadManifestFromBobbinsPath } from '../lib/disk-manifests'
 import { getEffectiveBobbins } from '../lib/effective-bobbins'
 import { pickDefined } from '../lib/pick'
+import { isChapterNumbering, type ChapterNumbering } from '@bobbinry/types'
 import { moduleLogger } from '../lib/logger'
 
 const log = moduleLogger('bobbin-install')
@@ -594,7 +595,8 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
             sceneBreakStyle: null,
             dropCaps: null,
             smartDashes: null,
-            smartEllipsis: null
+            smartEllipsis: null,
+            chapterNumbering: null
           }
         })
       }
@@ -615,15 +617,20 @@ const projectsPlugin: FastifyPluginAsync = async (fastify) => {
       dropCaps?: boolean | null
       smartDashes?: boolean | null
       smartEllipsis?: boolean | null
+      chapterNumbering?: ChapterNumbering | null
     }
   }>('/projects/:projectId/manuscript-display-settings', {
     preHandler: [requireAuth, ownsProject()]
   }, async (request, reply) => {
     try {
       const { projectId } = request.params
+      const requested = request.body?.chapterNumbering
+      if (requested !== undefined && requested !== null && !isChapterNumbering(requested)) {
+        return reply.status(400).send({ error: 'chapterNumbering must be one of: off, continuous, per-book (or null to inherit)' })
+      }
       const body = pickDefined(request.body, [
         'paragraphSpacing', 'paragraphIndent', 'codeBlockWrap', 'sceneBreakStyle',
-        'dropCaps', 'smartDashes', 'smartEllipsis',
+        'dropCaps', 'smartDashes', 'smartEllipsis', 'chapterNumbering',
       ] as const)
 
       const existing = await db
