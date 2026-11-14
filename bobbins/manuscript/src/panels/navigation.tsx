@@ -23,7 +23,7 @@ import {
   type ChapterNumbering,
   type NumberableChapter,
 } from '@bobbinry/types'
-import { rangeBetween, reorderWithBlock, topLevelSelection, visibleIds } from '../lib/tree-selection'
+import { rangeBetween, reconcileExpanded, reorderWithBlock, topLevelSelection, visibleIds } from '../lib/tree-selection'
 
 interface NavigationPanelProps {
   context?: {
@@ -147,6 +147,9 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
     [tree, chapterNumbering],
   )
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
+  // Node ids present at the last tree load, so a reload only expands nodes
+  // that are new and leaves the author's collapsed folders alone.
+  const knownNodeIdsRef = useRef<Set<string>>(new Set())
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   // Rows picked with Ctrl/Cmd+click or Shift+click, for moving several at
   // once. Empty means only the open item is selected.
@@ -696,7 +699,9 @@ export default function NavigationPanel({ context }: NavigationPanelProps) {
         })
       }
       collectIds(treeData)
-      setExpandedNodes(allNodeIds)
+      const previouslyKnown = knownNodeIdsRef.current
+      knownNodeIdsRef.current = allNodeIds
+      setExpandedNodes(prev => reconcileExpanded(allNodeIds, previouslyKnown, prev))
       // Forget selected rows that no longer exist (deleted here or elsewhere).
       setMultiSelectedIds(prev => {
         const kept = new Set([...prev].filter(id => allNodeIds.has(id)))

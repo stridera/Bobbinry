@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals'
-import { rangeBetween, reorderWithBlock, topLevelSelection, visibleIds } from '../../lib/tree-selection'
+import { rangeBetween, reconcileExpanded, reorderWithBlock, topLevelSelection, visibleIds } from '../../lib/tree-selection'
 
 interface Node {
   id: string
@@ -70,5 +70,27 @@ describe('reorderWithBlock', () => {
 
   it('inserts items coming from another container', () => {
     expect(reorderWithBlock(['a', 'b'], ['x', 'y'], 'a', 'after')).toEqual(['a', 'x', 'y', 'b'])
+  })
+})
+
+describe('reconcileExpanded', () => {
+  it('expands everything on first load', () => {
+    const next = reconcileExpanded(['p1', 'c1', 'p2'], new Set(), new Set())
+    expect([...next].sort()).toEqual(['c1', 'p1', 'p2'])
+  })
+
+  it('keeps collapsed folders collapsed across a reload', () => {
+    const known = new Set(['p1', 'c1', 'p2'])
+    const expanded = new Set(['p1', 'c1']) // p2 collapsed by the author
+    const next = reconcileExpanded(['p1', 'c1', 'p2'], known, expanded)
+    expect(next.has('p2')).toBe(false)
+    expect(next.has('p1')).toBe(true)
+  })
+
+  it('expands only newly created nodes and drops deleted ones', () => {
+    const known = new Set(['p1', 'p2', 'gone'])
+    const expanded = new Set(['p1'])
+    const next = reconcileExpanded(['p1', 'p2', 'fresh'], known, expanded)
+    expect([...next].sort()).toEqual(['fresh', 'p1'])
   })
 })

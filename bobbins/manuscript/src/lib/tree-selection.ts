@@ -69,3 +69,21 @@ export function reorderWithBlock(
   remaining.splice(insertAt, 0, ...movedIds)
   return remaining
 }
+
+/**
+ * Expanded set after a tree (re)load. Nodes seen on an earlier load keep
+ * whatever state the author left them in; nodes new to this load (including
+ * the whole tree on first load) start expanded. Ids no longer in the tree are
+ * dropped.
+ */
+export function reconcileExpanded(
+  currentIds: Iterable<string>,
+  previouslyKnown: Set<string>,
+  expanded: Set<string>
+): Set<string> {
+  const next = new Set<string>()
+  for (const id of currentIds) {
+    if (!previouslyKnown.has(id) || expanded.has(id)) next.add(id)
+  }
+  return next
+}
