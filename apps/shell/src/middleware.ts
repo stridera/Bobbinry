@@ -6,6 +6,7 @@
 
 import { auth } from '@/auth'
 import { NextResponse } from 'next/server'
+import { safeCallbackPath } from '@/lib/auth-redirect'
 
 export default auth((req) => {
   const isLoggedIn = !!req.auth
@@ -33,9 +34,11 @@ export default auth((req) => {
     return NextResponse.redirect(new URL(`/login?callbackUrl=${callbackUrl}`, req.url))
   }
 
-  // If logged in and trying to access login/signup, redirect to dashboard
+  // If logged in and trying to access login/signup, send them to the page they
+  // were headed for (same-origin callbackUrl only), falling back to the dashboard
   if (isLoggedIn && (pathname === '/login' || pathname === '/signup')) {
-    return NextResponse.redirect(new URL('/dashboard', req.url))
+    const target = safeCallbackPath(req.nextUrl.searchParams.get('callbackUrl')) ?? '/dashboard'
+    return NextResponse.redirect(new URL(target, req.url))
   }
 
   // Redirect homepage to dashboard if logged in

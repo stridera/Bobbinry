@@ -1,8 +1,10 @@
 'use client'
 
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { UserMenu } from './UserMenu'
+import { loginHref } from '@/lib/auth-redirect'
 
 interface Crumb {
   label: string
@@ -31,6 +33,7 @@ interface ReaderNavProps {
  */
 export function ReaderNav({ crumbs = [], themed }: ReaderNavProps) {
   const { data: session } = useSession()
+  const pathname = usePathname()
 
   // Default (follows document dark mode)
   const bg = themed?.bg ?? 'bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm'
@@ -92,7 +95,7 @@ export function ReaderNav({ crumbs = [], themed }: ReaderNavProps) {
           ) : (
             <div className="flex items-center gap-2">
               <Link
-                href="/login"
+                href={loginHref(pathname)}
                 className={`text-sm ${muted} ${hover} transition-colors`}
               >
                 Sign In

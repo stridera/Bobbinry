@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { loginHref } from '@/lib/auth-redirect'
 import type { ReaderThemeClasses } from './reader-theme'
 import { MAX_REPLY_DEPTH, type Comment } from './types'
 
@@ -14,6 +16,7 @@ interface CommentsSectionProps {
 /** Threaded comments. Owns the draft and reply-box state so the page does not have to. */
 export function CommentsSection({ theme, comments, signedIn, onPost }: CommentsSectionProps) {
   const { borderColor, mutedText, linkColor } = theme
+  const pathname = usePathname()
   const [newComment, setNewComment] = useState('')
   const [replyingTo, setReplyingTo] = useState<string | null>(null)
   const [replyContent, setReplyContent] = useState('')
@@ -69,7 +72,7 @@ export function CommentsSection({ theme, comments, signedIn, onPost }: CommentsS
         </div>
       ) : (
         <p className={`text-sm ${mutedText} mb-6`}>
-          <Link href="/login" className={`${linkColor} hover:underline`}>Sign in</Link> to comment.
+          <Link href={loginHref(pathname)} className={`${linkColor} hover:underline`}>Sign in</Link> to comment.
         </p>
       )}
 

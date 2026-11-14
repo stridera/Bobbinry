@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
-import { useParams, useSearchParams, useRouter } from 'next/navigation'
+import { useParams, useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { trackEvent } from '@bobbinry/sdk'
 import { config } from '@/lib/config'
+import { loginHref } from '@/lib/auth-redirect'
 import { apiFetch } from '@/lib/api'
 import { ReaderNav } from '@/components/ReaderNav'
 import { OptimizedImage } from '@/components/OptimizedImage'
@@ -89,9 +90,10 @@ function ProjectReadingContent() {
   const params = useParams()
   const searchParams = useSearchParams()
   const router = useRouter()
+  const pathname = usePathname()
   const authorUsername = params.authorUsername as string
   const projectSlug = params.projectSlug as string
-  const { data: session, status: sessionStatus } = useSession()
+  const { data: session, status: sessionStatus, update: updateSession } = useSession()
   // Owner-only "view as" preview; the API ignores it for non-owners.
   const viewAs = searchParams.get('viewAs') || ''
   const viewAsQuery = viewAs ? `viewAs=${encodeURIComponent(viewAs)}` : ''
@@ -396,12 +398,18 @@ function ProjectReadingContent() {
     loadSubscriptionState()
   }, [authorUserId, userId, apiToken, loadSubscriptionState])
 
-  const handleFollowProject = async () => {
-    if (!project?.id || !apiToken) return
+  const currentLoginHref = () =>
+    loginHref(typeof window !== 'undefined' ? window.location.pathname + window.location.search : null)
+
+  // `tokenOverride` lets the signed-out click path follow with a token it just
+  // fetched, before React has re-rendered with the refreshed session.
+  const handleFollowProject = async (tokenOverride?: string) => {
+    const token = tokenOverride || apiToken
+    if (!project?.id || !token) return
     setFollowLoading(true)
     try {
       if (isFollowingProject) {
-        const res = await apiFetch(`/api/projects/${project.id}/follow`, apiToken, { method: 'DELETE' })
+        const res = await apiFetch(`/api/projects/${project.id}/follow`, token, { method: 'DELETE' })
         if (res.ok) {
           setIsFollowingProject(false)
           setFollowerCount(c => Math.max(0, c - 1))
@@ -410,7 +418,7 @@ function ProjectReadingContent() {
           setSubscribeError(data.error || 'Failed to unfollow')
         }
       } else {
-        const res = await apiFetch(`/api/projects/${project.id}/follow`, apiToken, { method: 'POST' })
+        const res = await apiFetch(`/api/projects/${project.id}/follow`, token, { method: 'POST' })
         if (res.ok) {
           trackEvent('project_followed', { projectId: project.id })
           setIsFollowingProject(true)
@@ -419,6 +427,27 @@ function ProjectReadingContent() {
       }
     } catch {}
     setFollowLoading(false)
+  }
+
+  // The client session can lag the server cookie (a failed /api/auth/session
+  // refetch flips useSession to unauthenticated), so re-check before sending a
+  // signed-in user to /login, where middleware would bounce them away.
+  const handleSignedOutFollowClick = async () => {
+    if (sessionStatus === 'loading') return
+    setFollowLoading(true)
+    let fresh: Awaited<ReturnType<typeof updateSession>> = null
+    try {
+      fresh = await updateSession()
+    } catch {}
+    const freshToken = (fresh as { apiToken?: string } | null | undefined)?.apiToken
+    const freshUserId = fresh?.user?.id
+    if (freshToken && freshUserId) {
+      setFollowLoading(false)
+      await handleFollowProject(freshToken)
+      return
+    }
+    setFollowLoading(false)
+    router.push(currentLoginHref())
   }
 
   const handleToggleMute = async () => {
@@ -688,7 +717,7 @@ function ProjectReadingContent() {
               <>
                 {userId ? (
                   <button
-                    onClick={handleFollowProject}
+                    onClick={() => handleFollowProject()}
                     disabled={followLoading}
                     className={`text-xs px-3 py-1.5 rounded-full transition-colors disabled:opacity-50 ${
                       isFollowingProject
@@ -699,12 +728,13 @@ function ProjectReadingContent() {
                     {isFollowingProject ? 'Following' : 'Follow'}
                   </button>
                 ) : (
-                  <Link
-                    href="/login"
-                    className="text-xs px-3 py-1.5 rounded-full bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                  <button
+                    onClick={handleSignedOutFollowClick}
+                    disabled={sessionStatus === 'loading' || followLoading}
+                    className="text-xs px-3 py-1.5 rounded-full bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
                   >
                     Follow
-                  </Link>
+                  </button>
                 )}
                 {tiers.length > 0 && (
                   <button
@@ -1043,7 +1073,7 @@ function ProjectReadingContent() {
                     </button>
                   ) : (
                     <Link
-                      href="/login"
+                      href={loginHref(pathname)}
                       className="block w-full mt-3 px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors text-center"
                     >
                       Sign in to Subscribe

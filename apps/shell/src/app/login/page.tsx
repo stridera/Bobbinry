@@ -6,11 +6,12 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { config } from '@/lib/config'
 import { GoogleOAuthButton } from '@/components/GoogleOAuthButton'
+import { safeCallbackPath } from '@/lib/auth-redirect'
 
 function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const callbackUrl = searchParams.get('callbackUrl') || '/dashboard'
+  const callbackUrl = safeCallbackPath(searchParams.get('callbackUrl')) ?? '/dashboard'
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')

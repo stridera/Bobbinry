@@ -7,11 +7,12 @@ import { signIn } from 'next-auth/react'
 import { trackEvent } from '@bobbinry/sdk'
 import { config } from '@/lib/config'
 import { GoogleOAuthButton } from '@/components/GoogleOAuthButton'
+import { safeCallbackPath } from '@/lib/auth-redirect'
 
 function SignupForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const callbackUrl = searchParams.get('callbackUrl')
+  const callbackUrl = safeCallbackPath(searchParams.get('callbackUrl'))
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')

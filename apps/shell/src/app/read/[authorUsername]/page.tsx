@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { config } from '@/lib/config'
+import { loginHref } from '@/lib/auth-redirect'
 import { apiFetch } from '@/lib/api'
 import { ReaderNav } from '@/components/ReaderNav'
 import { OptimizedImage } from '@/components/OptimizedImage'
@@ -41,7 +42,8 @@ interface CollectionGroup {
 export default function AuthorReadPage() {
   const params = useParams()
   const authorUsername = params.authorUsername as string
-  const { data: session } = useSession()
+  const router = useRouter()
+  const { data: session, status: sessionStatus, update: updateSession } = useSession()
 
   const [author, setAuthor] = useState<AuthorInfo | null>(null)
   const [projects, setProjects] = useState<PublishedProject[]>([])
@@ -141,13 +143,16 @@ export default function AuthorReadPage() {
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [author, projects.length, checkFollowStatuses, checkSubscription, checkTiers])
 
-  const handleFollowProject = async (projectId: string) => {
-    if (!apiToken) return
+  // `tokenOverride` lets the signed-out click path follow with a token it just
+  // fetched, before React has re-rendered with the refreshed session.
+  const handleFollowProject = async (projectId: string, tokenOverride?: string) => {
+    const token = tokenOverride || apiToken
+    if (!token) return
     const isCurrentlyFollowing = followedProjects.has(projectId)
 
     try {
       if (isCurrentlyFollowing) {
-        const res = await apiFetch(`/api/projects/${projectId}/follow`, apiToken, { method: 'DELETE' })
+        const res = await apiFetch(`/api/projects/${projectId}/follow`, token, { method: 'DELETE' })
         if (res.ok) {
           setFollowedProjects(prev => {
             const next = new Set(prev)
@@ -156,12 +161,29 @@ export default function AuthorReadPage() {
           })
         }
       } else {
-        const res = await apiFetch(`/api/projects/${projectId}/follow`, apiToken, { method: 'POST' })
+        const res = await apiFetch(`/api/projects/${projectId}/follow`, token, { method: 'POST' })
         if (res.ok) {
           setFollowedProjects(prev => new Set(prev).add(projectId))
         }
       }
     } catch {}
+  }
+
+  // The client session can lag the server cookie (a failed /api/auth/session
+  // refetch flips useSession to unauthenticated), so re-check before sending a
+  // signed-in user to /login, where middleware would bounce them away.
+  const handleSignedOutFollowClick = async (projectId: string) => {
+    if (sessionStatus === 'loading') return
+    let fresh: Awaited<ReturnType<typeof updateSession>> = null
+    try {
+      fresh = await updateSession()
+    } catch {}
+    const freshToken = (fresh as { apiToken?: string } | null | undefined)?.apiToken
+    if (freshToken && fresh?.user?.id) {
+      await handleFollowProject(projectId, freshToken)
+      return
+    }
+    router.push(loginHref(window.location.pathname + window.location.search))
   }
 
   if (loading) {
@@ -229,12 +251,13 @@ export default function AuthorReadPage() {
                   {followedProjects.has(project.id) ? 'Following' : 'Follow'}
                 </button>
               ) : (
-                <Link
-                  href="/login"
-                  className="text-xs px-2.5 py-1 rounded-full bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                <button
+                  onClick={() => handleSignedOutFollowClick(project.id)}
+                  disabled={sessionStatus === 'loading'}
+                  className="text-xs px-2.5 py-1 rounded-full bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
                 >
                   Follow
-                </Link>
+                </button>
               )}
               {hasPaidTiers && (
                 <Link
