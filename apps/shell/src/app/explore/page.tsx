@@ -69,6 +69,13 @@ export default function ExplorePage() {
   const [authors, setAuthors] = useState<DiscoverAuthor[]>([])
   const [tags, setTags] = useState<Tag[]>([])
   const [followedAuthors, setFollowedAuthors] = useState<Set<string>>(new Set())
+  const [followedProjects, setFollowedProjects] = useState<Set<string>>(new Set())
+  const [followError, setFollowError] = useState<string | null>(null)
+  // Ids the viewer has toggled this session ("a:<id>" / "p:<id>"), and those with a
+  // request in flight. The initial follow-state load must not overwrite the former,
+  // and clicks on the latter are ignored.
+  const touchedFollowsRef = useRef<Set<string>>(new Set())
+  const inFlightFollowsRef = useRef<Set<string>>(new Set())
 
   const [projectsTotal, setProjectsTotal] = useState(0)
   const [authorsTotal, setAuthorsTotal] = useState(0)
@@ -79,7 +86,6 @@ export default function ExplorePage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [genresExpanded, setGenresExpanded] = useState(false)
   const genreContainerRef = useRef<HTMLDivElement>(null)
-  const checkedAuthorIdsRef = useRef<Set<string>>(new Set())
   const [genresOverflow, setGenresOverflow] = useState(false)
 
   const apiToken = session?.apiToken
@@ -95,6 +101,14 @@ export default function ExplorePage() {
     window.addEventListener('resize', checkOverflow)
     return () => window.removeEventListener('resize', checkOverflow)
   }, [tags])
+
+  // Library links to /explore?tab=authors; read it after mount to avoid a hydration mismatch.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('tab') === 'authors') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time read of the URL
+      setActiveTab('authors')
+    }
+  }, [])
 
   // Debounce search query
   useEffect(() => {
@@ -144,7 +158,7 @@ export default function ExplorePage() {
   // Load authors when filters change
   const loadAuthors = useCallback(async (append = false) => {
     if (append) setLoadingMore(true)
-    else { setLoadingAuthors(true); checkedAuthorIdsRef.current.clear() }
+    else setLoadingAuthors(true)
 
     try {
       const params = new URLSearchParams()
@@ -189,45 +203,33 @@ export default function ExplorePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedQuery, authorSort, activeTab])
 
-  // Check follow status for displayed authors (only new ones)
+  // The viewer's follow state, in one batched call for every card on the page
+  // (authors and projects, current and future pages) rather than one per card.
   useEffect(() => {
-    if (!userId || !apiToken || authors.length === 0) return
-
-    const unchecked = authors.filter(
-      a => a.userId !== userId && !checkedAuthorIdsRef.current.has(a.userId)
-    )
-    if (unchecked.length === 0) return
-
-    const checkFollows = async () => {
-      const results = await Promise.allSettled(
-        unchecked.map(async (author) => {
-          const res = await fetch(
-            `${config.apiUrl}/api/users/${userId}/is-following/${author.userId}`
-          )
-          if (!res.ok) return null
-          const data = await res.json()
-          return data.isFollowing ? author.userId : null
-        })
-      )
-      for (const author of unchecked) {
-        checkedAuthorIdsRef.current.add(author.userId)
-      }
-      const newFollowed: string[] = []
-      for (const result of results) {
-        if (result.status === 'fulfilled' && result.value) {
-          newFollowed.push(result.value)
-        }
-      }
-      if (newFollowed.length > 0) {
-        setFollowedAuthors(prev => {
-          const next = new Set(prev)
-          for (const id of newFollowed) next.add(id)
+    if (!userId || !apiToken) return
+    let cancelled = false
+    apiFetch(`/api/users/${userId}/following`, apiToken)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (cancelled || !data) return
+        // Server state (muted follows included) for everything the viewer has not
+        // touched since this page loaded; local optimistic state wins for the rest.
+        const merge = (prefix: 'a' | 'p', serverIds: string[]) => (prev: Set<string>) => {
+          const next = new Set(serverIds)
+          for (const id of touchedFollowsRef.current) {
+            if (!id.startsWith(`${prefix}:`)) continue
+            const raw = id.slice(2)
+            if (prev.has(raw)) next.add(raw)
+            else next.delete(raw)
+          }
           return next
-        })
-      }
-    }
-    checkFollows()
-  }, [authors, userId, apiToken])
+        }
+        setFollowedAuthors(merge('a', (data.authors || []).map((a: { id: string }) => a.id)))
+        setFollowedProjects(merge('p', (data.projects || []).map((p: { id: string }) => p.id)))
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [userId, apiToken])
 
   const storySentinelRef = useInfiniteScrollSentinel({
     enabled: activeTab === 'stories',
@@ -243,35 +245,93 @@ export default function ExplorePage() {
     onLoadMore: () => void loadAuthors(true),
   })
 
+  const failFollow = async (res: Response | null, fallback: string) => {
+    const data = res ? await res.json().catch(() => ({})) : {}
+    setFollowError(data.error || fallback)
+  }
+
+  // Optimistic: flip the card first, restore it if the API refuses.
   const handleFollow = async (authorId: string) => {
     if (!userId || !apiToken) return
 
-    const isCurrentlyFollowing = followedAuthors.has(authorId)
+    const key = `a:${authorId}`
+    if (inFlightFollowsRef.current.has(key)) return
+    const wasFollowing = followedAuthors.has(authorId)
+    const apply = (following: boolean) => {
+      setFollowedAuthors(prev => {
+        const next = new Set(prev)
+        if (following) next.add(authorId)
+        else next.delete(authorId)
+        return next
+      })
+      setAuthors(prev => prev.map(a =>
+        a.userId === authorId
+          ? { ...a, followerCount: Math.max(0, a.followerCount + (following ? 1 : -1)) }
+          : a
+      ))
+    }
 
+    setFollowError(null)
+    inFlightFollowsRef.current.add(key)
+    touchedFollowsRef.current.add(key)
+    apply(!wasFollowing)
     try {
-      if (isCurrentlyFollowing) {
-        await apiFetch(`/api/users/${userId}/follow/${authorId}`, apiToken, { method: 'DELETE' })
-        setFollowedAuthors(prev => {
-          const next = new Set(prev)
-          next.delete(authorId)
-          return next
-        })
-        setAuthors(prev => prev.map(a =>
-          a.userId === authorId ? { ...a, followerCount: Math.max(0, a.followerCount - 1) } : a
-        ))
-      } else {
-        await apiFetch(`/api/users/${userId}/follow`, apiToken, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ followingId: authorId })
-        })
-        setFollowedAuthors(prev => new Set(prev).add(authorId))
-        setAuthors(prev => prev.map(a =>
-          a.userId === authorId ? { ...a, followerCount: a.followerCount + 1 } : a
-        ))
+      const res = wasFollowing
+        ? await apiFetch(`/api/users/${userId}/follow/${authorId}`, apiToken, { method: 'DELETE' })
+        : await apiFetch(`/api/users/${userId}/follow`, apiToken, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ followingId: authorId })
+          })
+      if (!res.ok) {
+        // Already in the state we wanted (stale view): keep it rather than flip back.
+        const data = await res.clone().json().catch(() => ({}))
+        if (!(res.status === 400 && /already following/i.test(data.error || ''))) {
+          apply(wasFollowing)
+          await failFollow(res, 'Unable to update follow.')
+        }
       }
-    } catch (err) {
-      console.error('Failed to follow/unfollow:', err)
+    } catch {
+      apply(wasFollowing)
+      setFollowError('Unable to update follow.')
+    } finally {
+      inFlightFollowsRef.current.delete(key)
+    }
+  }
+
+  const handleFollowProject = async (projectId: string) => {
+    if (!apiToken) return
+
+    const key = `p:${projectId}`
+    if (inFlightFollowsRef.current.has(key)) return
+    const wasFollowing = followedProjects.has(projectId)
+    const apply = (following: boolean) => setFollowedProjects(prev => {
+      const next = new Set(prev)
+      if (following) next.add(projectId)
+      else next.delete(projectId)
+      return next
+    })
+
+    setFollowError(null)
+    inFlightFollowsRef.current.add(key)
+    touchedFollowsRef.current.add(key)
+    apply(!wasFollowing)
+    try {
+      const res = await apiFetch(`/api/projects/${projectId}/follow`, apiToken, {
+        method: wasFollowing ? 'DELETE' : 'POST'
+      })
+      if (!res.ok) {
+        const data = await res.clone().json().catch(() => ({}))
+        if (!(res.status === 400 && /already following/i.test(data.error || ''))) {
+          apply(wasFollowing)
+          await failFollow(res, 'Unable to update follow.')
+        }
+      }
+    } catch {
+      apply(wasFollowing)
+      setFollowError('Unable to update follow.')
+    } finally {
+      inFlightFollowsRef.current.delete(key)
     }
   }
 
@@ -373,6 +433,15 @@ export default function ExplorePage() {
                 {genresExpanded ? 'Show fewer genres' : `Show all ${tags.length} genres`}
               </button>
             )}
+          </div>
+        )}
+
+        {followError && (
+          <div role="alert" className="mb-4 p-3 rounded text-sm bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 flex items-center justify-between">
+            <span>{followError}</span>
+            <button onClick={() => setFollowError(null)} className="ml-3 text-red-500 hover:text-red-700 dark:hover:text-red-200" aria-label="Dismiss">
+              &times;
+            </button>
           </div>
         )}
 
@@ -492,7 +561,13 @@ export default function ExplorePage() {
                             {project.name}
                           </h3>
                           {project.subscriberOnly && (
-                            <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400 font-medium">
+                            <span
+                              className="flex-shrink-0 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400 font-medium"
+                              title="Chapters require a subscription"
+                            >
+                              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4" />
+                              </svg>
                               Subscribers
                             </span>
                           )}
@@ -571,6 +646,44 @@ export default function ExplorePage() {
                             </svg>
                             {project.chapterCount} ch.
                           </span>
+                          {!session ? (
+                            <span
+                              role="link"
+                              tabIndex={0}
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                router.push('/login?callbackUrl=%2Fexplore')
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  router.push('/login?callbackUrl=%2Fexplore')
+                                }
+                              }}
+                              className="ml-auto text-xs text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                            >
+                              Sign in to Follow
+                            </span>
+                          ) : userId !== project.authorId ? (
+                            <button
+                              type="button"
+                              aria-pressed={followedProjects.has(project.id)}
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                void handleFollowProject(project.id)
+                              }}
+                              className={`ml-auto text-xs px-3 py-1 rounded-full transition-colors ${
+                                followedProjects.has(project.id)
+                                  ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400'
+                                  : 'bg-blue-600 text-white hover:bg-blue-700'
+                              }`}
+                            >
+                              {followedProjects.has(project.id) ? 'Following' : 'Follow'}
+                            </button>
+                          ) : null}
                         </div>
                       </div>
                     </Link>
@@ -670,6 +783,7 @@ export default function ExplorePage() {
                         {userId && userId !== author.userId ? (
                           <button
                             onClick={() => handleFollow(author.userId)}
+                            aria-pressed={followedAuthors.has(author.userId)}
                             className={`text-xs px-3 py-1.5 rounded-full transition-colors ${
                               followedAuthors.has(author.userId)
                                 ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400'
@@ -680,7 +794,7 @@ export default function ExplorePage() {
                           </button>
                         ) : !session ? (
                           <Link
-                            href="/login"
+                            href="/login?callbackUrl=%2Fexplore%3Ftab%3Dauthors"
                             className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
                           >
                             Sign in to Follow

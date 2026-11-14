@@ -40,13 +40,14 @@ export const readerApi = {
     )
   },
 
-  async fetchReactions(chapterId: string): Promise<ReactionCount[] | null> {
-    const data = await jsonOrNull<{ reactions?: ReactionCount[] }>(await publicFetch(`/public/chapters/${chapterId}/reactions`))
+  /** `token`: the API gates these like the chapter itself (early access, subscribers-only), so send the viewer. */
+  async fetchReactions(chapterId: string, token?: string): Promise<ReactionCount[] | null> {
+    const data = await jsonOrNull<{ reactions?: ReactionCount[] }>(await publicFetch(`/public/chapters/${chapterId}/reactions`, token))
     return data ? data.reactions ?? [] : null
   },
 
-  async fetchComments(chapterId: string): Promise<Comment[] | null> {
-    const data = await jsonOrNull<{ comments?: Comment[] }>(await publicFetch(`/public/chapters/${chapterId}/comments`))
+  async fetchComments(chapterId: string, token?: string): Promise<Comment[] | null> {
+    const data = await jsonOrNull<{ comments?: Comment[] }>(await publicFetch(`/public/chapters/${chapterId}/comments`, token))
     return data ? data.comments ?? [] : null
   },
 

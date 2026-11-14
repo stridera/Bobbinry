@@ -12,6 +12,7 @@ import {
   subscriptionTiers,
   projectPublishConfig,
   accessGrants,
+  betaReaders,
 } from '../../db/schema'
 import { generateUnsubscribeToken } from '../../lib/email'
 import {
@@ -62,6 +63,7 @@ describe('Project Follows / Unsubscribe / RSS Tokens', () => {
     it('creates exactly one row and is not idempotent (400 on repeat)', async () => {
       const owner = await createTestUser()
       const project = await createTestProject(owner.id)
+      await db.insert(projectPublishConfig).values({ projectId: project.id, publishingMode: 'live' })
       const follower = await createTestUser()
       await verify(follower.id)
       const token = await createTestToken(follower.id)
@@ -117,6 +119,47 @@ describe('Project Follows / Unsubscribe / RSS Tokens', () => {
 
       expect(res.statusCode).toBe(400)
       expect(res.json()).toEqual({ error: 'Cannot follow your own project' })
+    })
+
+    describe('visibility gate', () => {
+      async function tryFollow(projectId: string, followerId: string) {
+        return app.inject({
+          method: 'POST',
+          url: `/api/projects/${projectId}/follow`,
+          headers: { authorization: `Bearer ${await createTestToken(followerId)}` },
+        })
+      }
+      async function setup(config: Partial<typeof projectPublishConfig.$inferInsert> = {}) {
+        const owner = await createTestUser()
+        const project = await createTestProject(owner.id)
+        await db.insert(projectPublishConfig).values({ projectId: project.id, publishingMode: 'live', ...config })
+        const follower = await createTestUser()
+        await verify(follower.id)
+        return { owner, project, follower }
+      }
+
+      it('404s for a private project the viewer cannot open, and allows a beta reader', async () => {
+        const { owner, project, follower } = await setup({ projectVisibility: 'private' })
+        const res = await tryFollow(project.id, follower.id)
+        expect(res.statusCode).toBe(404)
+        expect(res.json()).toEqual({ error: 'Project not found' })
+
+        await db.insert(betaReaders).values({ authorId: owner.id, readerId: follower.id })
+        expect((await tryFollow(project.id, follower.id)).statusCode).toBe(201)
+      })
+
+      it('404s for a project that is not live, archived, or trashed', async () => {
+        const draft = await setup({ publishingMode: 'draft' })
+        expect((await tryFollow(draft.project.id, draft.follower.id)).statusCode).toBe(404)
+
+        const archived = await setup()
+        await db.update(projects).set({ isArchived: true }).where(eq(projects.id, archived.project.id))
+        expect((await tryFollow(archived.project.id, archived.follower.id)).statusCode).toBe(404)
+
+        const trashed = await setup()
+        await db.update(projects).set({ deletedAt: new Date() }).where(eq(projects.id, trashed.project.id))
+        expect((await tryFollow(trashed.project.id, trashed.follower.id)).statusCode).toBe(404)
+      })
     })
   })
 

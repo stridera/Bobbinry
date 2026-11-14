@@ -1,7 +1,8 @@
 import { FastifyPluginAsync } from 'fastify'
 import { db } from '../db/connection'
-import { projectFollows, projects, subscriptions, users, userNotificationPreferences, notifications, userProfiles } from '../db/schema'
-import { eq, and, count, isNull } from 'drizzle-orm'
+import { projectFollows, projects, projectPublishConfig, subscriptions, users, userNotificationPreferences, notifications, userProfiles, userFollowers } from '../db/schema'
+import { eq, and, count, isNull, desc } from 'drizzle-orm'
+import { resolveProjectAccess } from '../lib/project-access'
 import { requireAuth, optionalAuth, requireVerified, requireSelf } from '../middleware/auth'
 import { sendNewFollowerEmail } from '../lib/email'
 import { isUuid as isValidUUID } from '../lib/slugs'
@@ -23,8 +24,15 @@ const projectFollowsPlugin: FastifyPluginAsync = async (fastify) => {
 
       // Verify project exists (not trashed) and user doesn't own it
       const [project] = await db
-        .select({ ownerId: projects.ownerId })
+        .select({
+          ownerId: projects.ownerId,
+          isArchived: projects.isArchived,
+          publishingMode: projectPublishConfig.publishingMode,
+          projectVisibility: projectPublishConfig.projectVisibility,
+          defaultVisibility: projectPublishConfig.defaultVisibility,
+        })
         .from(projects)
+        .leftJoin(projectPublishConfig, eq(projectPublishConfig.projectId, projects.id))
         .where(and(eq(projects.id, projectId), isNull(projects.deletedAt)))
         .limit(1)
 
@@ -34,6 +42,21 @@ const projectFollowsPlugin: FastifyPluginAsync = async (fastify) => {
 
       if (project.ownerId === userId) {
         return reply.status(400).send({ error: 'Cannot follow your own project' })
+      }
+
+      // Only projects the viewer can actually open: live, not archived, and
+      // not private-without-access. The same 404 as a missing project, so a
+      // follow attempt cannot probe for hidden work.
+      const access = project.isArchived || project.publishingMode !== 'live'
+        ? null
+        : (await resolveProjectAccess(userId, [{
+            id: projectId,
+            ownerId: project.ownerId,
+            projectVisibility: project.projectVisibility,
+            defaultVisibility: project.defaultVisibility,
+          }])).get(projectId)
+      if (!access || (access.status !== 'ok' && access.status !== 'subscribers_only')) {
+        return reply.status(404).send({ error: 'Project not found' })
       }
 
       // Check if already following
@@ -273,6 +296,96 @@ const projectFollowsPlugin: FastifyPluginAsync = async (fastify) => {
     } catch (error) {
       fastify.log.error(error)
       return reply.status(500).send({ error: 'Failed to fetch follows' })
+    }
+  })
+
+  // GET /users/:userId/following — everything the user follows, for the
+  // Library "Following" tab: authors, and projects with their current access
+  // status. Follow rows survive visibility changes; the status tells the UI
+  // why a followed project may no longer open.
+  fastify.get<{
+    Params: { userId: string }
+  }>('/users/:userId/following', {
+    preHandler: requireAuth
+  }, async (request, reply) => {
+    try {
+      const { userId } = request.params
+
+      if (!requireSelf(request, reply, userId)) return
+
+      const [authorRows, projectRows] = await Promise.all([
+        db
+          .select({
+            id: userFollowers.followingId,
+            username: userProfiles.username,
+            displayName: userProfiles.displayName,
+            avatarUrl: userProfiles.avatarUrl,
+            followedAt: userFollowers.createdAt,
+          })
+          .from(userFollowers)
+          .leftJoin(userProfiles, eq(userProfiles.userId, userFollowers.followingId))
+          .where(eq(userFollowers.followerId, userId))
+          .orderBy(desc(userFollowers.createdAt)),
+        db
+          .select({
+            id: projects.id,
+            name: projects.name,
+            slug: projects.shortUrl,
+            coverImage: projects.coverImage,
+            ownerId: projects.ownerId,
+            isArchived: projects.isArchived,
+            deletedAt: projects.deletedAt,
+            authorUsername: userProfiles.username,
+            muted: projectFollows.muted,
+            followedAt: projectFollows.createdAt,
+            publishingMode: projectPublishConfig.publishingMode,
+            projectVisibility: projectPublishConfig.projectVisibility,
+            defaultVisibility: projectPublishConfig.defaultVisibility,
+          })
+          .from(projectFollows)
+          .innerJoin(projects, eq(projects.id, projectFollows.projectId))
+          .leftJoin(projectPublishConfig, eq(projectPublishConfig.projectId, projects.id))
+          .leftJoin(userProfiles, eq(userProfiles.userId, projects.ownerId))
+          .where(and(eq(projectFollows.followerId, userId), isNull(projects.deletedAt)))
+          .orderBy(desc(projectFollows.createdAt)),
+      ])
+
+      // Archived, trashed or not-live projects never reach the access check.
+      const isAvailable = (r: typeof projectRows[number]) =>
+        !r.isArchived && !r.deletedAt && r.publishingMode === 'live'
+      const access = await resolveProjectAccess(
+        userId,
+        projectRows.filter(isAvailable).map(r => ({
+          id: r.id,
+          ownerId: r.ownerId,
+          projectVisibility: r.projectVisibility,
+          defaultVisibility: r.defaultVisibility,
+        })),
+      )
+
+      const followedProjects = projectRows.map(r => {
+        const status = isAvailable(r) ? access.get(r.id)?.status : undefined
+        const accessStatus: 'ok' | 'subscribers_only' | 'beta_only' | 'unavailable' =
+          status === 'ok' || status === 'subscribers_only' || status === 'beta_only' ? status : 'unavailable'
+        // A project the viewer can no longer open does not leak its details:
+        // name, slug and cover come back null (the row stays for Unfollow).
+        const visible = accessStatus === 'ok' || accessStatus === 'subscribers_only'
+        return {
+          id: r.id,
+          name: visible ? r.name : null,
+          slug: visible ? r.slug : null,
+          authorUsername: r.authorUsername,
+          coverImage: visible ? r.coverImage : null,
+          muted: r.muted,
+          followedAt: r.followedAt,
+          accessStatus,
+        }
+      })
+
+      return reply.status(200).send({ authors: authorRows, projects: followedProjects })
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.status(500).send({ error: 'Failed to fetch following' })
     }
   })
 }

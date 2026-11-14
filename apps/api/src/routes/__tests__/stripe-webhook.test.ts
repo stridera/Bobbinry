@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from '@jest/globals'
 import { eq } from 'drizzle-orm'
 import { db } from '../../db/connection'
-import { users, subscriptions, subscriptionTiers, subscriptionPayments, userPaymentConfig } from '../../db/schema'
+import { users, subscriptions, subscriptionTiers, subscriptionPayments, userPaymentConfig, projects, projectPublishConfig, notifications } from '../../db/schema'
+import { sendStripePaymentsPausedEmail } from '../../lib/email'
 import { getStripe } from '../../lib/stripe'
 import {
   createTestApp,
@@ -26,7 +27,14 @@ jest.mock('../../lib/stripe', () => {
   }
 })
 
+// Operational email is mocked: observable, and never sent.
+jest.mock('../../lib/email', () => ({
+  ...jest.requireActual('../../lib/email'),
+  sendStripePaymentsPausedEmail: jest.fn(async () => true),
+}))
+
 const mockGetStripe = getStripe as unknown as jest.Mock
+const pausedEmail = sendStripePaymentsPausedEmail as unknown as jest.Mock
 
 type FakeEvent = { id: string; type: string; data: { object: Record<string, unknown> } }
 
@@ -47,6 +55,7 @@ describe('Stripe webhook + membership routes', () => {
   })
 
   beforeEach(() => {
+    pausedEmail.mockClear()
     fakeStripe = { webhooks: { constructEvent: jest.fn() } }
     mockGetStripe.mockReturnValue(fakeStripe)
   })
@@ -391,6 +400,74 @@ describe('Stripe webhook + membership routes', () => {
 
     const [row] = await db.select().from(userPaymentConfig).where(eq(userPaymentConfig.userId, author.id))
     expect(row!.stripeOnboardingComplete).toBe(true)
+  })
+
+  describe('account.updated: payments paused and resumed', () => {
+    async function acceptingAuthor() {
+      process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_secret'
+      const author = await createTestUser()
+      await db.insert(userPaymentConfig).values({
+        userId: author.id, stripeAccountId: 'acct_pause_1', stripeAccountType: 'express', stripeOnboardingComplete: true,
+      })
+      await db.insert(subscriptionTiers).values({ authorId: author.id, name: 'T', tierLevel: 1, priceMonthly: '5.00' })
+      const [project] = await db.insert(projects).values({ ownerId: author.id, name: 'Paywalled' }).returning()
+      await db.insert(projectPublishConfig).values({
+        projectId: project!.id, publishingMode: 'live', defaultVisibility: 'subscribers_only',
+      })
+      return { author, project: project! }
+    }
+    const send = async (charges: boolean, details = true) => {
+      const event = buildEvent('account.updated', { id: 'acct_pause_1', charges_enabled: charges, details_submitted: details })
+      stubEvent(event)
+      expect((await postWebhook(event)).statusCode).toBe(200)
+    }
+    const flag = async (userId: string) =>
+      (await db.select().from(userPaymentConfig).where(eq(userPaymentConfig.userId, userId)))[0]!.stripeOnboardingComplete
+
+    it('the true -> false transition clears the flag, notifies once, and leaves projects subscribers-only; a repeat sends nothing', async () => {
+      const { author, project } = await acceptingAuthor()
+
+      await send(false)
+      expect(await flag(author.id)).toBe(false)
+      expect(pausedEmail).toHaveBeenCalledTimes(1)
+      expect((pausedEmail.mock.calls[0] as unknown[])[0]).toBe(author.email)
+      const notes = await db.select().from(notifications).where(eq(notifications.recipientId, author.id))
+      expect(notes.map(n => n.type)).toEqual(['stripe_payments_paused'])
+
+      await send(false) // Stripe repeats the event while still paused
+      expect(pausedEmail).toHaveBeenCalledTimes(1)
+      expect(await db.select().from(notifications).where(eq(notifications.recipientId, author.id))).toHaveLength(1)
+
+      const [cfg] = await db.select().from(projectPublishConfig).where(eq(projectPublishConfig.projectId, project.id))
+      expect(cfg).toMatchObject({ defaultVisibility: 'subscribers_only', projectVisibility: 'public' })
+    })
+
+    it('recovery restores the flag without touching projects or sending anything', async () => {
+      const { author, project } = await acceptingAuthor()
+      await send(false)
+      pausedEmail.mockClear()
+
+      await send(true)
+      expect(await flag(author.id)).toBe(true)
+      expect(pausedEmail).not.toHaveBeenCalled()
+      const [cfg] = await db.select().from(projectPublishConfig).where(eq(projectPublishConfig.projectId, project.id))
+      expect(cfg).toMatchObject({ defaultVisibility: 'subscribers_only', projectVisibility: 'public' })
+
+      // A later pause is a new transition and notifies again.
+      await send(false)
+      expect(pausedEmail).toHaveBeenCalledTimes(1)
+    })
+
+    it('an account that was never accepting payments (mid-onboarding) is not reported as paused', async () => {
+      process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_secret'
+      const author = await createTestUser()
+      await db.insert(userPaymentConfig).values({
+        userId: author.id, stripeAccountId: 'acct_pause_1', stripeAccountType: 'express', stripeOnboardingComplete: false,
+      })
+      await send(false, false)
+      expect(pausedEmail).not.toHaveBeenCalled()
+      expect(await db.select().from(notifications)).toHaveLength(0)
+    })
   })
 
   // ==========================================================================

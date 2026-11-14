@@ -20,6 +20,7 @@ import { serverEventBus, subscriptionChanged } from '../lib/event-bus'
 import { getStripe, getSubscriptionPeriod, createExpressAccount, createOnboardingLink } from '../lib/stripe'
 import { isUuid as isValidUUID } from '../lib/slugs'
 import { env } from '../lib/env'
+import { notifyStripePaymentsPaused } from '../lib/author-subscriptions'
 
 const PLATFORM_FEE_PERCENT = env.PLATFORM_FEE_PERCENT
 
@@ -983,12 +984,31 @@ async function handleChargeRefunded(charge: Stripe.Charge, fastify: FastifyInsta
 async function handleAccountUpdated(account: Stripe.Account, fastify: FastifyInstance) {
   try {
     if (account.charges_enabled && account.details_submitted) {
+      // Onboarding finished, or Stripe re-enabled a paused account: accepting again.
       await db.update(userPaymentConfig).set({
         stripeOnboardingComplete: true,
         updatedAt: new Date()
       }).where(eq(userPaymentConfig.stripeAccountId, account.id))
 
       fastify.log.info({ stripeAccountId: account.id }, 'Connect account onboarding complete')
+    } else if (!account.charges_enabled) {
+      // Stripe paused payments on an account that was accepting them. The
+      // conditional UPDATE is the idempotency guard: only the true -> false
+      // transition returns a row, so a repeat event (or two racing) tells the
+      // author once. Projects stay subscribers-only on purpose; existing
+      // subscribers keep access (it follows the subscription, not this flag).
+      const paused = await db.update(userPaymentConfig).set({
+        stripeOnboardingComplete: false,
+        updatedAt: new Date()
+      }).where(and(
+        eq(userPaymentConfig.stripeAccountId, account.id),
+        eq(userPaymentConfig.stripeOnboardingComplete, true)
+      )).returning({ userId: userPaymentConfig.userId })
+
+      if (paused[0]) {
+        fastify.log.warn({ stripeAccountId: account.id }, 'Connect account payments paused')
+        await notifyStripePaymentsPaused(paused[0].userId)
+      }
     }
   } catch (error) {
     fastify.log.error(error, 'Failed to handle account updated')

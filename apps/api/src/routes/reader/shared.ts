@@ -5,7 +5,7 @@
 
 import { db } from '../../db/connection'
 import { chapterPublications, accessGrants, projects, projectPublishConfig, subscriptionTiers, userProfiles, users } from '../../db/schema'
-import { eq, and, isNull, or } from 'drizzle-orm'
+import { eq, and, isNull, or, sql } from 'drizzle-orm'
 import { env } from '../../lib/env'
 import { getManuscriptOrder, manuscriptPosition } from '../../lib/manuscript-order'
 import { checkChaptersAccess, canReadUnpublishedChapter, isActiveBetaReader, findActiveSubscription, type ViewSimulation } from '../../lib/chapter-access'
@@ -241,7 +241,8 @@ export async function canViewProject(
     .where(and(
       or(eq(accessGrants.projectId, projectId), isNull(accessGrants.projectId)),
       eq(accessGrants.grantedTo, userId),
-      eq(accessGrants.isActive, true)
+      eq(accessGrants.isActive, true),
+      or(isNull(accessGrants.expiresAt), sql`${accessGrants.expiresAt} > NOW()`)
     ))
     .limit(1)
   return !!grant

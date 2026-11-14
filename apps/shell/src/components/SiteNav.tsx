@@ -8,7 +8,6 @@ import { UserMenu } from './UserMenu'
 import { NotificationDrawer } from './NotificationDrawer'
 
 const NAV_LINKS = [
-  { href: '/read', label: 'Read' },
   { href: '/dashboard', label: 'Write' },
   { href: '/publish', label: 'Publish' },
   { href: '/explore', label: 'Explore' },

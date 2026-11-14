@@ -259,11 +259,20 @@ function MonetizationContent() {
     if (!session?.apiToken || !session?.user?.id) return
     setSaving(true)
     try {
-      await apiFetch(
+      const res = await apiFetch(
         `/api/users/${session.user.id}/subscription-tiers/${tierId}`,
         session.apiToken,
         { method: 'DELETE' }
       )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(data.error || 'Failed to delete tier')
+      } else if (data.deactivated) {
+        // Inline note instead of a silent disappearance: the tier lives on for its subscribers.
+        setError(null)
+        setSuccess(data.message || 'This tier has subscribers, so it was deactivated instead of deleted.')
+        setTimeout(() => setSuccess(null), 8000)
+      }
       await loadData()
     } catch {
       setError('Failed to delete tier')
@@ -433,10 +442,10 @@ function MonetizationContent() {
             <div>
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-3 h-3 rounded-full bg-yellow-500" />
-                <span className="text-sm text-gray-700 dark:text-gray-300">Stripe account pending verification</span>
+                <span className="text-sm text-gray-700 dark:text-gray-300">Stripe can&apos;t take payments right now</span>
               </div>
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                Your Stripe account has been submitted and is being reviewed. This usually takes 1-2 business days. You&apos;ll be able to receive payments once verification is complete.
+                Either your new Stripe account is still being verified (usually 1-2 business days), or Stripe has paused payments on it. Until payments are enabled, new readers can&apos;t subscribe. Existing subscribers keep their access, and your subscribers-only projects stay as they are. Continue setup, or open Stripe to see what it needs from you.
               </p>
               <button
                 onClick={connectStripe}

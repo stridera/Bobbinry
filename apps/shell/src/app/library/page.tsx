@@ -6,7 +6,8 @@
  * Reader-facing dashboard showing:
  * - Continue Reading (in-progress chapters)
  * - My Subscriptions (active subscriptions)
- * - Following (authors with new content)
+ * - Feed (new chapters from followed authors and projects, with locked teasers)
+ * - Following (manage followed authors and projects: unfollow, mute)
  * - Manage Billing (Stripe Customer Portal link)
  * - Reader Bobbins (installed reader/delivery bobbins)
  */
@@ -59,12 +60,44 @@ interface FeedItem {
   projectId: string
   chapterId: string
   publishedAt: string
+  /** Scheduled chapters: when everyone can read it. */
+  publicReleaseDate?: string | null
   projectName: string
   projectShortUrl: string | null
   authorId: string
   chapterTitle: string
   authorName: string
   authorUsername?: string | null
+  /** Chapter the viewer cannot open yet (subscribers-only, or in an early-access window). */
+  locked?: boolean
+  /** Cheapest tier that would open it now. */
+  upsell?: { tierId: string; tierName: string; priceMonthly: string | null } | null
+}
+
+type ProjectAccessStatus = 'ok' | 'subscribers_only' | 'beta_only' | 'unavailable'
+
+interface FollowedAuthor {
+  id: string
+  username: string | null
+  displayName: string | null
+  avatarUrl: string | null
+}
+
+interface FollowedProject {
+  id: string
+  /** Null (with slug and cover) when the viewer can no longer open the project. */
+  name: string | null
+  slug: string | null
+  authorUsername: string | null
+  coverImage: string | null
+  muted: boolean
+  accessStatus: ProjectAccessStatus
+}
+
+const ACCESS_NOTES: Record<Exclude<ProjectAccessStatus, 'ok'>, string> = {
+  beta_only: 'Now beta readers only \u2014 you don\u2019t have access',
+  subscribers_only: 'Subscribers only',
+  unavailable: 'No longer available',
 }
 
 interface BetaReadingItem {
@@ -96,7 +129,7 @@ interface ReaderBobbin {
   installedAt: string
 }
 
-type Tab = 'reading' | 'feed' | 'beta' | 'subscriptions' | 'bobbins'
+type Tab = 'reading' | 'feed' | 'following' | 'beta' | 'subscriptions' | 'bobbins'
 
 export default function LibraryPage() {
   const { data: session, status } = useSession()
@@ -108,6 +141,9 @@ export default function LibraryPage() {
   const [betaReading, setBetaReading] = useState<BetaReadingItem[]>([])
   const [authorProfiles, setAuthorProfiles] = useState<Record<string, { displayName: string; username: string }>>({})
   const [tierNames, setTierNames] = useState<Record<string, string>>({})
+  const [followedAuthors, setFollowedAuthors] = useState<FollowedAuthor[]>([])
+  const [followedProjects, setFollowedProjects] = useState<FollowedProject[]>([])
+  const [followingError, setFollowingError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   const userId = session?.user?.id
@@ -123,7 +159,8 @@ export default function LibraryPage() {
         apiFetch(`/api/users/${userId}/feed?limit=20`, apiToken).then(r => r.json()),
         apiFetch(`/api/users/${userId}/reader-bobbins`, apiToken).then(r => r.json()),
         apiFetch(`/api/users/${userId}/subscriptions?status=active`, apiToken).then(r => r.json()),
-        apiFetch(`/api/users/${userId}/beta-reading`, apiToken).then(r => r.json())
+        apiFetch(`/api/users/${userId}/beta-reading`, apiToken).then(r => r.json()),
+        apiFetch(`/api/users/${userId}/following`, apiToken).then(r => r.json())
       ])
 
       const progressItems: ProgressItem[] = results[0].status === 'fulfilled' ? (results[0].value.progress || []) : []
@@ -134,6 +171,11 @@ export default function LibraryPage() {
       const betaItems: BetaReadingItem[] = results[4].status === 'fulfilled'
         ? (results[4].value.betaReading || [])
         : []
+
+      if (results[5].status === 'fulfilled') {
+        setFollowedAuthors(results[5].value.authors || [])
+        setFollowedProjects(results[5].value.projects || [])
+      }
 
       const authorIds = new Set<string>()
       for (const item of feedItems) {
@@ -168,7 +210,7 @@ export default function LibraryPage() {
 
       feedItems.forEach((item) => {
         const profile = authorProfilesMap[item.authorId]
-        if (profile?.username) {
+        if (!item.authorUsername && profile?.username) {
           item.authorUsername = profile.username
         }
       })
@@ -294,11 +336,66 @@ export default function LibraryPage() {
     }
   }
 
+  // Following tab actions. Optimistic: update the list first, restore the
+  // previous one and show an inline message if the API refuses.
+  const unfollowAuthor = async (author: FollowedAuthor) => {
+    if (!apiToken || !userId) return
+    const index = followedAuthors.findIndex(a => a.id === author.id)
+    setFollowingError(null)
+    setFollowedAuthors(prev => prev.filter(a => a.id !== author.id))
+    try {
+      const res = await apiFetch(`/api/users/${userId}/follow/${author.id}`, apiToken, { method: 'DELETE' })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Unable to unfollow')
+    } catch (err) {
+      // Put back only this author, leaving any other concurrent change intact.
+      setFollowedAuthors(prev => prev.some(a => a.id === author.id)
+        ? prev
+        : [...prev.slice(0, Math.max(0, index)), author, ...prev.slice(Math.max(0, index))])
+      setFollowingError(err instanceof Error ? err.message : 'Unable to unfollow')
+    }
+  }
+
+  const unfollowProject = async (project: FollowedProject) => {
+    if (!apiToken) return
+    const index = followedProjects.findIndex(p => p.id === project.id)
+    setFollowingError(null)
+    setFollowedProjects(prev => prev.filter(p => p.id !== project.id))
+    try {
+      const res = await apiFetch(`/api/projects/${project.id}/follow`, apiToken, { method: 'DELETE' })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Unable to unfollow')
+    } catch (err) {
+      setFollowedProjects(prev => prev.some(p => p.id === project.id)
+        ? prev
+        : [...prev.slice(0, Math.max(0, index)), project, ...prev.slice(Math.max(0, index))])
+      setFollowingError(err instanceof Error ? err.message : 'Unable to unfollow')
+    }
+  }
+
+  const toggleMuteProject = async (project: FollowedProject) => {
+    if (!apiToken) return
+    const muted = !project.muted
+    setFollowingError(null)
+    setFollowedProjects(prev => prev.map(p => p.id === project.id ? { ...p, muted } : p))
+    try {
+      const res = await apiFetch(`/api/projects/${project.id}/follow`, apiToken, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ muted })
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Unable to update mute')
+    } catch (err) {
+      setFollowedProjects(prev => prev.map(p => p.id === project.id ? { ...p, muted: !muted } : p))
+      setFollowingError(err instanceof Error ? err.message : 'Unable to update mute')
+    }
+  }
+
   function formatTimeAgo(dateStr: string): string {
     const date = new Date(dateStr)
-    const now = new Date()
-    const diffMs = now.getTime() - date.getTime()
+    const diffMs = new Date().getTime() - date.getTime()
+    // A future date (a scheduled chapter) is not "ago": clamp rather than print a negative.
+    if (diffMs < 0) return 'just now'
     const diffMins = Math.floor(diffMs / 60000)
+    if (diffMins < 1) return 'just now'
     if (diffMins < 60) return `${diffMins}m ago`
     const diffHours = Math.floor(diffMins / 60)
     if (diffHours < 24) return `${diffHours}h ago`
@@ -307,9 +404,21 @@ export default function LibraryPage() {
     return date.toLocaleDateString()
   }
 
+  // "Public in 3 days" for a locked teaser whose chapter is not public yet.
+  function formatPublicIn(dateStr: string): string {
+    const diffMs = new Date(dateStr).getTime() - new Date().getTime()
+    if (diffMs <= 0) return ''
+    const hours = Math.ceil(diffMs / 3_600_000)
+    if (hours < 24) return `Public in ${hours}h`
+    const days = Math.ceil(hours / 24)
+    if (days < 30) return `Public in ${days} day${days === 1 ? '' : 's'}`
+    return `Public ${new Date(dateStr).toLocaleDateString()}`
+  }
+
   const TABS: { id: Tab; label: string }[] = [
     { id: 'reading', label: 'Continue Reading' },
     { id: 'feed', label: 'Feed' },
+    { id: 'following', label: 'Following' },
     // Only readers with at least one active beta grant see the Beta Reading tab
     ...(betaReading.length > 0 ? [{ id: 'beta' as Tab, label: 'Beta Reading' }] : []),
     { id: 'subscriptions', label: 'Subscriptions' },
@@ -475,11 +584,53 @@ export default function LibraryPage() {
                     const chapterHref = projectHref ? `${projectHref}/${item.chapterId}` : null
                     const authorHref = item.authorUsername ? `/read/${item.authorUsername}` : null
 
+                    // Not public yet (early access / scheduled): say when, not "-3840m ago".
+                    const nowMs = new Date().getTime()
+                    const publicAt = [item.publicReleaseDate, item.publishedAt]
+                      .find(d => d && new Date(d).getTime() > nowMs)
                     const timestamp = item.publishedAt && (
                       <span className="text-xs text-gray-400 flex-shrink-0">
-                        {formatTimeAgo(item.publishedAt)}
+                        {publicAt ? formatPublicIn(publicAt) : formatTimeAgo(item.publishedAt)}
                       </span>
                     )
+
+                    if (item.locked) {
+                      const lockedCard = (
+                        <>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="font-medium text-gray-900 dark:text-gray-100 truncate flex items-center gap-1.5">
+                                <svg className="w-4 h-4 flex-shrink-0 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4" />
+                                </svg>
+                                <span className="truncate">{item.chapterTitle}</span>
+                              </p>
+                              <p className="text-sm text-gray-500 dark:text-gray-400">
+                                {item.projectName} &middot; {item.authorName}
+                              </p>
+                              <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                                {item.upsell ? `Subscribe at ${item.upsell.tierName} to read now` : 'Subscribers only'}
+                              </p>
+                            </div>
+                            {timestamp}
+                          </div>
+                        </>
+                      )
+                      const cardClass = 'block p-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800'
+                      return projectHref ? (
+                        <Link
+                          key={item.publicationId}
+                          href={projectHref}
+                          className={`${cardClass} hover:border-amber-300 dark:hover:border-amber-700 transition-colors`}
+                        >
+                          {lockedCard}
+                        </Link>
+                      ) : (
+                        <div key={item.publicationId} className={`${cardClass} opacity-70`} aria-disabled="true">
+                          {lockedCard}
+                        </div>
+                      )
+                    }
 
                     if (!chapterHref || !projectHref) {
                       return (
@@ -546,6 +697,121 @@ export default function LibraryPage() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Following */}
+        {activeTab === 'following' && (
+          <div className="space-y-8">
+            {followingError && (
+              <div role="alert" className="p-3 rounded text-sm bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 flex items-center justify-between">
+                <span>{followingError}</span>
+                <button onClick={() => setFollowingError(null)} className="ml-3 text-red-500 hover:text-red-700 dark:hover:text-red-200" aria-label="Dismiss">
+                  &times;
+                </button>
+              </div>
+            )}
+
+            <section>
+              <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Authors</h2>
+              {followedAuthors.length === 0 ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  You&apos;re not following any authors yet.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {followedAuthors.map(author => {
+                    const name = author.displayName || author.username || 'Unknown author'
+                    return (
+                      <div key={author.id} className="flex items-center gap-3 p-3 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800">
+                        {author.avatarUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={author.avatarUrl} alt="" className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
+                        ) : (
+                          <div className="w-9 h-9 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-sm font-medium text-gray-600 dark:text-gray-300 flex-shrink-0" aria-hidden="true">
+                            {name.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          {author.username ? (
+                            <Link href={`/read/${author.username}`} className="font-medium text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 truncate block">
+                              {name}
+                            </Link>
+                          ) : (
+                            <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{name}</p>
+                          )}
+                          {author.username && <p className="text-xs text-gray-500 dark:text-gray-400">@{author.username}</p>}
+                        </div>
+                        <button
+                          onClick={() => unfollowAuthor(author)}
+                          className="text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                        >
+                          Unfollow
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+              <Link href="/explore?tab=authors" className="mt-3 inline-block text-sm text-blue-600 dark:text-blue-400 hover:underline">
+                Find more authors on Explore
+              </Link>
+            </section>
+
+            <section>
+              <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Projects</h2>
+              {followedProjects.length === 0 ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  You&apos;re not following any projects yet.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {followedProjects.map(project => {
+                    const href = project.authorUsername && project.slug && project.name
+                      ? `/read/${project.authorUsername}/${project.slug}`
+                      : null
+                    const displayName = project.name ?? 'A project you followed'
+                    const note = project.accessStatus === 'ok' ? null : ACCESS_NOTES[project.accessStatus]
+                    return (
+                      <div key={project.id} className="flex items-center gap-3 p-3 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800">
+                        <div className="flex-1 min-w-0">
+                          {href && project.accessStatus !== 'unavailable' ? (
+                            <Link href={href} className="font-medium text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 truncate block">
+                              {displayName}
+                            </Link>
+                          ) : (
+                            <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{displayName}</p>
+                          )}
+                          {project.authorUsername && <p className="text-xs text-gray-500 dark:text-gray-400">by @{project.authorUsername}</p>}
+                          {note && <p className="text-xs text-gray-500 dark:text-gray-400 italic mt-0.5">{note}</p>}
+                        </div>
+                        <button
+                          onClick={() => toggleMuteProject(project)}
+                          aria-pressed={project.muted}
+                          title={project.muted ? 'Muted: hidden from your feed' : 'Hide this project from your feed'}
+                          className={`text-sm px-3 py-1.5 rounded-md border transition-colors ${
+                            project.muted
+                              ? 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300'
+                              : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                          }`}
+                        >
+                          {project.muted ? 'Muted' : 'Mute'}
+                        </button>
+                        <button
+                          onClick={() => unfollowProject(project)}
+                          className="text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                        >
+                          Unfollow
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+              <Link href="/explore" className="mt-3 inline-block text-sm text-blue-600 dark:text-blue-400 hover:underline">
+                Find more projects on Explore
+              </Link>
+            </section>
           </div>
         )}
 

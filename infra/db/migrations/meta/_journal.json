@@ -351,6 +351,13 @@
       "when": 1794120156203,
       "tag": "0050_chapter_numbering",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1794641924308,
+      "tag": "0051_subscribers_only_without_payments_to_beta",
+      "breakpoints": true
     }
   ]
 }

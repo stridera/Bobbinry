@@ -27,9 +27,10 @@ import {
 import { liveProjectEntity, notDeleted } from '../lib/entity-scope'
 import { getManuscriptOrder, manuscriptPosition } from '../lib/manuscript-order'
 import { sortInReaderOrder } from './reader/shared'
-import { projectHasBetaAudience } from '../lib/chapter-access'
+import { projectHasBetaAudience, countProjectBetaReaders } from '../lib/chapter-access'
 import { setBetaShared, listShareableChapterIds } from '../lib/beta-share'
 import { pickDefined } from '../lib/pick'
+import { authorAcceptsSubscriptions, wasAutoDowngraded } from '../lib/author-subscriptions'
 import { actorKeyFor, captureRevisionSafe } from '../lib/entity-revisions'
 
 /** Upper bound on one bulk beta-share request. */
@@ -622,6 +623,15 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
         .where(eq(projects.id, projectId))
         .limit(1)
       const hasBetaAudience = project ? await projectHasBetaAudience(projectId, project.ownerId) : false
+      // Whether "Subscribers" can be offered as the access choice.
+      const acceptsSubscriptions = project ? await authorAcceptsSubscriptions(project.ownerId) : false
+      // Who "beta readers only" lets in: active beta readers of this project
+      // plus the author-wide ones (NULL project).
+      const betaReaderCount = project ? await countProjectBetaReaders(projectId, project.ownerId) : 0
+      // Banner marker: beta-only because we moved it, and still not fixable.
+      const autoDowngraded = !!project && !acceptsSubscriptions
+        && config?.projectVisibility === 'private'
+        && await wasAutoDowngraded(project.ownerId, projectId)
 
       if (!config) {
         // Return defaults
@@ -638,11 +648,14 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
             moderationMode: 'open'
           },
           hasBetaAudience,
+          acceptsSubscriptions,
+          betaReaderCount,
+          autoDowngraded,
           correlationId
         })
       }
 
-      return reply.send({ config, hasBetaAudience, correlationId })
+      return reply.send({ config, hasBetaAudience, acceptsSubscriptions, betaReaderCount, autoDowngraded, correlationId })
     } catch (error) {
       fastify.log.error({ error, correlationId }, 'Failed to get publish config')
       return reply.status(500).send({ error: 'Failed to get publish config', correlationId })
@@ -688,6 +701,42 @@ const publishingPlugin: FastifyPluginAsync = async (fastify) => {
       if (updates.projectVisibility !== undefined
         && !['public', 'unlisted', 'private'].includes(updates.projectVisibility)) {
         return reply.status(400).send({ error: 'Invalid projectVisibility', correlationId })
+      }
+
+      if (updates.defaultVisibility !== undefined) {
+        // 'private' was never enforced anywhere; "beta readers only" is
+        // projectVisibility = 'private' with defaultVisibility = 'public'.
+        if (updates.defaultVisibility === 'private') {
+          return reply.status(400).send({
+            error: "defaultVisibility 'private' is not supported; set projectVisibility to 'private' for beta readers only",
+            correlationId,
+          })
+        }
+        if (!['public', 'subscribers_only'].includes(updates.defaultVisibility)) {
+          return reply.status(400).send({ error: 'Invalid defaultVisibility', correlationId })
+        }
+        // Only a change *to* subscribers-only needs the rule; re-sending the
+        // current value (a dashboard re-save) must not get stuck behind it.
+        const [current] = updates.defaultVisibility === 'subscribers_only'
+          ? await db
+              .select({ defaultVisibility: projectPublishConfig.defaultVisibility })
+              .from(projectPublishConfig)
+              .where(eq(projectPublishConfig.projectId, projectId))
+              .limit(1)
+          : []
+        if (updates.defaultVisibility === 'subscribers_only' && current?.defaultVisibility !== 'subscribers_only') {
+          const [owner] = await db
+            .select({ ownerId: projects.ownerId })
+            .from(projects)
+            .where(eq(projects.id, projectId))
+            .limit(1)
+          if (!owner || !(await authorAcceptsSubscriptions(owner.ownerId))) {
+            return reply.status(400).send({
+              error: 'Subscribers-only access needs payments set up: connect Stripe and create at least one active subscription tier first',
+              correlationId,
+            })
+          }
+        }
       }
 
       // Check if config exists

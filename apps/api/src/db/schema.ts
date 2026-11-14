@@ -156,7 +156,7 @@ export const notifications = pgTable('notifications', {
   id: uuid('id').defaultRandom().primaryKey(),
   recipientId: uuid('recipient_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
-  type: varchar('type', { length: 50 }).notNull(), // new_chapter, new_follower, new_subscriber, new_comment
+  type: varchar('type', { length: 50 }).notNull(), // new_chapter, new_follower, new_subscriber, new_comment, subscribers_downgraded
   title: text('title').notNull(),
   body: text('body'),
   metadata: jsonb('metadata').$type<{
@@ -166,6 +166,7 @@ export const notifications = pgTable('notifications', {
     chapterTitle?: string
     tierId?: string
     tierName?: string
+    projectIds?: string[]
     url?: string
   }>(),
   isRead: boolean('is_read').default(false).notNull(),

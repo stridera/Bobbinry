@@ -327,7 +327,7 @@ export default function NotificationsSettingsPage() {
                     <Link
                       href={follow.authorUsername && follow.projectShortUrl
                         ? `/read/${follow.authorUsername}/${follow.projectShortUrl}`
-                        : `/read`}
+                        : `/library`}
                       className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                     >
                       {follow.projectName || 'Untitled Project'}

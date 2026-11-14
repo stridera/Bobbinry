@@ -17,7 +17,7 @@ export function useChapterInteractions({ chapterId, projectId, apiToken }: UseCh
   useEffect(() => {
     if (!chapterId) return
     let cancelled = false
-    Promise.all([readerApi.fetchReactions(chapterId), readerApi.fetchComments(chapterId)])
+    Promise.all([readerApi.fetchReactions(chapterId, apiToken), readerApi.fetchComments(chapterId, apiToken)])
       .then(([r, c]) => {
         if (cancelled) return
         if (r) setReactions(r)
@@ -25,7 +25,7 @@ export function useChapterInteractions({ chapterId, projectId, apiToken }: UseCh
       })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [chapterId])
+  }, [chapterId, apiToken])
 
   const toggleReaction = useCallback(async (reactionType: string) => {
     if (!apiToken || !chapterId) return
@@ -36,7 +36,7 @@ export function useChapterInteractions({ chapterId, projectId, apiToken }: UseCh
       if (action === 'added') {
         trackEvent('reaction_added', { projectId, chapterId, reactionType })
       }
-      const fresh = await readerApi.fetchReactions(chapterId)
+      const fresh = await readerApi.fetchReactions(chapterId, apiToken)
       if (fresh) setReactions(fresh)
     } catch {}
   }, [apiToken, chapterId, projectId])
@@ -47,7 +47,7 @@ export function useChapterInteractions({ chapterId, projectId, apiToken }: UseCh
       const ok = await readerApi.postComment(chapterId, apiToken, content.trim(), parentId)
       if (!ok) return false
       trackEvent('comment_posted', { projectId, chapterId, isReply: !!parentId })
-      const fresh = await readerApi.fetchComments(chapterId)
+      const fresh = await readerApi.fetchComments(chapterId, apiToken)
       if (fresh) setComments(fresh)
       return true
     } catch {

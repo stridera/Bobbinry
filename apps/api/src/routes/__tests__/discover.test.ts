@@ -13,6 +13,8 @@ import {
   userFollowers,
   userBadges,
   siteMemberships,
+  userPaymentConfig,
+  subscriptionTiers,
   projectCollections,
   projectCollectionMemberships,
 } from '../../db/schema'
@@ -131,6 +133,14 @@ async function makeSupporter(userId: string) {
 
 async function addFollower(followerId: string, followingId: string) {
   await db.insert(userFollowers).values({ followerId, followingId })
+}
+
+/** Stripe onboarding done + one active tier: the author "accepts subscriptions". */
+async function enableSubscriptions(authorId: string) {
+  await db.insert(userPaymentConfig).values({
+    userId: authorId, stripeAccountId: 'acct_test', stripeOnboardingComplete: true,
+  })
+  await db.insert(subscriptionTiers).values({ authorId, name: 'Supporter', tierLevel: 1, priceMonthly: '5.00' })
 }
 
 async function addBadge(userId: string, badge: string, overrides: { isActive?: boolean; expiresAt?: Date | null } = {}) {
@@ -438,6 +448,7 @@ describe('Discover routes', () => {
 
       it('sets subscriberOnly from projectPublishConfig.defaultVisibility, independent of discoverability', async () => {
         const author = await seedAuthor()
+        await enableSubscriptions(author.id) // otherwise a subscribers-only project is not listed at all
         const { project } = await seedDiscoverableProject(author.id, {
           name: 'Members Only Chapters',
           defaultVisibility: 'subscribers_only',
@@ -447,6 +458,37 @@ describe('Discover routes', () => {
         const body = JSON.parse(res.payload)
         expect(body.projects[0].id).toBe(project.id)
         expect(body.projects[0].subscriberOnly).toBe(true)
+      })
+
+      it('hides subscribers-only projects whose author cannot take subscriptions, across explore queries', async () => {
+        const noPayments = await seedAuthor({ username: 'nopay' })
+        const { project: hidden } = await seedDiscoverableProject(noPayments.id, {
+          name: 'Paywall Nobody Can Pay', defaultVisibility: 'subscribers_only',
+        })
+        await addTag(hidden.id, 'Fantasy')
+
+        // Stripe done but no active tier is still "not accepting".
+        const noTier = await seedAuthor({ username: 'notier' })
+        await db.insert(userPaymentConfig).values({ userId: noTier.id, stripeAccountId: 'acct_x', stripeOnboardingComplete: true })
+        await seedDiscoverableProject(noTier.id, { name: 'No Tier Paywall', defaultVisibility: 'subscribers_only' })
+
+        const ok = await seedAuthor({ username: 'payok' })
+        await enableSubscriptions(ok.id)
+        const { project: shown } = await seedDiscoverableProject(ok.id, {
+          name: 'Real Paywall', defaultVisibility: 'subscribers_only',
+        })
+        await addTag(shown.id, 'Fantasy')
+
+        const projectsRes = JSON.parse((await inject('/api/discover/projects')).payload)
+        expect(projectsRes.projects.map((p: any) => p.name)).toEqual(['Real Paywall'])
+        expect(projectsRes.total).toBe(1)
+        expect(projectsRes.projects[0].subscriberOnly).toBe(true)
+
+        const authorsRes = JSON.parse((await inject('/api/discover/authors')).payload)
+        expect(authorsRes.authors.map((a: any) => a.username)).toEqual(['payok'])
+
+        const tagsRes = JSON.parse((await inject('/api/discover/tags')).payload)
+        expect(tagsRes.tags.find((t: any) => t.name === 'Fantasy').projectCount).toBe(1)
       })
 
       it('includes collectionId/collectionName only when the collection has 2+ published projects', async () => {

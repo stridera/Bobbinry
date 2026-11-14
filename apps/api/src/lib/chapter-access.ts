@@ -71,7 +71,7 @@ export async function findActiveSubscription(subscriberId: string, authorId: str
 }
 
 /** Subscriber early-access window relative to the public publish date. */
-function tierAccess(publishedAt: Date | null, earlyAccessDays: number | null, now: Date): AccessCheckResult {
+export function tierAccess(publishedAt: Date | null, earlyAccessDays: number | null, now: Date): AccessCheckResult {
   if (!publishedAt) return { canAccess: true } // published with no date: allow
   const accessDate = new Date(publishedAt.getTime() - (earlyAccessDays ?? 0) * DAY_MS)
   if (now >= accessDate) return { canAccess: true }
@@ -138,6 +138,23 @@ export async function canReadUnpublishedChapter(
 ): Promise<boolean> {
   if (pub.isPublished || !pub.betaShared) return false
   return betaAudience ?? await isBetaAudience(projectId, userId, simulate)
+}
+
+/**
+ * Distinct active beta readers who can open this project: rows scoped to it
+ * plus the author's author-wide rows (NULL project). Same predicate as
+ * `isActiveBetaReader`, counted per reader.
+ */
+export async function countProjectBetaReaders(projectId: string, ownerId: string): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`COUNT(DISTINCT ${betaReaders.readerId})::int` })
+    .from(betaReaders)
+    .where(and(
+      eq(betaReaders.authorId, ownerId),
+      or(eq(betaReaders.projectId, projectId), isNull(betaReaders.projectId)),
+      eq(betaReaders.isActive, true),
+    ))
+  return row?.n ?? 0
 }
 
 /**

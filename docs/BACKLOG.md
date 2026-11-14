@@ -92,6 +92,21 @@ can't tell API-key or AI writes from the author (only
 cover only `RESTORABLE_FIELDS` (body, title, notes, synopsis), so entity-field
 edits can't be undone.
 
+## G. Access model follow-ups
+
+### G1. Other project listings ignore the "accepts subscriptions" rule
+Explore (`routes/discover.ts`) hides subscribers-only projects whose author cannot
+take subscriptions (`listableForAuthor` in `lib/author-subscriptions.ts`). Public
+profile (`users/public-profile.ts`), `reader/lookup.ts` and `reader/collections.ts`
+list projects without it. Migration 0051 clears existing cases, but an author who
+later deactivates their last tier leaves a subscribers-only project in place.
+Decide whether losing the last tier should also flip the project to beta only.
+
+### G2. Per-chapter access grants in the feed
+`resolveProjectAccess` (`lib/project-access.ts`) treats a chapter-specific grant on a
+subscribers-only project as "not privileged", so the feed shows a locked teaser for
+every chapter even when one is individually granted.
+
 ## Test coverage log
 
 Routes and modules that gained tests, newest last. Bugs found while writing

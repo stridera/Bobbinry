@@ -337,6 +337,60 @@ export async function sendBetaReaderJoinedEmail(
   })
 }
 
+/**
+ * Operational notice, not a preference-gated notification: an automatic access
+ * change the author did not ask for. Like the auth emails it carries no
+ * unsubscribe footer and ignores the notification preferences.
+ */
+export async function sendSubscribersDowngradedEmail(
+  to: string,
+  projectTitles: string[],
+  reason: 'no_stripe' | 'no_active_tiers'
+): Promise<boolean> {
+  const what = reason === 'no_stripe'
+    ? 'Stripe is no longer connected to your account'
+    : 'you no longer have an active subscription tier'
+  const list = projectTitles.map(t => `<li style="margin:0 0 4px;">${escapeHtml(t)}</li>`).join('')
+  const url = `${env.WEB_ORIGIN}/settings/monetization`
+  const noun = projectTitles.length === 1 ? 'project was' : 'projects were'
+  const content = `
+    <h1 style="margin:0 0 16px;font-family:${FONT_HEADING};font-size:24px;color:${COLORS.text};">Subscribers-only access was turned off</h1>
+    <p style="margin:0 0 12px;font-size:16px;color:${COLORS.text};line-height:24px;">Because ${what}, readers can no longer subscribe. The following ${noun} moved to <strong>Beta readers only</strong>:</p>
+    <ul style="margin:0 0 12px;padding-left:20px;font-size:16px;color:${COLORS.text};line-height:24px;">${list}</ul>
+    <p style="margin:0 0 8px;font-size:16px;color:${COLORS.text};line-height:24px;">Your existing beta readers keep their access. To restore subscriber access, fix your monetization settings, then switch each project back to Subscribers in its publish dashboard.</p>
+    ${emailButton('Open monetization settings', url)}
+  `
+  return sendEmail({
+    to,
+    subject: projectTitles.length === 1
+      ? `"${projectTitles[0]}" moved to Beta readers only`
+      : `${projectTitles.length} projects moved to Beta readers only`,
+    html: emailLayout(content),
+    text: `Because ${what}, these ${noun} moved to Beta readers only: ${projectTitles.join(', ')}. Existing beta readers keep access. Fix your monetization settings at ${url}, then switch each project back to Subscribers in its publish dashboard.`,
+  })
+}
+
+/**
+ * Operational notice (no unsubscribe footer, ignores notification preferences):
+ * Stripe paused charges on the author's connected account.
+ */
+export async function sendStripePaymentsPausedEmail(to: string): Promise<boolean> {
+  const url = `${env.WEB_ORIGIN}/settings/monetization`
+  const content = `
+    <h1 style="margin:0 0 16px;font-family:${FONT_HEADING};font-size:24px;color:${COLORS.text};">Stripe has paused payments on your account</h1>
+    <p style="margin:0 0 12px;font-size:16px;color:${COLORS.text};line-height:24px;">Until this is resolved, new readers can't subscribe to you.</p>
+    <p style="margin:0 0 12px;font-size:16px;color:${COLORS.text};line-height:24px;">Your existing subscribers keep their access, and your projects stay <strong>subscribers-only</strong>. While payments are paused those projects are hidden from Explore and from new readers' feeds.</p>
+    <p style="margin:0 0 8px;font-size:16px;color:${COLORS.text};line-height:24px;">Open your monetization settings to see what Stripe needs from you. Once Stripe re-enables payments, everything returns to normal on its own.</p>
+    ${emailButton('Open monetization settings', url)}
+  `
+  return sendEmail({
+    to,
+    subject: 'Stripe has paused payments on your account',
+    html: emailLayout(content),
+    text: `Stripe has paused payments on your account, so new readers can't subscribe until it's resolved. Existing subscribers keep access and your projects stay subscribers-only. See what Stripe needs at ${url}.`,
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Admin daily report
 // ---------------------------------------------------------------------------

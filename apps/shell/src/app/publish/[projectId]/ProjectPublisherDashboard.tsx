@@ -26,7 +26,10 @@ interface ProjectInfo {
   isArchived: boolean
 }
 
+type AccessChoice = 'public' | 'subscribers' | 'beta'
+
 interface PublishConfig {
+  publishingMode?: string
   autoReleaseEnabled: boolean
   releaseFrequency: string
   defaultVisibility: string
@@ -51,6 +54,11 @@ export function ProjectPublisherDashboard({
   const [profileLoaded, setProfileLoaded] = useState(false)
   const [publishConfig, setPublishConfig] = useState<PublishConfig | null>(null)
   const [hasBetaAudience, setHasBetaAudience] = useState(false)
+  const [acceptsSubscriptions, setAcceptsSubscriptions] = useState(false)
+  // Active beta readers this project would admit: its own plus author-wide ones.
+  const [betaReaderCount, setBetaReaderCount] = useState(0)
+  // We moved this project to beta-only because subscriptions stopped being possible.
+  const [autoDowngraded, setAutoDowngraded] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -95,6 +103,9 @@ export function ProjectPublisherDashboard({
         const configData = await configRes.json()
         setPublishConfig(configData.config || null)
         setHasBetaAudience(!!configData.hasBetaAudience)
+        setAcceptsSubscriptions(!!configData.acceptsSubscriptions)
+        setBetaReaderCount(Number(configData.betaReaderCount) || 0)
+        setAutoDowngraded(!!configData.autoDowngraded)
       }
     } catch (err) {
       console.error('Failed to load publisher data:', err)
@@ -114,18 +125,41 @@ export function ProjectPublisherDashboard({
     void loadData()
   }
 
-  const updateVisibility = async (visibility: string) => {
+  // One "Access" choice maps onto the two stored columns:
+  //   public      -> defaultVisibility public,           projectVisibility public|unlisted
+  //   subscribers -> defaultVisibility subscribers_only, projectVisibility public|unlisted
+  //   beta        -> defaultVisibility public,           projectVisibility private
+  const currentAccess: AccessChoice =
+    publishConfig?.projectVisibility === 'private'
+      ? 'beta'
+      : publishConfig?.defaultVisibility === 'subscribers_only'
+        ? 'subscribers'
+        : 'public'
+
+  const saveAccess = async (access: AccessChoice, listing: 'public' | 'unlisted') => {
+    const body = access === 'beta'
+      ? { projectVisibility: 'private', defaultVisibility: 'public' }
+      : { projectVisibility: listing, defaultVisibility: access === 'subscribers' ? 'subscribers_only' : 'public' }
     try {
-      await apiFetch(`/api/projects/${projectId}/publish-config`, apiToken, {
+      const res = await apiFetch(`/api/projects/${projectId}/publish-config`, apiToken, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ defaultVisibility: visibility }),
+        body: JSON.stringify(body),
       })
-      setPublishConfig((c) => c ? { ...c, defaultVisibility: visibility } : c)
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setMessage({ type: 'error', text: data.error || 'Failed to update access.' })
+        return
+      }
+      setMessage(null)
+      setPublishConfig((c) => c ? { ...c, ...body } : c)
     } catch {
-      setMessage({ type: 'error', text: 'Failed to update visibility.' })
+      setMessage({ type: 'error', text: 'Failed to update access.' })
     }
   }
+
+  const listing: 'public' | 'unlisted' = publishConfig?.projectVisibility === 'unlisted' ? 'unlisted' : 'public'
+  const betaReaderLabel = `${betaReaderCount} beta reader${betaReaderCount === 1 ? '' : 's'}`
 
   const updateReaderExperience = async (field: string, value: boolean | string) => {
     try {
@@ -305,38 +339,113 @@ export function ProjectPublisherDashboard({
                   Reader Experience
                 </h3>
                 <div className="space-y-3">
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-700 dark:text-gray-300">Project visibility</span>
-                      <select
-                        value={publishConfig?.projectVisibility || 'public'}
-                        onChange={(e) => void updateReaderExperience('projectVisibility', e.target.value)}
-                        className="rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
-                      >
-                        <option value="private">Private</option>
-                        <option value="unlisted">Unlisted</option>
-                        <option value="public">Public</option>
-                      </select>
+                  <fieldset>
+                    <legend className="text-sm text-gray-700 dark:text-gray-300 mb-2">Access</legend>
+                    {currentAccess === 'beta' && !acceptsSubscriptions && autoDowngraded && (
+                      <div role="status" className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+                        This project was moved to Beta readers only because you no longer have Stripe connected with an active subscription tier. Existing beta readers kept their access.{' '}
+                        <Link href="/settings/monetization" className="font-medium underline">Fix monetization</Link>
+                        {' '}to switch it back to Subscribers.
+                      </div>
+                    )}
+                    {publishConfig?.publishingMode === 'draft' && (
+                      <p className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+                        This project is still a draft, so only you can see it, whatever the access setting below.
+                      </p>
+                    )}
+                    <div className="space-y-2.5">
+                      <label className="flex items-start gap-2.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="project-access"
+                          checked={currentAccess === 'public'}
+                          onChange={() => void saveAccess('public', listing)}
+                          className="mt-0.5 border-gray-300"
+                        />
+                        <span>
+                          <span className="block text-sm text-gray-900 dark:text-gray-100">Public</span>
+                          <span className="block text-xs text-gray-500 dark:text-gray-400">Anyone can read.</span>
+                        </span>
+                      </label>
+
+                      <label className={`flex items-start gap-2.5 ${acceptsSubscriptions || currentAccess === 'subscribers' ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}>
+                        <input
+                          type="radio"
+                          name="project-access"
+                          checked={currentAccess === 'subscribers'}
+                          disabled={!acceptsSubscriptions && currentAccess !== 'subscribers'}
+                          onChange={() => void saveAccess('subscribers', listing)}
+                          className="mt-0.5 border-gray-300"
+                        />
+                        <span>
+                          <span className="block text-sm text-gray-900 dark:text-gray-100">Subscribers</span>
+                          <span className="block text-xs text-gray-500 dark:text-gray-400">
+                            Chapters need an active subscription; non-subscribers see a locked teaser.
+                          </span>
+                        </span>
+                      </label>
+                      {!acceptsSubscriptions && (
+                        <p className="pl-6 text-xs text-gray-500 dark:text-gray-400">
+                          Subscribers needs Stripe connected and at least one active tier.{' '}
+                          <Link href="/settings/monetization" className="text-blue-600 hover:underline dark:text-blue-400">
+                            Set up monetization
+                          </Link>
+                        </p>
+                      )}
+
+                      <label className="flex items-start gap-2.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="project-access"
+                          checked={currentAccess === 'beta'}
+                          onChange={() => void saveAccess('beta', listing)}
+                          className="mt-0.5 border-gray-300"
+                        />
+                        <span>
+                          <span className="block text-sm text-gray-900 dark:text-gray-100">Beta readers only</span>
+                          <span className="block text-xs text-gray-500 dark:text-gray-400">
+                            Only you, your beta readers, and people you grant access can open it. Never listed on Explore.
+                          </span>
+                        </span>
+                      </label>
+                      <p className="pl-6 text-xs text-gray-600 dark:text-gray-400" data-testid="beta-access-note">
+                        {betaReaderCount > 0 ? (
+                          <>
+                            {currentAccess === 'beta'
+                              ? `${betaReaderLabel} can access this project`
+                              : `Making this beta readers only will grant access to ${betaReaderLabel}`}
+                            {' '}(including your author-wide beta readers).{' '}
+                          </>
+                        ) : (
+                          <>Only you will have access (no beta readers yet). Author-wide beta readers are included once you add them.{' '}</>
+                        )}
+                        <Link href="/settings/beta-readers" className="text-blue-600 hover:underline dark:text-blue-400">
+                          Manage beta readers
+                        </Link>
+                      </p>
                     </div>
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      {publishConfig?.projectVisibility === 'private'
-                        ? 'Only you, beta readers, and invitees can open the reader page.'
-                        : publishConfig?.projectVisibility === 'unlisted'
-                          ? 'Anyone with the link can read, but the project is never listed on Explore.'
-                          : 'Listed on Explore and your author page once the first chapter is published.'}
-                    </p>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-700 dark:text-gray-300">Chapter access</span>
-                    <select
-                      value={publishConfig?.defaultVisibility || 'public'}
-                      onChange={(e) => void updateVisibility(e.target.value)}
-                      className="rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
-                    >
-                      <option value="public">Public</option>
-                      <option value="subscribers_only">Subscribers Only</option>
-                    </select>
-                  </div>
+
+                    {currentAccess !== 'beta' && (
+                      <div className="mt-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-700 dark:text-gray-300">Discovery</span>
+                          <select
+                            value={listing}
+                            onChange={(e) => void saveAccess(currentAccess, e.target.value as 'public' | 'unlisted')}
+                            className="rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                          >
+                            <option value="public">Listed</option>
+                            <option value="unlisted">Unlisted</option>
+                          </select>
+                        </div>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                          {listing === 'unlisted'
+                            ? 'Anyone with the link can open it, but it is never listed on Explore.'
+                            : 'Listed on Explore and your author page once the first chapter is published.'}
+                        </p>
+                      </div>
+                    )}
+                  </fieldset>
                   <label className="flex items-center justify-between cursor-pointer">
                     <span className="text-sm text-gray-700 dark:text-gray-300">Comments</span>
                     <input
@@ -521,7 +630,7 @@ function SetupPublishing({
           </label>
           <div className="space-y-2">
             {[
-              { value: 'private', label: 'Private', hint: 'Only you, beta readers, and invitees can open the reader page.' },
+              { value: 'private', label: 'Beta readers only', hint: 'Only you, beta readers, and people you grant access can open the reader page.' },
               { value: 'unlisted', label: 'Unlisted', hint: 'Anyone with the link can read; never listed on Explore.' },
               { value: 'public', label: 'Public', hint: 'Listed on Explore once the first chapter is published.' },
             ].map((option) => (

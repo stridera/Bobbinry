@@ -2,12 +2,13 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { env } from '../../lib/env'
 import { db } from '../../db/connection'
-import { userProfiles, subscriptionTiers, projects, projectCollections, users, entities, userPaymentConfig } from '../../db/schema'
+import { userProfiles, subscriptionTiers, subscriptions, projects, projectCollections, users, entities, userPaymentConfig } from '../../db/schema'
 import { eq, and, or, inArray } from 'drizzle-orm'
 import { requireAuth, requireSelf, optionalAuth } from '../../middleware/auth'
 import { getStripe, createExpressAccount, createOnboardingLink } from '../../lib/stripe'
 import { notDeleted } from '../../lib/entity-scope'
 import { isUuid as isValidUUID } from '../../lib/slugs'
+import { stripePayoutsReady, downgradeUnpayableSubscriberProjects } from '../../lib/author-subscriptions'
 
 /**
  * Numeric tier fields arrive as strings or numbers from the settings UI.
@@ -70,9 +71,13 @@ const tiersRoutes: FastifyPluginAsync = async (fastify) => {
       ])
 
       const config = paymentConfigResult[0]
-      const acceptsPayments = !!(config?.stripeAccountId && config?.stripeOnboardingComplete)
+      // acceptsPayments: Stripe onboarding done (needed before tiers can be
+      // created). acceptsSubscriptions: also has an active tier — the rule
+      // that gates subscribers-only projects.
+      const acceptsPayments = stripePayoutsReady(config)
+      const acceptsSubscriptions = acceptsPayments && tiers.some(t => t.isActive)
 
-      return reply.status(200).send({ tiers, acceptsPayments })
+      return reply.status(200).send({ tiers, acceptsPayments, acceptsSubscriptions })
     } catch (error) {
       fastify.log.error(error)
       return reply.status(500).send({ error: 'Failed to fetch subscription tiers' })
@@ -351,6 +356,9 @@ const tiersRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(404).send({ error: 'Tier not found' })
       }
 
+      // Deactivating the last active tier ends "accepts subscriptions".
+      await downgradeUnpayableSubscriberProjects(userId)
+
       return reply.status(200).send({ tier: updated })
     } catch (error) {
       fastify.log.error(error)
@@ -374,12 +382,43 @@ const tiersRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(400).send({ error: 'Invalid tier ID format' })
       }
 
+      const [tier] = await db
+        .select({ id: subscriptionTiers.id })
+        .from(subscriptionTiers)
+        .where(and(eq(subscriptionTiers.id, tierId), eq(subscriptionTiers.authorId, userId)))
+        .limit(1)
+      if (!tier) return reply.status(404).send({ error: 'Tier not found' })
+
+      // subscriptions.tier_id is a plain FK, so a tier any subscription (past or
+      // present) points at cannot be deleted. Deactivate it instead: it stops
+      // being offered, and existing subscribers keep it until they end.
+      const [referenced] = await db
+        .select({ id: subscriptions.id })
+        .from(subscriptions)
+        .where(eq(subscriptions.tierId, tierId))
+        .limit(1)
+
+      if (referenced) {
+        await db
+          .update(subscriptionTiers)
+          .set({ isActive: false, updatedAt: new Date() })
+          .where(eq(subscriptionTiers.id, tierId))
+        await downgradeUnpayableSubscriberProjects(userId)
+        return reply.status(200).send({
+          success: true,
+          deactivated: true,
+          message: 'This tier has subscribers, so it was deactivated instead of deleted. Existing subscribers keep it until their subscription ends.',
+        })
+      }
+
       await db
         .delete(subscriptionTiers)
         .where(and(
           eq(subscriptionTiers.id, tierId),
           eq(subscriptionTiers.authorId, userId)
         ))
+
+      await downgradeUnpayableSubscriberProjects(userId)
 
       return reply.status(200).send({ success: true })
     } catch (error) {

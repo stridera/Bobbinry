@@ -14,6 +14,7 @@ import {
   siteMemberships,
   userBadges,
 } from '../db/schema'
+import { listableForAuthor } from '../lib/author-subscriptions'
 import { eq, and, or, ilike, sql, desc, asc, count, countDistinct, isNull, inArray, gte } from 'drizzle-orm'
 
 /**
@@ -110,6 +111,7 @@ const discoverPlugin: FastifyPluginAsync = async (fastify) => {
       const baseConditions = and(
         eq(projectPublishConfig.publishingMode, 'live'),
         eq(projectPublishConfig.projectVisibility, 'public'),
+        listableForAuthor(projectPublishConfig.defaultVisibility, projects.ownerId),
         eq(projects.isArchived, false),
         isNull(projects.deletedAt),
         sql`EXISTS (SELECT 1 FROM ${chapterPublications} WHERE ${chapterPublications.projectId} = ${projects.id} AND ${chapterPublications.isPublished} = true)`
@@ -261,6 +263,7 @@ const discoverPlugin: FastifyPluginAsync = async (fastify) => {
         .where(and(
           eq(projectPublishConfig.publishingMode, 'live'),
           eq(projectPublishConfig.projectVisibility, 'public'),
+          listableForAuthor(projectPublishConfig.defaultVisibility, projects.ownerId),
           eq(projects.isArchived, false),
           isNull(projects.deletedAt),
           sql`EXISTS (SELECT 1 FROM ${chapterPublications} WHERE ${chapterPublications.projectId} = ${projects.id} AND ${chapterPublications.isPublished} = true)`
@@ -309,6 +312,7 @@ const discoverPlugin: FastifyPluginAsync = async (fastify) => {
         .where(and(
           eq(projectPublishConfig.publishingMode, 'live'),
           eq(projectPublishConfig.projectVisibility, 'public'),
+          listableForAuthor(projectPublishConfig.defaultVisibility, projects.ownerId),
           eq(projects.isArchived, false),
           isNull(projects.deletedAt),
           sql`EXISTS (SELECT 1 FROM ${chapterPublications} WHERE ${chapterPublications.projectId} = ${projects.id} AND ${chapterPublications.isPublished} = true)`
@@ -416,6 +420,7 @@ const discoverPlugin: FastifyPluginAsync = async (fastify) => {
       const conditions = and(
         eq(projectPublishConfig.publishingMode, 'live'),
         eq(projectPublishConfig.projectVisibility, 'public'),
+        listableForAuthor(projectPublishConfig.defaultVisibility, projects.ownerId),
         eq(projects.isArchived, false),
         isNull(projects.deletedAt),
         sql`EXISTS (SELECT 1 FROM ${chapterPublications} WHERE ${chapterPublications.projectId} = ${projects.id} AND ${chapterPublications.isPublished} = true)`,
@@ -570,6 +575,7 @@ async function enrichProjects(rows: Array<{
         isNull(projects.deletedAt),
         eq(projectPublishConfig.publishingMode, 'live'),
         eq(projectPublishConfig.projectVisibility, 'public'),
+        listableForAuthor(projectPublishConfig.defaultVisibility, projects.ownerId),
         sql`EXISTS (SELECT 1 FROM ${chapterPublications} WHERE ${chapterPublications.projectId} = ${projects.id} AND ${chapterPublications.isPublished} = true)`
       ))
       .groupBy(projectCollectionMemberships.collectionId)
